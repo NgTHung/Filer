@@ -1,0 +1,8 @@
+[workspace]
+name = "filer"
+resolver = "3"
+members = ["filer-app", "filer-core"]
+
+[workspace.dependencies]
+tokio = {version = "1", features = ["full"]}
+tracing = "0.1.44"

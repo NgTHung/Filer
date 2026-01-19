@@ -1,0 +1,53 @@
+use std::path::Path;
+use async_trait::async_trait;
+
+use crate::errors::CoreError;
+use crate::model::node::FileNode;
+use crate::vfs::provider::{Capabilities, FsProvider};
+
+/// Archive filesystem provider (ZIP, TAR, etc.)
+pub struct ArchiveFs {
+    archive_path: std::path::PathBuf,
+}
+
+impl ArchiveFs {
+    pub fn new(archive_path: std::path::PathBuf) -> Self {
+        Self { archive_path }
+    }
+}
+
+#[async_trait]
+impl FsProvider for ArchiveFs {
+    fn scheme(&self) -> &'static str {
+        "archive"
+    }
+    
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: false,
+        }
+    }
+    
+    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+        todo!()
+    }
+    
+    async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {
+        todo!()
+    }
+    
+    async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
+        todo!()
+    }
+    
+    async fn exists(&self, path: &Path) -> bool {
+        todo!()
+    }
+    
+    async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
+        todo!()
+    }
+}
