@@ -1,7 +1,7 @@
 //! Tests for VFS providers
 
-use filer_core::vfs::provider::{Capabilities, FsProvider};
-use filer_core::vfs::local::LocalFs;
+use crate::vfs::provider::{Capabilities, FsProvider};
+use crate::vfs::local::LocalFs;
 use std::path::PathBuf;
 
 #[tokio::test]

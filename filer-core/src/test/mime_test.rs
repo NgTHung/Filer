@@ -1,6 +1,6 @@
 //! Tests for MIME detection
 
-use filer_core::services::mime::{MimeDetector, MimeCategory};
+use crate::services::mime::{MimeDetector, MimeCategory};
 use std::path::Path;
 
 #[test]

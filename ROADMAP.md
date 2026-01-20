@@ -1,200 +1,302 @@
 # Filer Roadmap
-
 ## Phase 1: Core Foundation
+- [ ] **Error Types**
+  - [ ] Tests: error variants, display, conversion
+  - [ ] CoreError implementation
+
 - [ ] **Model Layer**
-  - [ ] FileNode structure
-  - [ ] NodeId generation (hash-based)
-  - [ ] FileTree implementation
-  - [ ] SearchQuery parser
+  - [ ] Tests: NodeId determinism, equality, hash
+  - [ ] NodeId implementation
+  - [ ] Tests: FileNode creation, is_dir, is_file, extension
+  - [ ] FileNode implementation
+  - [ ] Tests: NodeRegistry register, resolve, unregister
+  - [ ] NodeRegistry implementation
 
 - [ ] **VFS Layer**
+  - [ ] Tests: FsProvider trait with MockFs
   - [ ] FsProvider trait
+  - [ ] Tests: LocalFs list, read, read_range, exists, metadata
   - [ ] LocalFs implementation
-  - [ ] Basic file operations (list, read, metadata)
 
-- [ ] **Bus & Actors**
-  - [ ] Event bus implementation
-  - [ ] Actor trait and lifecycle
-  - [ ] Scanner actor
-  - [ ] Basic command routing
+- [ ] **Commands & Events**
+  - [ ] Command enum (Navigate, Search, LoadPreview, etc.)
+  - [ ] Event enum (DirectoryLoaded, FilesBatch, Error, etc.)
 
-## Phase 2: Core Features
-- [ ] **Directory Navigation**
-  - [ ] Async directory scanning
-  - [ ] Streaming results (batched)
-  - [ ] Cancellation support
-  - [ ] Error handling
+## Phase 2: Pipeline System
+- [ ] **Stage Trait**
+  - [ ] Tests: Stage trait with mock stage
+  - [ ] Stage trait definition
 
-- [ ] **Pipeline System**
-  - [ ] Stage trait
-  - [ ] FilterHidden stage
-  - [ ] FilterByExtension stage
-  - [ ] SortBy stage
-  - [ ] GroupBy stage
+- [ ] **Filter Stages**
+  - [ ] Tests: FilterHidden (show/hide hidden files)
+  - [ ] FilterHidden implementation
+  - [ ] Tests: FilterByExtension (include/exclude)
+  - [ ] FilterByExtension implementation
 
-- [ ] **File Watching**
-  - [ ] Watcher actor
-  - [ ] Change detection events
-  - [ ] Debouncing
+- [ ] **Sort Stages**
+  - [ ] Tests: SortBy name asc/desc
+  - [ ] Tests: SortBy size, date
+  - [ ] Tests: directories first option
+  - [ ] SortBy implementation
 
-## Phase 3: Search
-- [ ] **Basic Search**
-  - [ ] Name matching (glob, regex)
-  - [ ] Case sensitivity option
-  - [ ] Recursive search
+- [ ] **Group Stages**
+  - [ ] Tests: GroupBy extension, date, size
+  - [ ] GroupBy implementation
 
-- [ ] **Advanced Search**
-  - [ ] Query language parser
-  - [ ] Filter by size, date, type
-  - [ ] Content search (grep-like)
+- [ ] **Pipeline Executor**
+  - [ ] Tests: empty pipeline passthrough
+  - [ ] Tests: single stage
+  - [ ] Tests: chained stages
+  - [ ] Pipeline implementation
+
+## Phase 3: Actor Infrastructure
+- [ ] **Channels**
+  - [ ] Tests: bounded channel send/recv
+  - [ ] Tests: unbounded channel
+  - [ ] Channel wrapper implementation
+
+- [ ] **Actor Trait**
+  - [ ] Actor trait definition
+  - [ ] Tests: actor spawn and shutdown
+
+- [ ] **Scanner Actor**
+  - [ ] Tests: scan empty directory
+  - [ ] Tests: scan directory with files
+  - [ ] Tests: scan applies pipeline
+  - [ ] Tests: scan cancellation
+  - [ ] Tests: scan error handling
+  - [ ] Scanner implementation
+
+- [ ] **Command Router**
+  - [ ] Tests: route Navigate to Scanner
+  - [ ] Tests: route Search to Searcher
+  - [ ] Command routing implementation
+
+## Phase 4: FilerCore API
+- [ ] **Handle**
+  - [ ] Tests: FilerCore::new() creates actors
+  - [ ] Tests: send command
+  - [ ] Tests: receive event
+  - [ ] Tests: shutdown
+  - [ ] FilerCore implementation
+
+- [ ] **Navigation Flow**
+  - [ ] Tests: Navigate(path) -> DirectoryLoaded event
+  - [ ] Tests: NavigateUp
+  - [ ] Tests: Refresh
+  - [ ] Integration tests
+
+## Phase 5: File Watching
+- [ ] **Watcher Actor**
+  - [ ] Tests: Watch command
+  - [ ] Tests: Unwatch command
+  - [ ] Tests: FsChanged event on file create
+  - [ ] Tests: FsChanged event on file modify
+  - [ ] Tests: FsChanged event on file delete
+  - [ ] Tests: debouncing rapid changes
+  - [ ] Watcher implementation
+
+## Phase 6: Search
+- [ ] **Query Parsing**
+  - [ ] Tests: simple text query
+  - [ ] Tests: glob pattern (*.rs, test?.txt)
+  - [ ] Tests: size filter (size:>1mb, size:<100kb)
+  - [ ] Tests: date filter (modified:<1w)
+  - [ ] Tests: type filter (type:image)
+  - [ ] Tests: combined filters
+  - [ ] SearchQuery parser
 
 - [ ] **Searcher Actor**
-  - [ ] Background search
-  - [ ] Progress reporting
-  - [ ] Result streaming
+  - [ ] Tests: search by name
+  - [ ] Tests: search recursive
+  - [ ] Tests: search with filters
+  - [ ] Tests: search cancellation
+  - [ ] Tests: search progress events
+  - [ ] Tests: search result streaming
+  - [ ] Searcher implementation
 
-## Phase 4: Metadata & Preview
+## Phase 7: MIME & Metadata
 - [ ] **MIME Detection**
-  - [ ] Extension-based detection
-  - [ ] Magic bytes detection
-  - [ ] Category classification
+  - [ ] Tests: detect from extension
+  - [ ] Tests: detect from magic bytes
+  - [ ] Tests: category classification
+  - [ ] MimeDetector implementation
 
-- [ ] **Metadata Extraction**
-  - [ ] BasicMetadata (size, dates, permissions)
-  - [ ] ImageExtractor (dimensions, EXIF)
-  - [ ] AudioExtractor (duration, tags)
-  - [ ] VideoExtractor (dimensions, duration)
-  - [ ] DocumentExtractor (PDF, Office)
+- [ ] **Basic Metadata**
+  - [ ] Tests: size, dates, permissions
+  - [ ] BasicMetadata implementation
 
-- [ ] **Preview System**
+- [ ] **Extended Metadata**
+  - [ ] Tests: ImageExtractor (dimensions, EXIF)
+  - [ ] ImageExtractor implementation
+  - [ ] Tests: AudioExtractor (duration, tags)
+  - [ ] AudioExtractor implementation
+  - [ ] Tests: VideoExtractor (dimensions, duration)
+  - [ ] VideoExtractor implementation
+  - [ ] Tests: DocumentExtractor (pages, title)
+  - [ ] DocumentExtractor implementation
+
+- [ ] **Metadata Registry**
+  - [ ] Tests: register extractor
+  - [ ] Tests: extract by category
+  - [ ] MetadataRegistry implementation
+
+## Phase 8: Preview System
+- [ ] **Preview Provider Trait**
+  - [ ] Tests: provider trait with mock
   - [ ] PreviewProvider trait
-  - [ ] TextProvider (plain text)
-  - [ ] CodeProvider (syntax highlighting)
-  - [ ] ImageProvider (thumbnails)
-  - [ ] PreviewCache (LRU)
 
-## Phase 5: Advanced Features
-- [ ] **Archive Support**
-  - [ ] ArchiveFs provider
-  - [ ] ZIP reading
-  - [ ] TAR reading
-  - [ ] Archive preview
+- [ ] **Built-in Providers**
+  - [ ] Tests: TextProvider (content, truncation)
+  - [ ] TextProvider implementation
+  - [ ] Tests: CodeProvider (syntax highlighting)
+  - [ ] CodeProvider implementation
+  - [ ] Tests: ImageProvider (thumbnail generation)
+  - [ ] ImageProvider implementation
 
-- [ ] **File Operations**
-  - [ ] Copy (with progress)
-  - [ ] Move
-  - [ ] Delete (trash support)
-  - [ ] Rename
-  - [ ] Create folder
+- [ ] **Preview Registry**
+  - [ ] Tests: register provider
+  - [ ] Tests: select provider by category
+  - [ ] PreviewRegistry implementation
 
-- [ ] **Caching**
-  - [ ] Cache actor
-  - [ ] Directory cache
-  - [ ] Metadata cache
-  - [ ] Cache invalidation
+- [ ] **Preview Cache**
+  - [ ] Tests: cache put/get
+  - [ ] Tests: LRU eviction
+  - [ ] Tests: cache invalidation
+  - [ ] PreviewCache implementation
 
-## Phase 6: GUI (Iced)
-- [ ] **Basic UI**
-  - [ ] Main window layout
-  - [ ] File list view
-  - [ ] Sidebar (places)
-  - [ ] Breadcrumb navigation
+- [ ] **Previewer Actor**
+  - [ ] Tests: generate preview command
+  - [ ] Tests: preview ready event
+  - [ ] Tests: preview from cache
+  - [ ] Previewer implementation
+
+## Phase 9: File Operations
+- [ ] **Operations Actor**
+  - [ ] Tests: copy single file
+  - [ ] Tests: copy directory recursive
+  - [ ] Tests: copy progress events
+  - [ ] Copy implementation
+  - [ ] Tests: move same filesystem
+  - [ ] Tests: move cross filesystem
+  - [ ] Move implementation
+  - [ ] Tests: delete to trash
+  - [ ] Tests: delete permanent
+  - [ ] Delete implementation
+  - [ ] Tests: rename file
+  - [ ] Tests: rename directory
+  - [ ] Rename implementation
+  - [ ] Tests: create folder
+  - [ ] Tests: create file
+  - [ ] Create implementation
+
+## Phase 10: Caching
+- [ ] **Cache Actor**
+  - [ ] Tests: cache directory listing
+  - [ ] Tests: cache metadata
+  - [ ] Tests: invalidate on FsChanged
+  - [ ] Tests: LRU eviction by size
+  - [ ] Cache implementation
+
+## Phase 11: Archive Support
+- [ ] **Archive VFS Provider**
+  - [ ] Tests: detect archive type
+  - [ ] Tests: list ZIP contents
+  - [ ] Tests: read file from ZIP
+  - [ ] ZIP implementation
+  - [ ] Tests: list TAR contents
+  - [ ] Tests: read file from TAR
+  - [ ] TAR implementation
+
+## Phase 12: Utils
+- [ ] **Path Utils**
+  - [ ] Tests: get_extension
+  - [ ] Tests: get_stem
+  - [ ] Tests: is_hidden
+  - [ ] Implementation
+
+- [ ] **Size Utils**
+  - [ ] Tests: format_size (B, KB, MB, GB)
+  - [ ] Tests: parse_size
+  - [ ] Implementation
+
+- [ ] **Time Utils**
+  - [ ] Tests: format_time
+  - [ ] Tests: format_relative
+  - [ ] Tests: format_duration
+  - [ ] Implementation
+
+## Phase 13: GUI (Iced)
+- [ ] **Application Structure**
+  - [ ] Main window
+  - [ ] App state
+  - [ ] Message types
 
 - [ ] **Core Integration**
   - [ ] Subscription to core events
   - [ ] Command dispatch
   - [ ] Async state updates
 
-- [ ] **Interactions**
-  - [ ] Click selection
-  - [ ] Double-click open
-  - [ ] Keyboard navigation
-  - [ ] Context menu
-
-- [ ] **Advanced UI**
+- [ ] **Views**
+  - [ ] File list view
+  - [ ] Sidebar (places/bookmarks)
+  - [ ] Breadcrumb navigation
   - [ ] Preview panel
   - [ ] Search bar
   - [ ] Status bar
-  - [ ] Virtualized list (large dirs)
 
-## Phase 7: Polish
+- [ ] **Interactions**
+  - [ ] Single click selection
+  - [ ] Double click open
+  - [ ] Multi-selection (Ctrl/Shift)
+  - [ ] Keyboard navigation
+  - [ ] Context menu
+  - [ ] Drag and drop
+
 - [ ] **Performance**
-  - [ ] Benchmark large directories
-  - [ ] Optimize memory usage
-  - [ ] Profile hot paths
+  - [ ] Virtualized list for large directories
+  - [ ] Lazy loading
+  - [ ] Thumbnail caching
 
-- [ ] **Testing**
-  - [ ] Unit tests for core
-  - [ ] Integration tests
-  - [ ] Mock filesystem tests
+## Phase 14: Optional Features (feature-gated)
+- [ ] **Encryption** (\`crypto\` feature)
+  - [ ] Tests: encrypt/decrypt roundtrip
+  - [ ] Tests: key derivation
+  - [ ] Tests: vault create/open
+  - [ ] Cipher, KeyStore, Vault implementation
 
-- [ ] **Documentation**
-  - [ ] API documentation
-  - [ ] Architecture guide
-  - [ ] Usage examples
+- [ ] **S3** (\`s3\` feature)
+  - [ ] Tests: list objects
+  - [ ] Tests: get/put object
+  - [ ] S3Fs implementation
 
-## Phase 8: Encryption
-- [ ] **Cipher Module**
-  - [ ] AES-256-GCM implementation
-  - [ ] ChaCha20-Poly1305 implementation
-  - [ ] XChaCha20-Poly1305 implementation
-  - [ ] Stream encryption/decryption
+- [ ] **WebDAV** (\`webdav\` feature)
+  - [ ] Tests: PROPFIND, GET, PUT
+  - [ ] WebDavFs implementation
 
-- [ ] **Key Management**
-  - [ ] Argon2id key derivation
-  - [ ] Scrypt key derivation
-  - [ ] KeyStore (secure memory)
-  - [ ] Key persistence (encrypted)
+- [ ] **FTP/SFTP** (\`ftp\`/\`sftp\` feature)
+  - [ ] Tests: connect, list, download, upload
+  - [ ] FtpFs implementation
 
-- [ ] **Vault**
-  - [ ] Create/open encrypted vault
-  - [ ] Filename encryption
-  - [ ] Transparent encryption layer
-  - [ ] Password change
+- [ ] **FUSE** (\`fuse\` feature)
+  - [ ] Tests: mount/unmount
+  - [ ] Tests: FUSE operations
+  - [ ] FuseFs implementation
 
-## Phase 9: Remote Filesystems
-- [ ] **S3 Provider**
-  - [ ] Authentication (access key, IAM)
-  - [ ] List objects
-  - [ ] Get/Put/Delete objects
-  - [ ] Multipart upload
+- [ ] **Kubernetes** (\`kubernetes\` feature)
+  - [ ] Tests: list namespaces, pods
+  - [ ] Tests: get resource YAML
+  - [ ] K8sFs implementation
 
-- [ ] **WebDAV Provider**
-  - [ ] PROPFIND/GET/PUT/DELETE
-  - [ ] MKCOL (create directory)
-  - [ ] MOVE/COPY
-  - [ ] Authentication (Basic, Bearer)
-
-- [ ] **FTP/SFTP Provider**
-  - [ ] FTP connection
-  - [ ] FTPS (TLS)
-  - [ ] SFTP (SSH)
-  - [ ] Key-based authentication
-
-## Phase 10: Advanced Integrations
-- [ ] **FUSE Support**
-  - [ ] Mount filer as filesystem
-  - [ ] FUSE operations (lookup, getattr, readdir, read, write)
-  - [ ] Auto-unmount
-
-- [ ] **Kubernetes Provider**
-  - [ ] Kubeconfig/in-cluster auth
-  - [ ] Browse namespaces/pods/resources
-  - [ ] View resource YAML
-  - [ ] Pod logs
-  - [ ] Exec into pod
-  - [ ] Copy to/from pod
-
-## Phase 11: Ecosystem
+## Phase 15: Ecosystem
 - [ ] **Plugin System**
   - [ ] Plugin trait
   - [ ] Plugin registry
   - [ ] Dynamic loading
-  - [ ] Plugin API stability
 
 - [ ] **Themes**
   - [ ] Theme configuration
-  - [ ] Custom icon packs
+  - [ ] Icon packs
   - [ ] Dark/light mode
 
 - [ ] **Sync & Backup**

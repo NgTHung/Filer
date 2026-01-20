@@ -1,7 +1,7 @@
 //! Tests for utility functions
 
 mod path_tests {
-    use filer_core::utils::path::*;
+    use crate::utils::path::*;
     use std::path::Path;
 
     #[test]
@@ -31,7 +31,7 @@ mod path_tests {
 }
 
 mod size_tests {
-    use filer_core::utils::size::*;
+    use crate::utils::size::*;
 
     #[test]
     fn test_format_bytes() {
@@ -65,7 +65,7 @@ mod size_tests {
 }
 
 mod time_tests {
-    use filer_core::utils::time::*;
+    use crate::utils::time::*;
     use std::time::SystemTime;
 
     #[test]

@@ -9,3 +9,47 @@ twox-hash = "2.1.2"
 tracing = {workspace = true}
 tokio ={ workspace = true}
 async-trait = "0.1.89"
+
+# Crypto dependencies (optional)
+# aes-gcm = { version = "0.10", optional = true }
+# chacha20poly1305 = { version = "0.10", optional = true }
+# argon2 = { version = "0.5", optional = true }
+# scrypt = { version = "0.11", optional = true }
+# rand = { version = "0.9.2", optional = true }
+
+# Remote FS dependencies (optional)
+# S3
+# aws-sdk-s3 = { version = "1.0", optional = true }
+# aws-config = { version = "1.0", optional = true }
+
+# # WebDAV
+# reqwest = { version = "0.13.1", optional = true }
+
+# # FTP/SFTP
+# suppaftp = { version = "8.0.1", optional = true }
+# ssh2 = { version = "0.9", optional = true }
+
+# # FUSE
+# fuser = { version = "0.16.0", optional = true }
+
+# # Kubernetes
+# kube = { version = "3.0.0", features = ["client", "rustls-tls"], optional = true }
+# k8s-openapi = { version = "0.27.0", features = ["latest"], optional = true }
+
+[features]
+default = []
+
+# Crypto features
+crypto = []
+
+# Remote filesystem features
+s3 = []
+webdav = []
+ftp = []
+sftp = []
+fuse = []
+kubernetes = []
+
+# Convenience feature groups
+all-remote = []
+all-features = []

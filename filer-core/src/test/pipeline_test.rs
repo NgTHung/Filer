@@ -1,9 +1,9 @@
 //! Tests for pipeline stages
 
-use filer_core::pipeline::{Pipeline, Stage};
-use filer_core::pipeline::filter::FilterHidden;
-use filer_core::pipeline::sort::{SortBy, SortField, SortOrder};
-use filer_core::model::node::FileNode;
+use crate::pipeline::{Pipeline, Stage};
+use crate::pipeline::filter::FilterHidden;
+use crate::pipeline::sort::{SortBy, SortField, SortOrder};
+use crate::model::node::FileNode;
 
 #[test]
 fn test_filter_hidden() {

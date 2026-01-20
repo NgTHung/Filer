@@ -7,14 +7,12 @@ use super::node::NodeId;
 /// Lives in Core, resolves IDs for VFS operations
 pub struct NodeRegistry {
     id_to_path: HashMap<NodeId, PathBuf>,
-    path_to_id: HashMap<PathBuf, NodeId>,
 }
 
 impl NodeRegistry {
     pub fn new() -> Self {
         Self {
-            id_to_path: HashMap::new(),
-            path_to_id: HashMap::new(),
+            id_to_path: HashMap::new()
         }
     }
 

@@ -1,6 +1,6 @@
 //! Tests for model layer
 
-use filer_core::model::node::{FileNode, NodeId, NodeKind};
+use crate::model::node::{FileNode, NodeId, NodeKind};
 use std::path::PathBuf;
 
 #[test]
