@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod navigator;
 pub mod previewer;
 pub mod scanner;
 pub mod searcher;

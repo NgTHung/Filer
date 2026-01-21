@@ -1,4 +1,7 @@
-# Filer Roadmap
+# Filer Roadmap (TDD)
+
+> Tests are written BEFORE implementation for each item.
+
 ## Phase 1: Core Foundation
 - [ ] **Error Types**
   - [ ] Tests: error variants, display, conversion
@@ -7,6 +10,8 @@
 - [ ] **Model Layer**
   - [ ] Tests: NodeId determinism, equality, hash
   - [ ] NodeId implementation
+  - [ ] Tests: SessionId equality, hash, generation
+  - [ ] SessionId implementation
   - [ ] Tests: FileNode creation, is_dir, is_file, extension
   - [ ] FileNode implementation
   - [ ] Tests: NodeRegistry register, resolve, unregister
@@ -19,8 +24,10 @@
   - [ ] LocalFs implementation
 
 - [ ] **Commands & Events**
-  - [ ] Command enum (Navigate, Search, LoadPreview, etc.)
-  - [ ] Event enum (DirectoryLoaded, FilesBatch, Error, etc.)
+  - [ ] Command enum with SessionId (Navigate, Search, LoadPreview, etc.)
+  - [ ] Event enum with SessionId (DirectoryLoaded, FilesBatch, Error, etc.)
+  - [ ] Session commands (CreateSession, DestroySession)
+  - [ ] Session events (SessionCreated, SessionDestroyed)
 
 ## Phase 2: Pipeline System
 - [ ] **Stage Trait**
@@ -67,23 +74,47 @@
   - [ ] Tests: scan error handling
   - [ ] Scanner implementation
 
+- [ ] **Navigator Actor**
+  - [ ] Tests: navigate updates current directory
+  - [ ] Tests: navigate adds to history
+  - [ ] Tests: back moves history index
+  - [ ] Tests: forward moves history index
+  - [ ] Tests: up navigates to parent
+  - [ ] Tests: history limit (max entries)
+  - [ ] Navigator implementation
+
 - [ ] **Command Router**
-  - [ ] Tests: route Navigate to Scanner
+  - [ ] Tests: route Navigate to Navigator
   - [ ] Tests: route Search to Searcher
+  - [ ] Tests: route by SessionId
   - [ ] Command routing implementation
 
 ## Phase 4: FilerCore API
+- [ ] **Session Management**
+  - [ ] Tests: create session returns SessionId
+  - [ ] Tests: destroy session cleans up
+  - [ ] Tests: get session by id
+  - [ ] Tests: session isolation (events scoped)
+  - [ ] Session struct (id, navigator_state, event_tx)
+  - [ ] SessionManager implementation
+
+- [ ] **Navigator State**
+  - [ ] Tests: NavState snapshot (current, can_back, can_forward)
+  - [ ] Tests: sort/filter settings per session
+  - [ ] NavigatorState struct
+
 - [ ] **Handle**
   - [ ] Tests: FilerCore::new() creates actors
-  - [ ] Tests: send command
-  - [ ] Tests: receive event
-  - [ ] Tests: shutdown
+  - [ ] Tests: send command with session
+  - [ ] Tests: receive event with session
+  - [ ] Tests: shutdown cleans all sessions
   - [ ] FilerCore implementation
 
 - [ ] **Navigation Flow**
-  - [ ] Tests: Navigate(path) -> DirectoryLoaded event
-  - [ ] Tests: NavigateUp
-  - [ ] Tests: Refresh
+  - [ ] Tests: Navigate(session, path) -> DirectoryLoaded event
+  - [ ] Tests: NavigateUp preserves session
+  - [ ] Tests: Refresh current directory
+  - [ ] Tests: Back/Forward with session
   - [ ] Integration tests
 
 ## Phase 5: File Watching
@@ -303,3 +334,37 @@
   - [ ] Two-way sync
   - [ ] Incremental backup
   - [ ] Versioning
+
+## Phase 16: Web Support
+- [ ] **Transport Layer**
+  - [ ] Tests: serialize Command to JSON
+  - [ ] Tests: deserialize Event from JSON
+  - [ ] Serde implementations for Command/Event
+  - [ ] WebSocket server (tokio-tungstenite)
+  - [ ] Session lifecycle (connect creates, disconnect destroys)
+
+- [ ] **Protocol**
+  - [ ] Tests: request/response correlation
+  - [ ] Tests: event streaming
+  - [ ] Message framing (request id, payload)
+  - [ ] Error responses
+
+- [ ] **Web Client Library** (`filer-web`)
+  - [ ] WASM build of shared types
+  - [ ] WebSocket client wrapper
+  - [ ] Async event subscription
+  - [ ] Reconnection handling
+
+- [ ] **Web UI**
+  - [ ] Framework choice (Leptos/Dioxus/Yew)
+  - [ ] Core integration via WebSocket
+  - [ ] File list view
+  - [ ] Navigation
+  - [ ] Search
+  - [ ] Preview panel
+
+## Phase 17: Mobile Support (Future)
+- [ ] **React Native / Tauri Mobile**
+  - [ ] Evaluate options
+  - [ ] Shared core via FFI or WebSocket
+  - [ ] Touch-optimized UI

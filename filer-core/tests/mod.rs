@@ -1,4 +1,3 @@
-#[cfg(test)]
 mod crypto_test;
 mod mime_test;
 mod model_test;
