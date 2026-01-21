@@ -41,3 +41,6 @@ pub use vfs::fuse::{FuseFs, FuseConfig};
 
 #[cfg(feature = "kubernetes")]
 pub use vfs::kubernetes::{K8sFs, K8sConfig};
+
+#[cfg(test)]
+mod tests;

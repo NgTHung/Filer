@@ -1,16 +1,18 @@
 use crate::model::node::FileNode;
 use crate::pipeline::Stage;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum SortField {
+    #[default]
     Name,
     Size,
     Modified,
     Extension,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum SortOrder {
+    #[default]
     Ascending,
     Descending,
 }

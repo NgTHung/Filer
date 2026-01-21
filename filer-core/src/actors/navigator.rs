@@ -12,15 +12,7 @@ use flume::{Receiver, Sender};
 
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
-use crate::pipeline::sort::SortField;
-
-/// Sort order direction
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SortOrder {
-    #[default]
-    Ascending,
-    Descending,
-}
+use crate::pipeline::sort::{SortField, SortOrder};
 
 /// Navigation commands
 #[derive(Debug, Clone)]
