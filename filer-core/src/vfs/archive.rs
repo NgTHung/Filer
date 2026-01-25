@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
@@ -21,7 +21,7 @@ impl FsProvider for ArchiveFs {
     fn scheme(&self) -> &'static str {
         "archive"
     }
-    
+
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             read: true,
@@ -30,23 +30,23 @@ impl FsProvider for ArchiveFs {
             search: false,
         }
     }
-    
+
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         todo!()
     }
-    
+
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {
         todo!()
     }
-    
+
     async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
         todo!()
     }
-    
-    async fn exists(&self, path: &Path) -> bool {
+
+    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
         todo!()
     }
-    
+
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
         todo!()
     }

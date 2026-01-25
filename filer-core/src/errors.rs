@@ -1,3 +1,4 @@
+use std::io::Error as IoError;
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -28,12 +29,57 @@ pub enum CoreError {
         actor: &'static str,
         message: String,
     },
+
+    NetworkError,
+
+    InvalidData,
+
+    InvalidInput,
+    
+    Other(IoError)
 }
 
 impl std::fmt::Display for CoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        match self {
+            CoreError::Io { path, message } => write!(f,"I/O Error on path {:?}: {}.",path, message),
+            CoreError::NotFound(path_buf) => write!(f,"Not found: {:?}.",path_buf),
+            CoreError::PermissionDenied(path_buf) => write!(f,"Permission Denied on {:?}.",path_buf),
+            CoreError::InvalidPath(p) => write!(f,"Invalid Path on {}.",p),
+            CoreError::ChannelClosed => write!(f,"This Channel closed!"),
+            CoreError::Cancelled => write!(f,"The operation was cancelled!"),
+            CoreError::ActorError { actor, message } => write!(f,"Actor {} reported an Error: {}",actor,message),
+            CoreError::NetworkError => write!(f,"Network error!"),
+            CoreError::InvalidData => write!(f,"Invalid Data!"),
+            CoreError::InvalidInput => write!(f,"Invalid Input!"),
+            CoreError::Other(e) => write!(f,"Unknown error occured: {:?}",e)
+        }
     }
 }
 
 impl std::error::Error for CoreError {}
+
+impl CoreError {
+    pub fn from_io_error(err: IoError, path: PathBuf) -> Self {
+        match err.kind() {
+            std::io::ErrorKind::NotFound => CoreError::NotFound(path),
+            std::io::ErrorKind::PermissionDenied => CoreError::PermissionDenied(path),
+            std::io::ErrorKind::ConnectionRefused => CoreError::NetworkError,
+            std::io::ErrorKind::ConnectionReset => CoreError::NetworkError,
+            std::io::ErrorKind::HostUnreachable => CoreError::NetworkError,
+            std::io::ErrorKind::NetworkUnreachable => CoreError::NetworkError,
+            std::io::ErrorKind::ConnectionAborted => CoreError::NetworkError,
+            std::io::ErrorKind::NotConnected => CoreError::NetworkError,
+            std::io::ErrorKind::NetworkDown => CoreError::NetworkError,
+            std::io::ErrorKind::BrokenPipe => CoreError::NetworkError,
+            std::io::ErrorKind::AlreadyExists => CoreError::InvalidPath(path.to_str().unwrap_or_default().to_string()),
+            std::io::ErrorKind::WouldBlock => CoreError::NetworkError,
+            std::io::ErrorKind::NotADirectory => CoreError::InvalidPath(path.to_str().unwrap_or_default().to_string()),
+            std::io::ErrorKind::IsADirectory => CoreError::InvalidPath(path.to_str().unwrap_or_default().to_string()),
+            std::io::ErrorKind::DirectoryNotEmpty => CoreError::InvalidPath(path.to_str().unwrap_or_default().to_string()),
+            std::io::ErrorKind::ReadOnlyFilesystem => CoreError::PermissionDenied(path),
+            std::io::ErrorKind::StaleNetworkFileHandle => CoreError::NetworkError,
+            _ => CoreError::Io { path, message: err.to_string() },
+        }
+    }
+}

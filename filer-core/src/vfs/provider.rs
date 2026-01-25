@@ -32,7 +32,7 @@ pub trait FsProvider: Send + Sync {
     async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError>;
     
     /// Check if path exists
-    async fn exists(&self, path: &Path) -> bool;
+    async fn exists(&self, path: &Path) -> Result<bool, CoreError>;
     
     /// Get metadata for a path
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError>;

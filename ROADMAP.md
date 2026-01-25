@@ -3,25 +3,25 @@
 > Tests are written BEFORE implementation for each item.
 
 ## Phase 1: Core Foundation
-- [ ] **Error Types**
-  - [ ] Tests: error variants, display, conversion
-  - [ ] CoreError implementation
+- [x] **Error Types**
+  - [x] Tests: error variants, display, conversion
+  - [x] CoreError implementation
 
-- [ ] **Model Layer**
-  - [ ] Tests: NodeId determinism, equality, hash
-  - [ ] NodeId implementation
-  - [ ] Tests: SessionId equality, hash, generation
-  - [ ] SessionId implementation
-  - [ ] Tests: FileNode creation, is_dir, is_file, extension
-  - [ ] FileNode implementation
-  - [ ] Tests: NodeRegistry register, resolve, unregister
-  - [ ] NodeRegistry implementation
+- [x] **Model Layer**
+  - [x] Tests: NodeId determinism, equality, hash
+  - [x] NodeId implementation
+  - [x] Tests: SessionId equality, hash, generation
+  - [x] SessionId implementation
+  - [x] Tests: FileNode creation, is_dir, is_file, extension
+  - [x] FileNode implementation
+  - [x] Tests: NodeRegistry register, resolve, unregister
+  - [x] NodeRegistry implementation
 
-- [ ] **VFS Layer**
-  - [ ] Tests: FsProvider trait with MockFs
-  - [ ] FsProvider trait
-  - [ ] Tests: LocalFs list, read, read_range, exists, metadata
-  - [ ] LocalFs implementation
+- [x] **VFS Layer**
+  - [x] Tests: FsProvider trait with MockFs
+  - [x] FsProvider trait
+  - [x] Tests: LocalFs list, read, read_range, exists, metadata
+  - [x] LocalFs implementation
 
 - [ ] **Commands & Events**
   - [ ] Command enum with SessionId (Navigate, Search, LoadPreview, etc.)
@@ -240,22 +240,22 @@
   - [ ] TAR implementation
 
 ## Phase 12: Utils
-- [ ] **Path Utils**
-  - [ ] Tests: get_extension
-  - [ ] Tests: get_stem
-  - [ ] Tests: is_hidden
-  - [ ] Implementation
+- [x] **Path Utils**
+  - [x] Tests: get_extension
+  - [x] Tests: get_stem
+  - [x] Tests: is_hidden
+  - [x] Implementation
 
-- [ ] **Size Utils**
-  - [ ] Tests: format_size (B, KB, MB, GB)
-  - [ ] Tests: parse_size
-  - [ ] Implementation
+- [x] **Size Utils**
+  - [x] Tests: format_size (B, KB, MB, GB)
+  - [x] Tests: parse_size
+  - [x] Implementation
 
-- [ ] **Time Utils**
-  - [ ] Tests: format_time
-  - [ ] Tests: format_relative
-  - [ ] Tests: format_duration
-  - [ ] Implementation
+- [x] **Time Utils**
+  - [x] Tests: format_time
+  - [x] Tests: format_relative
+  - [x] Tests: format_duration
+  - [x] Implementation
 
 ## Phase 13: GUI (Iced)
 - [ ] **Application Structure**

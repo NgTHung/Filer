@@ -108,7 +108,7 @@ impl FsProvider for Vault {
         todo!()
     }
 
-    async fn exists(&self, path: &Path) -> bool {
+    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
         todo!()
     }
 

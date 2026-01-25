@@ -92,7 +92,7 @@ impl FsProvider for S3Fs {
         todo!()
     }
 
-    async fn exists(&self, path: &Path) -> bool {
+    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
         todo!()
     }
 

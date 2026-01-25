@@ -115,7 +115,7 @@ impl FsProvider for FtpFs {
         todo!()
     }
 
-    async fn exists(&self, path: &Path) -> bool {
+    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
         todo!()
     }
 

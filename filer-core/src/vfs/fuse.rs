@@ -104,7 +104,7 @@ impl FsProvider for FuseFs {
         self.inner.read_range(path, start, len).await
     }
 
-    async fn exists(&self, path: &Path) -> bool {
+    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
         self.inner.exists(path).await
     }
 
