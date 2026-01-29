@@ -9,10 +9,11 @@
 use std::collections::HashSet;
 
 use flume::{Receiver, Sender};
+use serde::{Deserialize, Serialize};
 
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
-use crate::pipeline::sort::{SortField, SortOrder};
+use crate::pipeline::{Pipeline, PipelineConfig, SortConfig, SortField, SortOrder};
 
 /// Navigation commands
 #[derive(Debug, Clone)]
@@ -32,14 +33,11 @@ pub enum NavCommand {
     Up(SessionId),
     /// Refresh current directory
     Refresh(SessionId),
-    /// Change sort settings
-    SetSort {
+    /// Update entire pipeline config (sort, filter, group)
+    SetPipeline {
         session: SessionId,
-        field: SortField,
-        order: SortOrder,
+        config: PipelineConfig,
     },
-    /// Toggle hidden files
-    SetShowHidden { session: SessionId, show: bool },
     /// Update selection
     SetSelected {
         session: SessionId,
@@ -50,7 +48,9 @@ pub enum NavCommand {
 }
 
 /// Navigation state snapshot (sent to UI via events)
-#[derive(Debug, Clone)]
+///
+/// This struct is serializable and sent over the wire to frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavState {
     /// Current directory NodeId
     pub current: Option<NodeId>,
@@ -60,12 +60,8 @@ pub struct NavState {
     pub can_forward: bool,
     /// Can navigate up (has parent)
     pub can_up: bool,
-    /// Current sort field
-    pub sort_field: SortField,
-    /// Current sort order
-    pub sort_order: SortOrder,
-    /// Show hidden files
-    pub show_hidden: bool,
+    /// Current pipeline configuration
+    pub pipeline: PipelineConfig,
     /// Currently selected nodes
     pub selected: Vec<NodeId>,
 }
@@ -77,9 +73,7 @@ impl Default for NavState {
             can_back: false,
             can_forward: false,
             can_up: false,
-            sort_field: SortField::default(),
-            sort_order: SortOrder::default(),
-            show_hidden: false,
+            pipeline: PipelineConfig::with_default_sort(),
             selected: Vec::new(),
         }
     }
@@ -96,12 +90,8 @@ pub struct NavigatorState {
     pub history_index: usize,
     /// Maximum history entries
     pub history_limit: usize,
-    /// Sort field
-    pub sort_field: SortField,
-    /// Sort order
-    pub sort_order: SortOrder,
-    /// Show hidden files
-    pub show_hidden: bool,
+    /// Pipeline configuration (serializable)
+    pub pipeline_config: PipelineConfig,
     /// Selected nodes
     pub selected: HashSet<NodeId>,
 }
@@ -113,9 +103,7 @@ impl Default for NavigatorState {
             history: Vec::new(),
             history_index: 0,
             history_limit: 100,
-            sort_field: SortField::default(),
-            sort_order: SortOrder::default(),
-            show_hidden: false,
+            pipeline_config: PipelineConfig::with_default_sort(),
             selected: HashSet::new(),
         }
     }
@@ -128,6 +116,11 @@ impl NavigatorState {
             history_limit: limit,
             ..Default::default()
         }
+    }
+
+    /// Build executable Pipeline from current config
+    pub fn build_pipeline(&self) -> Pipeline {
+        Pipeline::from_config(&self.pipeline_config)
     }
 
     /// Navigate to a new directory

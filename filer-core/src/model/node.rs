@@ -1,12 +1,19 @@
+use std::cmp::Ordering;
 use std::fs::Metadata;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use serde::{Deserialize, Serialize};
+
 use crate::CoreError;
 use crate::model::registry::NodeRegistry;
+use crate::pipeline::sort::SortBy;
 
 /// Unique identifier for a file node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// NodeId is a lightweight handle that can be sent across process boundaries.
+/// Use NodeRegistry to resolve NodeId -> PathBuf when needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub u64);
 
 /// Represents a file or directory

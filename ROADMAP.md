@@ -30,31 +30,31 @@
   - [x] Session events (SessionCreated, SessionDestroyed)
 
 ## Phase 2: Pipeline System
-- [ ] **Stage Trait**
-  - [ ] Tests: Stage trait with mock stage
-  - [ ] Stage trait definition
+- [x] **Stage Trait**
+  - [x] Tests: Stage trait with mock stage
+  - [x] Stage trait definition
 
-- [ ] **Filter Stages**
-  - [ ] Tests: FilterHidden (show/hide hidden files)
-  - [ ] FilterHidden implementation
-  - [ ] Tests: FilterByExtension (include/exclude)
-  - [ ] FilterByExtension implementation
+- [x] **Filter Stages**
+  - [x] Tests: FilterHidden (show/hide hidden files)
+  - [x] FilterHidden implementation
+  - [x] Tests: FilterByExtension (include/exclude)
+  - [x] FilterByExtension implementation
 
-- [ ] **Sort Stages**
-  - [ ] Tests: SortBy name asc/desc
-  - [ ] Tests: SortBy size, date
-  - [ ] Tests: directories first option
-  - [ ] SortBy implementation
+- [x] **Sort Stages**
+  - [x] Tests: SortBy name asc/desc
+  - [x] Tests: SortBy size, date
+  - [x] Tests: directories first option
+  - [x] SortBy implementation
 
-- [ ] **Group Stages**
-  - [ ] Tests: GroupBy extension, date, size
-  - [ ] GroupBy implementation
+- [x] **Group Stages**
+  - [x] Tests: GroupBy extension, date, size
+  - [x] GroupBy implementation
 
-- [ ] **Pipeline Executor**
-  - [ ] Tests: empty pipeline passthrough
-  - [ ] Tests: single stage
-  - [ ] Tests: chained stages
-  - [ ] Pipeline implementation
+- [x] **Pipeline Executor**
+  - [x] Tests: empty pipeline passthrough
+  - [x] Tests: single stage
+  - [x] Tests: chained stages
+  - [x] Pipeline implementation
 
 ## Phase 3: Actor Infrastructure
 - [ ] **Channels**
