@@ -23,11 +23,11 @@
   - [x] Tests: LocalFs list, read, read_range, exists, metadata
   - [x] LocalFs implementation
 
-- [ ] **Commands & Events**
-  - [ ] Command enum with SessionId (Navigate, Search, LoadPreview, etc.)
-  - [ ] Event enum with SessionId (DirectoryLoaded, FilesBatch, Error, etc.)
-  - [ ] Session commands (CreateSession, DestroySession)
-  - [ ] Session events (SessionCreated, SessionDestroyed)
+- [x] **Commands & Events**
+  - [x] Command enum with SessionId (Navigate, Search, LoadPreview, etc.)
+  - [x] Event enum with SessionId (DirectoryLoaded, FilesBatch, Error, etc.)
+  - [x] Session commands (CreateSession, DestroySession)
+  - [x] Session events (SessionCreated, SessionDestroyed)
 
 ## Phase 2: Pipeline System
 - [ ] **Stage Trait**
