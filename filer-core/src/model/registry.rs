@@ -18,15 +18,19 @@ impl NodeRegistry {
     }
 
     /// Register a path and get its NodeId
-    pub fn register(&mut self, path: PathBuf) -> NodeId {
+    pub fn register(self, path: PathBuf) -> NodeId {
         let hash = NodeId::from_path(&path);
         let _ = self.id_to_path.insert_sync(hash, path);
         hash
     }
-
+    
     /// Register multiple paths
-    pub fn register_batch(&mut self, paths: impl IntoIterator<Item = PathBuf>) -> Vec<NodeId> {
-        paths.into_iter().map(|v| self.register(v)).collect()
+    pub fn register_batch(self, paths: impl IntoIterator<Item = PathBuf>) -> Vec<NodeId> {
+        paths.into_iter().map(|v| {
+            let hash = NodeId::from_path(&v);
+            let _ = self.id_to_path.insert_sync(hash, v);
+            hash
+        }).collect()
     }
 
     /// Resolve NodeId to PathBuf
@@ -50,12 +54,12 @@ impl NodeRegistry {
     }
 
     /// Remove a path from registry
-    pub fn unregister(&mut self, id: NodeId) -> Option<PathBuf> {
+    pub fn unregister(&self, id: NodeId) -> Option<PathBuf> {
         self.id_to_path.remove_sync(&id).map(|(_, v)| v)
     }
 
     /// Clear all entries
-    pub fn clear(&mut self) {
+    pub fn clear(&self) {
         self.id_to_path.clear_sync();
     }
 

@@ -65,10 +65,10 @@ fn test_registry_default() {
 
 #[test]
 fn test_registry_register() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
     
-    let id = registry.register(path.clone());
+    let id = registry.clone().register(path.clone());
     
     assert_eq!(registry.len(), 1);
     assert!(!registry.is_empty());
@@ -77,11 +77,11 @@ fn test_registry_register() {
 
 #[test]
 fn test_registry_register_same_path_twice() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
     
-    let id1 = registry.register(path.clone());
-    let id2 = registry.register(path.clone());
+    let id1 = registry.clone().register(path.clone());
+    let id2 = registry.clone().register(path.clone());
     
     // Should produce same ID
     assert_eq!(id1, id2);
@@ -91,12 +91,12 @@ fn test_registry_register_same_path_twice() {
 
 #[test]
 fn test_registry_register_different_paths() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path1 = PathBuf::from("/home/user/test.txt");
     let path2 = PathBuf::from("/home/user/other.txt");
     
-    let id1 = registry.register(path1.clone());
-    let id2 = registry.register(path2.clone());
+    let id1 = registry.clone().register(path1.clone());
+    let id2 = registry.clone().register(path2.clone());
     
     assert_ne!(id1, id2);
     assert_eq!(registry.len(), 2);
@@ -104,10 +104,10 @@ fn test_registry_register_different_paths() {
 
 #[test]
 fn test_registry_resolve() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
     
-    let id = registry.register(path.clone());
+    let id = registry.clone().register(path.clone());
     let resolved = registry.resolve(id);
     
     assert_eq!(resolved, Some(path));
@@ -125,10 +125,10 @@ fn test_registry_resolve_not_found() {
 
 #[test]
 fn test_registry_get_id() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
     
-    let id = registry.register(path.clone());
+    let id = registry.clone().register(path.clone());
     let found_id = registry.get_id(&path);
     
     assert_eq!(found_id, Some(id));
@@ -145,10 +145,10 @@ fn test_registry_get_id_not_registered() {
 
 #[test]
 fn test_registry_unregister() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
     
-    let id = registry.register(path.clone());
+    let id = registry.clone().register(path.clone());
     assert_eq!(registry.len(), 1);
     
     let removed = registry.unregister(id);
@@ -161,7 +161,7 @@ fn test_registry_unregister() {
 
 #[test]
 fn test_registry_unregister_not_found() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
     let id = NodeId::from_path(&path);
     
@@ -171,11 +171,11 @@ fn test_registry_unregister_not_found() {
 
 #[test]
 fn test_registry_clear() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     
-    registry.register(PathBuf::from("/home/user/test1.txt"));
-    registry.register(PathBuf::from("/home/user/test2.txt"));
-    registry.register(PathBuf::from("/home/user/test3.txt"));
+    registry.clone().register(PathBuf::from("/home/user/test1.txt"));
+    registry.clone().register(PathBuf::from("/home/user/test2.txt"));
+    registry.clone().register(PathBuf::from("/home/user/test3.txt"));
     
     assert_eq!(registry.len(), 3);
     
@@ -187,14 +187,14 @@ fn test_registry_clear() {
 
 #[test]
 fn test_registry_register_batch() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let paths = vec![
         PathBuf::from("/home/user/test1.txt"),
         PathBuf::from("/home/user/test2.txt"),
         PathBuf::from("/home/user/test3.txt"),
     ];
     
-    let ids = registry.register_batch(paths.clone());
+    let ids = registry.clone().register_batch(paths.clone());
     
     assert_eq!(ids.len(), 3);
     assert_eq!(registry.len(), 3);
@@ -208,10 +208,10 @@ fn test_registry_register_batch() {
 
 #[test]
 fn test_registry_register_batch_empty() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let paths: Vec<PathBuf> = vec![];
     
-    let ids = registry.register_batch(paths);
+    let ids = registry.clone().register_batch(paths);
     
     assert_eq!(ids.len(), 0);
     assert_eq!(registry.len(), 0);
@@ -219,14 +219,14 @@ fn test_registry_register_batch_empty() {
 
 #[test]
 fn test_registry_resolve_batch() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let paths = vec![
         PathBuf::from("/home/user/test1.txt"),
         PathBuf::from("/home/user/test2.txt"),
         PathBuf::from("/home/user/test3.txt"),
     ];
     
-    let ids = registry.register_batch(paths.clone());
+    let ids = registry.clone().register_batch(paths.clone());
     let resolved = registry.resolve_batch(&ids);
     
     assert_eq!(resolved.len(), 3);
@@ -237,14 +237,14 @@ fn test_registry_resolve_batch() {
 
 #[test]
 fn test_registry_resolve_batch_mixed() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     let path1 = PathBuf::from("/home/user/test1.txt");
     let path2 = PathBuf::from("/home/user/test2.txt");
     let path3 = PathBuf::from("/home/user/test3.txt");
     
-    let id1 = registry.register(path1.clone());
+    let id1 = registry.clone().register(path1.clone());
     let id2 = NodeId::from_path(&path2); // Not registered
-    let id3 = registry.register(path3.clone());
+    let id3 = registry.clone().register(path3.clone());
     
     let resolved = registry.resolve_batch(&[id1, id2, id3]);
     
@@ -264,13 +264,13 @@ fn test_registry_resolve_batch_empty() {
 
 #[test]
 fn test_registry_multiple_operations() {
-    let mut registry = NodeRegistry::new();
+    let registry = NodeRegistry::new();
     
     // Register some paths
     let path1 = PathBuf::from("/home/user/test1.txt");
     let path2 = PathBuf::from("/home/user/test2.txt");
-    let id1 = registry.register(path1.clone());
-    let id2 = registry.register(path2.clone());
+    let id1 = registry.clone().register(path1.clone());
+    let id2 = registry.clone().register(path2.clone());
     
     assert_eq!(registry.len(), 2);
     
@@ -286,7 +286,7 @@ fn test_registry_multiple_operations() {
     
     // Register a new one
     let path3 = PathBuf::from("/home/user/test3.txt");
-    let id3 = registry.register(path3.clone());
+    let id3 = registry.clone().register(path3.clone());
     assert_eq!(registry.len(), 2);
     
     // Clear all
@@ -298,8 +298,8 @@ fn test_registry_multiple_operations() {
 
 #[test]
 fn test_registry_deterministic_ids() {
-    let mut registry1 = NodeRegistry::new();
-    let mut registry2 = NodeRegistry::new();
+    let registry1 = NodeRegistry::new();
+    let registry2 = NodeRegistry::new();
     
     let path = PathBuf::from("/home/user/test.txt");
     

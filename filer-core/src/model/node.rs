@@ -48,10 +48,19 @@ impl FileNode {
     pub fn from_path(path: PathBuf, reg: Option<NodeRegistry>) -> Result<Self, CoreError> {
         use std::fs;
 
-        // Expand tilde if present
-        let expanded_path = path
-            .canonicalize()
-            .map_err(|e| CoreError::from_io_error(e, path))?;
+        let expanded_path = if path.starts_with("~") {
+            if let Ok(home) = std::env::var("HOME") {
+                PathBuf::from(home).join(path.strip_prefix("~").unwrap())
+            } else {
+                path.clone()
+                    .canonicalize()
+                    .map_err(|e| CoreError::from_io_error(e, path))?
+            }
+        } else {
+            path.clone()
+                .canonicalize()
+                .map_err(|e| CoreError::from_io_error(e, path))?
+        };
 
         // Get metadata
         let metadata = fs::metadata(&expanded_path)
@@ -66,7 +75,7 @@ impl FileNode {
 
         // Generate ID
         let id = match reg {
-            Some(mut r) => r.register(expanded_path.clone()),
+            Some(r) => r.register(expanded_path.clone()),
             None => NodeId::from_path(&expanded_path),
         };
 
@@ -142,7 +151,7 @@ impl FileNode {
 
         // Generate ID
         let id = match reg {
-            Some(mut r) => r.register(path.clone()),
+            Some(r) => r.register(path.clone()),
             None => NodeId::from_path(&path),
         };
 
