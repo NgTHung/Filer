@@ -4,10 +4,12 @@
 //! with isolated navigation state and event channel.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use flume::Sender;
 
 use crate::api::events::Event;
+use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::actors::navigator::NavigatorState;
 
@@ -26,10 +28,10 @@ pub struct Session {
 
 impl Session {
     /// Create a new session
-    pub fn new(id: SessionId, event_tx: Sender<Event>) -> Self {
+    pub fn new(id: SessionId, event_tx: Sender<Event>, reg: NodeRegistry) -> Self {
         Self {
             id,
-            navigator: NavigatorState::default(),
+            navigator: NavigatorState::new(reg),
             event_tx,
             created_at: std::time::Instant::now(),
         }
@@ -42,16 +44,20 @@ impl Session {
 }
 
 /// Manages multiple client sessions
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SessionManager {
     /// Active sessions by ID
-    sessions: HashMap<SessionId, Session>,
+    sessions: Arc<scc::HashMap<SessionId, Session>>,
+    registry: NodeRegistry
 }
 
 impl SessionManager {
     /// Create a new session manager
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(reg: NodeRegistry) -> Self {
+        Self{
+            sessions: Arc:: new(scc::HashMap::new()),
+            registry: reg
+        }
     }
 
     /// Create a new session for a client
@@ -82,11 +88,6 @@ impl SessionManager {
     /// Get number of active sessions
     pub fn count(&self) -> usize {
         self.sessions.len()
-    }
-
-    /// Get all session IDs
-    pub fn session_ids(&self) -> Vec<SessionId> {
-        self.sessions.keys().copied().collect()
     }
 
     /// Broadcast an event to all sessions

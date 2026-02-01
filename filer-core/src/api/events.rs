@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::actors::navigator::NavState;
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
 use crate::{BasicMetadata, ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
@@ -87,7 +88,12 @@ pub enum Event {
 
     SessionCreated(SessionId),
 
-    SessionDestroyed(SessionId)
+    SessionDestroyed(SessionId),
+
+    CurrentNavigateState{
+        session: SessionId,
+        state: NavState
+    }
 }
 
 #[derive(Clone, Debug)]

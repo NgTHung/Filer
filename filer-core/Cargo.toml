@@ -57,3 +57,6 @@ kubernetes = []
 # Convenience feature groups
 all-remote = []
 all-features = []
+
+[dev-dependencies]
+tempfile = "3.10"

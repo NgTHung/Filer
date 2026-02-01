@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::FileNode;
@@ -43,7 +43,6 @@ impl NodeRegistry {
         }).collect()
     }
 
-
     /// Resolve NodeId to PathBuf
     pub fn resolve(&self, id: NodeId) -> Option<PathBuf> {
         self.id_to_path.read_sync(&id, |_, v| v.clone())
@@ -82,6 +81,24 @@ impl NodeRegistry {
     /// Check if empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn have_par(&self, id: NodeId) -> Option<bool> {
+        if let Some(path) = self.resolve(id) {
+            Some(path.parent().is_some())
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn get_par(&self, id: NodeId) -> Option<PathBuf> {
+        if let Some(path) = self.resolve(id) {
+            path.clone().parent().map(|p| p.to_path_buf())
+        }
+        else {
+            None
+        }
     }
 }
 

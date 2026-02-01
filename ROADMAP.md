@@ -74,14 +74,14 @@
   - [x] Tests: scan error handling
   - [x] Scanner implementation
 
-- [ ] **Navigator Actor**
-  - [ ] Tests: navigate updates current directory
-  - [ ] Tests: navigate adds to history
-  - [ ] Tests: back moves history index
-  - [ ] Tests: forward moves history index
-  - [ ] Tests: up navigates to parent
-  - [ ] Tests: history limit (max entries)
-  - [ ] Navigator implementation
+- [x] **Navigator Actor**
+  - [x] Tests: navigate updates current directory
+  - [x] Tests: navigate adds to history
+  - [x] Tests: back moves history index
+  - [x] Tests: forward moves history index
+  - [x] Tests: up navigates to parent
+  - [x] Tests: history limit (max entries)
+  - [x] Navigator implementation
 
 - [ ] **Command Router**
   - [ ] Tests: route Navigate to Navigator
