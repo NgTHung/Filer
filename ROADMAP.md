@@ -57,22 +57,22 @@
   - [x] Pipeline implementation
 
 ## Phase 3: Actor Infrastructure
-- [ ] **Channels**
-  - [ ] Tests: bounded channel send/recv
-  - [ ] Tests: unbounded channel
-  - [ ] Channel wrapper implementation
+- [x] **Channels**
+  - [x] Tests: bounded channel send/recv
+  - [x] Tests: unbounded channel
+  - [x] Channel wrapper implementation
 
-- [ ] **Actor Trait**
-  - [ ] Actor trait definition
-  - [ ] Tests: actor spawn and shutdown
+- [x] **Actor Trait**
+  - [x] Actor trait definition
+  - [x] Tests: actor spawn and shutdown
 
-- [ ] **Scanner Actor**
-  - [ ] Tests: scan empty directory
-  - [ ] Tests: scan directory with files
-  - [ ] Tests: scan applies pipeline
-  - [ ] Tests: scan cancellation
-  - [ ] Tests: scan error handling
-  - [ ] Scanner implementation
+- [x] **Scanner Actor**
+  - [x] Tests: scan empty directory
+  - [x] Tests: scan directory with files
+  - [x] Tests: scan applies pipeline
+  - [x] Tests: scan cancellation
+  - [x] Tests: scan error handling
+  - [x] Scanner implementation
 
 - [ ] **Navigator Actor**
   - [ ] Tests: navigate updates current directory

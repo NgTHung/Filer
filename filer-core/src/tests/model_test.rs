@@ -194,7 +194,7 @@ fn test_registry_register_batch() {
         PathBuf::from("/home/user/test3.txt"),
     ];
     
-    let ids = registry.clone().register_batch(paths.clone());
+    let ids = registry.clone().register_batch(&paths);
     
     assert_eq!(ids.len(), 3);
     assert_eq!(registry.len(), 3);
@@ -211,7 +211,7 @@ fn test_registry_register_batch_empty() {
     let registry = NodeRegistry::new();
     let paths: Vec<PathBuf> = vec![];
     
-    let ids = registry.clone().register_batch(paths);
+    let ids = registry.clone().register_batch(&paths);
     
     assert_eq!(ids.len(), 0);
     assert_eq!(registry.len(), 0);
@@ -226,7 +226,7 @@ fn test_registry_resolve_batch() {
         PathBuf::from("/home/user/test3.txt"),
     ];
     
-    let ids = registry.clone().register_batch(paths.clone());
+    let ids = registry.clone().register_batch(&paths);
     let resolved = registry.resolve_batch(&ids);
     
     assert_eq!(resolved.len(), 3);

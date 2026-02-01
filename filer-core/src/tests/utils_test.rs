@@ -135,29 +135,29 @@ mod path_tests {
         use std::path::PathBuf;
 
         let test_path = Path::new("hi");
-        let res = PathBuf::from("hi");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("hi");
+        assert!(matches!(normalize(test_path), Ok(_res)));
         let test_path = Path::new("some/path/../travelling///.o.js");
-        let res = PathBuf::from("some/path/../travelling/.o.js");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("some/path/../travelling/.o.js");
+        assert!(matches!(normalize(test_path), Ok(_res)));
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type");
-        let res = PathBuf::from("some/path/../travelling/wierd.ash.file.type");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("some/path/../travelling/wierd.ash.file.type");
+        assert!(matches!(normalize(test_path), Ok(_res)));
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type/another");
-        let res = PathBuf::from("some/path/../travelling/wierd.ash.file.type/another");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("some/path/../travelling/wierd.ash.file.type/another");
+        assert!(matches!(normalize(test_path), Ok(_res)));
         let test_path = Path::new("wierd.ash.file.type");
-        let res = PathBuf::from("wierd.ash.file.type");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("wierd.ash.file.type");
+        assert!(matches!(normalize(test_path), Ok(_res)));
         let test_path = Path::new("../../");
-        let res = PathBuf::from("../../");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("../../");
+        assert!(matches!(normalize(test_path), Ok(_res)));
         let test_path = Path::new("/hi/bbq");
-        let res = PathBuf::from("/hi/bbq");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("/hi/bbq");
+        assert!(matches!(normalize(test_path), Ok(_res)));
         let test_path = Path::new("/");
-        let res = PathBuf::from("/");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        let _res = PathBuf::from("/");
+        assert!(matches!(normalize(test_path), Ok(_res)));
     }
 }
 

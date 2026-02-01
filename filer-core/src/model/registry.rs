@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::FileNode;
+
 use super::node::NodeId;
 
 /// Registry that maps NodeId to PathBuf
@@ -25,13 +27,22 @@ impl NodeRegistry {
     }
     
     /// Register multiple paths
-    pub fn register_batch(self, paths: impl IntoIterator<Item = PathBuf>) -> Vec<NodeId> {
+    pub fn register_batch(self, paths: &Vec<PathBuf>) -> Vec<NodeId> {
         paths.into_iter().map(|v| {
             let hash = NodeId::from_path(&v);
-            let _ = self.id_to_path.insert_sync(hash, v);
+            let _ = self.id_to_path.insert_sync(hash, v.clone());
             hash
         }).collect()
     }
+
+    pub fn register_batch_file_node(self, paths: &Vec<FileNode>) -> Vec<NodeId> {
+        paths.into_iter().map(|v| {
+            let hash = NodeId::from_path(&v.path);
+            let _ = self.id_to_path.insert_sync(hash, v.path.clone());
+            hash
+        }).collect()
+    }
+
 
     /// Resolve NodeId to PathBuf
     pub fn resolve(&self, id: NodeId) -> Option<PathBuf> {

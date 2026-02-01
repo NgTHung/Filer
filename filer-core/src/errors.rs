@@ -1,6 +1,8 @@
 use std::io::Error as IoError;
 use std::path::PathBuf;
 
+use flume::SendError;
+
 #[derive(Debug)]
 pub enum CoreError {
     /// IO error
@@ -36,7 +38,9 @@ pub enum CoreError {
 
     InvalidInput,
     
-    Other(IoError)
+    Other(IoError),
+    
+    ChannelError(String)
 }
 
 impl std::fmt::Display for CoreError {
@@ -52,7 +56,9 @@ impl std::fmt::Display for CoreError {
             CoreError::NetworkError => write!(f,"Network error!"),
             CoreError::InvalidData => write!(f,"Invalid Data!"),
             CoreError::InvalidInput => write!(f,"Invalid Input!"),
-            CoreError::Other(e) => write!(f,"Unknown error occured: {:?}",e)
+            CoreError::Other(e) => write!(f,"Unknown error occured: {:?}",e),
+            CoreError::ChannelError(e) => write!(f,"Channel error occured: {:?}",e),
+            _ => write!(f,"Unknown error occured!")
         }
     }
 }
