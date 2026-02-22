@@ -83,11 +83,11 @@
   - [x] Tests: history limit (max entries)
   - [x] Navigator implementation
 
-- [ ] **Command Router**
-  - [ ] Tests: route Navigate to Navigator
-  - [ ] Tests: route Search to Searcher
-  - [ ] Tests: route by SessionId
-  - [ ] Command routing implementation
+- [x] **Command Router**
+  - [x] Tests: route Navigate to Navigator
+  - [x] Tests: route Search to Searcher
+  - [x] Tests: route by SessionId
+  - [x] Command routing implementation
 
 ## Phase 4: FilerCore API
 - [ ] **Session Management**

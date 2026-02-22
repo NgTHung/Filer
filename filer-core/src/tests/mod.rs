@@ -1,4 +1,5 @@
 mod actor_test;
+mod command_router_test;
 mod scanner_test;
 mod bus_test;
 mod crypto_test;

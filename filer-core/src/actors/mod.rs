@@ -1,6 +1,8 @@
 pub mod cache;
 pub mod navigator;
+pub mod operator;
 pub mod previewer;
+pub mod router;
 pub mod scanner;
 pub mod searcher;
 pub mod watcher;
