@@ -2,18 +2,23 @@
 //!
 //! Each client (desktop window, web connection, etc.) gets its own session
 //! with isolated navigation state and event channel.
+//!
+//! The SessionManager is owned by the CommandRouter, which calls it to:
+//! 1. Create sessions (on Handshake)
+//! 2. Validate sessions (before routing any command)
+//! 3. Check authorization (via SessionPolicy)
+//! 4. Destroy sessions (on DestroySession or disconnect)
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use flume::Sender;
 
 use crate::api::events::Event;
 use crate::model::registry::NodeRegistry;
-use crate::model::session::SessionId;
+use crate::model::session::{AllowAll, SessionId, SessionPolicy};
 use crate::actors::navigator::NavigatorState;
 
-/// A client session with its own state and event channel
+/// A client session with its own state, event channel, and policy
 #[derive(Debug)]
 pub struct Session {
     /// Unique session identifier
@@ -22,17 +27,36 @@ pub struct Session {
     pub navigator: NavigatorState,
     /// Channel to send events to this client
     pub event_tx: Sender<Event>,
+    /// Authorization policy for this session
+    pub policy: Box<dyn SessionPolicy>,
     /// Session metadata
     pub created_at: std::time::Instant,
 }
 
 impl Session {
-    /// Create a new session
+    /// Create a new session with the default AllowAll policy (native desktop)
     pub fn new(id: SessionId, event_tx: Sender<Event>, reg: NodeRegistry) -> Self {
         Self {
             id,
             navigator: NavigatorState::new(reg),
             event_tx,
+            policy: Box::new(AllowAll),
+            created_at: std::time::Instant::now(),
+        }
+    }
+
+    /// Create a new session with a custom policy (web/remote clients)
+    pub fn with_policy(
+        id: SessionId,
+        event_tx: Sender<Event>,
+        reg: NodeRegistry,
+        policy: Box<dyn SessionPolicy>,
+    ) -> Self {
+        Self {
+            id,
+            navigator: NavigatorState::new(reg),
+            event_tx,
+            policy,
             created_at: std::time::Instant::now(),
         }
     }
@@ -44,45 +68,69 @@ impl Session {
 }
 
 /// Manages multiple client sessions
-#[derive(Debug)]
+///
+/// Clone is cheap — both fields use Arc internally, so clones share the
+/// same underlying session map and node registry.
+#[derive(Debug, Clone)]
 pub struct SessionManager {
     /// Active sessions by ID
     sessions: Arc<scc::HashMap<SessionId, Session>>,
-    registry: NodeRegistry
+    /// Shared node registry
+    registry: NodeRegistry,
 }
 
 impl SessionManager {
     /// Create a new session manager
     pub fn new(reg: NodeRegistry) -> Self {
-        Self{
-            sessions: Arc:: new(scc::HashMap::new()),
-            registry: reg
+        Self {
+            sessions: Arc::new(scc::HashMap::new()),
+            registry: reg,
         }
     }
 
-    /// Create a new session for a client
-    pub fn create_session(&mut self, event_tx: Sender<Event>) -> SessionId {
-        todo!()
+    /// Create a new session with default (AllowAll) policy.
+    /// Used by native desktop clients and as default for Handshake.
+    pub fn create_session(&self, event_tx: Sender<Event>) -> SessionId {
+        let id = SessionId::new();
+        let session = Session::new(id, event_tx, self.registry.clone());
+        let _ = self.sessions.insert_sync(id, session);
+        id
     }
 
-    /// Get a session by ID
-    pub fn get(&self, id: SessionId) -> Option<&Session> {
-        todo!()
+    /// Create a new session with a custom policy.
+    /// Used by web/remote transport layers after authenticating the client.
+    pub fn create_session_with_policy(
+        &self,
+        event_tx: Sender<Event>,
+        policy: Box<dyn SessionPolicy>,
+    ) -> SessionId {
+        let id = SessionId::new();
+        let session = Session::with_policy(id, event_tx, self.registry.clone(), policy);
+        let _ = self.sessions.insert_sync(id, session);
+        id
     }
 
-    /// Get a mutable session by ID
-    pub fn get_mut(&mut self, id: SessionId) -> Option<&mut Session> {
-        todo!()
-    }
-
-    /// Remove a session (client disconnected)
-    pub fn remove(&mut self, id: SessionId) -> Option<Session> {
-        todo!()
-    }
-
-    /// Check if session exists
+    /// Check whether a session exists (is valid)
     pub fn exists(&self, id: SessionId) -> bool {
-        todo!()
+        self.sessions.contains_sync(&id)
+    }
+
+    /// Check whether an operation is allowed for a session on a given path.
+    /// Returns `false` if session does not exist.
+    pub fn is_allowed(
+        &self,
+        id: SessionId,
+        operation: crate::model::session::Operation,
+        path: &std::path::Path,
+    ) -> bool {
+        self.sessions
+            .read_sync(&id, |_, s| s.policy.is_allowed(operation, path))
+            .unwrap_or(false)
+    }
+
+    /// Remove a session (client disconnected or DestroySession received)
+    pub fn remove(&self, id: SessionId) -> bool {
+        self.sessions.remove_sync(&id).is_some()
     }
 
     /// Get number of active sessions
@@ -92,12 +140,23 @@ impl SessionManager {
 
     /// Broadcast an event to all sessions
     pub fn broadcast(&self, event: Event) {
-        todo!()
+        self.sessions.iter_sync(|_k, v| {
+            let _ = v.send_event(event.clone());
+            true
+        });
     }
 
-    /// Send event to specific session
+    /// Send event to a specific session.
+    /// Returns Err if session not found or channel closed.
     pub fn send_to(&self, session: SessionId, event: Event) -> Result<(), SendError> {
-        todo!()
+        let result = self.sessions.read_sync(&session, |_, s| {
+            s.send_event(event.clone())
+                .map_err(|_| SendError::ChannelClosed)
+        });
+        match result {
+            Some(inner) => inner,
+            None => Err(SendError::SessionNotFound(session)),
+        }
     }
 }
 
