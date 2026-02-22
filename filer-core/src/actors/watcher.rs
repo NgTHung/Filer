@@ -1,14 +1,17 @@
-use std::path::PathBuf;
+
 use flume::Sender;
 
 use crate::actors::Actor;
 use crate::api::events::Event;
+use crate::model::node::NodeId;
+use crate::model::session::SessionId;
 
 /// Commands for watcher actor
 #[derive(Debug, Clone)]
 pub enum WatchCommand {
-    Watch(PathBuf),
-    Unwatch(PathBuf),
+    Watch(NodeId, SessionId),
+    Unwatch(NodeId),
+    UnwatchSession(SessionId),
     UnwatchAll,
 }
 

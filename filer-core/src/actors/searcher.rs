@@ -1,16 +1,17 @@
-use std::path::PathBuf;
 use flume::{Receiver, Sender};
 
 use crate::actors::Actor;
 use crate::api::events::Event;
+use crate::model::node::NodeId;
 use crate::model::query::SearchQuery;
+use crate::model::session::SessionId;
 use crate::vfs::provider::FsProvider;
 
 /// Commands for searcher actor
 #[derive(Debug, Clone)]
 pub enum SearchCommand {
-    Search { query: SearchQuery, root: PathBuf },
-    Cancel,
+    Search { query: SearchQuery, root: NodeId, session: SessionId },
+    Cancel(SessionId),
 }
 
 /// Searcher actor - handles file search

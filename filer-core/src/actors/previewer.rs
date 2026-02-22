@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 use crate::actors::Actor;
 use crate::api::events::Event;
+use crate::model::node::NodeId;
+use crate::model::session::SessionId;
 use crate::services::preview::PreviewCache;
 use crate::vfs::provider::FsProvider;
 use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
@@ -12,13 +14,15 @@ use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
 pub enum PreviewCommand {
     /// Generate preview for a file
     Generate {
-        path: PathBuf,
+        path: NodeId,
         options: Option<PreviewOptions>,
+        session: SessionId
     },
     /// Load metadata for a file
-    LoadMetadata(PathBuf),
+    LoadMetadata(NodeId, SessionId),
+    LoadExtendedMetadata(NodeId, SessionId),
     /// Cancel ongoing preview
-    Cancel(PathBuf),
+    Cancel(SessionId),
     /// Clear cache
     ClearCache,
 }
