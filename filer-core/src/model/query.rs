@@ -1,4 +1,27 @@
 /// Search query representation
+///
+/// Parsed from a single query string using inline filter syntax.
+/// Plain text becomes the filename pattern; prefixed tokens become filters/options.
+///
+/// # Query format
+///
+/// ```text
+/// <search text> [ext:rs,py] [size:>1mb] [size:<500kb] [type:file|dir]
+///               [after:2024-01-15] [before:2025-12-31] [name:substring]
+///               [match:regex] [hidden:yes] [case:yes] [depth:3] [max:100]
+/// ```
+///
+/// All prefixed tokens are order-independent. Unrecognised tokens are treated
+/// as part of the search text.
+///
+/// # Examples
+///
+/// | Input | Meaning |
+/// |---|---|
+/// | `report` | Files containing "report" in name |
+/// | `*.rs ext:rs size:>1kb` | `.rs` files larger than 1 KB |
+/// | `type:dir hidden:yes` | All directories including hidden |
+/// | `match:^test_.*\.rs$ depth:2` | Regex match, max 2 levels deep |
 #[derive(Debug, Clone)]
 pub struct SearchQuery {
     pub text: String,
@@ -6,7 +29,7 @@ pub struct SearchQuery {
     pub options: SearchOptions,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum QueryFilter {
     Extension(Vec<String>),
     SizeGreaterThan(u64),
@@ -20,7 +43,7 @@ pub enum QueryFilter {
     NameMatches(String), // Regex
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SearchOptions {
     pub case_sensitive: bool,
     pub include_hidden: bool,
@@ -28,15 +51,515 @@ pub struct SearchOptions {
     pub max_results: Option<usize>,
 }
 
-impl SearchQuery {
-    /// Parse query string into structured query
-    pub fn parse(input: &str) -> Result<Self, QueryParseError> {
-        todo!()
+impl Default for SearchOptions {
+    fn default() -> Self {
+        Self {
+            case_sensitive: false,
+            include_hidden: false,
+            max_depth: None,
+            max_results: None,
+        }
     }
+}
+
+impl SearchQuery {
+    /// Parse a query string into a structured `SearchQuery`.
+    ///
+    /// Tokens with recognised prefixes (`ext:`, `size:>`, `type:`, etc.)
+    /// are extracted as filters or options. Everything else is joined into
+    /// the `text` field as the filename search pattern.
+    ///
+    /// An empty/whitespace-only input is an error.
+    pub fn parse(input: &str) -> Result<Self, QueryParseError> {
+        let input = input.trim();
+        if input.is_empty() {
+            return Err(QueryParseError {
+                message: "Empty query".to_string(),
+                position: 0,
+            });
+        }
+
+        let mut text_parts: Vec<&str> = Vec::new();
+        let mut filters: Vec<QueryFilter> = Vec::new();
+        let mut options = SearchOptions::default();
+        let mut position: usize = 0;
+
+        for token in input.split_whitespace() {
+            let parsed = if let Some(value) = token.strip_prefix("ext:") {
+                Self::parse_ext(value, position)
+            } else if let Some(value) = token.strip_prefix("size:") {
+                Self::parse_size(value, position)
+            } else if let Some(value) = token.strip_prefix("type:") {
+                Self::parse_type(value, position)
+            } else if let Some(value) = token.strip_prefix("after:") {
+                Self::parse_date(value, position, true)
+            } else if let Some(value) = token.strip_prefix("before:") {
+                Self::parse_date(value, position, false)
+            } else if let Some(value) = token.strip_prefix("name:") {
+                if value.is_empty() {
+                    Err(QueryParseError {
+                        message: "Empty name: value".to_string(),
+                        position,
+                    })
+                } else {
+                    Ok(ParsedToken::Filter(QueryFilter::NameContains(
+                        value.to_string(),
+                    )))
+                }
+            } else if let Some(value) = token.strip_prefix("match:") {
+                if value.is_empty() {
+                    Err(QueryParseError {
+                        message: "Empty match: pattern".to_string(),
+                        position,
+                    })
+                } else {
+                    Ok(ParsedToken::Filter(QueryFilter::NameMatches(
+                        value.to_string(),
+                    )))
+                }
+            } else if let Some(value) = token.strip_prefix("hidden:") {
+                Self::parse_bool(value, position).map(|yes| ParsedToken::Option(OptionSet::Hidden(yes)))
+            } else if let Some(value) = token.strip_prefix("case:") {
+                Self::parse_bool(value, position).map(|yes| ParsedToken::Option(OptionSet::Case(yes)))
+            } else if let Some(value) = token.strip_prefix("depth:") {
+                value
+                    .parse::<usize>()
+                    .map(|d| ParsedToken::Option(OptionSet::Depth(d)))
+                    .map_err(|_| QueryParseError {
+                        message: format!("Invalid depth value: '{}'", value),
+                        position,
+                    })
+            } else if let Some(value) = token.strip_prefix("max:") {
+                value
+                    .parse::<usize>()
+                    .map(|m| ParsedToken::Option(OptionSet::Max(m)))
+                    .map_err(|_| QueryParseError {
+                        message: format!("Invalid max value: '{}'", value),
+                        position,
+                    })
+            } else {
+                // Not a prefixed token — it's search text
+                text_parts.push(token);
+                position += token.len() + 1;
+                continue;
+            };
+
+            match parsed? {
+                ParsedToken::Filter(f) => filters.push(f),
+                ParsedToken::Option(opt) => match opt {
+                    OptionSet::Hidden(yes) => {
+                        options.include_hidden = yes;
+                        if yes {
+                            filters.push(QueryFilter::IsHidden);
+                        }
+                    }
+                    OptionSet::Case(yes) => options.case_sensitive = yes,
+                    OptionSet::Depth(d) => options.max_depth = Some(d),
+                    OptionSet::Max(m) => options.max_results = Some(m),
+                },
+            }
+
+            position += token.len() + 1;
+        }
+
+        Ok(SearchQuery {
+            text: text_parts.join(" "),
+            filters,
+            options,
+        })
+    }
+
+    // ── Private helpers ──────────────────────────────────────────────
+
+    fn parse_ext(value: &str, position: usize) -> Result<ParsedToken, QueryParseError> {
+        if value.is_empty() {
+            return Err(QueryParseError {
+                message: "Empty ext: value".to_string(),
+                position,
+            });
+        }
+        let exts: Vec<String> = value
+            .split(',')
+            .map(|e| e.trim_start_matches('.').to_lowercase())
+            .filter(|e| !e.is_empty())
+            .collect();
+        if exts.is_empty() {
+            return Err(QueryParseError {
+                message: format!("No valid extensions in '{}'", value),
+                position,
+            });
+        }
+        Ok(ParsedToken::Filter(QueryFilter::Extension(exts)))
+    }
+
+    fn parse_size(value: &str, position: usize) -> Result<ParsedToken, QueryParseError> {
+        if value.len() < 2 {
+            return Err(QueryParseError {
+                message: format!("Invalid size filter: '{}' (use size:>1kb or size:<1mb)", value),
+                position,
+            });
+        }
+
+        let (comparator, rest) = value.split_at(1);
+        let bytes = Self::parse_size_value(rest, position)?;
+
+        match comparator {
+            ">" => Ok(ParsedToken::Filter(QueryFilter::SizeGreaterThan(bytes))),
+            "<" => Ok(ParsedToken::Filter(QueryFilter::SizeLessThan(bytes))),
+            _ => Err(QueryParseError {
+                message: format!(
+                    "Invalid size comparator '{}' (use > or <)",
+                    comparator
+                ),
+                position,
+            }),
+        }
+    }
+
+    /// Parse a human-readable size like "1kb", "500mb", "2gb", or plain bytes "4096".
+    fn parse_size_value(input: &str, position: usize) -> Result<u64, QueryParseError> {
+        let input_lower = input.to_lowercase();
+        let (num_str, multiplier) = if let Some(n) = input_lower.strip_suffix("gb") {
+            (n, 1024u64 * 1024 * 1024)
+        } else if let Some(n) = input_lower.strip_suffix("mb") {
+            (n, 1024u64 * 1024)
+        } else if let Some(n) = input_lower.strip_suffix("kb") {
+            (n, 1024u64)
+        } else if let Some(n) = input_lower.strip_suffix('b') {
+            (n, 1u64)
+        } else {
+            (input_lower.as_str(), 1u64)
+        };
+
+        num_str
+            .parse::<u64>()
+            .map(|n| n * multiplier)
+            .map_err(|_| QueryParseError {
+                message: format!("Invalid size value: '{}'", input),
+                position,
+            })
+    }
+
+    fn parse_type(value: &str, position: usize) -> Result<ParsedToken, QueryParseError> {
+        match value.to_lowercase().as_str() {
+            "file" | "f" => Ok(ParsedToken::Filter(QueryFilter::IsFile)),
+            "dir" | "directory" | "d" | "folder" => {
+                Ok(ParsedToken::Filter(QueryFilter::IsDirectory))
+            }
+            _ => Err(QueryParseError {
+                message: format!(
+                    "Unknown type '{}' (use file, dir, folder, f, or d)",
+                    value
+                ),
+                position,
+            }),
+        }
+    }
+
+    /// Parse a date value. Supports:
+    /// - Unix timestamp (seconds): `1700000000`
+    /// - ISO date: `2024-01-15`
+    fn parse_date(
+        value: &str,
+        position: usize,
+        is_after: bool,
+    ) -> Result<ParsedToken, QueryParseError> {
+        let timestamp = if let Ok(ts) = value.parse::<i64>() {
+            // Unix timestamp
+            ts
+        } else if value.len() == 10 && value.chars().filter(|c| *c == '-').count() == 2 {
+            // YYYY-MM-DD → naive conversion to unix timestamp
+            Self::date_to_timestamp(value, position)?
+        } else {
+            return Err(QueryParseError {
+                message: format!(
+                    "Invalid date '{}' (use YYYY-MM-DD or unix timestamp)",
+                    value
+                ),
+                position,
+            });
+        };
+
+        if is_after {
+            Ok(ParsedToken::Filter(QueryFilter::ModifiedAfter(timestamp)))
+        } else {
+            Ok(ParsedToken::Filter(QueryFilter::ModifiedBefore(timestamp)))
+        }
+    }
+
+    /// Convert YYYY-MM-DD to a unix timestamp (midnight UTC).
+    fn date_to_timestamp(date: &str, position: usize) -> Result<i64, QueryParseError> {
+        let parts: Vec<&str> = date.split('-').collect();
+        if parts.len() != 3 {
+            return Err(QueryParseError {
+                message: format!("Invalid date format: '{}'", date),
+                position,
+            });
+        }
+
+        let year: i64 = parts[0].parse().map_err(|_| QueryParseError {
+            message: format!("Invalid year in '{}'", date),
+            position,
+        })?;
+        let month: i64 = parts[1].parse().map_err(|_| QueryParseError {
+            message: format!("Invalid month in '{}'", date),
+            position,
+        })?;
+        let day: i64 = parts[2].parse().map_err(|_| QueryParseError {
+            message: format!("Invalid day in '{}'", date),
+            position,
+        })?;
+
+        if !(1..=12).contains(&month) || !(1..=31).contains(&day) || year < 1970 {
+            return Err(QueryParseError {
+                message: format!("Date out of range: '{}'", date),
+                position,
+            });
+        }
+
+        // Days from 1970-01-01 using a simplified calculation.
+        // Accurate enough for file search filtering.
+        let mut days: i64 = 0;
+        for y in 1970..year {
+            days += if is_leap_year(y) { 366 } else { 365 };
+        }
+        let month_days = [31, 28 + if is_leap_year(year) { 1 } else { 0 },
+            31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        for m in 0..(month - 1) as usize {
+            days += month_days[m] as i64;
+        }
+        days += day - 1;
+
+        Ok(days * 86400)
+    }
+
+    fn parse_bool(value: &str, position: usize) -> Result<bool, QueryParseError> {
+        match value.to_lowercase().as_str() {
+            "yes" | "true" | "1" | "on" => Ok(true),
+            "no" | "false" | "0" | "off" => Ok(false),
+            _ => Err(QueryParseError {
+                message: format!("Invalid boolean '{}' (use yes/no)", value),
+                position,
+            }),
+        }
+    }
+}
+
+/// Internal parsed token — either a filter or an option setter.
+enum ParsedToken {
+    Filter(QueryFilter),
+    Option(OptionSet),
+}
+
+/// Internal enum for option mutations.
+enum OptionSet {
+    Hidden(bool),
+    Case(bool),
+    Depth(usize),
+    Max(usize),
+}
+
+fn is_leap_year(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
 }
 
 #[derive(Debug)]
 pub struct QueryParseError {
     pub message: String,
     pub position: usize,
+}
+
+impl std::fmt::Display for QueryParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "query parse error at {}: {}", self.position, self.message)
+    }
+}
+
+impl std::error::Error for QueryParseError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_plain_text() {
+        let q = SearchQuery::parse("hello world").unwrap();
+        assert_eq!(q.text, "hello world");
+        assert!(q.filters.is_empty());
+    }
+
+    #[test]
+    fn parse_empty_returns_error() {
+        assert!(SearchQuery::parse("").is_err());
+        assert!(SearchQuery::parse("   ").is_err());
+    }
+
+    #[test]
+    fn parse_extension_filter() {
+        let q = SearchQuery::parse("report ext:rs,py,toml").unwrap();
+        assert_eq!(q.text, "report");
+        assert_eq!(
+            q.filters,
+            vec![QueryFilter::Extension(vec![
+                "rs".into(),
+                "py".into(),
+                "toml".into()
+            ])]
+        );
+    }
+
+    #[test]
+    fn parse_extension_strips_dots() {
+        let q = SearchQuery::parse("ext:.rs,.py").unwrap();
+        assert_eq!(
+            q.filters,
+            vec![QueryFilter::Extension(vec!["rs".into(), "py".into()])]
+        );
+    }
+
+    #[test]
+    fn parse_size_filters() {
+        let q = SearchQuery::parse("size:>1kb size:<10mb").unwrap();
+        assert_eq!(q.filters.len(), 2);
+        assert_eq!(q.filters[0], QueryFilter::SizeGreaterThan(1024));
+        assert_eq!(q.filters[1], QueryFilter::SizeLessThan(10 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_gb() {
+        let q = SearchQuery::parse("size:>2gb").unwrap();
+        assert_eq!(
+            q.filters[0],
+            QueryFilter::SizeGreaterThan(2 * 1024 * 1024 * 1024)
+        );
+    }
+
+    #[test]
+    fn parse_size_plain_bytes() {
+        let q = SearchQuery::parse("size:>4096").unwrap();
+        assert_eq!(q.filters[0], QueryFilter::SizeGreaterThan(4096));
+    }
+
+    #[test]
+    fn parse_type_file() {
+        let q = SearchQuery::parse("type:file").unwrap();
+        assert_eq!(q.filters, vec![QueryFilter::IsFile]);
+    }
+
+    #[test]
+    fn parse_type_dir_aliases() {
+        for alias in &["dir", "directory", "folder", "d"] {
+            let q = SearchQuery::parse(&format!("type:{}", alias)).unwrap();
+            assert_eq!(q.filters, vec![QueryFilter::IsDirectory]);
+        }
+    }
+
+    #[test]
+    fn parse_options() {
+        let q = SearchQuery::parse("foo case:yes hidden:yes depth:3 max:50").unwrap();
+        assert_eq!(q.text, "foo");
+        assert!(q.options.case_sensitive);
+        assert!(q.options.include_hidden);
+        assert_eq!(q.options.max_depth, Some(3));
+        assert_eq!(q.options.max_results, Some(50));
+    }
+
+    #[test]
+    fn parse_hidden_adds_filter() {
+        let q = SearchQuery::parse("hidden:yes").unwrap();
+        assert!(q.options.include_hidden);
+        assert!(q.filters.contains(&QueryFilter::IsHidden));
+    }
+
+    #[test]
+    fn parse_name_contains() {
+        let q = SearchQuery::parse("name:config").unwrap();
+        assert_eq!(
+            q.filters,
+            vec![QueryFilter::NameContains("config".into())]
+        );
+    }
+
+    #[test]
+    fn parse_regex_match() {
+        let q = SearchQuery::parse(r"match:^test_.*\.rs$").unwrap();
+        assert_eq!(
+            q.filters,
+            vec![QueryFilter::NameMatches(r"^test_.*\.rs$".into())]
+        );
+    }
+
+    #[test]
+    fn parse_date_unix_timestamp() {
+        let q = SearchQuery::parse("after:1700000000").unwrap();
+        assert_eq!(q.filters, vec![QueryFilter::ModifiedAfter(1700000000)]);
+    }
+
+    #[test]
+    fn parse_date_iso() {
+        let q = SearchQuery::parse("after:2024-01-01 before:2024-12-31").unwrap();
+        assert_eq!(q.filters.len(), 2);
+        match &q.filters[0] {
+            QueryFilter::ModifiedAfter(ts) => assert!(*ts > 0),
+            other => panic!("Expected ModifiedAfter, got {:?}", other),
+        }
+        match &q.filters[1] {
+            QueryFilter::ModifiedBefore(ts) => assert!(*ts > 0),
+            other => panic!("Expected ModifiedBefore, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_combined_query() {
+        let q =
+            SearchQuery::parse("*.rs ext:rs size:>1kb type:file case:yes depth:5").unwrap();
+        assert_eq!(q.text, "*.rs");
+        assert!(q.filters.contains(&QueryFilter::Extension(vec!["rs".into()])));
+        assert!(q.filters.contains(&QueryFilter::SizeGreaterThan(1024)));
+        assert!(q.filters.contains(&QueryFilter::IsFile));
+        assert!(q.options.case_sensitive);
+        assert_eq!(q.options.max_depth, Some(5));
+    }
+
+    #[test]
+    fn parse_only_filters_empty_text() {
+        let q = SearchQuery::parse("ext:rs type:file").unwrap();
+        assert_eq!(q.text, "");
+        assert_eq!(q.filters.len(), 2);
+    }
+
+    #[test]
+    fn parse_invalid_size_comparator() {
+        assert!(SearchQuery::parse("size:=100").is_err());
+    }
+
+    #[test]
+    fn parse_invalid_type() {
+        assert!(SearchQuery::parse("type:symlink").is_err());
+    }
+
+    #[test]
+    fn parse_invalid_bool() {
+        assert!(SearchQuery::parse("case:maybe").is_err());
+    }
+
+    #[test]
+    fn parse_invalid_depth() {
+        assert!(SearchQuery::parse("depth:abc").is_err());
+    }
+
+    #[test]
+    fn parse_invalid_date() {
+        assert!(SearchQuery::parse("after:not-a-date").is_err());
+    }
+
+    #[test]
+    fn parse_empty_ext_value() {
+        assert!(SearchQuery::parse("ext:").is_err());
+    }
+
+    #[test]
+    fn parse_empty_name_value() {
+        assert!(SearchQuery::parse("name:").is_err());
+    }
 }

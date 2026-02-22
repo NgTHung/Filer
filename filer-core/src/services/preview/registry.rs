@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeDetector};
@@ -8,7 +8,7 @@ use super::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
 /// Registry of preview providers
 pub struct PreviewRegistry {
-    providers: HashMap<MimeCategory, Vec<Box<dyn PreviewProvider>>>,
+    providers: Arc<scc::HashMap<MimeCategory, Vec<Box<dyn PreviewProvider>>>>,
     mime_detector: MimeDetector,
     default_options: PreviewOptions,
 }
@@ -16,7 +16,7 @@ pub struct PreviewRegistry {
 impl PreviewRegistry {
     pub fn new() -> Self {
         Self {
-            providers: HashMap::new(),
+            providers: Arc::new(scc::HashMap::new()),
             mime_detector: MimeDetector::new(),
             default_options: PreviewOptions::default(),
         }

@@ -42,13 +42,13 @@ pub fn generate_salt(len: usize) -> Vec<u8> {
 
 /// Key storage
 pub struct KeyStore {
-    keys: std::collections::HashMap<String, Vec<u8>>,
+    keys: Arc<scc::HashMap<String, Vec<u8>>>,
 }
 
 impl KeyStore {
     pub fn new() -> Self {
         Self {
-            keys: std::collections::HashMap::new(),
+            keys: Arc::new(scc::HashMap::new()),
         }
     }
 

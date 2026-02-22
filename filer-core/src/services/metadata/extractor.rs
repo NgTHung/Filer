@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::collections::HashMap;
+use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
@@ -27,13 +27,13 @@ pub trait MetadataExtractor: Send + Sync {
 
 /// Registry of metadata extractors
 pub struct MetadataRegistry {
-    extractors: HashMap<MimeCategory, Vec<Box<dyn MetadataExtractor>>>,
+    extractors: Arc<scc::HashMap<MimeCategory, Vec<Box<dyn MetadataExtractor>>>>,
 }
 
 impl MetadataRegistry {
     pub fn new() -> Self {
         Self {
-            extractors: HashMap::new(),
+            extractors: Arc::new(scc::HashMap::new()),
         }
     }
 

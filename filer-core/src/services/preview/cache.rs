@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::provider::PreviewData;
@@ -13,7 +13,7 @@ struct CacheEntry {
 
 /// LRU cache for previews
 pub struct PreviewCache {
-    entries: HashMap<PathBuf, CacheEntry>,
+    entries: Arc<scc::HashMap<PathBuf, CacheEntry>>,
     max_size_bytes: usize,
     current_size_bytes: usize,
     ttl: Duration,
@@ -22,7 +22,7 @@ pub struct PreviewCache {
 impl PreviewCache {
     pub fn new(max_size_bytes: usize, ttl: Duration) -> Self {
         Self {
-            entries: HashMap::new(),
+            entries: Arc::new(scc::HashMap::new()),
             max_size_bytes,
             current_size_bytes: 0,
             ttl,

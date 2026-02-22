@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::actors::Actor;
 use crate::model::node::{FileNode, NodeId};
@@ -16,7 +16,7 @@ pub enum CacheCommand {
 /// Cache actor - LRU cache for file nodes
 pub struct Cache {
     commands: flume::Receiver<CacheCommand>,
-    entries: HashMap<NodeId, FileNode>,
+    entries: Arc<scc::HashMap<NodeId, FileNode>>,
     capacity: usize,
 }
 

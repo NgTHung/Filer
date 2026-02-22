@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 /// Extended metadata (type-specific)
 #[derive(Debug, Clone)]
 pub enum ExtendedMetadata {
@@ -35,7 +33,7 @@ pub struct ExifData {
     pub iso: Option<u32>,
     pub focal_length: Option<f64>,
     pub orientation: Option<u32>,
-    pub raw: HashMap<String, String>,
+    pub raw: scc::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
