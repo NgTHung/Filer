@@ -8,7 +8,7 @@ use crate::api::events::Event;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
-use crate::pipeline::{Pipeline, PipelineConfig, PipelineData};
+use crate::pipeline::{Pipeline, PipelineConfig};
 use crate::vfs::provider::FsProvider;
 
 /// Commands for scanner actor
@@ -137,18 +137,9 @@ impl Scanner {
         let parent_id = registry.clone().register(path.clone());
         registry.clone().register_batch_file_node(&entries);
 
-        // 4. Execute pipeline
+        // 4. Execute pipeline (always returns GroupedNodes)
         let pipeline = Pipeline::from_config(&pipeline_config);
-        let processed = pipeline.execute(entries);
-
-        let final_entries = match processed {
-            PipelineData::Flat(file_nodes) => file_nodes,
-            PipelineData::Grouped(grouped_nodes) => grouped_nodes
-                .groups
-                .into_iter()
-                .flat_map(|g| g.nodes)
-                .collect(),
-        };
+        let groups = pipeline.execute_grouped(entries);
 
         // 5. Check cancellation again
         if cancel.is_cancelled() {
@@ -160,7 +151,7 @@ impl Scanner {
             .send_async(Event::DirectoryLoaded {
                 parent: parent_id,
                 path: path.to_path_buf(),
-                entries: final_entries,
+                groups,
                 session,
             })
             .await;
@@ -240,18 +231,9 @@ impl Scanner {
         let parent_id = registry.clone().register(path.clone());
         registry.clone().register_batch_file_node(&entries);
 
-        // 4. Execute pipeline
+        // 4. Execute pipeline (always returns GroupedNodes)
         let pipeline = Pipeline::from_config(&pipeline_config);
-        let processed = pipeline.execute(entries);
-
-        let final_entries = match processed {
-            PipelineData::Flat(file_nodes) => file_nodes,
-            PipelineData::Grouped(grouped_nodes) => grouped_nodes
-                .groups
-                .into_iter()
-                .flat_map(|g| g.nodes)
-                .collect(),
-        };
+        let groups = pipeline.execute_grouped(entries);
 
         // 5. Check cancellation again
         if cancel.is_cancelled() {
@@ -263,7 +245,7 @@ impl Scanner {
             .send_async(Event::DirectoryLoaded {
                 parent: parent_id,
                 path: path.to_path_buf(),
-                entries: final_entries,
+                groups,
                 session,
             })
             .await;

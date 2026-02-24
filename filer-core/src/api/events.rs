@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::actors::navigator::NavState;
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
+use crate::pipeline::GroupedNodes;
 use crate::{BasicMetadata, ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
 
 /// Events from Core to UI
@@ -11,10 +12,15 @@ use crate::{BasicMetadata, ExtendedMetadata, FileNode, PreviewData, model::fs_ch
 #[derive(Debug, Clone)]
 pub enum Event {
     /// Directory contents loaded (full data for UI to cache)
+    ///
+    /// Always carries `GroupedNodes`. When no grouping is configured,
+    /// contains a single group with an empty label (degenerate flat list).
+    /// The UI iterates `.groups` uniformly — one unnamed group renders
+    /// as a flat list, multiple named groups render section headers.
     DirectoryLoaded {
         parent: NodeId,
         path: PathBuf,  // Keep path for display in breadcrumb
-        entries: Vec<FileNode>,
+        groups: GroupedNodes,
         session: SessionId
     },
     

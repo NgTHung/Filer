@@ -130,6 +130,28 @@ impl Pipeline {
         pipeline_data
     }
 
+    /// Execute the pipeline and always return `GroupedNodes`.
+    ///
+    /// When no grouping stage is configured the result is a single
+    /// `FileGroup` with an empty label — a degenerate flat list that
+    /// the UI can render without section headers.
+    pub fn execute_grouped(&self, data: Vec<FileNode>) -> GroupedNodes {
+        match self.execute(data) {
+            PipelineData::Grouped(grouped) => grouped,
+            PipelineData::Flat(nodes) => {
+                let total_count = nodes.len();
+                GroupedNodes {
+                    groups: vec![FileGroup {
+                        label: String::new(),
+                        nodes,
+                        order: 0,
+                    }],
+                    total_count,
+                }
+            }
+        }
+    }
+
     /// Convenience method for flat output
     pub fn execute_flat(&self, data: Vec<FileNode>) -> Vec<FileNode> {
         match self.execute(data) {

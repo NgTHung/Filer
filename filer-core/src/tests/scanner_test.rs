@@ -234,8 +234,9 @@ mod scanner_integration_tests {
         // Verify event emission (exact event type depends on implementation)
         // This would typically be DirectoryLoaded or FilesBatch
         match event {
-            Event::DirectoryLoaded { entries, .. } => {
-                assert_eq!(entries.len(), 2);
+            Event::DirectoryLoaded { groups, .. } => {
+                let total: usize = groups.groups.iter().map(|g| g.nodes.len()).sum();
+                assert_eq!(total, 2);
             }
             Event::FilesBatch(entries, _) => {
                 assert_eq!(entries.len(), 2);
