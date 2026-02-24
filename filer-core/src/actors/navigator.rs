@@ -55,7 +55,8 @@ pub enum NavCommand {
     /// Get current state snapshot
     GetState(SessionId),
     Invalidate(NodeId),
-    NewSession(SessionId)
+    /// Remove session state (cleanup on DestroySession)
+    RemoveSession(SessionId),
 }
 
 /// Navigation state snapshot (sent to UI via events)
@@ -252,6 +253,41 @@ impl Navigator {
         }
     }
 
+    /// Get or lazily create a session's navigator state.
+    ///
+    /// The Router already validates session existence via SessionManager
+    /// before dispatching to us, so by the time a command arrives the
+    /// session is known-valid.  We lazily create `NavigatorState` on
+    /// first access, eliminating the need for a separate `NewSession`
+    /// setup message and removing coupling with the Router lifecycle.
+    async fn get_or_init(
+        sessions: &Arc<scc::HashMap<SessionId, NavigatorState>>,
+        session: SessionId,
+        register: &NodeRegistry,
+    ) {
+        if !sessions.contains_async(&session).await {
+            let _ = sessions.insert_async(session, NavigatorState::new(register.clone())).await;
+        }
+    }
+
+    /// Emit a `CurrentNavigateState` snapshot to the UI.
+    ///
+    /// Called after every state-mutating command so the UI can
+    /// immediately update breadcrumbs, back/forward buttons, and
+    /// selection — before the async scan finishes.
+    fn emit_snapshot(
+        sessions: &Arc<scc::HashMap<SessionId, NavigatorState>>,
+        session: SessionId,
+        events: &Sender<events::Event>,
+    ) {
+        sessions.read_sync(&session, |_, v| {
+            let _ = events.send(Event::CurrentNavigateState {
+                session,
+                state: v.snapshot(),
+            });
+        });
+    }
+
     /// Handle a navigation command
     async fn handle_command(
         cmd: NavCommand,
@@ -263,14 +299,17 @@ impl Navigator {
     ) {
         match cmd {
             NavCommand::Navigate { session, node } => {
+                Self::get_or_init(&sessions, session, &register).await;
                 sessions
                     .update_async(&session, |_, v| {
                         v.navigate(node);
                         Self::trigger_scan(session, node, v, scanner_tx.clone());
                     })
                     .await;
+                Self::emit_snapshot(&sessions, session, events);
             }
             NavCommand::NavigateToPath { session, path } => {
+                Self::get_or_init(&sessions, session, &register).await;
                 sessions
                     .update_async(&session, |_, v| {
                         v.navigate(register.clone().register(path.clone()));
@@ -282,8 +321,10 @@ impl Navigator {
                         );
                     })
                     .await;
+                Self::emit_snapshot(&sessions, session, events);
             }
             NavCommand::Back(session_id) => {
+                Self::get_or_init(&sessions, session_id, &register).await;
                 sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_back() {
@@ -298,8 +339,10 @@ impl Navigator {
                         }
                     })
                     .await;
+                Self::emit_snapshot(&sessions, session_id, events);
             }
             NavCommand::Forward(session_id) => {
+                Self::get_or_init(&sessions, session_id, &register).await;
                 sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_forward() {
@@ -314,8 +357,10 @@ impl Navigator {
                         }
                     })
                     .await;
+                Self::emit_snapshot(&sessions, session_id, events);
             }
             NavCommand::Up(session_id) => {
+                Self::get_or_init(&sessions, session_id, &register).await;
                 sessions
                     .update_async(&session_id, |_, v| {
                         if v.current
@@ -339,8 +384,10 @@ impl Navigator {
                         }
                     })
                     .await;
+                Self::emit_snapshot(&sessions, session_id, events);
             }
             NavCommand::Refresh(session_id) => {
+                Self::get_or_init(&sessions, session_id, &register).await;
                 sessions
                     .read_async(&session_id, |_k, v| {
                         if v.current.is_some() {
@@ -355,22 +402,28 @@ impl Navigator {
                         }
                     })
                     .await;
+                // Refresh doesn't change state, so no snapshot needed
             }
             NavCommand::SetPipeline { session, config } => {
+                Self::get_or_init(&sessions, session, &register).await;
                 sessions
                     .update_async(&session, |_k, v| {
                         v.pipeline_config = config;
                     })
                     .await;
+                Self::emit_snapshot(&sessions, session, events);
             }
             NavCommand::SetSelected { session, nodes } => {
+                Self::get_or_init(&sessions, session, &register).await;
                 sessions
                     .update_async(&session, |_k, v: &mut NavigatorState| {
                         v.selected.extend(nodes.iter());
                     })
                     .await;
+                Self::emit_snapshot(&sessions, session, events);
             }
             NavCommand::GetState(session_id) => {
+                Self::get_or_init(&sessions, session_id, &register).await;
                 sessions
                     .read_async(&session_id, |_k, v| {
                         events.send(Event::CurrentNavigateState {
@@ -393,9 +446,9 @@ impl Navigator {
                         .await;
                 }
             }
-            NavCommand::NewSession(session_id) => {
-                let _ = sessions.insert_async(session_id, NavigatorState::new(register.clone())).await;
-            },
+            NavCommand::RemoveSession(session_id) => {
+                let _ = sessions.remove_async(&session_id).await;
+            }
         }
     }
 

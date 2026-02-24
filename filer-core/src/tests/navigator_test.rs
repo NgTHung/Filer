@@ -441,7 +441,6 @@ mod navigator_actor_tests {
         });
 
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
         let target_node = node(100);
         
         // Send navigate command
@@ -486,7 +485,6 @@ mod navigator_actor_tests {
         });
         
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
         
         // First navigate to build history
         cmd_tx.send(NavCommand::Navigate {
@@ -526,7 +524,6 @@ mod navigator_actor_tests {
         });
 
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
         
         // Build history and go back
         cmd_tx.send(NavCommand::Navigate { session, node: node(100) }).unwrap();
@@ -559,7 +556,6 @@ mod navigator_actor_tests {
         });
 
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
         
         // Request state
         cmd_tx.send(NavCommand::GetState(session)).unwrap();
@@ -585,7 +581,6 @@ mod navigator_actor_tests {
         });
 
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
         let config = PipelineConfig::with_default_sort();
 
         // Update pipeline
@@ -609,7 +604,6 @@ mod navigator_actor_tests {
         });
 
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
 
         // Navigate first
         cmd_tx.send(NavCommand::Navigate { session, node: node(100) }).unwrap();
@@ -640,8 +634,6 @@ mod navigator_actor_tests {
 
         let session1 = session(1);
         let session2 = session(2);
-        cmd_tx.send(NavCommand::NewSession(session1)).unwrap();
-        cmd_tx.send(NavCommand::NewSession(session2)).unwrap();
 
         // Navigate in both sessions
         cmd_tx.send(NavCommand::Navigate { session: session1, node: node(100) }).unwrap();
@@ -672,7 +664,6 @@ mod navigator_actor_tests {
         });
 
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
         let nodes = vec![node(1), node(2), node(3)];
 
         // Set selection
@@ -700,7 +691,6 @@ mod navigator_actor_tests {
         });
 
         let session = session(1);
-        cmd_tx.send(NavCommand::NewSession(session)).unwrap();
 
         // Send multiple commands in sequence
         cmd_tx.send(NavCommand::Navigate { session, node: node(100) }).unwrap();

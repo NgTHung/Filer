@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use crate::model::node::NodeId;
-use crate::pipeline::PipelineConfig;
 use crate::PreviewOptions;
+use crate::model::node::NodeId;
 use crate::model::session::SessionId;
+use crate::pipeline::PipelineConfig;
 
 /// Commands from UI to Core
 /// Uses NodeId for efficiency (8 bytes vs PathBuf's heap allocation)
@@ -12,90 +12,93 @@ use crate::model::session::SessionId;
 pub enum Command {
     /// Navigate to path (initial navigation uses PathBuf)
     Navigate(PathBuf, SessionId),
-    
+
     /// Navigate to a node by ID (after initial load)
     NavigateToNode(NodeId, SessionId),
-    
+
     /// Go up one directory
     NavigateUp(SessionId),
-    
+
+    /// Go back in history
+    NavigateBack(SessionId),
+
     /// Refresh current directory
     Refresh(SessionId),
-    
+
     /// Search for files
     Search {
         query: String,
         root: NodeId,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     SearchPath {
         query: String,
         root: PathBuf,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Cancel current operation
     Cancel(SessionId),
-    
+
     /// Load preview for a node
     LoadPreview {
         id: NodeId,
         options: Option<PreviewOptions>,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Cancel preview generation
     CancelPreview(SessionId),
-    
+
     /// Copy nodes to destination
     Copy {
         sources: Vec<NodeId>,
         destination: NodeId,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Move nodes to destination
     Move {
         sources: Vec<NodeId>,
         destination: NodeId,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Delete nodes
     Delete {
         nodes: Vec<NodeId>,
         trash: bool,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Rename a node
     Rename {
         node: NodeId,
         new_name: String,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Create folder in parent
     CreateFolder {
         parent: NodeId,
         name: String,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Create file in parent
     CreateFile {
         parent: NodeId,
         name: String,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Load basic metadata
     LoadMetadata(NodeId, SessionId),
-    
+
     /// Load extended metadata (EXIF, ID3, etc.)
     LoadExtendedMetadata(NodeId, SessionId),
-    
+
     /// Scan a directory by path (initial scan, returns batched results)
     Scan {
         path: PathBuf,
@@ -114,15 +117,15 @@ pub enum Command {
     CancelScan(SessionId),
 
     /// Watch a directory for changes
-    Watch(NodeId,SessionId),
-    
+    Watch(NodeId, SessionId),
+
     /// Stop watching a directory
     Unwatch(NodeId),
     UnwatchSession(SessionId),
 
     Handshake,
-    
-    DestroySession(SessionId)
+
+    DestroySession(SessionId),
 }
 
 impl Command {
@@ -148,7 +151,8 @@ impl Command {
             | Command::LoadMetadata(_, s)
             | Command::LoadExtendedMetadata(_, s)
             | Command::Watch(_, s)
-            | Command::UnwatchSession(s) => Some(*s),
+            | Command::UnwatchSession(s)
+            | Command::NavigateBack(s) => Some(*s),
 
             Command::Search { session, .. }
             | Command::SearchPath { session, .. }

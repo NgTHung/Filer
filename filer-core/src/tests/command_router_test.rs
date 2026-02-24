@@ -186,10 +186,10 @@ mod command_router_tests {
             .expect("NavCommand channel closed");
 
         match nav_cmd {
-            NavCommand::Back(s) => {
+            NavCommand::Up(s) => {
                 assert_eq!(s, session, "SessionId must be preserved");
             }
-            other => panic!("Expected NavCommand::Back, got {:?}", other),
+            other => panic!("Expected NavCommand::Up, got {:?}", other),
         }
     }
 
@@ -671,22 +671,29 @@ mod command_router_tests {
     }
 
     #[tokio::test]
-    async fn test_route_handshake_initializes_navigator_session() {
+    async fn test_route_destroy_session_cleans_up_navigator() {
         let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
 
-        harness.send(Command::Handshake).await;
+        harness.send(Command::DestroySession(session)).await;
 
-        // Handshake should send NewSession to navigator
+        // DestroySession should send both UnwatchSession to watcher
+        // and RemoveSession to navigator
+        let _watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
+            .await
+            .expect("Timed out waiting for WatchCommand")
+            .expect("WatchCommand channel closed");
+
         let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
             .await
-            .expect("Timed out waiting for NavCommand::NewSession")
+            .expect("Timed out waiting for NavCommand::RemoveSession")
             .expect("NavCommand channel closed");
 
         match nav_cmd {
-            NavCommand::NewSession(session_id) => {
-                assert_ne!(session_id, SessionId::DEFAULT);
+            NavCommand::RemoveSession(s) => {
+                assert_eq!(s, session);
             }
-            other => panic!("Expected NavCommand::NewSession, got {:?}", other),
+            other => panic!("Expected NavCommand::RemoveSession, got {:?}", other),
         }
     }
 
@@ -703,6 +710,12 @@ mod command_router_tests {
             .await
             .expect("Timed out waiting for WatchCommand")
             .expect("WatchCommand channel closed");
+
+        // And RemoveSession to navigator
+        let _nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
+            .await
+            .expect("Timed out waiting for NavCommand::RemoveSession")
+            .expect("NavCommand channel closed");
 
         let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
             .await
@@ -869,9 +882,6 @@ mod command_router_tests {
 
         // Do a proper handshake to get a valid session
         harness.send(Command::Handshake).await;
-
-        // Drain the NewSession NavCommand from handshake
-        let _ = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async()).await;
 
         let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
             .await

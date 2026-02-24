@@ -71,7 +71,7 @@ impl CommandRouter {
         preview_tx: Sender<PreviewCommand>,
         ops_tx: Sender<OpsCommand>,
         session_manager: SessionManager,
-        registry: NodeRegistry
+        registry: NodeRegistry,
     ) -> Self {
         Self {
             commands,
@@ -83,7 +83,7 @@ impl CommandRouter {
             preview_tx,
             ops_tx,
             session_manager,
-            register: registry
+            register: registry,
         }
     }
 
@@ -111,10 +111,6 @@ impl CommandRouter {
             // ── Session lifecycle ─────────────────────────────────────────
             Command::Handshake => {
                 let new_session = self.session_manager.create_session(self.events.clone());
-                let _ = self
-                    .nav_tx
-                    .send_async(NavCommand::NewSession(new_session))
-                    .await;
                 self.events
                     .send_async(Event::SessionCreated(new_session))
                     .await
@@ -126,6 +122,10 @@ impl CommandRouter {
                 let _ = self
                     .watch_tx
                     .send_async(WatchCommand::UnwatchSession(session_id))
+                    .await;
+                let _ = self
+                    .nav_tx
+                    .send_async(NavCommand::RemoveSession(session_id))
                     .await;
                 self.session_manager.remove(session_id);
                 self.events
@@ -157,10 +157,14 @@ impl CommandRouter {
 
             Command::NavigateUp(session_id) => self
                 .nav_tx
+                .send_async(NavCommand::Up(session_id))
+                .await
+                .map_err(|e| tracing::error!("Found error! {}", e)),
+            Command::NavigateBack(session_id) => self
+                .nav_tx
                 .send_async(NavCommand::Back(session_id))
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
-
             Command::Refresh(session_id) => self
                 .nav_tx
                 .send_async(NavCommand::Refresh(session_id))
@@ -168,7 +172,11 @@ impl CommandRouter {
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
             // ── Search ───────────────────────────────────────────────────
-            Command::Search { query, root, session } => {
+            Command::Search {
+                query,
+                root,
+                session,
+            } => {
                 if let Ok(search_query) = SearchQuery::parse(&query) {
                     let _ = self
                         .search_tx
@@ -184,7 +192,11 @@ impl CommandRouter {
                 Err(())
             }
 
-            Command::SearchPath { query, root, session } => {
+            Command::SearchPath {
+                query,
+                root,
+                session,
+            } => {
                 if let Ok(search_query) = SearchQuery::parse(&query) {
                     let node = self.register.clone().register(root);
                     let _ = self
@@ -208,9 +220,17 @@ impl CommandRouter {
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
             // ── Preview / Metadata ───────────────────────────────────────
-            Command::LoadPreview { id, options, session } => self
+            Command::LoadPreview {
+                id,
+                options,
+                session,
+            } => self
                 .preview_tx
-                .send_async(PreviewCommand::Generate { path: id, options, session })
+                .send_async(PreviewCommand::Generate {
+                    path: id,
+                    options,
+                    session,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
@@ -233,52 +253,116 @@ impl CommandRouter {
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
             // ── File operations ──────────────────────────────────────────
-            Command::Copy { sources, destination, session } => self
+            Command::Copy {
+                sources,
+                destination,
+                session,
+            } => self
                 .ops_tx
-                .send_async(OpsCommand::Copy { sources, destination, session })
+                .send_async(OpsCommand::Copy {
+                    sources,
+                    destination,
+                    session,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
-            Command::Move { sources, destination, session } => self
+            Command::Move {
+                sources,
+                destination,
+                session,
+            } => self
                 .ops_tx
-                .send_async(OpsCommand::Move { sources, destination, session })
+                .send_async(OpsCommand::Move {
+                    sources,
+                    destination,
+                    session,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
-            Command::Delete { nodes, trash, session } => self
+            Command::Delete {
+                nodes,
+                trash,
+                session,
+            } => self
                 .ops_tx
-                .send_async(OpsCommand::Delete { targets: nodes, trash, session })
+                .send_async(OpsCommand::Delete {
+                    targets: nodes,
+                    trash,
+                    session,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
-            Command::Rename { node, new_name, session } => self
+            Command::Rename {
+                node,
+                new_name,
+                session,
+            } => self
                 .ops_tx
-                .send_async(OpsCommand::Rename { source: node, new_name, session })
+                .send_async(OpsCommand::Rename {
+                    source: node,
+                    new_name,
+                    session,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
-            Command::CreateFolder { parent, name, session } => self
+            Command::CreateFolder {
+                parent,
+                name,
+                session,
+            } => self
                 .ops_tx
-                .send_async(OpsCommand::CreateFolder { parent, name, session })
+                .send_async(OpsCommand::CreateFolder {
+                    parent,
+                    name,
+                    session,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
-            Command::CreateFile { parent, name, session } => self
+            Command::CreateFile {
+                parent,
+                name,
+                session,
+            } => self
                 .ops_tx
-                .send_async(OpsCommand::CreateFile { parent, name, session })
+                .send_async(OpsCommand::CreateFile {
+                    parent,
+                    name,
+                    session,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
             // ── Scanner ──────────────────────────────────────────────────
-            Command::Scan { path, session, pipeline } => self
+            Command::Scan {
+                path,
+                session,
+                pipeline,
+            } => self
                 .scan_tx
-                .send_async(ScanCommand::Scan { path, session, pipeline })
+                .send_async(ScanCommand::Scan {
+                    path,
+                    session,
+                    pipeline,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
-            Command::ScanNode { node, session, pipeline } => self
+            Command::ScanNode {
+                node,
+                session,
+                pipeline,
+            } => self
                 .scan_tx
-                .send_async(ScanCommand::ScanNode { node, session, pipeline })
+                .send_async(ScanCommand::ScanNode {
+                    node,
+                    session,
+                    pipeline,
+                })
                 .await
                 .map_err(|e| tracing::error!("Found error! {}", e)),
 
