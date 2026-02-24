@@ -90,18 +90,18 @@
   - [x] Command routing implementation
 
 ## Phase 4: FilerCore API
-- [ ] **Session Management**
-  - [ ] Tests: create session returns SessionId
-  - [ ] Tests: destroy session cleans up
-  - [ ] Tests: get session by id
-  - [ ] Tests: session isolation (events scoped)
-  - [ ] Session struct (id, navigator_state, event_tx)
-  - [ ] SessionManager implementation
+- [x] **Session Management**
+  - [x] Tests: create session returns SessionId
+  - [x] Tests: destroy session cleans up
+  - [x] Tests: get session by id
+  - [x] Tests: session isolation (events scoped)
+  - [x] Session struct (id, navigator_state, event_tx)
+  - [x] SessionManager implementation
 
-- [ ] **Navigator State**
-  - [ ] Tests: NavState snapshot (current, can_back, can_forward)
-  - [ ] Tests: sort/filter settings per session
-  - [ ] NavigatorState struct
+- [x] **Navigator State**
+  - [x] Tests: NavState snapshot (current, can_back, can_forward)
+  - [x] Tests: sort/filter settings per session
+  - [x] NavigatorState struct
 
 - [ ] **Handle**
   - [ ] Tests: FilerCore::new() creates actors

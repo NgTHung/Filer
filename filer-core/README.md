@@ -30,8 +30,8 @@ async fn main() {
     // Receive events
     while let Ok(event) = core.event_receiver().recv() {
         match event {
-            Event::DirectoryLoaded { entries, .. } => {
-                println!("Loaded {} files", entries.len());
+            Event::DirectoryLoaded { groups, .. } => {
+                println!("Loaded {} files", groups.total_count);
             }
             _ => {}
         }
