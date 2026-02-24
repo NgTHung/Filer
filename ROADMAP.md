@@ -103,12 +103,12 @@
   - [x] Tests: sort/filter settings per session
   - [x] NavigatorState struct
 
-- [ ] **Handle**
-  - [ ] Tests: FilerCore::new() creates actors
-  - [ ] Tests: send command with session
-  - [ ] Tests: receive event with session
-  - [ ] Tests: shutdown cleans all sessions
-  - [ ] FilerCore implementation
+- [x] **Handle**
+  - [x] Tests: FilerCore::new() creates actors
+  - [x] Tests: send command with session
+  - [x] Tests: receive event with session
+  - [x] Tests: shutdown cleans all sessions
+  - [x] FilerCore implementation
 
 - [ ] **Navigation Flow**
   - [ ] Tests: Navigate(session, path) -> DirectoryLoaded event

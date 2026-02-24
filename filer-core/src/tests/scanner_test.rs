@@ -3,10 +3,8 @@ use crate::errors::CoreError;
 use crate::model::node::FileNode;
 use crate::vfs::provider::{Capabilities, FsProvider};
 use crate::{
-    actors::{
-        Actor,
-        scanner::{ScanCommand, Scanner},
-    },
+    actors::Actor,
+    modules::scan::scanner::{ScanCommand, Scanner},
     model::node::{NodeId, NodeKind, NodeMeta},
     utils,
 };
@@ -476,7 +474,7 @@ mod scanner_integration_tests {
 mod scanner_command_tests {
     use std::path::PathBuf;
 
-    use crate::{actors::scanner::ScanCommand, model::session};
+    use crate::{modules::scan::scanner::ScanCommand, model::session};
 
     #[test]
     fn test_scan_command_clone() {

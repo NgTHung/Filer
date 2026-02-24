@@ -1,4 +1,3 @@
-
 use flume::Sender;
 
 use crate::actors::Actor;
@@ -31,7 +30,7 @@ impl Actor for Watcher {
     async fn run(self) {
         todo!()
     }
-    
+
     fn name(&self) -> &'static str {
         "watcher"
     }

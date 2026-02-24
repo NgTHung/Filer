@@ -1,4 +1,4 @@
-use crate::actors::navigator::{NavCommand, NavState, Navigator, NavigatorState};
+use crate::modules::navigation::navigator::{NavCommand, NavState, Navigator, NavigatorState};
 use crate::actors::Actor;
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
@@ -395,7 +395,7 @@ mod nav_state_serialization_tests {
 #[cfg(test)]
 mod navigator_actor_tests {
     use super::*;
-    use crate::{actors::scanner::ScanCommand, model::registry::NodeRegistry};
+    use crate::{modules::scan::scanner::ScanCommand, model::registry::NodeRegistry};
 
     /// Helper to create test NodeIds
     fn node(id: u64) -> NodeId {

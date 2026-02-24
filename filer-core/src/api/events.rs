@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::actors::navigator::NavState;
+use crate::modules::navigation::navigator::NavState;
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
 use crate::pipeline::GroupedNodes;

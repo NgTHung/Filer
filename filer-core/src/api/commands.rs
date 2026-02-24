@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::PreviewOptions;
 use crate::model::node::NodeId;
@@ -8,7 +9,7 @@ use crate::pipeline::PipelineConfig;
 /// Commands from UI to Core
 /// Uses NodeId for efficiency (8 bytes vs PathBuf's heap allocation)
 /// Core resolves NodeId -> PathBuf via NodeRegistry
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Command {
     /// Navigate to path (initial navigation uses PathBuf)
     Navigate(PathBuf, SessionId),
@@ -126,6 +127,38 @@ pub enum Command {
     Handshake,
 
     DestroySession(SessionId),
+
+    /// Extension point for custom commands from modules/plugins.
+    ///
+    /// The router dispatches these to handlers registered by key.
+    /// Use `Arc<dyn Any + Send + Sync>` for a clonable, type-erased payload.
+    ///
+    /// # Example
+    /// ```ignore
+    /// core.send(Command::Extension {
+    ///     key: "git.status".into(),
+    ///     payload: Arc::new(GitStatusRequest { repo: path }),
+    ///     session: my_session,
+    /// });
+    /// ```
+    Extension {
+        key: String,
+        payload: Arc<dyn std::any::Any + Send + Sync>,
+        session: SessionId,
+    },
+}
+
+impl std::fmt::Debug for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Command::Extension { key, session, .. } => f
+                .debug_struct("Extension")
+                .field("key", key)
+                .field("session", session)
+                .finish(),
+            other => write!(f, "Command::{}", other.key()),
+        }
+    }
 }
 
 impl Command {
@@ -164,7 +197,45 @@ impl Command {
             | Command::Delete { session, .. }
             | Command::Rename { session, .. }
             | Command::CreateFolder { session, .. }
-            | Command::CreateFile { session, .. } => Some(*session),
+            | Command::CreateFile { session, .. }
+            | Command::Extension { session, .. } => Some(*session),
+        }
+    }
+
+    /// Get the dispatch key for this command.
+    ///
+    /// The [`CommandRouter`] uses this to look up the registered handler.
+    /// Core command variants return static keys; [`Extension`](Command::Extension)
+    /// returns the user-provided key.
+    pub fn key(&self) -> &str {
+        match self {
+            Command::Navigate(..) => "navigate",
+            Command::NavigateToNode(..) => "navigate.node",
+            Command::NavigateUp(..) => "navigate.up",
+            Command::NavigateBack(..) => "navigate.back",
+            Command::Refresh(..) => "navigate.refresh",
+            Command::Search { .. } => "search",
+            Command::SearchPath { .. } => "search.path",
+            Command::Cancel(..) => "search.cancel",
+            Command::LoadPreview { .. } => "preview.load",
+            Command::CancelPreview(..) => "preview.cancel",
+            Command::LoadMetadata(..) => "metadata.load",
+            Command::LoadExtendedMetadata(..) => "metadata.extended",
+            Command::Copy { .. } => "ops.copy",
+            Command::Move { .. } => "ops.move",
+            Command::Delete { .. } => "ops.delete",
+            Command::Rename { .. } => "ops.rename",
+            Command::CreateFolder { .. } => "ops.create_folder",
+            Command::CreateFile { .. } => "ops.create_file",
+            Command::Scan { .. } => "scan",
+            Command::ScanNode { .. } => "scan.node",
+            Command::CancelScan(..) => "scan.cancel",
+            Command::Watch(..) => "watch",
+            Command::Unwatch(..) => "watch.remove",
+            Command::UnwatchSession(..) => "watch.session_remove",
+            Command::Handshake => "session.handshake",
+            Command::DestroySession(..) => "session.destroy",
+            Command::Extension { key, .. } => key.as_str(),
         }
     }
 }

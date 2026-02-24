@@ -1,24 +1,21 @@
 //! Tests for the Command Router
 //!
-//! The Command Router accepts high-level `Command` from the API layer
-//! and translates/routes them to the appropriate actor-specific command channels:
-//! - Navigate, NavigateToNode, NavigateUp, Refresh → Navigator (NavCommand)
-//! - Search → Searcher (SearchCommand)
-//! - Watch, Unwatch, UnwatchSession → Watcher (WatchCommand)
-//! - LoadPreview, CancelPreview → Previewer (PreviewCommand)
-//! - LoadMetadata, LoadExtendedMetadata → Previewer (PreviewCommand)
-//! - Copy, Move, Delete, Rename, CreateFolder, CreateFile → Operator (OpsCommand)
-//! - Handshake → SessionManager creates session, emits SessionCreated
-//! - DestroySession → SessionManager removes session, emits SessionDestroyed
+//! The Command Router is a generic dispatcher backed by HandlerRegistry.
+//! It receives `Command` from the API layer and:
+//! 1. Validates the session via SessionManager
+//! 2. Looks up the handler by `Command::key()` in the HandlerRegistry
+//! 3. Calls the handler closure (which forwards to the appropriate actor channel)
+//! 4. For `DestroySession`, runs registered destroy hooks
 //!
-//! Session validation: every command (except Handshake) must come from a known
-//! session. Unknown sessions receive Event::Error.
+//! Session lifecycle (Handshake / DestroySession) is registered as normal
+//! handlers — the Router has no special knowledge of them.
 //!
 //! Tests are written BEFORE implementation (TDD).
 
 #[cfg(test)]
 mod command_router_tests {
     use std::path::PathBuf;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use flume::{Receiver, Sender};
@@ -26,14 +23,15 @@ mod command_router_tests {
 
     use crate::api::commands::Command;
     use crate::api::events::Event;
+    use crate::api::module::{HandlerContext, HandlerRegistry};
     use crate::api::session_manager::SessionManager;
-    use crate::actors::navigator::NavCommand;
-    use crate::actors::operator::OpsCommand;
+    use crate::modules::navigation::navigator::NavCommand;
+    use crate::modules::operations::operator::OpsCommand;
     use crate::actors::router::CommandRouter;
-    use crate::actors::scanner::ScanCommand;
-    use crate::actors::searcher::SearchCommand;
-    use crate::actors::watcher::WatchCommand;
-    use crate::actors::previewer::PreviewCommand;
+    use crate::modules::scan::scanner::ScanCommand;
+    use crate::modules::search::searcher::SearchCommand;
+    use crate::modules::watch::watcher::WatchCommand;
+    use crate::modules::preview::previewer::PreviewCommand;
     use crate::actors::Actor;
     use crate::model::node::NodeId;
     use crate::model::registry::NodeRegistry;
@@ -42,7 +40,11 @@ mod command_router_tests {
     /// Timeout for async operations in tests
     const TEST_TIMEOUT: Duration = Duration::from_millis(500);
 
-    /// Helper to create a CommandRouter with all actor channels wired up
+    /// Helper to create a CommandRouter with handlers registered via HandlerRegistry.
+    ///
+    /// Mimics what modules do: registers handler closures that forward
+    /// commands to per-actor channels. This lets us test the Router's
+    /// session validation and dispatch logic in isolation.
     struct RouterTestHarness {
         /// Send commands into the router
         command_tx: Sender<Command>,
@@ -50,17 +52,17 @@ mod command_router_tests {
         event_rx: Receiver<Event>,
         /// Clone of event sender — used to create sessions in SessionManager
         event_tx: Sender<Event>,
-        /// Receive NavCommands that the router dispatches to Navigator
+        /// Receive NavCommands that the router dispatches
         nav_rx: Receiver<NavCommand>,
-        /// Receive ScanCommands that the router dispatches to Scanner
+        /// Receive ScanCommands that the router dispatches
         _scan_rx: Receiver<ScanCommand>,
-        /// Receive SearchCommands that the router dispatches to Searcher
+        /// Receive SearchCommands that the router dispatches
         search_rx: Receiver<SearchCommand>,
-        /// Receive WatchCommands that the router dispatches to Watcher
+        /// Receive WatchCommands that the router dispatches
         watch_rx: Receiver<WatchCommand>,
-        /// Receive PreviewCommands that the router dispatches to Previewer
+        /// Receive PreviewCommands that the router dispatches
         preview_rx: Receiver<PreviewCommand>,
-        /// Receive OpsCommands that the router dispatches to Operator
+        /// Receive OpsCommands that the router dispatches
         ops_rx: Receiver<OpsCommand>,
         /// The registry used for NodeId resolution
         registry: NodeRegistry,
@@ -69,7 +71,10 @@ mod command_router_tests {
     }
 
     impl RouterTestHarness {
-        /// Create a new test harness with the router running in background
+        /// Create a new test harness with the router running in background.
+        ///
+        /// Registers handlers for all command keys (mimicking what the
+        /// built-in modules do), plus session lifecycle handlers.
         fn new() -> Self {
             let (command_tx, command_rx) = flume::unbounded::<Command>();
             let (event_tx, event_rx) = flume::unbounded::<Event>();
@@ -82,18 +87,214 @@ mod command_router_tests {
             let registry = NodeRegistry::new();
             let session_manager = SessionManager::new(registry.clone());
 
-            let router = CommandRouter::new(
-                command_rx,
-                event_tx.clone(),
-                nav_tx,
-                scan_tx,
-                search_tx,
-                watch_tx,
-                preview_tx,
-                ops_tx,
-                session_manager.clone(),
-                registry.clone()
-            );
+            let handlers = Arc::new(HandlerRegistry::new());
+            let ctx = HandlerContext {
+                events: event_tx.clone(),
+                sessions: session_manager.clone(),
+                registry: registry.clone(),
+            };
+
+            // ── Session lifecycle ────────────────────────────────────
+            handlers.on("session.handshake", |_cmd, ctx| {
+                let session = ctx.sessions.create_session(ctx.events.clone());
+                let _ = ctx.events.send(Event::SessionCreated(session));
+            });
+            handlers.on("session.destroy", |cmd, ctx| {
+                if let Command::DestroySession(session_id) = cmd {
+                    ctx.sessions.remove(session_id);
+                    let _ = ctx.events.send(Event::SessionDestroyed(session_id));
+                }
+            });
+
+            // ── Navigation handlers ──────────────────────────────────
+            {
+                let tx = nav_tx.clone();
+                handlers.on("navigate", move |cmd, _ctx| {
+                    if let Command::Navigate(path, session) = cmd {
+                        let _ = tx.send(NavCommand::NavigateToPath { session, path });
+                    }
+                });
+            }
+            {
+                let tx = nav_tx.clone();
+                handlers.on("navigate.node", move |cmd, _ctx| {
+                    if let Command::NavigateToNode(node, session) = cmd {
+                        let _ = tx.send(NavCommand::Navigate { session, node });
+                    }
+                });
+            }
+            {
+                let tx = nav_tx.clone();
+                handlers.on("navigate.up", move |cmd, _ctx| {
+                    if let Command::NavigateUp(session) = cmd {
+                        let _ = tx.send(NavCommand::Up(session));
+                    }
+                });
+            }
+            {
+                let tx = nav_tx.clone();
+                handlers.on("navigate.back", move |cmd, _ctx| {
+                    if let Command::NavigateBack(session) = cmd {
+                        let _ = tx.send(NavCommand::Back(session));
+                    }
+                });
+            }
+            {
+                let tx = nav_tx.clone();
+                handlers.on("navigate.refresh", move |cmd, _ctx| {
+                    if let Command::Refresh(session) = cmd {
+                        let _ = tx.send(NavCommand::Refresh(session));
+                    }
+                });
+            }
+
+            // ── Search handlers ──────────────────────────────────────
+            {
+                let tx = search_tx.clone();
+                handlers.on("search", move |cmd, _ctx| {
+                    if let Command::Search { query, root, session } = cmd {
+                        let _ = tx.send(SearchCommand::Search {
+                            query: crate::model::query::SearchQuery::parse(&query).unwrap(),
+                            root,
+                            session,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = search_tx.clone();
+                handlers.on("search.cancel", move |cmd, _ctx| {
+                    if let Command::Cancel(session) = cmd {
+                        let _ = tx.send(SearchCommand::Cancel(session));
+                    }
+                });
+            }
+
+            // ── Watch handlers ───────────────────────────────────────
+            {
+                let tx = watch_tx.clone();
+                handlers.on("watch", move |cmd, _ctx| {
+                    if let Command::Watch(node, session) = cmd {
+                        let _ = tx.send(WatchCommand::Watch(node, session));
+                    }
+                });
+            }
+            {
+                let tx = watch_tx.clone();
+                handlers.on("watch.remove", move |cmd, _ctx| {
+                    if let Command::Unwatch(node) = cmd {
+                        let _ = tx.send(WatchCommand::Unwatch(node));
+                    }
+                });
+            }
+            {
+                let tx = watch_tx.clone();
+                handlers.on("watch.session_remove", move |cmd, _ctx| {
+                    if let Command::UnwatchSession(session) = cmd {
+                        let _ = tx.send(WatchCommand::UnwatchSession(session));
+                    }
+                });
+            }
+
+            // ── Preview handlers ─────────────────────────────────────
+            {
+                let tx = preview_tx.clone();
+                handlers.on("preview.load", move |cmd, _ctx| {
+                    if let Command::LoadPreview { id, options, session } = cmd {
+                        let _ = tx.send(PreviewCommand::Generate { path: id, options, session });
+                    }
+                });
+            }
+            {
+                let tx = preview_tx.clone();
+                handlers.on("preview.cancel", move |cmd, _ctx| {
+                    if let Command::CancelPreview(session) = cmd {
+                        let _ = tx.send(PreviewCommand::Cancel(session));
+                    }
+                });
+            }
+            {
+                let tx = preview_tx.clone();
+                handlers.on("metadata.load", move |cmd, _ctx| {
+                    if let Command::LoadMetadata(node, session) = cmd {
+                        let _ = tx.send(PreviewCommand::LoadMetadata(node, session));
+                    }
+                });
+            }
+            {
+                let tx = preview_tx.clone();
+                handlers.on("metadata.extended", move |cmd, _ctx| {
+                    if let Command::LoadExtendedMetadata(node, session) = cmd {
+                        let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session));
+                    }
+                });
+            }
+
+            // ── Operations handlers ──────────────────────────────────
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.copy", move |cmd, _ctx| {
+                    if let Command::Copy { sources, destination, session } = cmd {
+                        let _ = tx.send(OpsCommand::Copy { sources, destination, session });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.move", move |cmd, _ctx| {
+                    if let Command::Move { sources, destination, session } = cmd {
+                        let _ = tx.send(OpsCommand::Move { sources, destination, session });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.delete", move |cmd, _ctx| {
+                    if let Command::Delete { nodes, trash, session } = cmd {
+                        let _ = tx.send(OpsCommand::Delete { targets: nodes, trash, session });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.rename", move |cmd, _ctx| {
+                    if let Command::Rename { node, new_name, session } = cmd {
+                        let _ = tx.send(OpsCommand::Rename { source: node, new_name, session });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.create_folder", move |cmd, _ctx| {
+                    if let Command::CreateFolder { parent, name, session } = cmd {
+                        let _ = tx.send(OpsCommand::CreateFolder { parent, name, session });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.create_file", move |cmd, _ctx| {
+                    if let Command::CreateFile { parent, name, session } = cmd {
+                        let _ = tx.send(OpsCommand::CreateFile { parent, name, session });
+                    }
+                });
+            }
+
+            // ── Destroy hooks (per-module cleanup) ───────────────────
+            {
+                let tx = watch_tx.clone();
+                handlers.on_session_destroy(move |session, _ctx| {
+                    let _ = tx.send(WatchCommand::UnwatchSession(session));
+                });
+            }
+            {
+                let tx = nav_tx.clone();
+                handlers.on_session_destroy(move |session, _ctx| {
+                    let _ = tx.send(NavCommand::RemoveSession(session));
+                });
+            }
+
+            let router = CommandRouter::new(command_rx, handlers, ctx);
             tokio::spawn(async move { router.run().await });
 
             Self {
@@ -925,8 +1126,9 @@ mod command_router_tests {
 
         // Destroy the session
         harness.send(Command::DestroySession(session)).await;
-        // Drain the UnwatchSession and SessionDestroyed
+        // Drain destroy hooks: UnwatchSession, RemoveSession, and SessionDestroyed
         let _ = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async()).await;
+        let _ = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async()).await;
         let _ = timeout(TEST_TIMEOUT, harness.event_rx.recv_async()).await;
 
         // Now try to use the destroyed session
@@ -959,22 +1161,17 @@ mod command_router_tests {
     async fn test_router_shuts_down_when_command_channel_closes() {
         let (command_tx, command_rx) = flume::unbounded::<Command>();
         let (event_tx, _event_rx) = flume::unbounded::<Event>();
-        let (nav_tx, _nav_rx) = flume::unbounded::<NavCommand>();
-        let (scan_tx, _scan_rx) = flume::unbounded::<ScanCommand>();
-        let (search_tx, _search_rx) = flume::unbounded::<SearchCommand>();
-        let (watch_tx, _watch_rx) = flume::unbounded::<WatchCommand>();
-        let (preview_tx, _preview_rx) = flume::unbounded::<PreviewCommand>();
-        let (ops_tx, _ops_rx) = flume::unbounded::<OpsCommand>();
         let registry = NodeRegistry::new();
         let session_manager = SessionManager::new(registry.clone());
 
-        let router = CommandRouter::new(
-            command_rx, event_tx,
-            nav_tx, scan_tx, search_tx, watch_tx, preview_tx,
-            ops_tx,
-            session_manager,
-            registry.clone()
-        );
+        let handlers = Arc::new(HandlerRegistry::new());
+        let ctx = HandlerContext {
+            events: event_tx,
+            sessions: session_manager,
+            registry,
+        };
+
+        let router = CommandRouter::new(command_rx, handlers, ctx);
         let handle = tokio::spawn(async move { router.run().await });
 
         // Drop sender to close the command channel

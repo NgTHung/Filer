@@ -16,7 +16,7 @@ use flume::Sender;
 use crate::api::events::Event;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::{AllowAll, SessionId, SessionPolicy};
-use crate::actors::navigator::NavigatorState;
+use crate::modules::navigation::navigator::NavigatorState;
 
 /// A client session with its own state, event channel, and policy
 #[derive(Debug)]

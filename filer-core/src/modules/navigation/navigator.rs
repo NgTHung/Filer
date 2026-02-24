@@ -13,13 +13,13 @@ use flume::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
 use crate::Event;
-use crate::actors::{Actor, scanner};
+use crate::actors::Actor;
 use crate::api::events;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
+use crate::modules::scan::scanner::ScanCommand;
 use crate::pipeline::{Pipeline, PipelineConfig};
-use scanner::ScanCommand;
 
 /// Navigation commands
 #[derive(Debug, Clone)]
@@ -230,7 +230,7 @@ pub struct Navigator {
     /// Outgoing events
     events: Sender<events::Event>,
     /// Scanner channel for triggering scans
-    scanner_tx: Sender<scanner::ScanCommand>,
+    scanner_tx: Sender<ScanCommand>,
     sessions: Arc<scc::HashMap<SessionId, NavigatorState>>,
     path_cache: Arc<scc::HashSet<NodeId>>,
     register: NodeRegistry,
@@ -240,7 +240,7 @@ impl Navigator {
     pub fn new(
         commands: Receiver<NavCommand>,
         events: Sender<events::Event>,
-        scanner_tx: Sender<scanner::ScanCommand>,
+        scanner_tx: Sender<ScanCommand>,
         reg: NodeRegistry,
     ) -> Self {
         Self {
@@ -260,13 +260,12 @@ impl Navigator {
     /// session is known-valid.  We lazily create `NavigatorState` on
     /// first access, eliminating the need for a separate `NewSession`
     /// setup message and removing coupling with the Router lifecycle.
-    async fn get_or_init(
-        sessions: &Arc<scc::HashMap<SessionId, NavigatorState>>,
-        session: SessionId,
-        register: &NodeRegistry,
-    ) {
-        if !sessions.contains_async(&session).await {
-            let _ = sessions.insert_async(session, NavigatorState::new(register.clone())).await;
+    async fn get_or_init(&self, session: SessionId) {
+        if !self.sessions.contains_async(&session).await {
+            let _ = self
+                .sessions
+                .insert_async(session, NavigatorState::new(self.register.clone()))
+                .await;
         }
     }
 
@@ -275,13 +274,9 @@ impl Navigator {
     /// Called after every state-mutating command so the UI can
     /// immediately update breadcrumbs, back/forward buttons, and
     /// selection — before the async scan finishes.
-    fn emit_snapshot(
-        sessions: &Arc<scc::HashMap<SessionId, NavigatorState>>,
-        session: SessionId,
-        events: &Sender<events::Event>,
-    ) {
-        sessions.read_sync(&session, |_, v| {
-            let _ = events.send(Event::CurrentNavigateState {
+    fn emit_snapshot(&self, session: SessionId) {
+        self.sessions.read_sync(&session, |_, v| {
+            let _ = self.events.send(Event::CurrentNavigateState {
                 session,
                 state: v.snapshot(),
             });
@@ -289,49 +284,42 @@ impl Navigator {
     }
 
     /// Handle a navigation command
-    async fn handle_command(
-        cmd: NavCommand,
-        sessions: Arc<scc::HashMap<SessionId, NavigatorState>>,
-        register: NodeRegistry,
-        path_cache: Arc<scc::HashSet<NodeId>>,
-        scanner_tx: &Sender<scanner::ScanCommand>,
-        events: &Sender<events::Event>,
-    ) {
+    async fn handle_command(&self, cmd: NavCommand) {
         match cmd {
             NavCommand::Navigate { session, node } => {
-                Self::get_or_init(&sessions, session, &register).await;
-                sessions
+                self.get_or_init(session).await;
+                self.sessions
                     .update_async(&session, |_, v| {
                         v.navigate(node);
-                        Self::trigger_scan(session, node, v, scanner_tx.clone());
+                        Self::trigger_scan(session, node, v, self.scanner_tx.clone());
                     })
                     .await;
-                Self::emit_snapshot(&sessions, session, events);
+                self.emit_snapshot(session);
             }
             NavCommand::NavigateToPath { session, path } => {
-                Self::get_or_init(&sessions, session, &register).await;
-                sessions
+                self.get_or_init(session).await;
+                self.sessions
                     .update_async(&session, |_, v| {
-                        v.navigate(register.clone().register(path.clone()));
+                        v.navigate(self.register.clone().register(path.clone()));
                         Self::trigger_scan(
                             session,
-                            register.clone().register(path),
+                            self.register.clone().register(path),
                             v,
-                            scanner_tx.clone(),
+                            self.scanner_tx.clone(),
                         );
                     })
                     .await;
-                Self::emit_snapshot(&sessions, session, events);
+                self.emit_snapshot(session);
             }
             NavCommand::Back(session_id) => {
-                Self::get_or_init(&sessions, session_id, &register).await;
-                sessions
+                self.get_or_init(session_id).await;
+                self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_back() {
                             let node = v.back(1).unwrap();
-                            Self::trigger_scan(session_id, node, v, scanner_tx.clone());
+                            Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
                         } else {
-                            let _ = events.send(Event::Error {
+                            let _ = self.events.send(Event::Error {
                                 message: "Cant go back!".to_string(),
                                 recoverable: true,
                                 session: session_id,
@@ -339,17 +327,17 @@ impl Navigator {
                         }
                     })
                     .await;
-                Self::emit_snapshot(&sessions, session_id, events);
+                self.emit_snapshot(session_id);
             }
             NavCommand::Forward(session_id) => {
-                Self::get_or_init(&sessions, session_id, &register).await;
-                sessions
+                self.get_or_init(session_id).await;
+                self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_forward() {
                             let node = v.forward().unwrap();
-                            Self::trigger_scan(session_id, node, v, scanner_tx.clone());
+                            Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
                         } else {
-                            let _ = events.send(Event::Error {
+                            let _ = self.events.send(Event::Error {
                                 message: "Cant go forward!".to_string(),
                                 recoverable: true,
                                 session: session_id,
@@ -357,26 +345,26 @@ impl Navigator {
                         }
                     })
                     .await;
-                Self::emit_snapshot(&sessions, session_id, events);
+                self.emit_snapshot(session_id);
             }
             NavCommand::Up(session_id) => {
-                Self::get_or_init(&sessions, session_id, &register).await;
-                sessions
+                self.get_or_init(session_id).await;
+                self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.current
-                            .map(|f| register.clone().have_par(f).is_some())
+                            .map(|f| self.register.clone().have_par(f).is_some())
                             .is_some()
                         {
                             let par = v
                                 .current
-                                .map(|f| register.clone().get_par(f))
+                                .map(|f| self.register.clone().get_par(f))
                                 .flatten()
                                 .unwrap();
-                            let node = register.clone().register(par);
+                            let node = self.register.clone().register(par);
                             v.navigate(node);
-                            Self::trigger_scan(session_id, node, v, scanner_tx.clone());
+                            Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
                         } else {
-                            let _ = events.send(Event::Error {
+                            let _ = self.events.send(Event::Error {
                                 message: "Cant go up!".to_string(),
                                 recoverable: true,
                                 session: session_id,
@@ -384,17 +372,17 @@ impl Navigator {
                         }
                     })
                     .await;
-                Self::emit_snapshot(&sessions, session_id, events);
+                self.emit_snapshot(session_id);
             }
             NavCommand::Refresh(session_id) => {
-                Self::get_or_init(&sessions, session_id, &register).await;
-                sessions
+                self.get_or_init(session_id).await;
+                self.sessions
                     .read_async(&session_id, |_k, v| {
                         if v.current.is_some() {
                             let cur = v.current.unwrap();
-                            Self::trigger_scan(session_id, cur, v, scanner_tx.clone());
+                            Self::trigger_scan(session_id, cur, v, self.scanner_tx.clone());
                         } else {
-                            let _ = events.send(Event::Error {
+                            let _ = self.events.send(Event::Error {
                                 message: "Cant refresh!".to_string(),
                                 recoverable: true,
                                 session: session_id,
@@ -405,28 +393,28 @@ impl Navigator {
                 // Refresh doesn't change state, so no snapshot needed
             }
             NavCommand::SetPipeline { session, config } => {
-                Self::get_or_init(&sessions, session, &register).await;
-                sessions
+                self.get_or_init(session).await;
+                self.sessions
                     .update_async(&session, |_k, v| {
                         v.pipeline_config = config;
                     })
                     .await;
-                Self::emit_snapshot(&sessions, session, events);
+                self.emit_snapshot(session);
             }
             NavCommand::SetSelected { session, nodes } => {
-                Self::get_or_init(&sessions, session, &register).await;
-                sessions
+                self.get_or_init(session).await;
+                self.sessions
                     .update_async(&session, |_k, v: &mut NavigatorState| {
                         v.selected.extend(nodes.iter());
                     })
                     .await;
-                Self::emit_snapshot(&sessions, session, events);
+                self.emit_snapshot(session);
             }
             NavCommand::GetState(session_id) => {
-                Self::get_or_init(&sessions, session_id, &register).await;
-                sessions
+                self.get_or_init(session_id).await;
+                self.sessions
                     .read_async(&session_id, |_k, v| {
-                        events.send(Event::CurrentNavigateState {
+                        self.events.send(Event::CurrentNavigateState {
                             session: session_id,
                             state: v.snapshot(),
                         })
@@ -434,12 +422,17 @@ impl Navigator {
                     .await;
             }
             NavCommand::Invalidate(node_id) => {
-                if path_cache.contains_async(&node_id).await {
-                    sessions
+                if self.path_cache.contains_async(&node_id).await {
+                    self.sessions
                         .iter_async(|k, v| {
                             let verd = v.current.map(|c| c == node_id);
                             if verd.is_some() && verd.unwrap() == true {
-                                Self::trigger_scan(k.clone(), node_id, v, scanner_tx.clone());
+                                Self::trigger_scan(
+                                    k.clone(),
+                                    node_id,
+                                    v,
+                                    self.scanner_tx.clone(),
+                                );
                             }
                             true
                         })
@@ -447,7 +440,7 @@ impl Navigator {
                 }
             }
             NavCommand::RemoveSession(session_id) => {
-                let _ = sessions.remove_async(&session_id).await;
+                let _ = self.sessions.remove_async(&session_id).await;
             }
         }
     }
@@ -457,33 +450,12 @@ impl Navigator {
         session: SessionId,
         node: NodeId,
         state: &NavigatorState,
-        scanner_tx: Sender<crate::actors::scanner::ScanCommand>,
+        scanner_tx: Sender<ScanCommand>,
     ) {
         let _ = scanner_tx.send(ScanCommand::ScanNode {
             node,
             session,
             pipeline: state.pipeline_config.clone(),
-        });
-    }
-
-    fn handler(
-        cmd: NavCommand,
-        sessions: Arc<scc::HashMap<SessionId, NavigatorState>>,
-        register: NodeRegistry,
-        path_cache: Arc<scc::HashSet<NodeId>>,
-        scanner_tx: Sender<scanner::ScanCommand>,
-        events: Sender<events::Event>,
-    ) {
-        tokio::spawn(async move {
-            Self::handle_command(
-                cmd,
-                sessions.clone(),
-                register.clone(),
-                path_cache.clone(),
-                &scanner_tx,
-                &events,
-            )
-            .await;
         });
     }
 }
@@ -493,14 +465,7 @@ impl Actor for Navigator {
         loop {
             match self.commands.recv_async().await {
                 Ok(command) => {
-                    Self::handler(
-                        command,
-                        self.sessions.clone(),
-                        self.register.clone(),
-                        self.path_cache.clone(),
-                        self.scanner_tx.clone(),
-                        self.events.clone(),
-                    );
+                    self.handle_command(command).await;
                 }
                 Err(_) => {
                     break;

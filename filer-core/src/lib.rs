@@ -1,5 +1,6 @@
 pub mod api;
 pub mod model;
+pub mod modules;
 pub mod services;
 pub mod utils;
 
@@ -10,7 +11,8 @@ mod pipeline;
 mod vfs;
 
 // Re-exports
-pub use api::{commands::Command as Command, events::Event as Event, handle::FilerCore as FilerCore};
+pub use api::{commands::Command, events::Event, handle::FilerCore};
+pub use api::module::Module;
 pub use errors::CoreError;
 pub use model::node::FileNode;
 

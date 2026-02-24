@@ -10,7 +10,11 @@ use crate::vfs::provider::FsProvider;
 /// Commands for searcher actor
 #[derive(Debug, Clone)]
 pub enum SearchCommand {
-    Search { query: SearchQuery, root: NodeId, session: SessionId },
+    Search {
+        query: SearchQuery,
+        root: NodeId,
+        session: SessionId,
+    },
     Cancel(SessionId),
 }
 
@@ -35,7 +39,7 @@ impl Actor for Searcher {
     async fn run(self) {
         todo!()
     }
-    
+
     fn name(&self) -> &'static str {
         "searcher"
     }

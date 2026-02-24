@@ -6,7 +6,6 @@ use crate::api::events::Event;
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
 use crate::services::preview::PreviewCache;
-use crate::vfs::provider::FsProvider;
 use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
 
 /// Commands for previewer actor
@@ -16,7 +15,7 @@ pub enum PreviewCommand {
     Generate {
         path: NodeId,
         options: Option<PreviewOptions>,
-        session: SessionId
+        session: SessionId,
     },
     /// Load metadata for a file
     LoadMetadata(NodeId, SessionId),
@@ -49,6 +48,7 @@ impl Previewer {
         todo!()
     }
 }
+
 impl Actor for Previewer {
     async fn run(self) {
         todo!()
