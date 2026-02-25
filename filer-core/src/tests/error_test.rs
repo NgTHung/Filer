@@ -57,11 +57,11 @@ fn test_error_invalid_path_variant() {
 
 #[test]
 fn test_error_channel_closed_variant() {
-    let error = CoreError::ChannelClosed;
+    let error = CoreError::ChannelClosed("test channel".into());
     
     match error {
-        CoreError::ChannelClosed => {
-            // Expected variant
+        CoreError::ChannelClosed(detail) => {
+            assert_eq!(detail, "test channel");
         }
         _ => panic!("Expected ChannelClosed variant"),
     }
@@ -135,11 +135,11 @@ fn test_error_display_invalid_path() {
 
 #[test]
 fn test_error_display_channel_closed() {
-    let error = CoreError::ChannelClosed;
+    let error = CoreError::ChannelClosed("command bus".into());
     
     let display = format!("{}", error);
-    assert!(display.contains("channel") || display.contains("Channel"));
-    assert!(display.contains("closed") || display.contains("Closed"));
+    assert!(display.contains("hannel"), "should mention channel: {}", display);
+    assert!(display.contains("command bus"), "should contain detail: {}", display);
 }
 
 #[test]
@@ -226,10 +226,10 @@ fn test_conversion_from_io_error_other() {
 #[test]
 fn test_error_equality_check() {
     // Test that we can match on error types
-    let error1 = CoreError::ChannelClosed;
+    let error1 = CoreError::ChannelClosed("test".into());
     let error2 = CoreError::Cancelled;
     
-    assert!(matches!(error1, CoreError::ChannelClosed));
+    assert!(matches!(error1, CoreError::ChannelClosed(_)));
     assert!(matches!(error2, CoreError::Cancelled));
     assert!(!matches!(error1, CoreError::Cancelled));
 }

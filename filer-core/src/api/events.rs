@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::errors::CoreError;
 use crate::modules::navigation::navigator::NavState;
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
@@ -99,6 +100,29 @@ pub enum Event {
     CurrentNavigateState{
         session: SessionId,
         state: NavState
+    }
+}
+
+impl Event {
+    /// Create an `Event::Error` from a [`CoreError`] and session.
+    ///
+    /// Determines `recoverable` based on the error variant:
+    /// - Recoverable: NotFound, PermissionDenied, InvalidPath, Cancelled, NetworkError
+    /// - Non-recoverable: Io, ChannelClosed, ActorError, InvalidData, InvalidInput, Other
+    pub fn from_error(err: CoreError, session: SessionId) -> Self {
+        let recoverable = matches!(
+            err,
+            CoreError::NotFound(_)
+                | CoreError::PermissionDenied(_)
+                | CoreError::InvalidPath(_)
+                | CoreError::Cancelled
+                | CoreError::NetworkError(_)
+        );
+        Event::Error {
+            message: err.to_string(),
+            recoverable,
+            session,
+        }
     }
 }
 

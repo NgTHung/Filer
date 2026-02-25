@@ -36,31 +36,40 @@ impl FsProvider for LocalFs {
 
     #[cfg(target_os = "linux")]
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        let dp =
-            std::fs::read_dir(path).map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let res = dp
-            .filter_map(|de| {
-                de.ok()
-                    .and_then(|f| FileNode::from_path(f.path(), Some(self.reg.clone())).ok())
-            })
-            .collect::<Vec<FileNode>>();
+        let mut dir =
+            tokio::fs::read_dir(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut res = Vec::new();
+        while let Some(entry) = dir.next_entry().await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))? {
+            match FileNode::from_path(entry.path(), Some(self.reg.clone())) {
+                Ok(node) => res.push(node),
+                Err(e) => {
+                    tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in listing");
+                }
+            }
+        }
         Ok(res)
     }
     #[cfg(target_os = "windows")]
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        let dp =
-            std::fs::read_dir(path).map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let res = dp
-            .filter_map(|de| {
-                let f = de.ok()?;
-                let filename = f.path();
-                let filemeta = f
-                    .metadata()
-                    .map_err(|e| CoreError::from_io_error(e, filename.clone()))
-                    .ok()?;
-                FileNode::from_metadata(filemeta, filename, Some(self.reg.clone())).ok()
-            })
-            .collect::<Vec<FileNode>>();
+        let mut dir =
+            tokio::fs::read_dir(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut res = Vec::new();
+        while let Some(entry) = dir.next_entry().await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))? {
+            let filename = entry.path();
+            let filemeta = match entry.metadata().await {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::debug!(path = %filename.display(), error = %e, "skipping entry metadata");
+                    continue;
+                }
+            };
+            match FileNode::from_metadata(filemeta, filename.clone(), Some(self.reg.clone())) {
+                Ok(node) => res.push(node),
+                Err(e) => {
+                    tracing::debug!(path = %filename.display(), error = %e, "skipping entry in listing");
+                }
+            }
+        }
         Ok(res)
     }
 
