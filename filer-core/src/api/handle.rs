@@ -8,6 +8,7 @@ use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry, Module, ModuleContext};
 use crate::api::session_manager::SessionManager;
+use crate::utils::channel::send_or_warn;
 use crate::errors::CoreError;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
@@ -95,13 +96,13 @@ impl FilerCore {
         // ── Register built-in session lifecycle handlers ─────────────
         handlers.on("session.handshake", |_cmd, ctx| {
             let session = ctx.sessions.create_session(ctx.events.clone());
-            let _ = ctx.events.send(Event::SessionCreated(session));
+            send_or_warn(&ctx.events, Event::SessionCreated(session), "emit SessionCreated");
         });
 
         handlers.on("session.destroy", |cmd, ctx| {
             if let Command::DestroySession(session_id) = cmd {
                 ctx.sessions.remove(session_id);
-                let _ = ctx.events.send(Event::SessionDestroyed(session_id));
+                send_or_warn(&ctx.events, Event::SessionDestroyed(session_id), "emit SessionDestroyed");
             }
         });
 
@@ -178,7 +179,7 @@ impl FilerCore {
     pub fn send(&self, command: Command) -> Result<(), CoreError> {
         self.command_tx
             .send(command)
-            .map_err(|_| CoreError::ChannelClosed)
+            .map_err(|_| CoreError::ChannelClosed("command channel closed".into()))
     }
 
     /// Try to receive a pending event without blocking.

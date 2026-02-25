@@ -5,7 +5,6 @@ pub mod services;
 pub mod utils;
 
 mod actors;
-mod bus;
 mod errors;
 mod pipeline;
 mod vfs;

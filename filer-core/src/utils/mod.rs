@@ -1,3 +1,4 @@
+pub(crate) mod channel;
 pub(crate) mod path;
 pub(crate) mod size;
 pub(crate) mod time;

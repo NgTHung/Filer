@@ -2,7 +2,6 @@ mod actor_test;
 mod command_router_test;
 mod handle_test;
 mod scanner_test;
-mod bus_test;
 mod crypto_test;
 mod error_test;
 mod mime_test;

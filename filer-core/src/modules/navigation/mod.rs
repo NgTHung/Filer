@@ -32,6 +32,7 @@ use flume::Sender;
 
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
+use crate::utils::channel::send_or_warn;
 use navigator::{NavCommand, Navigator};
 use super::scan::scanner::ScanCommand;
 
@@ -57,7 +58,7 @@ impl Module for NavigationModule {
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate", move |cmd, _ctx| {
             if let Command::Navigate(path, session) = cmd {
-                let _ = tx.send(NavCommand::NavigateToPath { session, path });
+                send_or_warn(&tx, NavCommand::NavigateToPath { session, path }, "navigate");
             }
         });
 
@@ -65,7 +66,7 @@ impl Module for NavigationModule {
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.node", move |cmd, _ctx| {
             if let Command::NavigateToNode(node, session) = cmd {
-                let _ = tx.send(NavCommand::Navigate { session, node });
+                send_or_warn(&tx, NavCommand::Navigate { session, node }, "navigate.node");
             }
         });
 
@@ -73,7 +74,7 @@ impl Module for NavigationModule {
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.up", move |cmd, _ctx| {
             if let Command::NavigateUp(session) = cmd {
-                let _ = tx.send(NavCommand::Up(session));
+                send_or_warn(&tx, NavCommand::Up(session), "navigate.up");
             }
         });
 
@@ -81,7 +82,7 @@ impl Module for NavigationModule {
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.back", move |cmd, _ctx| {
             if let Command::NavigateBack(session) = cmd {
-                let _ = tx.send(NavCommand::Back(session));
+                send_or_warn(&tx, NavCommand::Back(session), "navigate.back");
             }
         });
 
@@ -89,14 +90,14 @@ impl Module for NavigationModule {
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.refresh", move |cmd, _ctx| {
             if let Command::Refresh(session) = cmd {
-                let _ = tx.send(NavCommand::Refresh(session));
+                send_or_warn(&tx, NavCommand::Refresh(session), "navigate.refresh");
             }
         });
 
         // ── Session cleanup hook ─────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
-            let _ = tx.send(NavCommand::RemoveSession(session));
+            send_or_warn(&tx, NavCommand::RemoveSession(session), "nav session cleanup");
         });
 
         // ── Spawn Navigator actor ────────────────────────────────────

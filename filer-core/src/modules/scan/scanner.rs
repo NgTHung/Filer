@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::actors::Actor;
 use crate::api::events::Event;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
@@ -130,13 +131,7 @@ impl Scanner {
         let entries = match provider.list(path).await {
             Ok(entries) => entries,
             Err(e) => {
-                let _ = events
-                    .send_async(Event::Error {
-                        message: format!("Failed to scan {}: {}", path.display(), e),
-                        recoverable: true,
-                        session,
-                    })
-                    .await;
+                send_or_warn_async(events, Event::from_error(e, session), "scan error").await;
                 return;
             }
         };
@@ -160,14 +155,12 @@ impl Scanner {
         }
 
         // 6. Send result
-        let _ = events
-            .send_async(Event::DirectoryLoaded {
-                parent: parent_id,
-                path: path.to_path_buf(),
-                groups,
-                session,
-            })
-            .await;
+        send_or_warn_async(events, Event::DirectoryLoaded {
+            parent: parent_id,
+            path: path.to_path_buf(),
+            groups,
+            session,
+        }, "scan result").await;
     }
 
     async fn cancel_scan(&self, session: SessionId) {
@@ -196,11 +189,11 @@ impl Actor for Scanner {
                     // Resolve NodeId → PathBuf before spawning.
                     // Cheap in-memory lookup; fail fast if invalid.
                     let Some(path) = self.registry.resolve(node) else {
-                        let _ = self.events_sender.send(Event::Error {
+                        send_or_warn(&self.events_sender, Event::Error {
                             message: format!("Unable to resolve ID: {node:?}"),
                             recoverable: false,
                             session,
-                        });
+                        }, "scan resolve error");
                         continue;
                     };
                     self.dispatch_scan(path, session, pipeline);

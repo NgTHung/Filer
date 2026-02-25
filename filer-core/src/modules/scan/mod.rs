@@ -23,6 +23,7 @@ use flume::Sender;
 
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
+use crate::utils::channel::send_or_warn;
 use scanner::{ScanCommand, Scanner};
 use crate::vfs::provider::FsProvider;
 
@@ -68,11 +69,11 @@ impl Module for ScanModule {
                 pipeline,
             } = cmd
             {
-                let _ = tx.send(ScanCommand::Scan {
+                send_or_warn(&tx, ScanCommand::Scan {
                     path,
                     session,
                     pipeline,
-                });
+                }, "scan");
             }
         });
 
@@ -84,18 +85,18 @@ impl Module for ScanModule {
                 pipeline,
             } = cmd
             {
-                let _ = tx.send(ScanCommand::ScanNode {
+                send_or_warn(&tx, ScanCommand::ScanNode {
                     node,
                     session,
                     pipeline,
-                });
+                }, "scan.node");
             }
         });
 
         let tx = self.scan_tx.clone();
         ctx.handlers.on("scan.cancel", move |cmd, _ctx| {
             if let Command::CancelScan(session) = cmd {
-                let _ = tx.send(ScanCommand::Cancel(session));
+                send_or_warn(&tx, ScanCommand::Cancel(session), "scan.cancel");
             }
         });
 

@@ -31,6 +31,7 @@ use flume::Receiver;
 use crate::actors::Actor;
 use crate::api::commands::Command;
 use crate::api::module::{HandlerContext, HandlerRegistry};
+use crate::utils::channel::send_or_warn;
 
 /// Command Router actor — generic dispatcher backed by [`HandlerRegistry`].
 pub struct CommandRouter {
@@ -63,11 +64,11 @@ impl CommandRouter {
         // ── Session validation ───────────────────────────────────────
         if let Some(session) = command.session_id() {
             if !self.ctx.sessions.exists(session) {
-                let _ = self.ctx.events.send(crate::api::events::Event::Error {
+                send_or_warn(&self.ctx.events, crate::api::events::Event::Error {
                     message: format!("Unknown session: {}", session),
                     recoverable: true,
                     session,
-                });
+                }, "unknown session error");
                 return;
             }
         }

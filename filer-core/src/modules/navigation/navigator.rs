@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::Event;
 use crate::actors::Actor;
 use crate::api::events;
+use crate::utils::channel::send_or_warn;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
@@ -215,10 +216,10 @@ impl NavigatorState {
             can_forward: self.can_forward(),
             can_up: self
                 .current
-                .map(|f| self.register.clone().have_par(f).is_some())
-                .is_some(),
+                .and_then(|f| self.register.clone().have_par(f))
+                .unwrap_or(false),
             pipeline: self.pipeline_config.clone(),
-            selected: self.selected.iter().map(|f| f.clone()).collect(),
+            selected: self.selected.iter().cloned().collect(),
         }
     }
 }
@@ -276,10 +277,10 @@ impl Navigator {
     /// selection — before the async scan finishes.
     fn emit_snapshot(&self, session: SessionId) {
         self.sessions.read_sync(&session, |_, v| {
-            let _ = self.events.send(Event::CurrentNavigateState {
+            send_or_warn(&self.events, Event::CurrentNavigateState {
                 session,
                 state: v.snapshot(),
-            });
+            }, "emit nav snapshot");
         });
     }
 
@@ -319,11 +320,11 @@ impl Navigator {
                             let node = v.back(1).unwrap();
                             Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
                         } else {
-                            let _ = self.events.send(Event::Error {
-                                message: "Cant go back!".to_string(),
+                            send_or_warn(&self.events, Event::Error {
+                                message: "Can't go back: no history".to_string(),
                                 recoverable: true,
                                 session: session_id,
-                            });
+                            }, "emit back error");
                         }
                     })
                     .await;
@@ -337,11 +338,11 @@ impl Navigator {
                             let node = v.forward().unwrap();
                             Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
                         } else {
-                            let _ = self.events.send(Event::Error {
-                                message: "Cant go forward!".to_string(),
+                            send_or_warn(&self.events, Event::Error {
+                                message: "Can't go forward: no forward history".to_string(),
                                 recoverable: true,
                                 session: session_id,
-                            });
+                            }, "emit forward error");
                         }
                     })
                     .await;
@@ -351,24 +352,19 @@ impl Navigator {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .update_async(&session_id, |_, v| {
-                        if v.current
-                            .map(|f| self.register.clone().have_par(f).is_some())
-                            .is_some()
+                        if let Some(par) = v
+                            .current
+                            .and_then(|f| self.register.clone().get_par(f))
                         {
-                            let par = v
-                                .current
-                                .map(|f| self.register.clone().get_par(f))
-                                .flatten()
-                                .unwrap();
                             let node = self.register.clone().register(par);
                             v.navigate(node);
                             Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
                         } else {
-                            let _ = self.events.send(Event::Error {
-                                message: "Cant go up!".to_string(),
+                            send_or_warn(&self.events, Event::Error {
+                                message: "Can't go up: no parent directory".to_string(),
                                 recoverable: true,
                                 session: session_id,
-                            });
+                            }, "emit up error");
                         }
                     })
                     .await;
@@ -378,15 +374,14 @@ impl Navigator {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .read_async(&session_id, |_k, v| {
-                        if v.current.is_some() {
-                            let cur = v.current.unwrap();
+                        if let Some(cur) = v.current {
                             Self::trigger_scan(session_id, cur, v, self.scanner_tx.clone());
                         } else {
-                            let _ = self.events.send(Event::Error {
-                                message: "Cant refresh!".to_string(),
+                            send_or_warn(&self.events, Event::Error {
+                                message: "Can't refresh: no current directory".to_string(),
                                 recoverable: true,
                                 session: session_id,
-                            });
+                            }, "emit refresh error");
                         }
                     })
                     .await;
@@ -452,11 +447,11 @@ impl Navigator {
         state: &NavigatorState,
         scanner_tx: Sender<ScanCommand>,
     ) {
-        let _ = scanner_tx.send(ScanCommand::ScanNode {
+        send_or_warn(&scanner_tx, ScanCommand::ScanNode {
             node,
             session,
             pipeline: state.pipeline_config.clone(),
-        });
+        }, "trigger scan");
     }
 }
 
