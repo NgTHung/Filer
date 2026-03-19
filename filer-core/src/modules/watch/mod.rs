@@ -7,22 +7,30 @@
 
 pub mod watcher;
 
+use std::sync::Arc;
+
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
+use crate::vfs::watch::WatchProvider;
 use watcher::WatchCommand;
 
 /// Watch module — owns the Watcher actor.
-pub struct WatchModule;
+///
+/// Accepts any [`WatchProvider`] so that the underlying watch mechanism
+/// can vary per filesystem backend (notify for local, polling for remote, etc.).
+pub struct WatchModule {
+    provider: Arc<dyn WatchProvider>,
+}
 
 impl WatchModule {
-    pub fn new() -> Self {
-        Self
+    pub fn new(provider: Arc<dyn WatchProvider>) -> Self {
+        Self { provider }
     }
 }
 
 impl Module for WatchModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
-        let (watch_tx, _watch_rx) = flume::unbounded::<WatchCommand>();
+        let (watch_tx, watch_rx) = flume::unbounded::<WatchCommand>();
 
         // ── Watch ────────────────────────────────────────────────────
         let tx = watch_tx.clone();
@@ -54,8 +62,13 @@ impl Module for WatchModule {
             let _ = tx.send(WatchCommand::UnwatchSession(session));
         });
 
-        // TODO: Spawn Watcher actor once constructor is implemented
-        // let watcher = Watcher::new(watch_rx, ctx.events.clone());
-        // ctx.actors.spawn(watcher);
+        // ── Spawn Watcher actor ──────────────────────────────────────
+        let watcher = watcher::Watcher::new(
+            watch_rx,
+            ctx.events.clone(),
+            ctx.registry.clone(),
+            self.provider,
+        );
+        ctx.actors.spawn(watcher);
     }
 }

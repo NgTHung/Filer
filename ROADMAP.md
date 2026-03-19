@@ -110,22 +110,22 @@
   - [x] Tests: shutdown cleans all sessions
   - [x] FilerCore implementation
 
-- [ ] **Navigation Flow**
-  - [ ] Tests: Navigate(session, path) -> DirectoryLoaded event
-  - [ ] Tests: NavigateUp preserves session
-  - [ ] Tests: Refresh current directory
-  - [ ] Tests: Back/Forward with session
-  - [ ] Integration tests
+- [x] **Navigation Flow**
+  - [x] Tests: Navigate(session, path) -> DirectoryLoaded event
+  - [x] Tests: NavigateUp preserves session
+  - [x] Tests: Refresh current directory
+  - [x] Tests: Back/Forward with session
+  - [xx] Integration tests
 
 ## Phase 5: File Watching
-- [ ] **Watcher Actor**
-  - [ ] Tests: Watch command
-  - [ ] Tests: Unwatch command
-  - [ ] Tests: FsChanged event on file create
-  - [ ] Tests: FsChanged event on file modify
-  - [ ] Tests: FsChanged event on file delete
-  - [ ] Tests: debouncing rapid changes
-  - [ ] Watcher implementation
+- [x] **Watcher Actor**
+  - [x] Tests: Watch command
+  - [x] Tests: Unwatch command
+  - [x] Tests: FsChanged event on file create
+  - [x] Tests: FsChanged event on file modify
+  - [x] Tests: FsChanged event on file delete
+  - [x] Tests: debouncing rapid changes
+  - [x] Watcher implementation
 
 ## Phase 6: Search
 - [ ] **Query Parsing**

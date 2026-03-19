@@ -1,6 +1,7 @@
 mod actor_test;
 mod command_router_test;
 mod handle_test;
+mod navigation_flow_test;
 mod scanner_test;
 mod crypto_test;
 mod error_test;
@@ -12,3 +13,4 @@ mod session_manager_test;
 mod session_test;
 mod utils_test;
 mod vfs_test;
+mod watcher_test;

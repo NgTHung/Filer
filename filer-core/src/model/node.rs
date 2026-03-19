@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
 use crate::model::registry::NodeRegistry;
-use crate::pipeline::sort::SortBy;
 
 /// Unique identifier for a file node
 ///

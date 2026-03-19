@@ -1,6 +1,8 @@
 pub mod archive;
 pub mod local;
+pub mod local_watch;
 pub mod provider;
+pub mod watch;
 
 #[cfg(any(feature = "s3", feature = "webdav", feature = "ftp", feature = "sftp", feature = "kubernetes"))]
 pub mod remote;
