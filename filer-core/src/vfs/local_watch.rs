@@ -25,12 +25,13 @@ pub struct LocalWatchProvider {
 }
 
 impl LocalWatchProvider {
+    #[allow(unused)]
     pub fn new() -> Self {
         Self {
             debouncer: Mutex::new(None),
         }
     }
-
+    #[allow(unused)]
     /// Ensure the debouncer is initialised, lazily creating it on first watch.
     fn ensure_debouncer(
         &self,
@@ -110,6 +111,7 @@ impl WatchProvider for LocalWatchProvider {
 }
 
 /// Convert a single `notify` event into zero or more [`FsChange`]s.
+#[allow(unused)]
 fn notify_to_changes(event: &NotifyEvent) -> Vec<FsChange> {
     let kind = match &event.kind {
         EventKind::Create(CreateKind::File)

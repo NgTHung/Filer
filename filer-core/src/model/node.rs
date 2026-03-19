@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fs::Metadata;
 use std::path::PathBuf;
 use std::time::SystemTime;

@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Format SystemTime as human-readable string
 pub fn format_time(time: SystemTime) -> String {

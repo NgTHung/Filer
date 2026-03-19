@@ -306,7 +306,7 @@ impl FsProvider for MockFs {
 
         let mut nodes = Vec::new();
 
-        for (file_path, content) in &self.files {
+        for (file_path, _content) in &self.files {
             if let Some(parent) = file_path.parent() {
                 if parent == path {
                     nodes.push(FileNode::from_path(file_path.clone(), None)?);

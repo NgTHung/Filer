@@ -5,8 +5,8 @@ pub mod sort;
 
 use crate::model::node::FileNode;
 
+#[allow(unused_imports)]
 pub use config::{FilterConfig, GroupBy, GroupConfig, PipelineConfig, SortConfig};
-pub use sort::{SortField, SortOrder};
 
 /// Grouped file nodes with metadata
 #[derive(Debug, Clone)]

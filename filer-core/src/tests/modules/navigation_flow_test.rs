@@ -656,7 +656,7 @@ mod navigation_flow_tests {
         core.send(Command::Navigate(PathBuf::from("/y"), session)).unwrap();
 
         let deadline = tokio::time::Instant::now() + TIMEOUT;
-        let mut can_back = false;
+        let can_back;
 
         loop {
             assert!(tokio::time::Instant::now() <= deadline, "timeout waiting for can_back");

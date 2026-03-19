@@ -179,11 +179,7 @@ impl SizeGroup {
 }
 
 /// Group a file size into a size category
-pub fn size_group(bytes: u64) -> SizeGroup {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * KB;
-    const GB: u64 = 1024 * MB;
-    
+pub fn size_group(bytes: u64) -> SizeGroup {    
     match bytes {
         0 => SizeGroup::Empty,
         1..=10239 => SizeGroup::Tiny,                           // < 10 KB

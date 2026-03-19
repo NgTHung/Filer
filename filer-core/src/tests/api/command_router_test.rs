@@ -79,7 +79,7 @@ mod command_router_tests {
             let (command_tx, command_rx) = flume::unbounded::<Command>();
             let (event_tx, event_rx) = flume::unbounded::<Event>();
             let (nav_tx, nav_rx) = flume::unbounded::<NavCommand>();
-            let (scan_tx, _scan_rx) = flume::unbounded::<ScanCommand>();
+            let (_scan_tx, _scan_rx) = flume::unbounded::<ScanCommand>();
             let (search_tx, search_rx) = flume::unbounded::<SearchCommand>();
             let (watch_tx, watch_rx) = flume::unbounded::<WatchCommand>();
             let (preview_tx, preview_rx) = flume::unbounded::<PreviewCommand>();
