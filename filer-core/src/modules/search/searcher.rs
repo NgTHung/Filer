@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use flume::{Receiver, Sender};
 
 use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::model::node::NodeId;
 use crate::model::query::SearchQuery;
+use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::vfs::provider::FsProvider;
 
@@ -18,18 +21,20 @@ pub enum SearchCommand {
     Cancel(SessionId),
 }
 
-/// Searcher actor - handles file search
+/// Searcher actor - handles recursive file search
 pub struct Searcher {
     commands: Receiver<SearchCommand>,
     events: Sender<Event>,
-    provider: Box<dyn FsProvider>,
+    provider: Arc<dyn FsProvider>,
+    registry: NodeRegistry,
 }
 
 impl Searcher {
     pub fn new(
         commands: Receiver<SearchCommand>,
         events: Sender<Event>,
-        provider: Box<dyn FsProvider>,
+        provider: Arc<dyn FsProvider>,
+        registry: NodeRegistry,
     ) -> Self {
         todo!()
     }

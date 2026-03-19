@@ -6,17 +6,22 @@
 
 pub mod searcher;
 
+use std::sync::Arc;
+
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
 use crate::model::query::SearchQuery;
+use crate::vfs::provider::FsProvider;
 use searcher::SearchCommand;
 
 /// Search module — owns the Searcher actor.
-pub struct SearchModule;
+pub struct SearchModule {
+    provider: Arc<dyn FsProvider>,
+}
 
 impl SearchModule {
-    pub fn new() -> Self {
-        Self
+    pub fn new(provider: Arc<dyn FsProvider>) -> Self {
+        Self { provider }
     }
 }
 
@@ -49,7 +54,7 @@ impl Module for SearchModule {
         });
 
         // TODO: Spawn Searcher actor once constructor is implemented
-        // let searcher = Searcher::new(search_rx, ctx.events.clone(), provider);
+        // let searcher = Searcher::new(search_rx, ctx.events.clone(), self.provider.clone(), ctx.registry.clone());
         // ctx.actors.spawn(searcher);
     }
 }

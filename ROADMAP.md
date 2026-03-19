@@ -128,14 +128,14 @@
   - [x] Watcher implementation
 
 ## Phase 6: Search
-- [ ] **Query Parsing**
-  - [ ] Tests: simple text query
-  - [ ] Tests: glob pattern (*.rs, test?.txt)
-  - [ ] Tests: size filter (size:>1mb, size:<100kb)
-  - [ ] Tests: date filter (modified:<1w)
-  - [ ] Tests: type filter (type:image)
-  - [ ] Tests: combined filters
-  - [ ] SearchQuery parser
+- [x] **Query Parsing**
+  - [x] Tests: simple text query
+  - [x] Tests: glob pattern (*.rs, test?.txt)
+  - [x] Tests: size filter (size:>1mb, size:<100kb)
+  - [x] Tests: date filter (modified:<1w)
+  - [x] Tests: type filter (type:image)
+  - [x] Tests: combined filters
+  - [x] SearchQuery parser
 
 - [ ] **Searcher Actor**
   - [ ] Tests: search by name
