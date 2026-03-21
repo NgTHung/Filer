@@ -131,6 +131,13 @@ impl FsProvider for MockProvider {
             return Err(CoreError::NotFound(path.to_path_buf()));
         }
 
+        // Yield to the scheduler between directory listings so that
+        // cancellation tokens and actor commands are processed between
+        // BFS iterations. Without this, the pure-memory mock completes
+        // entire traversals in a single scheduling quantum, making
+        // cancellation tests unreliable.
+        tokio::task::yield_now().await;
+
         self.list_calls.lock().unwrap().push(path.to_path_buf());
 
         let guard = self.files_by_path.lock().unwrap();
@@ -884,7 +891,7 @@ mod searcher_cancellation_tests {
         // Collect events for a short window
         let events = collect_events_for(&evt_rx, Duration::from_millis(500)).await;
 
-        // Should have fewer results than the full 20 files (search was cancelled)
+        // Count matched files across all batches for this session
         let total_matches: usize = events.iter().filter_map(|e| {
             if let Event::SearchResults { matches, session: s, .. } = e {
                 if *s == session { return Some(matches.len()); }
@@ -892,9 +899,11 @@ mod searcher_cancellation_tests {
             None
         }).sum();
 
-        // We can't guarantee exactly 0 matches (race condition), but should be < 20
-        assert!(total_matches < 20,
-            "cancel should stop search before finding all 20 files (found {})", total_matches);
+        // yield_now() in the mock guarantees the scheduler processes the Cancel
+        // command between directory listings, so the search stops well before
+        // completing all 20 levels. Fewer than half the files is a reliable bound.
+        assert!(total_matches < 10,
+            "cancel should stop search well before finding all 20 files (found {})", total_matches);
     }
 
     #[tokio::test]

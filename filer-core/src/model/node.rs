@@ -101,7 +101,15 @@ impl FileNode {
         let size = metadata.len();
 
         // Determine if hidden (Unix: starts with dot)
+        #[cfg(unix)]
         let hidden = name.starts_with('.');
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x00000002;
+        #[cfg(windows)]
+        let hidden = {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x00000002;
+            metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
+        };
 
         // Get permissions
         #[cfg(unix)]
@@ -110,7 +118,7 @@ impl FileNode {
             Some(metadata.permissions().mode())
         };
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
         let permissions = None;
 
         let readonly = metadata.permissions().readonly();
@@ -137,9 +145,6 @@ impl FileNode {
         reg: Option<NodeRegistry>,
     ) -> Result<Self, CoreError> {
         use std::fs;
-        let path = path
-            .canonicalize()
-            .map_err(|e| CoreError::from_io_error(e, path))?;
         // Extract file name
         let name = path
             .file_name()
@@ -177,7 +182,14 @@ impl FileNode {
         let size = meta.len();
 
         // Determine if hidden (Unix: starts with dot)
+        #[cfg(unix)]
         let hidden = name.starts_with('.');
+        #[cfg(windows)]
+        let hidden = {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x00000002;
+            meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
+        };
 
         // Get permissions
         #[cfg(unix)]
@@ -186,7 +198,7 @@ impl FileNode {
             Some(meta.permissions().mode())
         };
 
-        #[cfg(not(unix))]
+        #[cfg(windows)]
         let permissions = None;
 
         let readonly = meta.permissions().readonly();

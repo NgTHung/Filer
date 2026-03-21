@@ -37,7 +37,6 @@ pub enum Event {
     
     /// Search results
     SearchResults {
-        query: String,
         matches: Vec<FileNode>,
         complete: bool,
         session: SessionId

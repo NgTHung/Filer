@@ -49,6 +49,7 @@ pub struct SearchOptions {
     pub include_hidden: bool,
     pub max_depth: Option<usize>,
     pub max_results: Option<usize>,
+    pub batch_size: Option<usize>,
 }
 
 impl Default for SearchOptions {
@@ -58,6 +59,7 @@ impl Default for SearchOptions {
             include_hidden: false,
             max_depth: None,
             max_results: None,
+            batch_size: None
         }
     }
 }
@@ -351,6 +353,70 @@ impl SearchQuery {
 }
 
 /// Internal parsed token — either a filter or an option setter.
+
+impl SearchQuery {
+    /// Returns `true` if `node` satisfies all conditions in this query.
+    ///
+    /// AND semantics: every filter must pass, and the text pattern (if any)
+    /// must match the file name. Case sensitivity is controlled by
+    /// `options.case_sensitive`.
+    pub fn matches(&self, node: &crate::model::node::FileNode) -> bool {
+        if !self.text.is_empty() {
+            let matched = if self.options.case_sensitive {
+                node.name.contains(&self.text)
+            } else {
+                node.name.to_lowercase().contains(&self.text.to_lowercase())
+            };
+            if !matched {
+                return false;
+            }
+        }
+
+        for filter in &self.filters {
+            if !filter.matches(node) {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl QueryFilter {
+    /// Returns `true` if `node` satisfies this individual filter.
+    pub fn matches(&self, node: &crate::model::node::FileNode) -> bool {
+        match self {
+            QueryFilter::Extension(exts) => {
+                let ext = node.extension().unwrap_or("").to_lowercase();
+                exts.iter().any(|e| e == &ext)
+            }
+            QueryFilter::SizeGreaterThan(n) => node.size > *n,
+            QueryFilter::SizeLessThan(n) => node.size < *n,
+            QueryFilter::ModifiedAfter(ts) => node
+                .modified
+                .map(|t| systemtime_to_i64(t) > *ts)
+                .unwrap_or(false),
+            QueryFilter::ModifiedBefore(ts) => node
+                .modified
+                .map(|t| systemtime_to_i64(t) < *ts)
+                .unwrap_or(false),
+            QueryFilter::IsDirectory => node.is_dir(),
+            QueryFilter::IsFile => node.is_file(),
+            QueryFilter::IsHidden => node.meta.hidden,
+            QueryFilter::NameContains(s) => node.name.contains(s.as_str()),
+            QueryFilter::NameMatches(pattern) => regex::Regex::new(pattern)
+                .map(|re| re.is_match(&node.name))
+                .unwrap_or(false),
+        }
+    }
+}
+
+fn systemtime_to_i64(t: std::time::SystemTime) -> i64 {
+    t.duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 enum ParsedToken {
     Filter(QueryFilter),
     Option(OptionSet),

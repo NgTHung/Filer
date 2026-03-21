@@ -2,8 +2,56 @@
 //!
 //! Covers: plain text, filters (ext, size, type, date, name, regex),
 //! options (case, hidden, depth, max), combined queries, and error cases.
+//! Also covers SearchQuery::matches and QueryFilter::matches.
 
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
+
+use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::query::{QueryFilter, SearchQuery};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn make_file(name: &str, size: u64) -> FileNode {
+    let path = PathBuf::from("/test").join(name);
+    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_string);
+    FileNode {
+        id: NodeId::from_path(&path),
+        name: name.to_string(),
+        path,
+        kind: NodeKind::File { extension: ext },
+        size,
+        modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
+        created: None,
+        meta: NodeMeta { hidden: false, readonly: false, permissions: None },
+    }
+}
+
+fn make_dir(name: &str) -> FileNode {
+    let path = PathBuf::from("/test").join(name);
+    FileNode {
+        id: NodeId::from_path(&path),
+        name: name.to_string(),
+        path,
+        kind: NodeKind::Directory { children_count: None },
+        size: 0,
+        modified: Some(SystemTime::UNIX_EPOCH),
+        created: None,
+        meta: NodeMeta { hidden: false, readonly: false, permissions: None },
+    }
+}
+
+fn make_hidden(name: &str) -> FileNode {
+    let mut f = make_file(name, 100);
+    f.meta.hidden = true;
+    f
+}
+
+fn make_file_at(name: &str, size: u64, modified_secs: u64) -> FileNode {
+    let mut f = make_file(name, size);
+    f.modified = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(modified_secs));
+    f
+}
 
 #[cfg(test)]
 mod tests {
@@ -194,5 +242,209 @@ mod tests {
     #[test]
     fn parse_invalid_regex() {
         assert!(SearchQuery::parse("match:[invalid").is_err());
+    }
+}
+
+// ── SearchQuery::matches tests ────────────────────────────────────────────────
+
+#[cfg(test)]
+mod matches_tests {
+    use super::*;
+
+    // ── Text matching ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn text_match_case_insensitive_by_default() {
+        let q = SearchQuery::parse("README").unwrap();
+        assert!(q.matches(&make_file("readme.md", 100)));
+        assert!(q.matches(&make_file("README.txt", 100)));
+        assert!(!q.matches(&make_file("other.txt", 100)));
+    }
+
+    #[test]
+    fn text_match_case_sensitive() {
+        let q = SearchQuery::parse("README case:yes").unwrap();
+        assert!(q.matches(&make_file("README.txt", 100)));
+        assert!(!q.matches(&make_file("readme.md", 100)));
+    }
+
+    #[test]
+    fn empty_text_matches_any_name() {
+        let q = SearchQuery::parse("type:file").unwrap();
+        assert!(q.matches(&make_file("anything.xyz", 1)));
+        assert!(!q.matches(&make_dir("a_dir")));
+    }
+
+    // ── Filter: Extension ─────────────────────────────────────────────────────
+
+    #[test]
+    fn filter_extension_matches() {
+        let q = SearchQuery::parse("ext:rs,toml").unwrap();
+        assert!(q.matches(&make_file("main.rs", 100)));
+        assert!(q.matches(&make_file("Cargo.toml", 50)));
+        assert!(!q.matches(&make_file("readme.md", 50)));
+    }
+
+    #[test]
+    fn filter_extension_case_insensitive_compare() {
+        let q = SearchQuery::parse("ext:rs").unwrap();
+        // ext stored lowercase, node extension extracted from path (lowercase on most FS)
+        assert!(q.matches(&make_file("lib.rs", 100)));
+        assert!(!q.matches(&make_file("lib.py", 100)));
+    }
+
+    #[test]
+    fn filter_extension_no_match_on_directory() {
+        let q = SearchQuery::parse("ext:rs").unwrap();
+        assert!(!q.matches(&make_dir("src")));
+    }
+
+    // ── Filter: Size ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn filter_size_greater_than() {
+        let q = SearchQuery::parse("size:>1000").unwrap();
+        assert!(q.matches(&make_file("big.bin", 1001)));
+        assert!(!q.matches(&make_file("small.bin", 1000)));
+        assert!(!q.matches(&make_file("tiny.bin", 500)));
+    }
+
+    #[test]
+    fn filter_size_less_than() {
+        let q = SearchQuery::parse("size:<500").unwrap();
+        assert!(q.matches(&make_file("small.txt", 499)));
+        assert!(!q.matches(&make_file("medium.txt", 500)));
+        assert!(!q.matches(&make_file("large.txt", 1000)));
+    }
+
+    #[test]
+    fn filter_size_range() {
+        let q = SearchQuery::parse("size:>100 size:<1000").unwrap();
+        assert!(q.matches(&make_file("mid.txt", 500)));
+        assert!(!q.matches(&make_file("tiny.txt", 50)));
+        assert!(!q.matches(&make_file("huge.txt", 2000)));
+    }
+
+    // ── Filter: Type ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn filter_is_file() {
+        let q = SearchQuery::parse("type:file").unwrap();
+        assert!(q.matches(&make_file("doc.txt", 100)));
+        assert!(!q.matches(&make_dir("docs")));
+    }
+
+    #[test]
+    fn filter_is_directory() {
+        let q = SearchQuery::parse("type:dir").unwrap();
+        assert!(q.matches(&make_dir("src")));
+        assert!(!q.matches(&make_file("src.txt", 100)));
+    }
+
+    // ── Filter: Hidden ────────────────────────────────────────────────────────
+
+    #[test]
+    fn filter_is_hidden() {
+        let q = SearchQuery::parse("hidden:yes").unwrap();
+        assert!(q.matches(&make_hidden(".env")));
+        assert!(!q.matches(&make_file("visible.txt", 100)));
+    }
+
+    // ── Filter: NameContains ──────────────────────────────────────────────────
+
+    #[test]
+    fn filter_name_contains() {
+        let q = SearchQuery::parse("name:config").unwrap();
+        assert!(q.matches(&make_file("app_config.toml", 100)));
+        assert!(q.matches(&make_file("config.json", 100)));
+        assert!(!q.matches(&make_file("readme.md", 100)));
+    }
+
+    #[test]
+    fn filter_name_contains_is_case_sensitive() {
+        // NameContains is always literal (case-sensitive substring)
+        let q = SearchQuery::parse("name:Config").unwrap();
+        assert!(!q.matches(&make_file("config.json", 100)));
+        assert!(q.matches(&make_file("Config.json", 100)));
+    }
+
+    // ── Filter: NameMatches (regex) ───────────────────────────────────────────
+
+    #[test]
+    fn filter_name_matches_regex() {
+        let q = SearchQuery::parse(r"match:^test_.*\.rs$").unwrap();
+        assert!(q.matches(&make_file("test_search.rs", 100)));
+        assert!(q.matches(&make_file("test_scan.rs", 200)));
+        assert!(!q.matches(&make_file("main.rs", 300)));
+        assert!(!q.matches(&make_file("test_nav.py", 400)));
+    }
+
+    #[test]
+    fn filter_name_matches_anchored() {
+        let q = SearchQuery::parse("match:^lib").unwrap();
+        assert!(q.matches(&make_file("lib.rs", 100)));
+        assert!(!q.matches(&make_file("stdlib.rs", 100)));
+    }
+
+    // ── Filter: ModifiedAfter / ModifiedBefore ────────────────────────────────
+
+    #[test]
+    fn filter_modified_after() {
+        let q = SearchQuery::parse("after:1700000000").unwrap();
+        assert!(q.matches(&make_file_at("new.txt", 50, 2_000_000_000)));
+        assert!(!q.matches(&make_file_at("old.txt", 50, 100)));
+    }
+
+    #[test]
+    fn filter_modified_before() {
+        let q = SearchQuery::parse("before:1700000000").unwrap();
+        assert!(q.matches(&make_file_at("old.txt", 50, 100)));
+        assert!(!q.matches(&make_file_at("new.txt", 50, 2_000_000_000)));
+    }
+
+    #[test]
+    fn filter_modified_none_fails() {
+        // node with no modified time fails date filters
+        let q = SearchQuery::parse("after:0").unwrap();
+        let mut f = make_file("no_time.txt", 100);
+        f.modified = None;
+        assert!(!q.matches(&f));
+    }
+
+    // ── AND semantics ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn multiple_filters_all_must_pass() {
+        let q = SearchQuery::parse("ext:rs size:>100").unwrap();
+        assert!(q.matches(&make_file("big.rs", 200)));
+        assert!(!q.matches(&make_file("small.rs", 50)));   // size fails
+        assert!(!q.matches(&make_file("big.py", 200)));    // ext fails
+    }
+
+    #[test]
+    fn text_and_filter_both_must_pass() {
+        let q = SearchQuery::parse("test ext:rs").unwrap();
+        assert!(q.matches(&make_file("test_main.rs", 100)));
+        assert!(!q.matches(&make_file("test_main.py", 100))); // ext fails
+        assert!(!q.matches(&make_file("main.rs", 100)));       // text fails
+    }
+
+    // ── QueryFilter::matches directly ─────────────────────────────────────────
+
+    #[test]
+    fn query_filter_extension_direct() {
+        let f = QueryFilter::Extension(vec!["rs".into()]);
+        assert!(f.matches(&make_file("main.rs", 0)));
+        assert!(!f.matches(&make_file("main.py", 0)));
+    }
+
+    #[test]
+    fn query_filter_size_direct() {
+        let gt = QueryFilter::SizeGreaterThan(100);
+        let lt = QueryFilter::SizeLessThan(100);
+        assert!(gt.matches(&make_file("f", 101)));
+        assert!(!gt.matches(&make_file("f", 100)));
+        assert!(lt.matches(&make_file("f", 99)));
+        assert!(!lt.matches(&make_file("f", 100)));
     }
 }

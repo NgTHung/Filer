@@ -34,7 +34,7 @@ impl FsProvider for LocalFs {
         }
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         let mut dir =
             tokio::fs::read_dir(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -49,7 +49,7 @@ impl FsProvider for LocalFs {
         }
         Ok(res)
     }
-    #[cfg(target_os = "windows")]
+    #[cfg(windows)]
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         let mut dir =
             tokio::fs::read_dir(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;

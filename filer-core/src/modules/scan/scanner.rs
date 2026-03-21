@@ -87,16 +87,13 @@ impl Scanner {
         let registry = self.registry.clone();
         let events = self.events_sender.clone();
         let active_scans = self.active_scans.clone();
-
+        
+        let cancel = CancellationToken::new();
+        if let Some((_, old)) = active_scans.remove_sync(&session) {
+            old.cancel();
+        }
+        let _ = active_scans.insert_sync(session, cancel.clone());
         tokio::spawn(async move {
-            // Create and register cancellation token, cancelling any
-            // existing scan for this session first.
-            let cancel = CancellationToken::new();
-            if let Some((_, old)) = active_scans.remove_async(&session).await {
-                old.cancel();
-            }
-            let _ = active_scans.insert_async(session, cancel.clone()).await;
-
             Self::scan_directory(
                 &provider,
                 &registry,
@@ -163,8 +160,8 @@ impl Scanner {
         }, "scan result").await;
     }
 
-    async fn cancel_scan(&self, session: SessionId) {
-        if let Some((_, token)) = self.active_scans.remove_async(&session).await {
+    fn cancel_scan(&self, session: SessionId) {
+        if let Some((_, token)) = self.active_scans.remove_sync(&session) {
             token.cancel();
         }
     }
@@ -199,7 +196,7 @@ impl Actor for Scanner {
                     self.dispatch_scan(path, session, pipeline);
                 }
                 Ok(ScanCommand::Cancel(session)) => {
-                    self.cancel_scan(session).await;
+                    self.cancel_scan(session);
                 }
                 Err(_) | Ok(ScanCommand::Shutdown) => {
                     self.active_scans

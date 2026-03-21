@@ -27,7 +27,7 @@ impl SearchModule {
 
 impl Module for SearchModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
-        let (search_tx, _search_rx) = flume::unbounded::<SearchCommand>();
+        let (search_tx, search_rx) = flume::unbounded::<SearchCommand>();
 
         // ── Search ───────────────────────────────────────────────────
         let tx = search_tx.clone();
@@ -53,8 +53,7 @@ impl Module for SearchModule {
             let _ = tx.send(SearchCommand::Cancel(session));
         });
 
-        // TODO: Spawn Searcher actor once constructor is implemented
-        // let searcher = Searcher::new(search_rx, ctx.events.clone(), self.provider.clone(), ctx.registry.clone());
-        // ctx.actors.spawn(searcher);
+        let searcher = searcher::Searcher::new(search_rx, ctx.events.clone(), self.provider.clone(), ctx.registry.clone());
+        ctx.actors.spawn(searcher);
     }
 }

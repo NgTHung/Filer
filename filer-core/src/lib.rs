@@ -26,7 +26,13 @@ pub use services::crypto::{Cipher, CipherAlgorithm, Vault, VaultConfig};
 
 // VFS providers
 pub use vfs::local::LocalFs;
-pub use vfs::provider::FsProvider;
+pub use vfs::provider::{Capabilities, FsProvider};
+
+// Actor infrastructure
+pub use actors::Actor;
+
+// Pipeline types
+pub use pipeline::{PipelineConfig, SortConfig};
 
 #[cfg(feature = "s3")]
 pub use vfs::s3::{S3Fs, S3Config};

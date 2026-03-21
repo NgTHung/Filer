@@ -137,14 +137,14 @@
   - [x] Tests: combined filters
   - [x] SearchQuery parser
 
-- [ ] **Searcher Actor**
-  - [ ] Tests: search by name
-  - [ ] Tests: search recursive
-  - [ ] Tests: search with filters
-  - [ ] Tests: search cancellation
-  - [ ] Tests: search progress events
-  - [ ] Tests: search result streaming
-  - [ ] Searcher implementation
+- [x] **Searcher Actor**
+  - [x] Tests: search by name
+  - [x] Tests: search recursive
+  - [x] Tests: search with filters
+  - [x] Tests: search cancellation
+  - [x] Tests: search progress events
+  - [x] Tests: search result streaming
+  - [x] Searcher implementation
 
 ## Phase 7: MIME & Metadata
 - [ ] **MIME Detection**
