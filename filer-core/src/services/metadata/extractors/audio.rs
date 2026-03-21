@@ -2,9 +2,9 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::metadata::extended::{AudioMetadata, AudioTags, ExtendedMetadata};
+use crate::services::metadata::extended::{AudioTags, ExtendedMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 
 /// Audio metadata extractor (duration, bitrate, tags)
 pub struct AudioExtractor;
@@ -15,12 +15,12 @@ impl AudioExtractor {
     }
 
     /// Extract audio stream information
-    async fn extract_stream_info(&self, path: &Path) -> Result<(f64, Option<u32>, Option<u8>, Option<u32>), CoreError> {
+    async fn extract_stream_info(&self, _path: &Path) -> Result<(f64, Option<u32>, Option<u8>, Option<u32>), CoreError> {
         todo!()
     }
 
     /// Extract audio tags (ID3, Vorbis, etc.)
-    async fn extract_tags(&self, path: &Path) -> Result<AudioTags, CoreError> {
+    async fn extract_tags(&self, _path: &Path) -> Result<AudioTags, CoreError> {
         todo!()
     }
 }
@@ -31,11 +31,7 @@ impl MetadataExtractor for AudioExtractor {
         &[MimeCategory::Audio]
     }
 
-    fn supported_mime_types(&self) -> Option<&[&str]> {
-        Some(&["audio/mpeg", "audio/flac", "audio/ogg", "audio/wav", "audio/aac", "audio/mp4"])
-    }
-
-    async fn extract(&self, path: &Path) -> Result<ExtendedMetadata, CoreError> {
+    async fn extract(&self, path: &Path, _mime: &MimeInfo) -> Result<ExtendedMetadata, CoreError> {
         todo!()
     }
 

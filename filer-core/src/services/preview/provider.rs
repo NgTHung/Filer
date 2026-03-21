@@ -2,7 +2,7 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{DetectionStrategy, MimeCategory, MimeInfo};
 
 /// Generated preview data
 #[derive(Debug, Clone)]
@@ -118,6 +118,12 @@ pub struct PreviewOptions {
     pub output_format: ImageFormat,
     /// Syntax highlighting theme
     pub syntax_theme: String,
+    /// Controls when magic-byte detection is used to identify file type.
+    ///
+    /// - `MagicBytes`            — default for local FS, best accuracy
+    /// - `ExtensionWithFallback` — magic only for missing/ambiguous extensions
+    /// - `ExtensionOnly`         — zero I/O, suitable for remote providers
+    pub detection_strategy: DetectionStrategy,
 }
 
 impl Default for PreviewOptions {
@@ -129,6 +135,7 @@ impl Default for PreviewOptions {
             max_bytes: 1024 * 1024, // 1MB
             output_format: ImageFormat::Png,
             syntax_theme: "base16-ocean.dark".to_string(),
+            detection_strategy: DetectionStrategy::MagicBytes,
         }
     }
 }
@@ -136,18 +143,17 @@ impl Default for PreviewOptions {
 /// Trait for preview providers
 #[async_trait]
 pub trait PreviewProvider: Send + Sync {
-    /// Categories this provider handles
+    /// Categories this provider handles (used for registry routing).
     fn supported_categories(&self) -> &[MimeCategory];
 
-    /// File extensions supported (optional, for fine-grained control)
-    fn supported_extensions(&self) -> Option<&[&str]> {
-        None
-    }
-
-    /// Generate preview for a file
+    /// Generate preview for a file.
+    ///
+    /// `mime` is the already-detected MIME info — use `mime.mime_type` for
+    /// format-specific branching within a category (e.g. SVG vs PNG rendering).
     async fn generate(
         &self,
         path: &Path,
+        mime: &MimeInfo,
         options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError>;
 

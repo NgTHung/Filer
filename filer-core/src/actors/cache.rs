@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use rapidhash::fast::RandomState;
+
 use crate::actors::Actor;
 use crate::model::node::{FileNode, NodeId};
 
@@ -16,7 +18,7 @@ pub enum CacheCommand {
 /// Cache actor - LRU cache for file nodes
 pub struct Cache {
     commands: flume::Receiver<CacheCommand>,
-    entries: Arc<scc::HashMap<NodeId, FileNode>>,
+    entries: Arc<scc::HashMap<NodeId, FileNode, RandomState>>,
     capacity: usize,
 }
 

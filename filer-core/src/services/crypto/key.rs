@@ -1,3 +1,5 @@
+use rapidhash::RapidBuildHasher;
+
 use crate::errors::CoreError;
 
 /// Key derivation functions
@@ -42,13 +44,13 @@ pub fn generate_salt(len: usize) -> Vec<u8> {
 
 /// Key storage
 pub struct KeyStore {
-    keys: Arc<scc::HashMap<String, Vec<u8>>>,
+    keys: Arc<scc::HashMap<String, Vec<u8>, RapidBuildHasher>>,
 }
 
 impl KeyStore {
     pub fn new() -> Self {
         Self {
-            keys: Arc::new(scc::HashMap::new()),
+            keys: Arc::new(scc::HashMap::with_hasher(RapidBuildHasher::default())),
         }
     }
 

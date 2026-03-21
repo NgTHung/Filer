@@ -2,7 +2,7 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::services::preview::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
 /// Archive contents preview provider
@@ -30,13 +30,10 @@ impl PreviewProvider for ArchiveProvider {
         &[MimeCategory::Archive]
     }
 
-    fn supported_extensions(&self) -> Option<&[&str]> {
-        Some(&["zip", "tar", "tar.gz", "tgz", "tar.bz2", "tar.xz", "7z", "rar"])
-    }
-
     async fn generate(
         &self,
         path: &Path,
+        mime: &MimeInfo,
         options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()

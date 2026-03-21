@@ -36,4 +36,17 @@ pub trait FsProvider: Send + Sync {
     
     /// Get metadata for a path
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError>;
+
+    /// Read the first `n_bytes` of a file for MIME magic-byte detection.
+    ///
+    /// The default implementation delegates to `read_range(path, 0, n_bytes)`.
+    /// Local providers should override this with a single `pread` / `read_exact`
+    /// call to avoid the seek overhead of the generic implementation.
+    ///
+    /// Remote providers (S3, WebDAV, SFTP) should return `Err` to signal that
+    /// magic-byte detection is unavailable — callers will then fall back to
+    /// extension-only detection regardless of the requested `DetectionStrategy`.
+    async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
+        self.read_range(path, 0, n_bytes as u64).await
+    }
 }

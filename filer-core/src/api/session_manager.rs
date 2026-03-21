@@ -11,6 +11,8 @@
 
 use std::sync::Arc;
 
+use rapidhash::fast::RandomState;
+
 use flume::Sender;
 
 use crate::api::events::Event;
@@ -74,7 +76,7 @@ impl Session {
 #[derive(Debug, Clone)]
 pub struct SessionManager {
     /// Active sessions by ID
-    sessions: Arc<scc::HashMap<SessionId, Session>>,
+    sessions: Arc<scc::HashMap<SessionId, Session, RandomState>>,
     /// Shared node registry
     registry: NodeRegistry,
 }
@@ -83,7 +85,7 @@ impl SessionManager {
     /// Create a new session manager
     pub fn new(reg: NodeRegistry) -> Self {
         Self {
-            sessions: Arc::new(scc::HashMap::new()),
+            sessions: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             registry: reg,
         }
     }

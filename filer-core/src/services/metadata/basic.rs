@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::errors::CoreError;
+
 /// Basic filesystem metadata (always available)
 #[derive(Debug, Clone)]
 pub struct BasicMetadata {
@@ -25,7 +27,7 @@ pub struct Permissions {
 
 impl BasicMetadata {
     /// Load basic metadata from path
-    pub async fn from_path(path: PathBuf) -> Result<Self, std::io::Error> {
+    pub async fn from_path(_path: PathBuf) -> Result<Self, CoreError> {
         todo!()
     }
 

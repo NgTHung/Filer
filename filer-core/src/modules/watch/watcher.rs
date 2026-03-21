@@ -1,6 +1,7 @@
 use flume::Sender;
-use std::collections::HashMap;
 use std::path::PathBuf;
+
+use rapidhash::RapidHashMap;
 use std::sync::Arc;
 
 use crate::actors::Actor;
@@ -33,7 +34,7 @@ pub struct Watcher {
     commands: flume::Receiver<WatchCommand>,
     events: Sender<Event>,
     registry: NodeRegistry,
-    watches: HashMap<NodeId, WatchEntry>,
+    watches: RapidHashMap<NodeId, WatchEntry>,
     provider: Arc<dyn WatchProvider>,
     /// Receives raw changes from the provider; forwarded as Events.
     change_rx: flume::Receiver<FsChange>,
@@ -52,7 +53,7 @@ impl Watcher {
             commands,
             events,
             registry,
-            watches: HashMap::new(),
+            watches: RapidHashMap::default(),
             provider,
             change_rx,
             change_tx,

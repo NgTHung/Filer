@@ -1,4 +1,5 @@
 use flume::{Receiver, Sender};
+use rapidhash::fast::RandomState;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -57,7 +58,7 @@ pub struct Scanner {
     events_sender: Sender<Event>,
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
-    active_scans: Arc<scc::HashMap<SessionId, CancellationToken>>,
+    active_scans: Arc<scc::HashMap<SessionId, CancellationToken, RandomState>>,
 }
 
 impl Scanner {
@@ -72,7 +73,7 @@ impl Scanner {
             events_sender: events,
             provider,
             registry,
-            active_scans: Arc::new(scc::HashMap::new()),
+            active_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
 

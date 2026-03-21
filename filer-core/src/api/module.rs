@@ -25,6 +25,7 @@
 //!   and `Arc<dyn Any>` payload for commands not in the core enum.
 
 use flume::Sender;
+use rapidhash::fast::RandomState;
 
 use crate::actors::ActorSystem;
 use crate::api::commands::Command;
@@ -68,14 +69,14 @@ type DestroyHookFn = Box<dyn Fn(SessionId, &HandlerContext) + Send + Sync>;
 /// the string key, then looks up and invokes the registered handler.
 /// If no handler is found, the command is logged and dropped.
 pub struct HandlerRegistry {
-    handlers: scc::HashMap<String, HandlerFn>,
+    handlers: scc::HashMap<String, HandlerFn, RandomState>,
     destroy_hooks: std::sync::Mutex<Vec<DestroyHookFn>>,
 }
 
 impl HandlerRegistry {
     pub fn new() -> Self {
         Self {
-            handlers: scc::HashMap::new(),
+            handlers: scc::HashMap::with_hasher(RandomState::new()),
             destroy_hooks: std::sync::Mutex::new(Vec::new()),
         }
     }

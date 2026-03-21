@@ -104,4 +104,19 @@ impl FsProvider for LocalFs {
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
         FileNode::from_path(path.to_path_buf(), Some(self.reg.clone()))
     }
+
+    /// Read the first `n_bytes` for MIME detection using a single `read_exact`.
+    ///
+    /// More efficient than the default `read_range` implementation because it
+    /// opens the file once without seeking and reads exactly what is needed.
+    ///
+    /// # TODO
+    /// - Open file with `tokio::fs::File::open(path)`
+    /// - Allocate `buf: Vec<u8>` of capacity `n_bytes`
+    /// - `file.read_exact(&mut buf)` — handle short reads (file smaller than n_bytes)
+    ///   by resizing the buffer to the number of bytes actually read
+    /// - Return `Ok(buf)`
+    async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
+        todo!()
+    }
 }

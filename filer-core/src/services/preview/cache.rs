@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+
+use rapidhash::fast::RandomState;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -13,7 +15,7 @@ struct CacheEntry {
 
 /// LRU cache for previews
 pub struct PreviewCache {
-    entries: Arc<scc::HashMap<PathBuf, CacheEntry>>,
+    entries: Arc<scc::HashMap<PathBuf, CacheEntry, RandomState>>,
     max_size_bytes: usize,
     current_size_bytes: usize,
     ttl: Duration,
@@ -22,7 +24,7 @@ pub struct PreviewCache {
 impl PreviewCache {
     pub fn new(max_size_bytes: usize, ttl: Duration) -> Self {
         Self {
-            entries: Arc::new(scc::HashMap::new()),
+            entries: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             max_size_bytes,
             current_size_bytes: 0,
             ttl,

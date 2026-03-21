@@ -1,5 +1,6 @@
-use std::collections::HashMap;
 use std::time::SystemTime;
+
+use rapidhash::RapidHashMap;
 
 use crate::model::node::FileNode;
 use crate::pipeline::{FileGroup, GroupedNodes, PipelineData, Stage};
@@ -35,7 +36,7 @@ impl Stage for GroupBy {
             }
         };
         
-        let mut groups_map: HashMap<String, Vec<FileNode>> = HashMap::new();
+        let mut groups_map: RapidHashMap<String, Vec<FileNode>> = RapidHashMap::default();
         
         for node in nodes {
             let key = match self.field {

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use crate::errors::CoreError;
 use crate::services::metadata::extended::{ExtendedMetadata, ImageMetadata, ExifData};
 use crate::services::metadata::extractor::MetadataExtractor;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 
 /// Image metadata extractor (dimensions, format, EXIF)
 pub struct ImageExtractor;
@@ -15,12 +15,12 @@ impl ImageExtractor {
     }
 
     /// Extract basic image dimensions and format
-    async fn extract_dimensions(&self, path: &Path) -> Result<(u32, u32, String), CoreError> {
+    async fn extract_dimensions(&self, _path: &Path) -> Result<(u32, u32, String), CoreError> {
         todo!()
     }
 
     /// Extract EXIF data from image
-    async fn extract_exif(&self, path: &Path) -> Result<Option<ExifData>, CoreError> {
+    async fn extract_exif(&self, _path: &Path) -> Result<Option<ExifData>, CoreError> {
         todo!()
     }
 }
@@ -31,11 +31,7 @@ impl MetadataExtractor for ImageExtractor {
         &[MimeCategory::Image]
     }
 
-    fn supported_mime_types(&self) -> Option<&[&str]> {
-        Some(&["image/jpeg", "image/png", "image/gif", "image/webp", "image/tiff"])
-    }
-
-    async fn extract(&self, path: &Path) -> Result<ExtendedMetadata, CoreError> {
+    async fn extract(&self, path: &Path, _mime: &MimeInfo) -> Result<ExtendedMetadata, CoreError> {
         todo!()
     }
 

@@ -241,8 +241,12 @@ impl FileNode {
 impl NodeId {
     /// Generate ID from path
     pub fn from_path(path: &PathBuf) -> Self {
-        NodeId(twox_hash::XxHash3_64::oneshot(
-            path.to_str().unwrap().as_bytes(),
-        ))
+        NodeId({
+            use std::hash::Hasher;
+            use rapidhash::fast::RapidHasher;
+            let mut h = RapidHasher::default();
+            h.write(path.to_str().unwrap().as_bytes());
+            h.finish()
+        })
     }
 }

@@ -1,3 +1,5 @@
+use rapidhash::RapidHashMap;
+
 /// Extended metadata (type-specific)
 #[derive(Debug, Clone)]
 pub enum ExtendedMetadata {
@@ -7,7 +9,7 @@ pub enum ExtendedMetadata {
     Document(DocumentMetadata),
     Archive(ArchiveMetadata),
     Code(CodeMetadata),
-    None,
+    Unavailable,
 }
 
 #[derive(Debug, Clone)]
@@ -33,7 +35,7 @@ pub struct ExifData {
     pub iso: Option<u32>,
     pub focal_length: Option<f64>,
     pub orientation: Option<u32>,
-    pub raw: scc::HashMap<String, String>,
+    pub raw: RapidHashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use crate::errors::CoreError;
 use crate::services::metadata::extended::{ExtendedMetadata, VideoMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 
 /// Video metadata extractor (dimensions, duration, codecs)
 pub struct VideoExtractor;
@@ -15,17 +15,17 @@ impl VideoExtractor {
     }
 
     /// Extract video stream information
-    async fn extract_video_stream(&self, path: &Path) -> Result<(u32, u32, Option<f32>, Option<String>), CoreError> {
+    async fn extract_video_stream(&self, _path: &Path) -> Result<(u32, u32, Option<f32>, Option<String>), CoreError> {
         todo!()
     }
 
     /// Extract audio stream information from video
-    async fn extract_audio_stream(&self, path: &Path) -> Result<Option<String>, CoreError> {
+    async fn extract_audio_stream(&self, _path: &Path) -> Result<Option<String>, CoreError> {
         todo!()
     }
 
     /// Extract duration
-    async fn extract_duration(&self, path: &Path) -> Result<f64, CoreError> {
+    async fn extract_duration(&self, _path: &Path) -> Result<f64, CoreError> {
         todo!()
     }
 }
@@ -36,11 +36,7 @@ impl MetadataExtractor for VideoExtractor {
         &[MimeCategory::Video]
     }
 
-    fn supported_mime_types(&self) -> Option<&[&str]> {
-        Some(&["video/mp4", "video/webm", "video/x-matroska", "video/avi", "video/quicktime"])
-    }
-
-    async fn extract(&self, path: &Path) -> Result<ExtendedMetadata, CoreError> {
+    async fn extract(&self, path: &Path, _mime: &MimeInfo) -> Result<ExtendedMetadata, CoreError> {
         todo!()
     }
 

@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
-use std::collections::vec_deque::Drain;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use flume::{Receiver, Sender};
+use rapidhash::fast::RandomState;
 
 use crate::actors::Actor;
 use crate::api::events::Event;
@@ -56,7 +56,7 @@ pub struct Searcher {
     events: Sender<Event>,
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
-    active_search: Arc<scc::HashMap<SessionId, CancellationToken>>,
+    active_search: Arc<scc::HashMap<SessionId, CancellationToken, RandomState>>,
 }
 
 impl Searcher {
@@ -71,7 +71,7 @@ impl Searcher {
             events,
             provider,
             registry,
-            active_search: Arc::new(scc::HashMap::new()),
+            active_search: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
     pub fn dispatch_search(&self, query: SearchQuery, path: PathBuf, session: SessionId) {

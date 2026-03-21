@@ -6,7 +6,9 @@
 //! - Coordinating with Scanner for directory listing
 //! - Maintaining view settings (sort, filter, show hidden)
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
+
+use rapidhash::{fast::RandomState, RapidHashSet};
 use std::sync::Arc;
 
 use flume::{Receiver, Sender};
@@ -106,7 +108,7 @@ pub struct NavigatorState {
     /// Pipeline configuration (serializable)
     pub pipeline_config: PipelineConfig,
     /// Selected nodes
-    pub selected: HashSet<NodeId>,
+    pub selected: RapidHashSet<NodeId>,
 
     pub register: NodeRegistry,
 }
@@ -126,7 +128,7 @@ impl NavigatorState {
                 filter: None,
                 group: None,
             },
-            selected: HashSet::new(),
+            selected: RapidHashSet::default(),
         }
     }
 
@@ -145,7 +147,7 @@ impl NavigatorState {
                 filter: None,
                 group: None,
             },
-            selected: HashSet::new(),
+            selected: RapidHashSet::default(),
         }
     }
 
@@ -232,8 +234,8 @@ pub struct Navigator {
     events: Sender<events::Event>,
     /// Scanner channel for triggering scans
     scanner_tx: Sender<ScanCommand>,
-    sessions: Arc<scc::HashMap<SessionId, NavigatorState>>,
-    path_cache: Arc<scc::HashSet<NodeId>>,
+    sessions: Arc<scc::HashMap<SessionId, NavigatorState, RandomState>>,
+    path_cache: Arc<scc::HashSet<NodeId, RandomState>>,
     register: NodeRegistry,
 }
 
@@ -248,8 +250,8 @@ impl Navigator {
             commands,
             events,
             scanner_tx,
-            sessions: Arc::new(scc::HashMap::new()),
-            path_cache: Arc::new(scc::HashSet::new()),
+            sessions: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            path_cache: Arc::new(scc::HashSet::with_hasher(RandomState::new())),
             register: reg,
         }
     }

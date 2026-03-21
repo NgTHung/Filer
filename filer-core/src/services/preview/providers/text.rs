@@ -2,7 +2,7 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::services::preview::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
 /// Plain text preview provider
@@ -20,13 +20,10 @@ impl PreviewProvider for TextProvider {
         &[MimeCategory::Text]
     }
 
-    fn supported_extensions(&self) -> Option<&[&str]> {
-        Some(&["txt", "log", "csv", "tsv", "ini", "conf", "cfg"])
-    }
-
     async fn generate(
         &self,
         path: &Path,
+        _mime: &MimeInfo,
         options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()

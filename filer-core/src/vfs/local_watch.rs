@@ -3,8 +3,8 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use notify::event::{CreateKind, EventKind, ModifyKind, RemoveKind, RenameMode};
-use notify::{Event as NotifyEvent, RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, NoCache};
+use notify::{Config as NotifyConfig, Event as NotifyEvent, RecommendedWatcher, RecursiveMode};
+use notify_debouncer_full::{new_debouncer_opt, DebounceEventResult, Debouncer, NoCache};
 use std::time::Duration;
 
 use crate::errors::CoreError;
@@ -43,7 +43,7 @@ impl LocalWatchProvider {
         }
 
         let tx = tx.clone();
-        let debouncer = new_debouncer(
+        let debouncer = new_debouncer_opt(
             Duration::from_secs(1),
             Some(Duration::from_millis(100)),
             move |result: DebounceEventResult| {
@@ -63,6 +63,8 @@ impl LocalWatchProvider {
                     }
                 }
             },
+            NoCache,
+            NotifyConfig::default(),
         )
         .map_err(|e| CoreError::Io {
             path: PathBuf::new(),

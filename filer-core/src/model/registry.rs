@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use rapidhash::fast::RandomState;
+
 use crate::FileNode;
 
 use super::node::NodeId;
@@ -9,13 +11,13 @@ use super::node::NodeId;
 /// Lives in Core, resolves IDs for VFS operations
 #[derive(Clone, Debug)]
 pub struct NodeRegistry {
-    id_to_path: Arc<scc::HashMap<NodeId, PathBuf>>,
+    id_to_path: Arc<scc::HashMap<NodeId, PathBuf, RandomState>>,
 }
 
 impl NodeRegistry {
     pub fn new() -> Self {
         Self {
-            id_to_path: Arc::new(scc::HashMap::new()),
+            id_to_path: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
 

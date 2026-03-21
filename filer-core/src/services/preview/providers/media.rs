@@ -2,7 +2,7 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::services::preview::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
 /// Audio/video metadata and preview provider
@@ -30,18 +30,10 @@ impl PreviewProvider for MediaProvider {
         &[MimeCategory::Audio, MimeCategory::Video]
     }
 
-    fn supported_extensions(&self) -> Option<&[&str]> {
-        Some(&[
-            // Audio
-            "mp3", "flac", "ogg", "wav", "aac", "m4a", "wma", "opus",
-            // Video
-            "mp4", "mkv", "avi", "webm", "mov", "wmv", "flv",
-        ])
-    }
-
     async fn generate(
         &self,
         path: &Path,
+        mime: &MimeInfo,
         options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()

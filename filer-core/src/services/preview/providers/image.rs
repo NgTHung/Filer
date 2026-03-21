@@ -2,7 +2,7 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::services::preview::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
 /// Image thumbnail preview provider
@@ -30,13 +30,10 @@ impl PreviewProvider for ImageProvider {
         &[MimeCategory::Image]
     }
 
-    fn supported_extensions(&self) -> Option<&[&str]> {
-        Some(&["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "tif"])
-    }
-
     async fn generate(
         &self,
         path: &Path,
+        _mime: &MimeInfo,
         options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()

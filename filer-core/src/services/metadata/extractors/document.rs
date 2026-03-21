@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use crate::errors::CoreError;
 use crate::services::metadata::extended::{DocumentMetadata, ExtendedMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
-use crate::services::mime::MimeCategory;
+use crate::services::mime::{MimeCategory, MimeInfo};
 
 /// Document metadata extractor (PDF, Office documents)
 pub struct DocumentExtractor;
@@ -15,12 +15,12 @@ impl DocumentExtractor {
     }
 
     /// Extract PDF metadata
-    async fn extract_pdf(&self, path: &Path) -> Result<DocumentMetadata, CoreError> {
+    async fn extract_pdf(&self, _path: &Path) -> Result<DocumentMetadata, CoreError> {
         todo!()
     }
 
     /// Extract Office document metadata (docx, xlsx, etc.)
-    async fn extract_office(&self, path: &Path) -> Result<DocumentMetadata, CoreError> {
+    async fn extract_office(&self, _path: &Path) -> Result<DocumentMetadata, CoreError> {
         todo!()
     }
 }
@@ -31,16 +31,7 @@ impl MetadataExtractor for DocumentExtractor {
         &[MimeCategory::Document]
     }
 
-    fn supported_mime_types(&self) -> Option<&[&str]> {
-        Some(&[
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ])
-    }
-
-    async fn extract(&self, path: &Path) -> Result<ExtendedMetadata, CoreError> {
+    async fn extract(&self, path: &Path, _mime: &MimeInfo) -> Result<ExtendedMetadata, CoreError> {
         todo!()
     }
 
