@@ -23,10 +23,12 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
         size,
         modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
         created: None,
+        accessed: None,
         meta: NodeMeta {
             hidden,
             readonly: false,
             permissions: None,
+            ..Default::default()
         },
     }
 }
@@ -42,10 +44,12 @@ fn _make_file_with_ext(name: &str, path: &str, ext: Option<&str>, size: u64) -> 
         size,
         modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
         created: None,
+        accessed: None,
         meta: NodeMeta {
             hidden: false,
             readonly: false,
             permissions: None,
+            ..Default::default()
         },
     }
 }
@@ -61,10 +65,12 @@ fn _make_dir(name: &str, full_path: &str, hidden: bool) -> FileNode {
         size: 0,
         modified: Some(SystemTime::UNIX_EPOCH),
         created: None,
+        accessed: None,
         meta: NodeMeta {
             hidden,
             readonly: false,
             permissions: None,
+            ..Default::default()
         },
     }
 }

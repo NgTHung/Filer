@@ -57,7 +57,10 @@ fn ogg_header() -> Vec<u8> {
 }
 
 fn elf_header() -> Vec<u8> {
-    vec![0x7F, 0x45, 0x4C, 0x46] // \x7FELF
+    let mut res = vec![0x7F, 0x45, 0x4C, 0x46];
+    res.append(&mut vec![0x32;100]);
+    res
+    // vec![0x7F, 0x45, 0x4C, 0x46] // \x7FELF
 }
 
 // ── detect_from_path ─────────────────────────────────────────────────────────
@@ -153,6 +156,8 @@ mod detect_from_path_tests {
 
 #[cfg(test)]
 mod detect_from_bytes_tests {
+    use std::f32::consts::E;
+
     use super::*;
 
     #[test]
@@ -222,6 +227,7 @@ mod detect_from_bytes_tests {
     #[test]
     fn elf_magic_is_binary_definitive() {
         let info = detector().detect_from_bytes(&elf_header());
+        println!("{}",infer::app::is_elf(&elf_header()));
         assert_eq!(info.category, MimeCategory::Binary);
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
     }

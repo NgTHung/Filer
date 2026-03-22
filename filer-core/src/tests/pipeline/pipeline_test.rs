@@ -27,7 +27,9 @@ fn make_file(name: &str, size: u64, hidden: bool) -> FileNode {
             hidden,
             readonly: false,
             permissions: None,
+            ..Default::default()
         },
+        accessed: None
     }
 }
 
@@ -46,7 +48,9 @@ fn make_file_with_ext(name: &str, ext: Option<&str>, size: u64) -> FileNode {
             hidden: false,
             readonly: false,
             permissions: None,
+            ..Default::default()
         },
+        accessed: None
     }
 }
 
@@ -65,7 +69,9 @@ fn make_dir(name: &str, hidden: bool) -> FileNode {
             hidden,
             readonly: false,
             permissions: None,
+            ..Default::default()
         },
+        accessed: None
     }
 }
 

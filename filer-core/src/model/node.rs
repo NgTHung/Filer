@@ -24,6 +24,7 @@ pub struct FileNode {
     pub size: u64,
     pub modified: Option<SystemTime>,
     pub created: Option<SystemTime>,
+    pub accessed: Option<SystemTime>,
     pub meta: NodeMeta,
 }
 
@@ -39,6 +40,8 @@ pub struct NodeMeta {
     pub hidden: bool,
     pub readonly: bool,
     pub permissions: Option<u32>,
+    pub owner: Option<String>,
+    pub group: Option<String>,
 }
 
 impl FileNode {
@@ -96,6 +99,7 @@ impl FileNode {
         // Get times
         let modified = metadata.modified().ok();
         let created = metadata.created().ok();
+        let accessed = metadata.accessed().ok();
 
         // Get size
         let size = metadata.len();
@@ -103,7 +107,6 @@ impl FileNode {
         // Determine if hidden (Unix: starts with dot)
         #[cfg(unix)]
         let hidden = name.starts_with('.');
-        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x00000002;
         #[cfg(windows)]
         let hidden = {
             use std::os::windows::fs::MetadataExt;
@@ -131,10 +134,13 @@ impl FileNode {
             size,
             modified,
             created,
+            accessed,
             meta: NodeMeta {
                 hidden,
                 readonly,
                 permissions,
+                owner: None,
+                group: None,
             },
         })
     }
@@ -177,6 +183,7 @@ impl FileNode {
         // Get times
         let modified = meta.modified().ok();
         let created = meta.created().ok();
+        let accessed = meta.accessed().ok();
 
         // Get size
         let size = meta.len();
@@ -206,15 +213,18 @@ impl FileNode {
         Ok(FileNode {
             id,
             name,
-            path: path,
+            path,
             kind,
             size,
             modified,
             created,
+            accessed,
             meta: NodeMeta {
                 hidden,
                 readonly,
                 permissions,
+                owner: None,
+                group: None,
             },
         })
     }
@@ -235,6 +245,37 @@ impl FileNode {
             NodeKind::File { extension } => extension.as_deref(),
             _ => None,
         }
+    }
+
+    /// Human-readable size string (e.g. "1.5 MB")
+    pub fn size_formatted(&self) -> String {
+        crate::utils::size::format_size(self.size)
+    }
+
+    /// Resolve owner and group names via NSS and store them in `meta`.
+    ///
+    /// Uses `getpwuid_r` / `getgrgid_r` under the hood, so it works with
+    /// LDAP, NIS, sssd, and any other NSS-backed directory — not just local
+    /// `/etc/passwd` entries. On non-Unix platforms this is a no-op.
+    #[cfg(unix)]
+    pub fn load_owner_info(&mut self) -> Result<(), CoreError> {
+        use std::os::unix::fs::MetadataExt;
+        use users::{get_group_by_gid, get_user_by_uid};
+
+        let metadata = std::fs::metadata(&self.path)
+            .map_err(|e| CoreError::from_io_error(e, self.path.clone()))?;
+
+        self.meta.owner = get_user_by_uid(metadata.uid())
+            .map(|u| u.name().to_string_lossy().into_owned());
+        self.meta.group = get_group_by_gid(metadata.gid())
+            .map(|g| g.name().to_string_lossy().into_owned());
+
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    pub fn load_owner_info(&mut self) -> Result<(), CoreError> {
+        Ok(())
     }
 }
 

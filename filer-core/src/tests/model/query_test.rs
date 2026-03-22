@@ -23,7 +23,8 @@ fn make_file(name: &str, size: u64) -> FileNode {
         size,
         modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
         created: None,
-        meta: NodeMeta { hidden: false, readonly: false, permissions: None },
+        accessed: None,
+        meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
     }
 }
 
@@ -37,7 +38,8 @@ fn make_dir(name: &str) -> FileNode {
         size: 0,
         modified: Some(SystemTime::UNIX_EPOCH),
         created: None,
-        meta: NodeMeta { hidden: false, readonly: false, permissions: None },
+        accessed: None,
+        meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
     }
 }
 

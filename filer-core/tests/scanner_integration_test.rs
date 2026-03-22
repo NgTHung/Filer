@@ -30,7 +30,8 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
         size,
         modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
         created: None,
-        meta: NodeMeta { hidden, readonly: false, permissions: None },
+        meta: NodeMeta { hidden, readonly: false, permissions: None, ..Default::default() },
+        accessed: None
     }
 }
 

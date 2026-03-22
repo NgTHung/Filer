@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 use crate::errors::CoreError;
 use crate::modules::navigation::navigator::NavState;
-use crate::model::node::NodeId;
+use crate::model::node::{NodeId, NodeMeta};
 use crate::model::session::SessionId;
 use crate::pipeline::GroupedNodes;
-use crate::{BasicMetadata, ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
+use crate::{ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
 
 /// Events from Core to UI
 /// FileNode contains full data for batches (UI caches these)
@@ -64,13 +64,13 @@ pub enum Event {
         session: SessionId
     },
     
-    /// Basic metadata loaded
+    /// Basic metadata loaded (owner/group populated after load_owner_info)
     MetadataLoaded {
         node: NodeId,
-        basic: BasicMetadata,
+        meta: NodeMeta,
         session: SessionId
     },
-    
+
     /// Extended metadata loaded
     ExtendedMetadataLoaded {
         node: NodeId,

@@ -13,10 +13,10 @@ mod vfs;
 pub use api::{commands::Command, events::Event, handle::FilerCore};
 pub use api::module::Module;
 pub use errors::CoreError;
-pub use model::node::FileNode;
+pub use model::node::{FileNode, NodeMeta};
 
 // Services
-pub use services::metadata::{BasicMetadata, ExtendedMetadata, MetadataRegistry};
+pub use services::metadata::{ExtendedMetadata, MetadataRegistry};
 pub use services::mime::{MimeCategory, MimeDetector, MimeInfo};
 pub use services::preview::{PreviewData, PreviewOptions, PreviewRegistry};
 

@@ -147,15 +147,15 @@
   - [x] Searcher implementation
 
 ## Phase 7: MIME & Metadata
-- [ ] **MIME Detection**
-  - [ ] Tests: detect from extension
-  - [ ] Tests: detect from magic bytes
-  - [ ] Tests: category classification
-  - [ ] MimeDetector implementation
+- [x] **MIME Detection**
+  - [x] Tests: detect from extension
+  - [x] Tests: detect from magic bytes
+  - [x] Tests: category classification
+  - [x] MimeDetector implementation
 
-- [ ] **Basic Metadata**
-  - [ ] Tests: size, dates, permissions
-  - [ ] BasicMetadata implementation
+- [x] **Basic Metadata**
+  - [x] Tests: size, dates, permissions
+  - [x] BasicMetadata implementation
 
 - [ ] **Extended Metadata**
   - [ ] Tests: ImageExtractor (dimensions, EXIF)

@@ -13,11 +13,11 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::time::timeout;
 
-use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::modules::navigation::NavigationModule;
 use filer_core::modules::scan::ScanModule;
+use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,10 @@ impl MockProvider {
 
     /// Register the children for a given directory path.
     fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
-        self.files_by_path.lock().unwrap().push((dir.into(), children));
+        self.files_by_path
+            .lock()
+            .unwrap()
+            .push((dir.into(), children));
     }
 
     fn list_calls(&self) -> Vec<PathBuf> {
@@ -70,7 +73,13 @@ impl MockProvider {
             size,
             modified: None,
             created: None,
-            meta: NodeMeta { hidden: false, readonly: false, permissions: None },
+            accessed: None,
+            meta: NodeMeta {
+                hidden: false,
+                readonly: false,
+                permissions: None,
+                ..Default::default()
+            },
         }
     }
 
@@ -79,21 +88,36 @@ impl MockProvider {
             id: NodeId(name.len() as u64 + 10_000),
             name: name.to_string(),
             path: PathBuf::from(parent).join(name),
-            kind: NodeKind::Directory { children_count: None },
+            kind: NodeKind::Directory {
+                children_count: None,
+            },
             size: 0,
             modified: None,
             created: None,
-            meta: NodeMeta { hidden: false, readonly: false, permissions: None },
+            meta: NodeMeta {
+                hidden: false,
+                readonly: false,
+                permissions: None,
+                ..Default::default()
+            },
+            accessed: None,
         }
     }
 }
 
 #[async_trait]
 impl FsProvider for MockProvider {
-    fn scheme(&self) -> &'static str { "mock" }
+    fn scheme(&self) -> &'static str {
+        "mock"
+    }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { read: true, write: false, watch: false, search: false }
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: false,
+        }
     }
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
@@ -107,15 +131,17 @@ impl FsProvider for MockProvider {
             .unwrap_or_default())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> { Ok(vec![]) }
-
-    async fn read_range(
-        &self, _path: &Path, _start: u64, _len: u64,
-    ) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> { Ok(true) }
+    async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
+        Ok(vec![])
+    }
+
+    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+        Ok(true)
+    }
 
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
         Err(CoreError::NotFound(path.to_path_buf()))
@@ -158,14 +184,21 @@ async fn wait_for_directory_loaded(
             panic!("timed out waiting for DirectoryLoaded");
         }
         match timeout(Duration::from_millis(100), rx.recv_async()).await {
-            Ok(Ok(Event::DirectoryLoaded { path, groups, session, .. })) => {
+            Ok(Ok(Event::DirectoryLoaded {
+                path,
+                groups,
+                session,
+                ..
+            })) => {
                 if session == expected_session {
                     let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
                     return (path, total);
                 }
             }
             Ok(Ok(Event::CurrentNavigateState { .. })) => { /* skip nav state snapshot */ }
-            Ok(Ok(Event::Error { message, session, .. })) if session == expected_session => {
+            Ok(Ok(Event::Error {
+                message, session, ..
+            })) if session == expected_session => {
                 panic!("got Error instead of DirectoryLoaded: {}", message);
             }
             _ => {}
@@ -201,7 +234,11 @@ mod navigation_flow_tests {
             .unwrap();
 
         let (path, count) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(path, PathBuf::from("/home/user/docs"), "path should match navigate target");
+        assert_eq!(
+            path,
+            PathBuf::from("/home/user/docs"),
+            "path should match navigate target"
+        );
         assert_eq!(count, 2, "should have received 2 files");
     }
 
@@ -215,7 +252,8 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/empty"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/empty"), session))
+            .unwrap();
 
         let (path, count) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(path, PathBuf::from("/empty"));
@@ -227,21 +265,30 @@ mod navigation_flow_tests {
     #[tokio::test]
     async fn test_navigate_event_carries_correct_session() {
         let provider = MockProvider::new();
-        provider.add_dir("/data", vec![MockProvider::make_file("f.bin", "/data", 1024)]);
+        provider.add_dir(
+            "/data",
+            vec![MockProvider::make_file("f.bin", "/data", 1024)],
+        );
 
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/data"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/data"), session))
+            .unwrap();
 
         let rx = core.event_receiver();
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         loop {
             assert!(tokio::time::Instant::now() <= deadline, "timeout");
-            if let Ok(Ok(Event::DirectoryLoaded { session: ev_session, .. })) =
-                timeout(Duration::from_millis(100), rx.recv_async()).await
+            if let Ok(Ok(Event::DirectoryLoaded {
+                session: ev_session,
+                ..
+            })) = timeout(Duration::from_millis(100), rx.recv_async()).await
             {
-                assert_eq!(ev_session, session, "event session must match command session");
+                assert_eq!(
+                    ev_session, session,
+                    "event session must match command session"
+                );
                 return;
             }
         }
@@ -264,14 +311,19 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Navigate into the child
-        core.send(Command::Navigate(PathBuf::from("/parent/child"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/parent/child"), session))
+            .unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(path, PathBuf::from("/parent/child"));
 
         // Navigate up — should land in /parent
         core.send(Command::NavigateUp(session)).unwrap();
         let (parent_path, _) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(parent_path, PathBuf::from("/parent"), "should have navigated to parent");
+        assert_eq!(
+            parent_path,
+            PathBuf::from("/parent"),
+            "should have navigated to parent"
+        );
     }
 
     /// `NavigateUp` preserves the session — subsequent commands work fine.
@@ -286,7 +338,8 @@ mod navigation_flow_tests {
         let rx = core.event_receiver();
 
         // Navigate to /a/b, go up, navigate further — no "Unknown session" error
-        core.send(Command::Navigate(PathBuf::from("/a/b"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/a/b"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::NavigateUp(session)).unwrap();
@@ -294,7 +347,12 @@ mod navigation_flow_tests {
 
         // Verify no error events were emitted for this session
         while let Ok(event) = rx.try_recv() {
-            if let Event::Error { session: ev_session, message, .. } = &event {
+            if let Event::Error {
+                session: ev_session,
+                message,
+                ..
+            } = &event
+            {
                 if ev_session == &session {
                     panic!("Unexpected error for session after NavigateUp: {}", message);
                 }
@@ -313,7 +371,8 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // First navigate to root so the navigator has a current directory
-        core.send(Command::Navigate(PathBuf::from("/"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         // Now try to go up from root
@@ -323,14 +382,19 @@ mod navigation_flow_tests {
         let rx = core.event_receiver();
         let events = {
             let mut v = Vec::new();
-            while let Ok(e) = rx.try_recv() { v.push(e); }
+            while let Ok(e) = rx.try_recv() {
+                v.push(e);
+            }
             v
         };
 
-        let found_error = events.iter().any(|e| {
-            matches!(e, Event::Error { session: s, recoverable: true, .. } if *s == session)
-        });
-        assert!(found_error, "NavigateUp from root should emit a recoverable Error");
+        let found_error = events.iter().any(
+            |e| matches!(e, Event::Error { session: s, recoverable: true, .. } if *s == session),
+        );
+        assert!(
+            found_error,
+            "NavigateUp from root should emit a recoverable Error"
+        );
     }
 
     // ── Refresh current directory ─────────────────────────────────────────
@@ -344,12 +408,17 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/docs"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/docs"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::Refresh(session)).unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(path, PathBuf::from("/docs"), "Refresh should reload the same directory");
+        assert_eq!(
+            path,
+            PathBuf::from("/docs"),
+            "Refresh should reload the same directory"
+        );
     }
 
     /// After a `Refresh`, the provider's `list` method is called a second time
@@ -357,12 +426,16 @@ mod navigation_flow_tests {
     #[tokio::test]
     async fn test_refresh_rescans_provider() {
         let provider = MockProvider::new();
-        provider.add_dir("/work", vec![MockProvider::make_file("todo.txt", "/work", 1)]);
+        provider.add_dir(
+            "/work",
+            vec![MockProvider::make_file("todo.txt", "/work", 1)],
+        );
 
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/work"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/work"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         let calls_after_nav = provider.list_calls().len();
@@ -391,10 +464,13 @@ mod navigation_flow_tests {
 
         let rx = core.event_receiver();
         let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-        let found_error = events.iter().any(|e| {
-            matches!(e, Event::Error { session: s, recoverable: true, .. } if *s == session)
-        });
-        assert!(found_error, "Refresh with no current dir should emit a recoverable Error");
+        let found_error = events.iter().any(
+            |e| matches!(e, Event::Error { session: s, recoverable: true, .. } if *s == session),
+        );
+        assert!(
+            found_error,
+            "Refresh with no current dir should emit a recoverable Error"
+        );
     }
 
     // ── Back / Forward with session ───────────────────────────────────────
@@ -403,21 +479,33 @@ mod navigation_flow_tests {
     #[tokio::test]
     async fn test_navigate_back_returns_to_previous() {
         let provider = MockProvider::new();
-        provider.add_dir("/dir_a", vec![MockProvider::make_file("x.rs", "/dir_a", 200)]);
-        provider.add_dir("/dir_b", vec![MockProvider::make_file("y.rs", "/dir_b", 300)]);
+        provider.add_dir(
+            "/dir_a",
+            vec![MockProvider::make_file("x.rs", "/dir_a", 200)],
+        );
+        provider.add_dir(
+            "/dir_b",
+            vec![MockProvider::make_file("y.rs", "/dir_b", 300)],
+        );
 
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/dir_a"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/dir_a"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::Navigate(PathBuf::from("/dir_b"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/dir_b"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::NavigateBack(session)).unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(path, PathBuf::from("/dir_a"), "Back should return to /dir_a");
+        assert_eq!(
+            path,
+            PathBuf::from("/dir_a"),
+            "Back should return to /dir_a"
+        );
     }
 
     /// Navigate A → B → C, Navigate back twice → should land at A.
@@ -432,7 +520,8 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         for dir in &["/a", "/b", "/c"] {
-            core.send(Command::Navigate(PathBuf::from(dir), session)).unwrap();
+            core.send(Command::Navigate(PathBuf::from(dir), session))
+                .unwrap();
             wait_for_directory_loaded(&core, session).await;
         }
 
@@ -455,7 +544,8 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Single navigation — no history to go back to
-        core.send(Command::Navigate(PathBuf::from("/only"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/only"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::NavigateBack(session)).unwrap();
@@ -463,10 +553,13 @@ mod navigation_flow_tests {
 
         let rx = core.event_receiver();
         let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-        let found_error = events.iter().any(|e| {
-            matches!(e, Event::Error { session: s, recoverable: true, .. } if *s == session)
-        });
-        assert!(found_error, "Back with no history should emit a recoverable Error");
+        let found_error = events.iter().any(
+            |e| matches!(e, Event::Error { session: s, recoverable: true, .. } if *s == session),
+        );
+        assert!(
+            found_error,
+            "Back with no history should emit a recoverable Error"
+        );
     }
 
     /// Navigate A → B → back to A → the NavState snapshot should report `can_forward = true`.
@@ -479,10 +572,12 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/alpha"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/alpha"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::Navigate(PathBuf::from("/beta"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/beta"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         // Go back — immediately start listening for the NavState snapshot.
@@ -494,9 +589,14 @@ mod navigation_flow_tests {
         let mut dir_loaded = false;
 
         loop {
-            assert!(tokio::time::Instant::now() <= deadline, "timeout waiting for back events");
+            assert!(
+                tokio::time::Instant::now() <= deadline,
+                "timeout waiting for back events"
+            );
             match timeout(Duration::from_millis(100), rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryLoaded { path, session: s, .. })) if s == session => {
+                Ok(Ok(Event::DirectoryLoaded {
+                    path, session: s, ..
+                })) if s == session => {
                     assert_eq!(path, PathBuf::from("/alpha"), "back should land on /alpha");
                     dir_loaded = true;
                 }
@@ -507,10 +607,15 @@ mod navigation_flow_tests {
                 }
                 _ => {}
             }
-            if can_forward && dir_loaded { break; }
+            if can_forward && dir_loaded {
+                break;
+            }
         }
 
-        assert!(can_forward, "after navigating back, can_forward should be true in NavState");
+        assert!(
+            can_forward,
+            "after navigating back, can_forward should be true in NavState"
+        );
     }
 
     // ── Session isolation ─────────────────────────────────────────────────
@@ -521,10 +626,13 @@ mod navigation_flow_tests {
     async fn test_two_sessions_navigate_independently() {
         let provider = MockProvider::new();
         provider.add_dir("/s1", vec![MockProvider::make_file("a.txt", "/s1", 1)]);
-        provider.add_dir("/s2", vec![
-            MockProvider::make_file("b.txt", "/s2", 2),
-            MockProvider::make_file("c.txt", "/s2", 3),
-        ]);
+        provider.add_dir(
+            "/s2",
+            vec![
+                MockProvider::make_file("b.txt", "/s2", 2),
+                MockProvider::make_file("c.txt", "/s2", 3),
+            ],
+        );
 
         let core = build_core(provider);
         let rx = core.event_receiver();
@@ -542,8 +650,10 @@ mod navigation_flow_tests {
 
         assert_ne!(s1, s2);
 
-        core.send(Command::Navigate(PathBuf::from("/s1"), s1)).unwrap();
-        core.send(Command::Navigate(PathBuf::from("/s2"), s2)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/s1"), s1))
+            .unwrap();
+        core.send(Command::Navigate(PathBuf::from("/s2"), s2))
+            .unwrap();
 
         let (p1, c1) = wait_for_directory_loaded(&core, s1).await;
         let (p2, c2) = wait_for_directory_loaded(&core, s2).await;
@@ -576,8 +686,10 @@ mod navigation_flow_tests {
         };
 
         // Navigate both sessions
-        core.send(Command::Navigate(PathBuf::from("/stay"), session_stay)).unwrap();
-        core.send(Command::Navigate(PathBuf::from("/gone"), session_gone)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/stay"), session_stay))
+            .unwrap();
+        core.send(Command::Navigate(PathBuf::from("/gone"), session_gone))
+            .unwrap();
         wait_for_directory_loaded(&core, session_stay).await;
         wait_for_directory_loaded(&core, session_gone).await;
 
@@ -588,7 +700,11 @@ mod navigation_flow_tests {
         // The surviving session should still navigate without errors
         core.send(Command::Refresh(session_stay)).unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session_stay).await;
-        assert_eq!(path, PathBuf::from("/stay"), "surviving session should still work");
+        assert_eq!(
+            path,
+            PathBuf::from("/stay"),
+            "surviving session should still work"
+        );
     }
 
     // ── NavState snapshot ─────────────────────────────────────────────────
@@ -604,21 +720,33 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
         let rx = core.event_receiver();
 
-        core.send(Command::Navigate(PathBuf::from("/snap"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/snap"), session))
+            .unwrap();
 
         // Collect events for a moment
         tokio::time::sleep(Duration::from_millis(500)).await;
         let mut events: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
-        while let Ok(e) = rx.try_recv() { events.push(e); }
+        while let Ok(e) = rx.try_recv() {
+            events.push(e);
+        }
 
-        let nav_state_event = events.iter().find(|e| {
-            matches!(e, Event::CurrentNavigateState { session: s, .. } if *s == session)
-        });
-        assert!(nav_state_event.is_some(), "should have received CurrentNavigateState");
+        let nav_state_event = events
+            .iter()
+            .find(|e| matches!(e, Event::CurrentNavigateState { session: s, .. } if *s == session));
+        assert!(
+            nav_state_event.is_some(),
+            "should have received CurrentNavigateState"
+        );
 
         if let Some(Event::CurrentNavigateState { state, .. }) = nav_state_event {
-            assert!(state.current.is_some(), "current should be set after Navigate");
-            assert!(!state.can_back, "can_back should be false on first navigate");
+            assert!(
+                state.current.is_some(),
+                "current should be set after Navigate"
+            );
+            assert!(
+                !state.can_back,
+                "can_back should be false on first navigate"
+            );
         }
     }
 
@@ -632,17 +760,22 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/x"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/x"), session))
+            .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         let rx = core.event_receiver();
-        core.send(Command::Navigate(PathBuf::from("/y"), session)).unwrap();
+        core.send(Command::Navigate(PathBuf::from("/y"), session))
+            .unwrap();
 
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         let can_back;
 
         loop {
-            assert!(tokio::time::Instant::now() <= deadline, "timeout waiting for can_back");
+            assert!(
+                tokio::time::Instant::now() <= deadline,
+                "timeout waiting for can_back"
+            );
             match timeout(Duration::from_millis(100), rx.recv_async()).await {
                 Ok(Ok(Event::CurrentNavigateState { state, session: s })) if s == session => {
                     if state.can_back {
@@ -655,6 +788,9 @@ mod navigation_flow_tests {
             }
         }
 
-        assert!(can_back, "can_back should be true after navigating to a second directory");
+        assert!(
+            can_back,
+            "can_back should be true after navigating to a second directory"
+        );
     }
 }
