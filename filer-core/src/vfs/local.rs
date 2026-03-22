@@ -36,10 +36,9 @@ impl FsProvider for LocalFs {
 
     #[cfg(unix)]
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        let mut dir =
-            tokio::fs::read_dir(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut dir = tokio::fs::read_dir(path).await?;
         let mut res = Vec::new();
-        while let Some(entry) = dir.next_entry().await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))? {
+        while let Some(entry) = dir.next_entry().await? {
             match FileNode::from_path(entry.path(), Some(self.reg.clone())) {
                 Ok(node) => res.push(node),
                 Err(e) => {
@@ -51,10 +50,9 @@ impl FsProvider for LocalFs {
     }
     #[cfg(windows)]
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        let mut dir =
-            tokio::fs::read_dir(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut dir = tokio::fs::read_dir(path).await?;
         let mut res = Vec::new();
-        while let Some(entry) = dir.next_entry().await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))? {
+        while let Some(entry) = dir.next_entry().await? {
             let filename = entry.path();
             let filemeta = match entry.metadata().await {
                 Ok(m) => m,
@@ -74,31 +72,27 @@ impl FsProvider for LocalFs {
     }
 
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {
-        let mut f = File::open(path)
-            .await
-            .map_err(|err| CoreError::from_io_error(err, path.to_path_buf()))?;
+        let mut f = File::open(path).await?;
         let mut buf = Vec::new();
-        f.read_to_end(&mut buf)
-            .await
-            .map_err(|err| CoreError::from_io_error(err, path.to_path_buf()))?;
+        f.read_to_end(&mut buf).await?;
         Ok(buf)
     }
 
     async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
-        let mut f = File::open(path)
-            .await
-            .map_err(|err| CoreError::from_io_error(err, path.to_path_buf()))?;
+        let mut f = File::open(path).await?;
         let mut buf = vec![0; len as usize];
-        f.seek(std::io::SeekFrom::Start(start)).await.map_err(|err| CoreError::from_io_error(err, path.to_path_buf()))?;
-        let size = f.read(&mut buf).await.map_err(|err| CoreError::from_io_error(err, path.to_path_buf()))?;
+        f.seek(std::io::SeekFrom::Start(start)).await?;
+        let size = f.read(&mut buf).await?;
         if size != (len as usize) {
             buf.resize(size, 0);
         }
         Ok(buf)
     }
 
-    async fn exists(&self, path: &Path) -> Result<bool,CoreError> {
-        tokio::fs::try_exists(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
+    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
+        tokio::fs::try_exists(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
     }
 
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
@@ -117,6 +111,12 @@ impl FsProvider for LocalFs {
     ///   by resizing the buffer to the number of bytes actually read
     /// - Return `Ok(buf)`
     async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
-        todo!()
+        let mut f = File::open(path).await?;
+        let mut buf = vec![0; n_bytes as usize];
+        let size = f.read_exact(&mut buf).await?;
+        if size != n_bytes {
+            buf.resize(size, 0);
+        }
+        Ok(buf)
     }
 }

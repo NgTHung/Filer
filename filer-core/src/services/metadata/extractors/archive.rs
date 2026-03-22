@@ -5,6 +5,7 @@ use crate::errors::CoreError;
 use crate::services::metadata::extended::ExtendedMetadata;
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::provider::FsProvider;
 
 /// Archive metadata extractor (file count, compression ratio, entry listing)
 pub struct ArchiveExtractor;
@@ -21,7 +22,11 @@ impl MetadataExtractor for ArchiveExtractor {
         &[MimeCategory::Archive]
     }
 
-    async fn extract(&self, _path: &Path, _mime: &MimeInfo) -> Result<ExtendedMetadata, CoreError> {
+    async fn extract(&self, _path: &Path, _mime: &MimeInfo, _provider: &dyn FsProvider) -> Result<ExtendedMetadata, CoreError> {
+        #[cfg(not(feature = "metadata-archive"))]
+        return Ok(ExtendedMetadata::Unavailable);
+
+        #[cfg(feature = "metadata-archive")]
         todo!()
     }
 

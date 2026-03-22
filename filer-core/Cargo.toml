@@ -6,13 +6,14 @@ edition = "2024"
 [dependencies]
 flume = "0.12.0"
 rapidhash = "4.4.1"
-tracing = {workspace = true}
-tokio ={ workspace = true}
+tracing = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = {workspace = true}
 async-trait = "0.1.89"
 chrono = "0.4"
 scc = "3.4.15"
-serde = {workspace = true}
-serde_json = {workspace = true}
+serde = { workspace = true }
+serde_json = { workspace = true }
 notify = "8.2.0"
 notify-debouncer-full = "0.7.0"
 regex = "1"
@@ -24,48 +25,80 @@ mime = "0.3.17"
 users = "0.11"
 
 # Crypto dependencies (optional)
-# aes-gcm = { version = "0.10", optional = true }
-# chacha20poly1305 = { version = "0.10", optional = true }
-# argon2 = { version = "0.5", optional = true }
-# scrypt = { version = "0.11", optional = true }
-# rand = { version = "0.9.2", optional = true }
+aes-gcm = { version = "0.10", optional = true }
+chacha20poly1305 = { version = "0.10", optional = true }
+argon2 = { version = "0.5", optional = true }
+scrypt = { version = "0.11", optional = true }
+rand = { version = "0.10.0", optional = true }
 
 # Remote FS dependencies (optional)
 # S3
-# aws-sdk-s3 = { version = "1.0", optional = true }
-# aws-config = { version = "1.0", optional = true }
+aws-sdk-s3 = { version = "1.0", optional = true }
+aws-config = { version = "1.0", optional = true }
 
-# # WebDAV
-# reqwest = { version = "0.13.1", optional = true }
+# WebDAV
+reqwest = { version = "0.13.1", optional = true }
 
-# # FTP/SFTP
-# suppaftp = { version = "8.0.1", optional = true }
-# ssh2 = { version = "0.9", optional = true }
+# FTP/SFTP
+suppaftp = { version = "8.0.1", optional = true }
+ssh2 = { version = "0.9", optional = true }
 
-# # FUSE
-# fuser = { version = "0.16.0", optional = true }
+# FUSE
+fuser = { version = "0.17.0", optional = true }
 
-# # Kubernetes
-# kube = { version = "3.0.0", features = ["client", "rustls-tls"], optional = true }
-# k8s-openapi = { version = "0.27.0", features = ["latest"], optional = true }
+# Kubernetes
+kube = { version = "3.0.0", features = [
+    "client",
+    "rustls-tls",
+], optional = true }
+k8s-openapi = { version = "0.27.0", features = ["latest"], optional = true }
+
+imagesize = { version = "0.14.0", optional = true }
+kamadak-exif = { version = "0.6.1", optional = true }
+id3 = { version = "1", optional = true }
+mp4parse = { version = "0.17", optional = true }
+lopdf = { version = "0.40", optional = true }
+# Archive dependencies (optional)
+zip = { version = "8.3.1", optional = true }
+tar = { version = "0.4", optional = true }
+flate2 = { version = "1", optional = true }
+bzip2 = { version = "0.6.1", optional = true }
+xz2 = { version = "0.1", optional = true }
+zstd = { version = "0.13", optional = true }
+sevenz-rust2 = { version = "0.20.2", optional = true }
+unrar = { version = "0.5.8", optional = true }
+tempfile = { version = "3.27.0", optional = true } # runtime temp for nested archive chaining
 
 [features]
-default = []
-
+default = ["metadata-archive-rar", "metadata"]
 # Crypto features
-crypto = []
-
+crypto = ["dep:aes-gcm", "dep:chacha20poly1305", "dep:argon2", "dep:scrypt", "rand"]
 # Remote filesystem features
-s3 = []
-webdav = []
-ftp = []
-sftp = []
-fuse = []
-kubernetes = []
-
+s3 = ["dep:aws-sdk-s3", "dep:aws-config"]
+webdav = ["dep:reqwest"]
+ftp = ["dep:suppaftp", "ssh2"]
+sftp = ["ftp"]
+fuse = ["dep:fuser"]
+kubernetes = ["dep:kube", "dep:k8s-openapi"]
 # Convenience feature groups
-all-remote = []
-all-features = []
+all-remote = ["s3", "webdav", "ftp", "sftp", "fuse", "kubernetes"]
+metadata-image = ["dep:imagesize", "dep:kamadak-exif"]
+metadata-audio = ["dep:id3"]
+metadata-video = ["dep:mp4parse"]
+metadata-document = ["dep:lopdf"]
+metadata-archive = [
+    "dep:zip", "dep:tar", "dep:flate2", "dep:bzip2", "dep:xz2", "dep:zstd",
+    "dep:sevenz-rust2", "dep:tempfile",
+]
+metadata-archive-rar = ["metadata-archive", "dep:unrar"]   # links unrar C++; see RARlab license
+metadata = [
+    "metadata-image",
+    "metadata-audio",
+    "metadata-video",
+    "metadata-document",
+    "metadata-archive",
+]
+all-features = ["crypto", "all-remote", "metadata-archive-rar", "metadata"]
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile = "3.27.0"  # also listed as optional dep for runtime archive chaining

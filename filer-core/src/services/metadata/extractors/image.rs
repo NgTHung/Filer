@@ -2,9 +2,13 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::metadata::extended::{ExtendedMetadata, ImageMetadata, ExifData};
+use crate::services::metadata::extended::ExtendedMetadata;
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::provider::FsProvider;
+
+#[cfg(feature = "metadata-image")]
+use crate::services::metadata::extended::{ExifData, ImageMetadata};
 
 /// Image metadata extractor (dimensions, format, EXIF)
 pub struct ImageExtractor;
@@ -15,12 +19,22 @@ impl ImageExtractor {
     }
 
     /// Extract basic image dimensions and format
-    async fn extract_dimensions(&self, _path: &Path) -> Result<(u32, u32, String), CoreError> {
+    #[cfg(feature = "metadata-image")]
+    async fn extract_dimensions(
+        &self,
+        _path: &Path,
+        _provider: &dyn FsProvider,
+    ) -> Result<(u32, u32, String), CoreError> {
         todo!()
     }
 
     /// Extract EXIF data from image
-    async fn extract_exif(&self, _path: &Path) -> Result<Option<ExifData>, CoreError> {
+    #[cfg(feature = "metadata-image")]
+    async fn extract_exif(
+        &self,
+        _path: &Path,
+        _provider: &dyn FsProvider,
+    ) -> Result<Option<ExifData>, CoreError> {
         todo!()
     }
 }
@@ -31,7 +45,16 @@ impl MetadataExtractor for ImageExtractor {
         &[MimeCategory::Image]
     }
 
-    async fn extract(&self, path: &Path, _mime: &MimeInfo) -> Result<ExtendedMetadata, CoreError> {
+    async fn extract(
+        &self,
+        _path: &Path,
+        _mime: &MimeInfo,
+        _provider: &dyn FsProvider,
+    ) -> Result<ExtendedMetadata, CoreError> {
+        #[cfg(not(feature = "metadata-image"))]
+        return Ok(ExtendedMetadata::Unavailable);
+
+        #[cfg(feature = "metadata-image")]
         todo!()
     }
 

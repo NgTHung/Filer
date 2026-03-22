@@ -95,6 +95,20 @@ impl MimeDetector {
 
         let is_ambiguous = Self::is_ambiguous_extension(ext);
 
+        // For non-ambiguous extensions, our table is authoritative and more
+        // accurate than new_mime_guess (e.g. .py → text/x-python, not text/plain).
+        if !is_ambiguous {
+            let ext_lower = ext.to_ascii_lowercase();
+            if let Some(entry) = super::table::lookup_extension(&ext_lower) {
+                return MimeInfo {
+                    mime_type:  entry.mime_type.to_string(),
+                    category:   entry.category,
+                    encoding:   None,
+                    confidence: entry.confidence,
+                };
+            }
+        }
+
         match new_mime_guess::from_ext(ext).first() {
             Some(m) => {
                 let mime_type = m.to_string();

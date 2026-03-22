@@ -3,6 +3,7 @@ use async_trait::async_trait;
 
 use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::provider::FsProvider;
 
 use super::extended::ExtendedMetadata;
 
@@ -23,7 +24,17 @@ pub trait MetadataExtractor: Send + Sync {
     /// `mime.mime_type` for format-specific logic and use `mime.confidence`
     /// to decide whether expensive extraction is warranted when the type is
     /// uncertain.
-    async fn extract(&self, path: &Path, mime: &MimeInfo) -> Result<ExtendedMetadata, CoreError>;
+    ///
+    /// `provider` is used for all I/O so that remote backends (S3, SFTP,
+    /// WebDAV) work without the extractors having any direct filesystem
+    /// dependency. Use `provider.read(path).await` to fetch content, or
+    /// `provider.read_range()` for large files where a partial read suffices.
+    async fn extract(
+        &self,
+        path: &Path,
+        mime: &MimeInfo,
+        provider: &dyn FsProvider,
+    ) -> Result<ExtendedMetadata, CoreError>;
 
     /// Extractor name for logging and debugging.
     fn name(&self) -> &'static str;
@@ -94,9 +105,10 @@ impl MetadataRegistry {
         &self,
         path: &Path,
         mime: &MimeInfo,
+        provider: &dyn FsProvider,
     ) -> Result<ExtendedMetadata, CoreError> {
         match self.get(mime) {
-            Some(extractor) => extractor.extract(path, mime).await,
+            Some(extractor) => extractor.extract(path, mime, provider).await,
             None => Ok(ExtendedMetadata::Unavailable),
         }
     }

@@ -1,8 +1,8 @@
 //! Tests for encryption services
 #[cfg(feature = "crypto")]
-use crate::services::crypto::cipher::{Cipher, CipherAlgorithm, EncryptedData};
-#[cfg(feature = "crypto")]
-use crate::services::crypto::key::{derive_key, generate_salt, KdfParams, KeyDerivation};
+use crate::services::crypto::{
+    Cipher, CipherAlgorithm, EncryptedData, KdfParams, KeyDerivation, derive_key, generate_salt,
+};
 
 #[test]
 #[cfg(feature = "crypto")]

@@ -1,4 +1,6 @@
-use rapidhash::RapidBuildHasher;
+use std::sync::Arc;
+
+use rapidhash::fast::RandomState;
 
 use crate::errors::CoreError;
 
@@ -44,37 +46,38 @@ pub fn generate_salt(len: usize) -> Vec<u8> {
 
 /// Key storage
 pub struct KeyStore {
-    keys: Arc<scc::HashMap<String, Vec<u8>, RapidBuildHasher>>,
+    keys: Arc<scc::HashMap<String, Vec<u8>, RandomState>>,
 }
 
 impl KeyStore {
     pub fn new() -> Self {
         Self {
-            keys: Arc::new(scc::HashMap::with_hasher(RapidBuildHasher::default())),
+            keys: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
 
     /// Store key with identifier
     pub fn store(&mut self, id: &str, key: Vec<u8>) {
-        self.keys.insert(id.to_string(), key);
+        let _ = self.keys.insert_sync(id.to_string(), key);
     }
 
     /// Get key by identifier
-    pub fn get(&self, id: &str) -> Option<&[u8]> {
-        self.keys.get(id).map(|k| k.as_slice())
+    pub fn get(&self, id: &str) -> Option<Vec<u8>>  {
+        self.keys.read_sync(id, |_,v: &Vec::<u8>| v.clone())
     }
 
     /// Remove key
     pub fn remove(&mut self, id: &str) -> Option<Vec<u8>> {
-        self.keys.remove(id)
+        self.keys.remove_sync(id).map(|v| v.1)
     }
 
     /// Clear all keys (secure wipe)
     pub fn clear(&mut self) {
-        for (_, key) in self.keys.iter_mut() {
-            key.iter_mut().for_each(|b| *b = 0);
-        }
-        self.keys.clear();
+        self.keys.iter_mut_sync(|mut k| {
+            k.1.clear();
+            true
+        });
+        self.keys.clear_sync();
     }
 
     /// Load keystore from encrypted file
