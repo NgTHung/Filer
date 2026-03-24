@@ -65,7 +65,7 @@ pub enum MimeCategory {
 /// is technically "known". An empty string represents a missing extension
 /// (e.g., `Makefile`, `Dockerfile`, `LICENSE`).
 pub const AMBIGUOUS_EXTENSIONS: &[&str] = &[
-    "",    // no extension at all
+    "", // no extension at all
     "bin", "dat", "raw", "out", "tmp",
     "txt", // could be CSV, JSON, TOML, XML saved with the wrong extension
     "log", // could be structured JSON-lines or plain text
@@ -74,10 +74,6 @@ pub const AMBIGUOUS_EXTENSIONS: &[&str] = &[
 pub struct MimeDetector;
 
 impl MimeDetector {
-    pub fn new() -> Self {
-        Self
-    }
-
     /// Detect MIME type from file path (extension-based, zero I/O).
     ///
     /// Delegates to `new_mime_guess` for the extension → MIME mapping.
@@ -87,11 +83,8 @@ impl MimeDetector {
     /// - `Probable`   — extension is in `AMBIGUOUS_EXTENSIONS` but resolves to
     ///                  a `text/*` type (e.g. `.txt` → `text/plain`)
     /// - `Unknown`    — no extension, ambiguous non-text extension, or unknown extension
-    pub fn detect_from_path(&self, path: &Path) -> MimeInfo {
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+    pub fn detect_from_path(path: &Path) -> MimeInfo {
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         let is_ambiguous = Self::is_ambiguous_extension(ext);
 
@@ -101,9 +94,9 @@ impl MimeDetector {
             let ext_lower = ext.to_ascii_lowercase();
             if let Some(entry) = super::table::lookup_extension(&ext_lower) {
                 return MimeInfo {
-                    mime_type:  entry.mime_type.to_string(),
-                    category:   entry.category,
-                    encoding:   None,
+                    mime_type: entry.mime_type.to_string(),
+                    category: entry.category,
+                    encoding: None,
                     confidence: entry.confidence,
                 };
             }
@@ -125,7 +118,12 @@ impl MimeDetector {
                 } else {
                     DetectionConfidence::Definitive
                 };
-                MimeInfo { mime_type, category, encoding: None, confidence }
+                MimeInfo {
+                    mime_type,
+                    category,
+                    encoding: None,
+                    confidence,
+                }
             }
             None => MimeInfo {
                 mime_type: "application/octet-stream".to_string(),
@@ -146,12 +144,17 @@ impl MimeDetector {
     /// # Confidence
     /// - `Definitive` — a magic signature matched
     /// - `Unknown`    — bytes too short or no signature matched
-    pub fn detect_from_bytes(&self, bytes: &[u8]) -> MimeInfo {
+    pub fn detect_from_bytes(bytes: &[u8]) -> MimeInfo {
         match infer::get(bytes) {
             Some(kind) => {
                 let mime_type = kind.mime_type().to_string();
                 let category = Self::categorize(&mime_type);
-                MimeInfo { mime_type, category, encoding: None, confidence: DetectionConfidence::Definitive }
+                MimeInfo {
+                    mime_type,
+                    category,
+                    encoding: None,
+                    confidence: DetectionConfidence::Definitive,
+                }
             }
             None => MimeInfo {
                 mime_type: "application/octet-stream".to_string(),
@@ -170,14 +173,14 @@ impl MimeDetector {
     ///
     /// Tier 2 — magic: if extension was not Definitive, check bytes.
     /// Magic wins on disagreement; if magic is also inconclusive, extension wins.
-    pub fn detect(&self, path: &Path, bytes: &[u8]) -> MimeInfo {
-        let path_info = self.detect_from_path(path);
+    pub fn detect(path: &Path, bytes: &[u8]) -> MimeInfo {
+        let path_info = Self::detect_from_path(path);
 
         if path_info.confidence == DetectionConfidence::Definitive {
             return path_info;
         }
 
-        let magic_info = self.detect_from_bytes(bytes);
+        let magic_info = Self::detect_from_bytes(bytes);
 
         if magic_info.confidence == DetectionConfidence::Unknown {
             return path_info;
@@ -196,29 +199,28 @@ impl MimeDetector {
     /// - `ExtensionWithFallback` — uses magic only for absent/ambiguous extensions
     /// - `MagicBytes`            — always prefers magic when `header` is `Some`
     pub fn detect_with_strategy(
-        &self,
         path: &Path,
         header: Option<&[u8]>,
         strategy: DetectionStrategy,
     ) -> MimeInfo {
         match strategy {
-            DetectionStrategy::ExtensionOnly => self.detect_from_path(path),
+            DetectionStrategy::ExtensionOnly => Self::detect_from_path(path),
 
             DetectionStrategy::ExtensionWithFallback => {
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 if Self::is_ambiguous_extension(ext) {
                     match header {
-                        Some(bytes) => self.detect(path, bytes),
-                        None        => self.detect_from_path(path),
+                        Some(bytes) => Self::detect(path, bytes),
+                        None => Self::detect_from_path(path),
                     }
                 } else {
-                    self.detect_from_path(path)
+                    Self::detect_from_path(path)
                 }
             }
 
             DetectionStrategy::MagicBytes => match header {
-                Some(bytes) => self.detect(path, bytes),
-                None        => self.detect_from_path(path),
+                Some(bytes) => Self::detect(path, bytes),
+                None => Self::detect_from_path(path),
             },
         }
     }
@@ -234,10 +236,18 @@ impl MimeDetector {
     /// under `MatcherType::Archive` internally but are promoted to Document
     /// here because that is the correct routing category.
     pub fn categorize(mime_type: &str) -> MimeCategory {
-        if mime_type.starts_with("image/") { return MimeCategory::Image; }
-        if mime_type.starts_with("audio/") { return MimeCategory::Audio; }
-        if mime_type.starts_with("video/") { return MimeCategory::Video; }
-        if mime_type.starts_with("text/")  { return MimeCategory::Text;  }
+        if mime_type.starts_with("image/") {
+            return MimeCategory::Image;
+        }
+        if mime_type.starts_with("audio/") {
+            return MimeCategory::Audio;
+        }
+        if mime_type.starts_with("video/") {
+            return MimeCategory::Video;
+        }
+        if mime_type.starts_with("text/") {
+            return MimeCategory::Text;
+        }
 
         match mime_type {
             // ── Text-like application types (new_mime_guess) ──────────────────
@@ -340,8 +350,3 @@ impl MimeDetector {
     }
 }
 
-impl Default for MimeDetector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
