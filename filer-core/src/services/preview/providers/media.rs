@@ -14,12 +14,12 @@ impl MediaProvider {
     }
 
     /// Extract audio metadata and album art
-    async fn extract_audio(&self, path: &Path) -> Result<PreviewData, CoreError> {
+    async fn extract_audio(&self, _path: &Path) -> Result<PreviewData, CoreError> {
         todo!()
     }
 
     /// Extract video thumbnail
-    async fn extract_video(&self, path: &Path, options: &PreviewOptions) -> Result<PreviewData, CoreError> {
+    async fn extract_video(&self, _path: &Path, _options: &PreviewOptions) -> Result<PreviewData, CoreError> {
         todo!()
     }
 }
@@ -32,9 +32,9 @@ impl PreviewProvider for MediaProvider {
 
     async fn generate(
         &self,
-        path: &Path,
-        mime: &MimeInfo,
-        options: &PreviewOptions,
+        _path: &Path,
+        _mime: &MimeInfo,
+        _options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()
     }

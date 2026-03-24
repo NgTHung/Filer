@@ -120,11 +120,10 @@ impl Watcher {
         }
 
         for node_id in to_remove {
-            if let Some(entry) = self.watches.remove(&node_id) {
-                if let Err(e) = self.provider.unwatch(&entry.path).await {
+            if let Some(entry) = self.watches.remove(&node_id)
+                && let Err(e) = self.provider.unwatch(&entry.path).await {
                     tracing::error!("Failed to unwatch {:?}: {}", entry.path, e);
                 }
-            }
         }
     }
 

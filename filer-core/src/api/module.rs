@@ -73,6 +73,12 @@ pub struct HandlerRegistry {
     destroy_hooks: std::sync::Mutex<Vec<DestroyHookFn>>,
 }
 
+impl Default for HandlerRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HandlerRegistry {
     pub fn new() -> Self {
         Self {

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rapidhash::fast::RandomState;
@@ -29,16 +29,16 @@ impl NodeRegistry {
     }
     
     /// Register multiple paths
-    pub fn register_batch(self, paths: &Vec<PathBuf>) -> Vec<NodeId> {
-        paths.into_iter().map(|v| {
-            let hash = NodeId::from_path(&v);
+    pub fn register_batch(self, paths: &[PathBuf]) -> Vec<NodeId> {
+        paths.iter().map(|v| {
+            let hash = NodeId::from_path(v);
             let _ = self.id_to_path.insert_sync(hash, v.clone());
             hash
         }).collect()
     }
 
-    pub fn register_batch_file_node(self, paths: &Vec<FileNode>) -> Vec<NodeId> {
-        paths.into_iter().map(|v| {
+    pub fn register_batch_file_node(self, paths: &[FileNode]) -> Vec<NodeId> {
+        paths.iter().map(|v| {
             let hash = NodeId::from_path(&v.path);
             let _ = self.id_to_path.insert_sync(hash, v.path.clone());
             hash
@@ -56,7 +56,7 @@ impl NodeRegistry {
     }
 
     /// Get NodeId for a path (if registered)
-    pub fn get_id(&self, path: &PathBuf) -> Option<NodeId> {
+    pub fn get_id(&self, path: &Path) -> Option<NodeId> {
         let key = NodeId::from_path(path);
         if self.id_to_path.contains_sync(&key) {
             Some(key)
@@ -86,12 +86,7 @@ impl NodeRegistry {
     }
 
     pub fn have_par(&self, id: NodeId) -> Option<bool> {
-        if let Some(path) = self.resolve(id) {
-            Some(path.parent().is_some())
-        }
-        else {
-            None
-        }
+        self.resolve(id).map(|path| path.parent().is_some())
     }
 
     pub fn get_par(&self, id: NodeId) -> Option<PathBuf> {

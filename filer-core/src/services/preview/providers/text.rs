@@ -22,9 +22,9 @@ impl PreviewProvider for TextProvider {
 
     async fn generate(
         &self,
-        path: &Path,
+        _path: &Path,
         _mime: &MimeInfo,
-        options: &PreviewOptions,
+        _options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()
     }

@@ -31,23 +31,23 @@ impl FsProvider for ArchiveFs {
         }
     }
 
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(&self, _path: &Path) -> Result<Vec<FileNode>, CoreError> {
         todo!()
     }
 
-    async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
         todo!()
     }
 
-    async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
         todo!()
     }
 
-    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
         todo!()
     }
 
-    async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, _path: &Path) -> Result<FileNode, CoreError> {
         todo!()
     }
 }

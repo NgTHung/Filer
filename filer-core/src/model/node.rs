@@ -1,5 +1,5 @@
 use std::fs::Metadata;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
@@ -281,7 +281,7 @@ impl FileNode {
 
 impl NodeId {
     /// Generate ID from path
-    pub fn from_path(path: &PathBuf) -> Self {
+    pub fn from_path(path: &Path) -> Self {
         NodeId({
             use std::hash::Hasher;
             use rapidhash::fast::RapidHasher;

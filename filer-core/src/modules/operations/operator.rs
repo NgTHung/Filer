@@ -93,16 +93,8 @@ impl Operator {
 
 impl Actor for Operator {
     async fn run(self) {
-        loop {
-            match self.commands.recv_async().await {
-                Ok(command) => {
-                    self.handle(command).await;
-                }
-                Err(_) => {
-                    // Command channel closed, shut down
-                    break;
-                }
-            }
+        while let Ok(command) = self.commands.recv_async().await {
+            self.handle(command).await;
         }
     }
 
@@ -113,7 +105,7 @@ impl Actor for Operator {
 
 impl Operator {
     /// Dispatch an operation command
-    async fn handle(&self, command: OpsCommand) {
+    async fn handle(&self, _command: OpsCommand) {
         todo!("Implement operation handling")
     }
 }

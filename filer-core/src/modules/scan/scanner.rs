@@ -1,6 +1,6 @@
 use flume::{Receiver, Sender};
 use rapidhash::fast::RandomState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -120,7 +120,7 @@ impl Scanner {
         provider: &Arc<dyn FsProvider>,
         registry: &NodeRegistry,
         events: &Sender<Event>,
-        path: &PathBuf,
+        path: &Path,
         session: SessionId,
         pipeline_config: PipelineConfig,
         cancel: &CancellationToken,
@@ -140,7 +140,7 @@ impl Scanner {
         }
 
         // 3. Register nodes
-        let parent_id = registry.clone().register(path.clone());
+        let parent_id = registry.clone().register(path.to_path_buf());
         registry.clone().register_batch_file_node(&entries);
 
         // 4. Execute pipeline (always returns GroupedNodes)

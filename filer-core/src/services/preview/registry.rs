@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::errors::CoreError;
-use crate::services::mime::{MimeDetector, MimeInfo};
+use crate::services::mime::MimeInfo;
 
 use super::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
@@ -17,7 +17,6 @@ use super::provider::{PreviewData, PreviewOptions, PreviewProvider};
 pub struct PreviewRegistry {
     /// Stored in descending priority order (highest first).
     providers: Vec<Box<dyn PreviewProvider>>,
-    mime_detector: MimeDetector,
     default_options: PreviewOptions,
 }
 
@@ -25,7 +24,6 @@ impl PreviewRegistry {
     pub fn new() -> Self {
         Self {
             providers: Vec::new(),
-            mime_detector: MimeDetector::new(),
             default_options: PreviewOptions::default(),
         }
     }
@@ -41,7 +39,7 @@ impl PreviewRegistry {
     /// `get_provider` always returns the highest-priority match.
     pub fn register(&mut self, provider: Box<dyn PreviewProvider>) {
         self.providers.push(provider);
-        self.providers.sort_by(|a, b| b.priority().cmp(&a.priority()));
+        self.providers.sort_by_key(|b| std::cmp::Reverse(b.priority()))
     }
 
     /// Set default preview options.
@@ -59,13 +57,13 @@ impl PreviewRegistry {
     /// ## Detection tiers
     ///
     /// ### Tier 1 — Extension (zero I/O)
-    /// TODO: Call `self.mime_detector.detect_from_path(path)`.
+    /// TODO: Call `MimeDetector::detect_from_path(path)`.
     /// Skip Tier 2 when `confidence == Definitive` and strategy is not
     /// `MagicBytes`, or when strategy is `ExtensionOnly`.
     ///
     /// ### Tier 2 — Magic bytes (512-byte read)
     /// TODO: Call `provider.read_header(path, 512)`:
-    /// - `Ok(bytes)` → `self.mime_detector.detect_with_strategy(path, &bytes, strategy)`
+    /// - `Ok(bytes)` → `MimeDetector::detect_with_strategy(path, &bytes, strategy)`
     /// - `Err(_)`    → remote/unreadable, fall back to Tier 1 silently.
     /// Magic bytes win when they disagree with the extension.
     ///

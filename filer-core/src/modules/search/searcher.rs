@@ -117,19 +117,18 @@ impl Searcher {
                 if !query.options.include_hidden && entry.meta.hidden {
                     continue;
                 }
-                if entry.is_dir() {
-                    if query.options.max_depth.map_or(true, |v| depth + 1 <= v){
+                if entry.is_dir()
+                    && query.options.max_depth.is_none_or(|v| depth < v){
                         queue.push_back((entry.path.clone(), depth + 1));
                     }
-                }
                 if query.matches(&entry) {
                     batch.push(entry);
                     total_found += 1;
                     if batch.len() >= query.options.batch_size.unwrap_or(DEFAULT_BATCH_SIZE){
-                        send_or_warn(&event, Event::SearchResults { matches: batch.drain(..).collect(), complete: false, session }, "emit partial search result");
+                        send_or_warn(event, Event::SearchResults { matches: std::mem::take(&mut batch), complete: false, session }, "emit partial search result");
                     }
                 }
-                if query.options.max_results.map_or(false, |max| total_found >= max){
+                if query.options.max_results.is_some_and(|max| total_found >= max){
                     break 'outer;
                 }
             }

@@ -14,12 +14,12 @@ impl ArchiveProvider {
     }
 
     /// List ZIP contents
-    async fn list_zip(&self, path: &Path, max_entries: usize) -> Result<PreviewData, CoreError> {
+    async fn list_zip(&self, _path: &Path, _max_entries: usize) -> Result<PreviewData, CoreError> {
         todo!()
     }
 
     /// List TAR contents
-    async fn list_tar(&self, path: &Path, max_entries: usize) -> Result<PreviewData, CoreError> {
+    async fn list_tar(&self, _path: &Path, _max_entries: usize) -> Result<PreviewData, CoreError> {
         todo!()
     }
 }
@@ -32,9 +32,9 @@ impl PreviewProvider for ArchiveProvider {
 
     async fn generate(
         &self,
-        path: &Path,
-        mime: &MimeInfo,
-        options: &PreviewOptions,
+        _path: &Path,
+        _mime: &MimeInfo,
+        _options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()
     }

@@ -15,6 +15,12 @@ use previewer::{PreviewCommand, Previewer};
 /// Preview module — owns the Previewer actor.
 pub struct PreviewModule;
 
+impl Default for PreviewModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PreviewModule {
     pub fn new() -> Self {
         Self

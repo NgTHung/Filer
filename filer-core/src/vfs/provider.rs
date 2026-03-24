@@ -4,6 +4,16 @@ use async_trait::async_trait;
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
 
+/// A combined `Read + BufRead + Seek` object trait used by extraction crates.
+///
+/// `BufRead` is required by crates such as `kamadak-exif` (`read_from_container`).
+///
+/// - **Local provider**: backed by `BufReader<std::fs::File>` — OS-buffered, seekable.
+/// - **Remote provider**: backed by `Cursor<Vec<u8>>` after a full `read()` fetch;
+///   `Cursor` satisfies all three traits without an extra wrapper.
+pub trait ReadSeek: std::io::Read + std::io::BufRead + std::io::Seek + Send {}
+impl<T: std::io::Read + std::io::BufRead + std::io::Seek + Send> ReadSeek for T {}
+
 /// Capabilities of a filesystem provider
 #[derive(Debug, Clone, Copy)]
 pub struct Capabilities {
@@ -48,5 +58,20 @@ pub trait FsProvider: Send + Sync {
     /// extension-only detection regardless of the requested `DetectionStrategy`.
     async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
         self.read_range(path, 0, n_bytes as u64).await
+    }
+
+    /// Open a file as a synchronous `Read + Seek` reader.
+    ///
+    /// Extraction crates (`zip`, `kamadak-exif`, `id3`, `mp4parse`, `lopdf`)
+    /// accept `impl Read` or `impl Read + Seek`. Using a real reader avoids
+    /// buffering the entire file into a `Vec<u8>` when the provider can serve
+    /// a seekable handle directly.
+    ///
+    /// **Local provider**: override to return `std::fs::File` — zero extra allocation.
+    /// **Remote providers**: the default implementation fetches all bytes via
+    /// `read()` and wraps them in `Cursor<Vec<u8>>`, which is seekable.
+    async fn open_reader(&self, path: &Path) -> Result<Box<dyn ReadSeek>, CoreError> {
+        let bytes = self.read(path).await?;
+        Ok(Box::new(std::io::Cursor::new(bytes)))
     }
 }

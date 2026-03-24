@@ -44,6 +44,7 @@ pub enum QueryFilter {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub struct SearchOptions {
     pub case_sensitive: bool,
     pub include_hidden: bool,
@@ -52,17 +53,6 @@ pub struct SearchOptions {
     pub batch_size: Option<usize>,
 }
 
-impl Default for SearchOptions {
-    fn default() -> Self {
-        Self {
-            case_sensitive: false,
-            include_hidden: false,
-            max_depth: None,
-            max_results: None,
-            batch_size: None
-        }
-    }
-}
 
 impl SearchQuery {
     /// Parse a query string into a structured `SearchQuery`.
@@ -332,8 +322,8 @@ impl SearchQuery {
         }
         let month_days = [31, 28 + if is_leap_year(year) { 1 } else { 0 },
             31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        for m in 0..(month - 1) as usize {
-            days += month_days[m] as i64;
+        for m in month_days.iter().take((month - 1) as usize) {
+            days += m;
         }
         days += day - 1;
 

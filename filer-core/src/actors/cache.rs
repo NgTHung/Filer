@@ -23,7 +23,7 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn new(commands: flume::Receiver<CacheCommand>, capacity: usize) -> Self {
+    pub fn new(_commands: flume::Receiver<CacheCommand>, _capacity: usize) -> Self {
         todo!()
     }
 }

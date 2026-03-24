@@ -62,15 +62,19 @@ impl CommandRouter {
     /// handles directly. Everything else is delegated to the registry.
     fn route(&self, command: Command) {
         // ── Session validation ───────────────────────────────────────
-        if let Some(session) = command.session_id() {
-            if !self.ctx.sessions.exists(session) {
-                send_or_warn(&self.ctx.events, crate::api::events::Event::Error {
+        if let Some(session) = command.session_id()
+            && !self.ctx.sessions.exists(session)
+        {
+            send_or_warn(
+                &self.ctx.events,
+                crate::api::events::Event::Error {
                     message: format!("Unknown session: {}", session),
                     recoverable: true,
                     session,
-                }, "unknown session error");
-                return;
-            }
+                },
+                "unknown session error",
+            );
+            return;
         }
 
         // Check if this is a session-destroy (need session_id for hooks)
@@ -94,18 +98,10 @@ impl CommandRouter {
 
 impl Actor for CommandRouter {
     async fn run(self) {
-        loop {
-            match self.commands.recv_async().await {
-                Ok(command) => {
-                    self.route(command);
-                }
-                Err(_) => {
-                    break;
-                }
-            }
+        while let Ok(command) = self.commands.recv_async().await {
+            self.route(command);
         }
     }
-
     fn name(&self) -> &'static str {
         "command-router"
     }

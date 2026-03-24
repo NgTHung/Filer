@@ -20,9 +20,6 @@ use crate::services::mime::{
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn detector() -> MimeDetector {
-    MimeDetector::new()
-}
 
 fn png_header() -> Vec<u8> {
     vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
@@ -71,7 +68,7 @@ mod detect_from_path_tests {
 
     #[test]
     fn png_extension_is_image() {
-        let info = detector().detect_from_path(Path::new("photo.png"));
+        let info = MimeDetector::detect_from_path(Path::new("photo.png"));
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/png");
         assert_ne!(info.confidence, DetectionConfidence::Unknown);
@@ -79,75 +76,75 @@ mod detect_from_path_tests {
 
     #[test]
     fn jpg_extension_is_image() {
-        let info = detector().detect_from_path(Path::new("photo.jpg"));
+        let info = MimeDetector::detect_from_path(Path::new("photo.jpg"));
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/jpeg");
     }
 
     #[test]
     fn mp3_extension_is_audio() {
-        let info = detector().detect_from_path(Path::new("song.mp3"));
+        let info = MimeDetector::detect_from_path(Path::new("song.mp3"));
         assert_eq!(info.category, MimeCategory::Audio);
         assert_eq!(info.mime_type, "audio/mpeg");
     }
 
     #[test]
     fn mp4_extension_is_video() {
-        let info = detector().detect_from_path(Path::new("clip.mp4"));
+        let info = MimeDetector::detect_from_path(Path::new("clip.mp4"));
         assert_eq!(info.category, MimeCategory::Video);
         assert_eq!(info.mime_type, "video/mp4");
     }
 
     #[test]
     fn zip_extension_is_archive() {
-        let info = detector().detect_from_path(Path::new("archive.zip"));
+        let info = MimeDetector::detect_from_path(Path::new("archive.zip"));
         assert_eq!(info.category, MimeCategory::Archive);
         assert_eq!(info.mime_type, "application/zip");
     }
 
     #[test]
     fn pdf_extension_is_document() {
-        let info = detector().detect_from_path(Path::new("doc.pdf"));
+        let info = MimeDetector::detect_from_path(Path::new("doc.pdf"));
         assert_eq!(info.category, MimeCategory::Document);
         assert_eq!(info.mime_type, "application/pdf");
     }
 
     #[test]
     fn rs_extension_is_text() {
-        let info = detector().detect_from_path(Path::new("main.rs"));
+        let info = MimeDetector::detect_from_path(Path::new("main.rs"));
         assert_eq!(info.category, MimeCategory::Text);
     }
 
     #[test]
     fn no_extension_is_unknown_confidence() {
-        let info = detector().detect_from_path(Path::new("Makefile"));
+        let info = MimeDetector::detect_from_path(Path::new("Makefile"));
         assert_eq!(info.confidence, DetectionConfidence::Unknown);
     }
 
     #[test]
     fn bin_extension_is_unknown_confidence() {
-        let info = detector().detect_from_path(Path::new("data.bin"));
+        let info = MimeDetector::detect_from_path(Path::new("data.bin"));
         assert_eq!(info.confidence, DetectionConfidence::Unknown);
     }
 
     #[test]
     fn txt_extension_is_probable_not_definitive() {
         // .txt is ambiguous (could be CSV, JSON, TOML) → never Definitive
-        let info = detector().detect_from_path(Path::new("notes.txt"));
+        let info = MimeDetector::detect_from_path(Path::new("notes.txt"));
         assert_ne!(info.confidence, DetectionConfidence::Definitive);
         assert_eq!(info.category, MimeCategory::Text);
     }
 
     #[test]
     fn gif_extension_is_image() {
-        let info = detector().detect_from_path(Path::new("anim.gif"));
+        let info = MimeDetector::detect_from_path(Path::new("anim.gif"));
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/gif");
     }
 
     #[test]
     fn mkv_extension_is_video() {
-        let info = detector().detect_from_path(Path::new("movie.mkv"));
+        let info = MimeDetector::detect_from_path(Path::new("movie.mkv"));
         assert_eq!(info.category, MimeCategory::Video);
     }
 }
@@ -162,7 +159,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn png_magic_is_image_definitive() {
-        let info = detector().detect_from_bytes(&png_header());
+        let info = MimeDetector::detect_from_bytes(&png_header());
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/png");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -170,7 +167,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn jpeg_magic_is_image_definitive() {
-        let info = detector().detect_from_bytes(&jpeg_header());
+        let info = MimeDetector::detect_from_bytes(&jpeg_header());
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/jpeg");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -178,7 +175,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn gif_magic_is_image_definitive() {
-        let info = detector().detect_from_bytes(&gif_header());
+        let info = MimeDetector::detect_from_bytes(&gif_header());
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/gif");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -186,7 +183,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn pdf_magic_is_document_definitive() {
-        let info = detector().detect_from_bytes(&pdf_header());
+        let info = MimeDetector::detect_from_bytes(&pdf_header());
         assert_eq!(info.category, MimeCategory::Document);
         assert_eq!(info.mime_type, "application/pdf");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -194,7 +191,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn zip_magic_is_archive_definitive() {
-        let info = detector().detect_from_bytes(&zip_header());
+        let info = MimeDetector::detect_from_bytes(&zip_header());
         assert_eq!(info.category, MimeCategory::Archive);
         assert_eq!(info.mime_type, "application/zip");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -202,7 +199,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn gzip_magic_is_archive_definitive() {
-        let info = detector().detect_from_bytes(&gzip_header());
+        let info = MimeDetector::detect_from_bytes(&gzip_header());
         assert_eq!(info.category, MimeCategory::Archive);
         assert_eq!(info.mime_type, "application/gzip");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -210,7 +207,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn mp3_id3_magic_is_audio_definitive() {
-        let info = detector().detect_from_bytes(&mp3_header());
+        let info = MimeDetector::detect_from_bytes(&mp3_header());
         assert_eq!(info.category, MimeCategory::Audio);
         assert_eq!(info.mime_type, "audio/mpeg");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -218,7 +215,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn ogg_magic_is_audio_definitive() {
-        let info = detector().detect_from_bytes(&ogg_header());
+        let info = MimeDetector::detect_from_bytes(&ogg_header());
         assert_eq!(info.category, MimeCategory::Audio);
         assert_eq!(info.mime_type, "audio/ogg");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -226,7 +223,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn elf_magic_is_binary_definitive() {
-        let info = detector().detect_from_bytes(&elf_header());
+        let info = MimeDetector::detect_from_bytes(&elf_header());
         println!("{}",infer::app::is_elf(&elf_header()));
         assert_eq!(info.category, MimeCategory::Binary);
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -234,7 +231,7 @@ mod detect_from_bytes_tests {
 
     #[test]
     fn empty_bytes_are_unknown() {
-        let info = detector().detect_from_bytes(&[]);
+        let info = MimeDetector::detect_from_bytes(&[]);
         assert_eq!(info.confidence, DetectionConfidence::Unknown);
     }
 }
@@ -248,7 +245,7 @@ mod detect_tests {
     #[test]
     fn matching_ext_and_magic_returns_definitive() {
         // .png extension + PNG magic → agree → Definitive
-        let info = detector().detect(Path::new("photo.png"), &png_header());
+        let info = MimeDetector::detect(Path::new("photo.png"), &png_header());
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/png");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -257,7 +254,7 @@ mod detect_tests {
     #[test]
     fn magic_wins_over_wrong_extension() {
         // .txt extension says Text, but PNG magic says Image → magic wins
-        let info = detector().detect(Path::new("file.txt"), &png_header());
+        let info = MimeDetector::detect(Path::new("file.txt"), &png_header());
         assert_eq!(info.category, MimeCategory::Image);
         assert_eq!(info.mime_type, "image/png");
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -266,7 +263,7 @@ mod detect_tests {
     #[test]
     fn inconclusive_magic_falls_back_to_path() {
         // .dat (ambiguous ext) + empty bytes (inconclusive magic) → Unknown confidence
-        let info = detector().detect(Path::new("data.dat"), &[]);
+        let info = MimeDetector::detect(Path::new("data.dat"), &[]);
         assert_eq!(info.confidence, DetectionConfidence::Unknown);
     }
 }
@@ -280,7 +277,7 @@ mod detect_with_strategy_tests {
     #[test]
     fn extension_only_never_uses_header() {
         // Even with a PNG header, ExtensionOnly must return the extension result
-        let info = detector().detect_with_strategy(
+        let info = MimeDetector::detect_with_strategy(
             Path::new("notes.txt"),
             Some(&png_header()),
             DetectionStrategy::ExtensionOnly,
@@ -292,7 +289,7 @@ mod detect_with_strategy_tests {
     #[test]
     fn extension_with_fallback_trusts_known_extension() {
         // .rs is not ambiguous → extension result used, header ignored
-        let info = detector().detect_with_strategy(
+        let info = MimeDetector::detect_with_strategy(
             Path::new("main.rs"),
             Some(&png_header()),
             DetectionStrategy::ExtensionWithFallback,
@@ -303,7 +300,7 @@ mod detect_with_strategy_tests {
     #[test]
     fn extension_with_fallback_uses_magic_for_ambiguous_extension() {
         // .bin is ambiguous → PNG header wins
-        let info = detector().detect_with_strategy(
+        let info = MimeDetector::detect_with_strategy(
             Path::new("image.bin"),
             Some(&png_header()),
             DetectionStrategy::ExtensionWithFallback,
@@ -315,7 +312,7 @@ mod detect_with_strategy_tests {
     #[test]
     fn extension_with_fallback_falls_back_when_no_header() {
         // header: None (remote provider) → falls back to extension regardless of strategy
-        let info = detector().detect_with_strategy(
+        let info = MimeDetector::detect_with_strategy(
             Path::new("image.bin"),
             None,
             DetectionStrategy::ExtensionWithFallback,
@@ -327,7 +324,7 @@ mod detect_with_strategy_tests {
     #[test]
     fn magic_bytes_always_prefers_magic_when_header_available() {
         // .txt says Text, PNG header says Image → MagicBytes always uses magic
-        let info = detector().detect_with_strategy(
+        let info = MimeDetector::detect_with_strategy(
             Path::new("notes.txt"),
             Some(&png_header()),
             DetectionStrategy::MagicBytes,

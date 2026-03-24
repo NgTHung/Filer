@@ -34,9 +34,9 @@ impl PreviewProvider for CodeProvider {
 
     async fn generate(
         &self,
-        path: &Path,
-        mime: &MimeInfo,
-        options: &PreviewOptions,
+        _path: &Path,
+        _mime: &MimeInfo,
+        _options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()
     }

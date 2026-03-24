@@ -16,9 +16,9 @@ impl ImageProvider {
     /// Generate thumbnail maintaining aspect ratio
     fn generate_thumbnail(
         &self,
-        path: &Path,
-        max_width: u32,
-        max_height: u32,
+        _path: &Path,
+        _max_width: u32,
+        _max_height: u32,
     ) -> Result<(Vec<u8>, u32, u32, u32, u32), CoreError> {
         todo!()
     }
@@ -32,9 +32,9 @@ impl PreviewProvider for ImageProvider {
 
     async fn generate(
         &self,
-        path: &Path,
+        _path: &Path,
         _mime: &MimeInfo,
-        options: &PreviewOptions,
+        _options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         todo!()
     }

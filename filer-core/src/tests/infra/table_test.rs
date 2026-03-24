@@ -100,7 +100,7 @@ fn unknown_extension_returns_none() {
 #[test]
 fn detector_uses_table_for_py() {
     use std::path::Path;
-    let info = MimeDetector::new().detect_from_path(Path::new("script.py"));
+    let info = MimeDetector::detect_from_path(Path::new("script.py"));
     assert_eq!(info.mime_type, "text/x-python");
     assert_eq!(info.category, MimeCategory::Text);
 }
@@ -108,6 +108,6 @@ fn detector_uses_table_for_py() {
 #[test]
 fn detector_uses_table_for_rs() {
     use std::path::Path;
-    let info = MimeDetector::new().detect_from_path(Path::new("main.rs"));
+    let info = MimeDetector::detect_from_path(Path::new("main.rs"));
     assert_eq!(info.mime_type, "text/x-rust");
 }

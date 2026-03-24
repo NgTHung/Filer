@@ -6,7 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
-use crate::vfs::provider::{Capabilities, FsProvider};
+use crate::vfs::provider::{Capabilities, FsProvider, ReadSeek};
 
 /// Local filesystem provider
 pub struct LocalFs {
@@ -99,6 +99,15 @@ impl FsProvider for LocalFs {
         FileNode::from_path(path.to_path_buf(), Some(self.reg.clone()))
     }
 
+    /// Open a buffered, seekable reader over a local file.
+    ///
+    /// `BufReader<File>` satisfies `Read + BufRead + Seek` — the `Seek` impl
+    /// on `BufReader` delegates to the inner `File` and clears the buffer.
+    async fn open_reader(&self, path: &Path) -> Result<Box<dyn ReadSeek>, CoreError> {
+        let file = std::fs::File::open(path)?;
+        Ok(Box::new(std::io::BufReader::new(file)))
+    }
+
     /// Read the first `n_bytes` for MIME detection using a single `read_exact`.
     ///
     /// More efficient than the default `read_range` implementation because it
@@ -112,7 +121,7 @@ impl FsProvider for LocalFs {
     /// - Return `Ok(buf)`
     async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
         let mut f = File::open(path).await?;
-        let mut buf = vec![0; n_bytes as usize];
+        let mut buf = vec![0; n_bytes];
         let size = f.read_exact(&mut buf).await?;
         if size != n_bytes {
             buf.resize(size, 0);

@@ -32,17 +32,17 @@ impl PreviewCache {
     }
 
     /// Get cached preview if valid
-    pub fn get(&self, path: &PathBuf) -> Option<&PreviewData> {
+    pub fn get(&self, _path: &PathBuf) -> Option<&PreviewData> {
         todo!()
     }
 
     /// Store preview in cache
-    pub fn put(&mut self, path: PathBuf, data: PreviewData) {
+    pub fn put(&mut self, _path: PathBuf, _data: PreviewData) {
         todo!()
     }
 
     /// Invalidate cache entry
-    pub fn invalidate(&mut self, path: &PathBuf) {
+    pub fn invalidate(&mut self, _path: &PathBuf) {
         todo!()
     }
 
@@ -52,12 +52,12 @@ impl PreviewCache {
     }
 
     /// Evict oldest entries to make room
-    fn evict(&mut self, needed_bytes: usize) {
+    fn evict(&mut self, _needed_bytes: usize) {
         todo!()
     }
 
     /// Estimate size of preview data
-    fn estimate_size(data: &PreviewData) -> usize {
+    fn estimate_size(_data: &PreviewData) -> usize {
         todo!()
     }
 }

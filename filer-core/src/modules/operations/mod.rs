@@ -17,6 +17,12 @@ use operator::{OpsCommand, Operator};
 /// Operations module — owns the Operator actor.
 pub struct OperationsModule;
 
+impl Default for OperationsModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OperationsModule {
     pub fn new() -> Self {
         Self

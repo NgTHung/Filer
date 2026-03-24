@@ -126,12 +126,12 @@ impl FilerCore {
     /// Equivalent to `FilerCore::new()` + loading NavigationModule,
     /// ScanModule, and all other available modules.
     pub fn with_defaults() -> Self {
-        let core = Self::new();
+        
         // Built-in modules will be loaded here as they are created:
         // core.load(ScanModule::new(...));
         // core.load(NavigationModule::new(...));
         // etc.
-        core
+        Self::new()
     }
 
     /// Load a module into the running system.
@@ -226,5 +226,11 @@ impl FilerCore {
     pub fn shutdown(&self) -> Result<(), CoreError> {
         self.actor_system.shutdown();
         Ok(())
+    }
+}
+
+impl Default for FilerCore {
+    fn default() -> Self {
+        Self::with_defaults()
     }
 }

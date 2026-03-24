@@ -14,7 +14,7 @@ pub fn format_size(bytes: u64) -> String {
 /// Parse human-readable size string to bytes (e.g., "1.5 MB" -> 1572864)
 pub fn parse_size(s: &str) -> Option<u64> {
     let mut pos = s.to_uppercase().trim().to_string();
-    while let Some(_) = pos.find("  ") {
+    while pos.find("  ").is_some() {
         pos = pos.replace("  ", " ");
     }
     if let Some(fin) = pos.strip_suffix('B') {
@@ -52,10 +52,7 @@ pub fn parse_size(s: &str) -> Option<u64> {
             Err(_) => return None,
         }
     }
-    match pos.parse::<u64>() {
-        Ok(v) => return Some(v),
-        Err(_) => return None,
-    }
+    pos.parse::<u64>().ok()
 }
 
 /// Size units for formatting

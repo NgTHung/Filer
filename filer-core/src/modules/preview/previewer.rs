@@ -36,15 +36,15 @@ pub struct Previewer {
 }
 
 impl Previewer {
-    pub fn new(commands: Receiver<PreviewCommand>, events: Sender<Event>) -> Self {
+    pub fn new(_commands: Receiver<PreviewCommand>, _events: Sender<Event>) -> Self {
         todo!()
     }
 
-    async fn handle_generate(&mut self, path: PathBuf, options: Option<PreviewOptions>) {
+    async fn handle_generate(&mut self, _path: PathBuf, _options: Option<PreviewOptions>) {
         todo!()
     }
 
-    async fn handle_metadata(&self, path: PathBuf) {
+    async fn handle_metadata(&self, _path: PathBuf) {
         todo!()
     }
 }
