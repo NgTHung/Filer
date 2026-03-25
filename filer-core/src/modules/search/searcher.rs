@@ -1,11 +1,10 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use flume::{Receiver, Sender};
-use rapidhash::fast::RandomState;
 
+use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::model::node::NodeId;
@@ -29,34 +28,13 @@ pub enum SearchCommand {
     Shutdown,
 }
 
-#[derive(Clone)]
-struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
-}
-
-impl CancellationToken {
-    fn new() -> Self {
-        Self {
-            cancelled: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-    }
-
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
-    }
-}
-
 /// Searcher actor - handles recursive file search
 pub struct Searcher {
     commands: Receiver<SearchCommand>,
     events: Sender<Event>,
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
-    active_search: Arc<scc::HashMap<SessionId, CancellationToken, RandomState>>,
+    active_search: CancelMap,
 }
 
 impl Searcher {
@@ -71,23 +49,18 @@ impl Searcher {
             events,
             provider,
             registry,
-            active_search: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            active_search: CancelMap::new(),
         }
     }
     pub fn dispatch_search(&self, query: SearchQuery, path: PathBuf, session: SessionId) {
         let provider = self.provider.clone();
         let active_search = self.active_search.clone();
         let event = self.events.clone();
-
-        let cancel = CancellationToken::new();
-        if let Some((_, old)) = self.active_search.remove_sync(&session) {
-            old.cancel();
-        }
-        let _ = self.active_search.insert_sync(session, cancel.clone());
+        let cancel = self.active_search.arm(session);
 
         tokio::spawn(async move {
             Self::search(query, path, session, &provider, &cancel, &event).await;
-            let _ = active_search.remove_async(&session).await;
+            active_search.remove(session).await;
         });
     }
 
@@ -137,9 +110,7 @@ impl Searcher {
     }
 
     fn cancel_search(&self, session: SessionId) {
-        if let Some((_, token)) = self.active_search.remove_sync(&session) {
-            token.cancel();
-        }
+        self.active_search.cancel(session);
     }
 }
 
@@ -166,10 +137,7 @@ impl Actor for Searcher {
                     self.dispatch_search(query, path, session);
                 }
                 Err(_) | Ok(SearchCommand::Shutdown) => {
-                    self.active_search.iter_async(|_k, v|{
-                        v.cancel();
-                        true
-                    }).await;
+                    self.active_search.cancel_all().await;
                     break;
                 }
             }

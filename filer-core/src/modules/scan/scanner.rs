@@ -1,16 +1,15 @@
 use flume::{Receiver, Sender};
-use rapidhash::fast::RandomState;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::actors::Actor;
 use crate::api::events::Event;
-use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig};
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::provider::FsProvider;
 
 /// Commands for scanner actor
@@ -30,35 +29,13 @@ pub enum ScanCommand {
     Shutdown,
 }
 
-#[derive(Clone)]
-struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
-}
-
-
-impl CancellationToken {
-    fn new() -> Self {
-        Self {
-            cancelled: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-    }
-
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
-    }
-}
-
 /// Scanner actor - handles directory traversal
 pub struct Scanner {
     commands: Receiver<ScanCommand>,
     events_sender: Sender<Event>,
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
-    active_scans: Arc<scc::HashMap<SessionId, CancellationToken, RandomState>>,
+    active_scans: CancelMap,
 }
 
 impl Scanner {
@@ -73,7 +50,7 @@ impl Scanner {
             events_sender: events,
             provider,
             registry,
-            active_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            active_scans: CancelMap::new(),
         }
     }
 
@@ -89,11 +66,7 @@ impl Scanner {
         let events = self.events_sender.clone();
         let active_scans = self.active_scans.clone();
         
-        let cancel = CancellationToken::new();
-        if let Some((_, old)) = active_scans.remove_sync(&session) {
-            old.cancel();
-        }
-        let _ = active_scans.insert_sync(session, cancel.clone());
+        let cancel = active_scans.arm(session);
         tokio::spawn(async move {
             Self::scan_directory(
                 &provider,
@@ -105,9 +78,7 @@ impl Scanner {
                 &cancel,
             )
             .await;
-
-            // Clean up — remove our token so we don't leak entries
-            let _ = active_scans.remove_async(&session).await;
+            active_scans.remove(session).await;
         });
     }
 
@@ -162,9 +133,7 @@ impl Scanner {
     }
 
     fn cancel_scan(&self, session: SessionId) {
-        if let Some((_, token)) = self.active_scans.remove_sync(&session) {
-            token.cancel();
-        }
+        self.active_scans.cancel(session);
     }
 }
 
@@ -200,12 +169,7 @@ impl Actor for Scanner {
                     self.cancel_scan(session);
                 }
                 Err(_) | Ok(ScanCommand::Shutdown) => {
-                    self.active_scans
-                        .iter_async(|_k, v| {
-                            v.cancel();
-                            true
-                        })
-                        .await;
+                    self.active_scans.cancel_all().await;
                     break;
                 }
             }

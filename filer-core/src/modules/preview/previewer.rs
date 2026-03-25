@@ -1,10 +1,9 @@
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use flume::{Receiver, Sender};
-use rapidhash::fast::RandomState;
 
+use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::model::node::{FileNode, NodeId};
@@ -35,23 +34,6 @@ pub enum PreviewCommand {
     ClearCache,
 }
 
-#[derive(Clone)]
-struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
-}
-
-impl CancellationToken {
-    fn new() -> Self {
-        Self { cancelled: Arc::new(AtomicBool::new(false)) }
-    }
-    fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-    }
-    fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
-    }
-}
-
 /// Previewer actor — generates file previews and extracts metadata.
 ///
 /// Each session can have at most one in-flight operation (preview generation
@@ -65,7 +47,7 @@ pub struct Previewer {
     cache:             Arc<Mutex<PreviewCache>>,
     provider:          Arc<dyn FsProvider>,
     registry:          NodeRegistry,
-    active:            Arc<scc::HashMap<SessionId, CancellationToken, RandomState>>,
+    active:            CancelMap,
 }
 
 impl Previewer {
@@ -85,7 +67,7 @@ impl Previewer {
             )),
             provider,
             registry,
-            active: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            active: CancelMap::new(),
         }
     }
 
@@ -145,7 +127,7 @@ impl Previewer {
                 }
             }
 
-            let _ = active.remove_async(&session).await;
+            active.remove(session).await;
         });
     }
 
@@ -237,26 +219,18 @@ impl Previewer {
                 }
             }
 
-            let _ = active.remove_async(&session).await;
+            active.remove(session).await;
         });
     }
 
     // ── Cancellation helpers ──────────────────────────────────────────────────
 
-    /// Cancel any in-flight operation for `session` and register a fresh token.
     fn arm_cancel(&self, session: SessionId) -> CancellationToken {
-        if let Some((_, old)) = self.active.remove_sync(&session) {
-            old.cancel();
-        }
-        let token = CancellationToken::new();
-        let _ = self.active.insert_sync(session, token.clone());
-        token
+        self.active.arm(session)
     }
 
     fn cancel(&self, session: SessionId) {
-        if let Some((_, token)) = self.active.remove_sync(&session) {
-            token.cancel();
-        }
+        self.active.cancel(session);
     }
 }
 
@@ -283,7 +257,7 @@ impl Actor for Previewer {
                 }
                 Err(_) => {
                     // Sender dropped — shut down and cancel all in-flight work.
-                    self.active.iter_async(|_, v| { v.cancel(); true }).await;
+                    self.active.cancel_all().await;
                     break;
                 }
             }
