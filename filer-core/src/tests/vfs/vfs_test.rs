@@ -105,6 +105,7 @@ async fn test_local_fs_read_not_found() {
     let result = fs.read(Path::new("/nonexistent/file.txt")).await;
 
     assert!(result.is_err());
+    print!("{:?}", result);
     match result {
         Err(CoreError::NotFound(_)) => {}
         _ => panic!("Expected NotFound error"),

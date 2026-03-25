@@ -8,22 +8,21 @@
 
 pub mod previewer;
 
+use std::sync::Arc;
+
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
+use crate::vfs::provider::FsProvider;
 use previewer::{PreviewCommand, Previewer};
 
 /// Preview module — owns the Previewer actor.
-pub struct PreviewModule;
-
-impl Default for PreviewModule {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct PreviewModule {
+    provider: Arc<dyn FsProvider>,
 }
 
 impl PreviewModule {
-    pub fn new() -> Self {
-        Self
+    pub fn new(provider: Arc<dyn FsProvider>) -> Self {
+        Self { provider }
     }
 }
 
@@ -70,7 +69,12 @@ impl Module for PreviewModule {
         });
 
         // ── Spawn Previewer actor ────────────────────────────────────
-        let previewer = Previewer::new(preview_rx, ctx.events.clone());
+        let previewer = Previewer::new(
+            preview_rx,
+            ctx.events.clone(),
+            self.provider.clone(),
+            ctx.registry.clone(),
+        );
         ctx.actors.spawn(previewer);
     }
 }

@@ -55,8 +55,11 @@ impl VideoExtractor {
     ) -> Result<VideoMetadata, CoreError> {
         use mp4parse::{read_mp4, SampleEntry, TrackType};
 
-        let mut reader = provider.open_reader(path).await?;
-        let context = read_mp4(&mut *reader)
+        // read_mp4 requires T: Sized, so we can't pass a trait object directly.
+        // Buffer the file and wrap in Cursor for a concrete Sized type.
+        let bytes = provider.read(path).await?;
+        let mut cursor = std::io::Cursor::new(bytes);
+        let context = read_mp4(&mut cursor)
             .map_err(|e| CoreError::InvalidData(format!("Cannot parse MP4: {e:?}")))?;
 
         let video_track = context.tracks.iter().find(|t| t.track_type == TrackType::Video);

@@ -157,20 +157,15 @@
   - [x] Tests: size, dates, permissions
   - [x] BasicMetadata implementation
 
-- [ ] **Extended Metadata**
-  - [ ] Tests: ImageExtractor (dimensions, EXIF)
-  - [ ] ImageExtractor implementation
-  - [ ] Tests: AudioExtractor (duration, tags)
-  - [ ] AudioExtractor implementation
-  - [ ] Tests: VideoExtractor (dimensions, duration)
-  - [ ] VideoExtractor implementation
-  - [ ] Tests: DocumentExtractor (pages, title)
-  - [ ] DocumentExtractor implementation
-
-- [ ] **Metadata Registry**
-  - [ ] Tests: register extractor
-  - [ ] Tests: extract by category
-  - [ ] MetadataRegistry implementation
+- [x] **Extended Metadata**
+  - [x] Tests: ImageExtractor (dimensions, EXIF)
+  - [x] ImageExtractor implementation
+  - [x] Tests: AudioExtractor (duration, tags)
+  - [x] AudioExtractor implementation
+  - [x] Tests: VideoExtractor (dimensions, duration)
+  - [x] VideoExtractor implementation
+  - [x] Tests: DocumentExtractor (pages, title)
+  - [x] DocumentExtractor implementation
 
 ## Phase 8: Preview System
 - [ ] **Preview Provider Trait**

@@ -6,7 +6,7 @@ pub mod utils;
 
 mod actors;
 mod errors;
-mod pipeline;
+pub mod pipeline;
 mod vfs;
 
 // Re-exports

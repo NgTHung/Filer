@@ -96,12 +96,6 @@ impl std::error::Error for CoreError {
 
 // ── From impls ───────────────────────────────────────────────────────
 
-impl From<IoError> for CoreError {
-    fn from(err: IoError) -> Self {
-        CoreError::Other(err)
-    }
-}
-
 impl<T: std::fmt::Debug> From<SendError<T>> for CoreError {
     fn from(err: SendError<T>) -> Self {
         CoreError::ChannelClosed(err.to_string())
@@ -143,6 +137,7 @@ impl CoreError {
                 path,
                 message: err.to_string(),
             },
+            
         }
     }
 }
