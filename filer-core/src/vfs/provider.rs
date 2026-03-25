@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
@@ -28,22 +28,22 @@ pub struct Capabilities {
 pub trait FsProvider: Send + Sync {
     /// Unique scheme for this provider (e.g., "file", "zip", "sftp")
     fn scheme(&self) -> &'static str;
-    
+
     /// Provider capabilities
     fn capabilities(&self) -> Capabilities;
-    
+
     /// List contents of a directory
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError>;
-    
+
     /// Read file contents
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError>;
-    
+
     /// Read partial file contents
     async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError>;
-    
+
     /// Check if path exists
     async fn exists(&self, path: &Path) -> Result<bool, CoreError>;
-    
+
     /// Get metadata for a path
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError>;
 
@@ -73,5 +73,21 @@ pub trait FsProvider: Send + Sync {
     async fn open_reader(&self, path: &Path) -> Result<Box<dyn ReadSeek>, CoreError> {
         let bytes = self.read(path).await?;
         Ok(Box::new(std::io::Cursor::new(bytes)))
+    }
+
+    async fn write(&self, path: &Path, _data: &[u8]) -> Result<(), CoreError>{
+        Err(CoreError::PermissionDenied(path.to_path_buf()))
+    }
+    async fn copy(&self, _src: &Path, dst: &Path) -> Result<(), CoreError>{
+        Err(CoreError::PermissionDenied(dst.to_path_buf()))
+    }
+    async fn rename(&self, _src: &Path, dst: &Path) -> Result<(), CoreError>{
+        Err(CoreError::PermissionDenied(dst.to_path_buf()))
+    }
+    async fn delete(&self, path: &Path) -> Result<(), CoreError>{
+        Err(CoreError::PermissionDenied(path.to_path_buf()))
+    }
+    async fn mkdir(&self, path: &Path) -> Result<(), CoreError>{
+        Err(CoreError::PermissionDenied(path.to_path_buf()))
     }
 }

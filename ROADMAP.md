@@ -113,14 +113,14 @@ A phase is **done** when:
 
 **Design constraint:** Write methods must be added as non-defaulted `async fn` on `FsProvider`. Providers that advertise `capabilities().write = false` may return `CoreError::PermissionDenied` from write methods, but they must compile. Remote providers that support writes (S3 put, WebDAV PUT) implement these naturally.
 
-- [ ] `write(path, data: &[u8])` — create or overwrite; respects parent existence
-- [ ] `copy(src, dst)` — provider-local optimized copy; falls back to read+write across providers
-- [ ] `rename(src, dst)` — atomic on same filesystem; errors on cross-device without fallback
-- [ ] `delete(path, trash: bool)` — trash uses OS facilities (`trash` crate); permanent is recursive for directories
-- [ ] `mkdir(path)` — creates intermediate directories (`mkdir -p` semantics)
-- [ ] `LocalFs` implementation for all five methods, including cross-platform trash support
-- [ ] Update all stub providers (`ArchiveFs`, `S3Fs`, `WebDavFs`, etc.) to compile with new methods
-- [ ] Tests: each write operation on `LocalFs` using `tempfile::TempDir`; verify idempotency where applicable
+- [x] `write(path, data: &[u8])` — create or overwrite; respects parent existence
+- [x] `copy(src, dst)` — provider-local optimized copy; falls back to read+write across providers
+- [x] `rename(src, dst)` — atomic on same filesystem; errors on cross-device without fallback
+- [x] `delete(path, trash: bool)` — trash uses OS facilities (`trash` crate); permanent is recursive for directories
+- [x] `mkdir(path)` — creates intermediate directories (`mkdir -p` semantics)
+- [x] `LocalFs` implementation for all five methods, including cross-platform trash support
+- [x] Update all stub providers (`ArchiveFs`, `S3Fs`, `WebDavFs`, etc.) to compile with new methods
+- [x] Tests: each write operation on `LocalFs` using `tempfile::TempDir`; verify idempotency where applicable
 
 ### Phase 10: File Operations Actor
 

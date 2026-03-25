@@ -439,3 +439,213 @@ async fn test_mock_fs_trait_usage() {
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), b"content");
 }
+
+// ===== Write Operation Tests =====
+
+mod write_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn fs() -> (LocalFs, TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let fs = LocalFs::new(NodeRegistry::new());
+        (fs, dir)
+    }
+
+    // --- write ---
+
+    #[tokio::test]
+    async fn test_write_creates_new_file() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("file.txt");
+
+        fs.write(&path, b"hello").await.unwrap();
+
+        let content = tokio::fs::read(&path).await.unwrap();
+        assert_eq!(content, b"hello");
+    }
+
+    #[tokio::test]
+    async fn test_write_overwrites_existing_file() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("file.txt");
+
+        fs.write(&path, b"first").await.unwrap();
+        fs.write(&path, b"second").await.unwrap();
+
+        let content = tokio::fs::read(&path).await.unwrap();
+        assert_eq!(content, b"second");
+    }
+
+    #[tokio::test]
+    async fn test_write_returns_err_for_nonexistent_parent() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("nonexistent").join("file.txt");
+
+        let result = fs.write(&path, b"data").await;
+        assert!(result.is_err());
+    }
+
+    // --- copy ---
+
+    #[tokio::test]
+    async fn test_copy_file_creates_destination() {
+        let (fs, dir) = fs();
+        let src = dir.path().join("src.txt");
+        let dst = dir.path().join("dst.txt");
+
+        fs.write(&src, b"data").await.unwrap();
+        fs.copy(&src, &dst).await.unwrap();
+
+        assert!(dst.exists());
+    }
+
+    #[tokio::test]
+    async fn test_copy_file_preserves_content() {
+        let (fs, dir) = fs();
+        let src = dir.path().join("src.txt");
+        let dst = dir.path().join("dst.txt");
+
+        fs.write(&src, b"exact content").await.unwrap();
+        fs.copy(&src, &dst).await.unwrap();
+
+        let content = tokio::fs::read(&dst).await.unwrap();
+        assert_eq!(content, b"exact content");
+    }
+
+    #[tokio::test]
+    async fn test_copy_directory_recursive() {
+        let (fs, dir) = fs();
+        let src_dir = dir.path().join("src_dir");
+        let dst_dir = dir.path().join("dst_dir");
+
+        tokio::fs::create_dir(&src_dir).await.unwrap();
+        tokio::fs::create_dir(src_dir.join("sub")).await.unwrap();
+        tokio::fs::write(src_dir.join("a.txt"), b"a").await.unwrap();
+        tokio::fs::write(src_dir.join("sub").join("b.txt"), b"b").await.unwrap();
+
+        fs.copy(&src_dir, &dst_dir).await.unwrap();
+
+        assert!(dst_dir.join("a.txt").exists());
+        assert!(dst_dir.join("sub").join("b.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_copy_nonexistent_src_returns_err() {
+        let (fs, dir) = fs();
+        let src = dir.path().join("nonexistent.txt");
+        let dst = dir.path().join("dst.txt");
+
+        let result = fs.copy(&src, &dst).await;
+        assert!(result.is_err());
+    }
+
+    // --- rename ---
+
+    #[tokio::test]
+    async fn test_rename_file() {
+        let (fs, dir) = fs();
+        let src = dir.path().join("src.txt");
+        let dst = dir.path().join("dst.txt");
+
+        fs.write(&src, b"x").await.unwrap();
+        fs.rename(&src, &dst).await.unwrap();
+
+        assert!(dst.exists());
+        assert!(!src.exists());
+    }
+
+    #[tokio::test]
+    async fn test_rename_directory() {
+        let (fs, dir) = fs();
+        let src = dir.path().join("dir_a");
+        let dst = dir.path().join("dir_b");
+
+        tokio::fs::create_dir(&src).await.unwrap();
+        fs.rename(&src, &dst).await.unwrap();
+
+        assert!(dst.exists());
+        assert!(!src.exists());
+    }
+
+    #[tokio::test]
+    async fn test_rename_nonexistent_returns_err() {
+        let (fs, dir) = fs();
+        let src = dir.path().join("nonexistent");
+        let dst = dir.path().join("dst");
+
+        let result = fs.rename(&src, &dst).await;
+        assert!(result.is_err());
+    }
+
+    // --- delete ---
+
+    #[tokio::test]
+    async fn test_delete_file() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("file.txt");
+
+        fs.write(&path, b"data").await.unwrap();
+        fs.delete(&path).await.unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_delete_directory_recursively() {
+        let (fs, dir) = fs();
+        let root = dir.path().join("root");
+
+        tokio::fs::create_dir(&root).await.unwrap();
+        tokio::fs::create_dir(root.join("sub")).await.unwrap();
+        tokio::fs::write(root.join("sub").join("file.txt"), b"data").await.unwrap();
+
+        fs.delete(&root).await.unwrap();
+
+        assert!(!root.exists());
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_returns_err() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("nonexistent.txt");
+
+        let result = fs.delete(&path).await;
+        assert!(matches!(result, Err(CoreError::NotFound(_))));
+    }
+
+    // --- mkdir ---
+
+    #[tokio::test]
+    async fn test_mkdir_creates_directory() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("new_dir");
+
+        fs.mkdir(&path).await.unwrap();
+
+        assert!(path.exists());
+        assert!(path.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_mkdir_creates_nested_directories() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("a").join("b").join("c");
+
+        fs.mkdir(&path).await.unwrap();
+
+        assert!(path.exists());
+        assert!(path.is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_mkdir_existing_directory_is_ok() {
+        let (fs, dir) = fs();
+        let path = dir.path().join("existing");
+
+        tokio::fs::create_dir(&path).await.unwrap();
+        let result = fs.mkdir(&path).await;
+
+        assert!(result.is_ok());
+    }
+}

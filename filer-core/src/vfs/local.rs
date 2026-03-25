@@ -36,9 +36,15 @@ impl FsProvider for LocalFs {
 
     #[cfg(unix)]
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        let mut dir = tokio::fs::read_dir(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut dir = tokio::fs::read_dir(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         let mut res = Vec::new();
-        while let Some(entry) = dir.next_entry().await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))? {
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
+        {
             match FileNode::from_path(entry.path(), Some(self.reg.clone())) {
                 Ok(node) => res.push(node),
                 Err(e) => {
@@ -72,17 +78,28 @@ impl FsProvider for LocalFs {
     }
 
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {
-        let mut f = File::open(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut f = File::open(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         let mut buf = Vec::new();
-        f.read_to_end(&mut buf).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        f.read_to_end(&mut buf)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         Ok(buf)
     }
 
     async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
-        let mut f = File::open(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut f = File::open(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         let mut buf = vec![0; len as usize];
-        f.seek(std::io::SeekFrom::Start(start)).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let size = f.read(&mut buf).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        f.seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let size = f
+            .read(&mut buf)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         if size != (len as usize) {
             buf.resize(size, 0);
         }
@@ -104,7 +121,8 @@ impl FsProvider for LocalFs {
     /// `BufReader<File>` satisfies `Read + BufRead + Seek` — the `Seek` impl
     /// on `BufReader` delegates to the inner `File` and clears the buffer.
     async fn open_reader(&self, path: &Path) -> Result<Box<dyn ReadSeek>, CoreError> {
-        let file = std::fs::File::open(path).map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let file = std::fs::File::open(path)
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         Ok(Box::new(std::io::BufReader::new(file)))
     }
 
@@ -120,12 +138,78 @@ impl FsProvider for LocalFs {
     ///   by resizing the buffer to the number of bytes actually read
     /// - Return `Ok(buf)`
     async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
-        let mut f = File::open(path).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut f = File::open(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         let mut buf = vec![0; n_bytes];
-        let size = f.read_exact(&mut buf).await.map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let size = f
+            .read_exact(&mut buf)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         if size != n_bytes {
             buf.resize(size, 0);
         }
         Ok(buf)
+    }
+
+    async fn write(&self, path: &Path, data: &[u8]) -> Result<(), CoreError> {
+        tokio::fs::write(path, data)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
+    }
+
+    async fn copy(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
+        let meta = tokio::fs::metadata(src)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))?;
+        if meta.is_dir() {
+            return Self::copy_dir(src, dst)
+                .await
+                .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()));
+        }
+        tokio::fs::copy(src, dst)
+            .await
+            .map(|_v| ())
+            .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))
+    }
+
+    async fn rename(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
+        tokio::fs::rename(src, dst)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))
+    }
+
+    async fn delete(&self, path: &Path) -> Result<(), CoreError> {
+        let meta = tokio::fs::metadata(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        if meta.is_dir() {
+            tokio::fs::remove_dir_all(path).await
+        } else {
+            tokio::fs::remove_file(path).await
+        }
+        .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
+    }
+
+    async fn mkdir(&self, path: &Path) -> Result<(), CoreError> {
+        tokio::fs::create_dir_all(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
+    }
+}
+impl LocalFs {
+    async fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+        tokio::fs::create_dir_all(dst).await?;
+        let mut entries = tokio::fs::read_dir(src).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+            if entry.file_type().await?.is_dir() {
+                Box::pin(Self::copy_dir(&src_path, &dst_path)).await?;
+            } else {
+                tokio::fs::copy(&src_path, &dst_path).await?;
+            }
+        }
+        Ok(())
     }
 }
