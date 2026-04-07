@@ -146,6 +146,109 @@ impl FsProvider for MockProvider {
     }
 }
 
+#[cfg(test)]
+mod scanner_cache_tests {
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use flume::Receiver;
+    use tokio::time::timeout;
+
+    use super::*;
+    use crate::actors::Actor;
+    use crate::api::events::Event;
+    use crate::model::registry::NodeRegistry;
+    use crate::model::session::SessionId;
+    use crate::modules::scan::scanner::{ScanCommand, Scanner};
+    use crate::pipeline::PipelineConfig;
+    use crate::services::dir_cache::DirCache;
+
+    const SCAN_TIMEOUT: Duration = Duration::from_millis(2000);
+
+    fn default_pipeline() -> PipelineConfig {
+        PipelineConfig { sort: None, filter: None, group: None }
+    }
+
+    async fn wait_for_dir_loaded(evt_rx: &Receiver<Event>, session: SessionId) {
+        let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+        loop {
+            match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+                Ok(Ok(Event::DirectoryLoaded { session: s, .. })) if s == session => return,
+                Ok(Ok(_)) => {}
+                _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_scanner_uses_cache_on_second_scan() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/dir", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner = Scanner::with_cache(
+            cmd_rx,
+            evt_tx,
+            Arc::new(provider.clone()),
+            registry,
+            cache,
+        );
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = std::path::PathBuf::from("/tmp/dir");
+        let s1 = SessionId::new();
+        let s2 = SessionId::new();
+
+        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s1, pipeline: default_pipeline() }).unwrap();
+        wait_for_dir_loaded(&evt_rx, s1).await;
+
+        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s2, pipeline: default_pipeline() }).unwrap();
+        wait_for_dir_loaded(&evt_rx, s2).await;
+
+        let calls = provider.get_list_calls();
+        assert_eq!(calls.len(), 1, "provider.list() should only be called once (second scan hits cache)");
+    }
+
+    #[tokio::test]
+    async fn test_scanner_bypasses_cache_after_invalidation() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("b.txt", "/tmp/dir2", 20, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner = Scanner::with_cache(
+            cmd_rx,
+            evt_tx,
+            Arc::new(provider.clone()),
+            registry,
+            cache.clone(),
+        );
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = std::path::PathBuf::from("/tmp/dir2");
+        let s1 = SessionId::new();
+        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s1, pipeline: default_pipeline() }).unwrap();
+        wait_for_dir_loaded(&evt_rx, s1).await;
+
+        // Invalidate the cache entry
+        cache.lock().unwrap().invalidate(&path);
+
+        let s2 = SessionId::new();
+        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s2, pipeline: default_pipeline() }).unwrap();
+        wait_for_dir_loaded(&evt_rx, s2).await;
+
+        let calls = provider.get_list_calls();
+        assert_eq!(calls.len(), 2, "provider.list() should be called twice after cache invalidation");
+    }
+}
+
 // Scanner actor integration tests moved to filer-core/tests/scanner_integration_test.rs
 
 #[cfg(test)]

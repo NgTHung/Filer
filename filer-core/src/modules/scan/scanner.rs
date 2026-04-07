@@ -9,6 +9,7 @@ use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig};
+use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::provider::FsProvider;
 
@@ -36,6 +37,7 @@ pub struct Scanner {
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active_scans: CancelMap,
+    cache: Option<SharedDirCache>,
 }
 
 impl Scanner {
@@ -51,6 +53,24 @@ impl Scanner {
             provider,
             registry,
             active_scans: CancelMap::new(),
+            cache: None,
+        }
+    }
+
+    pub fn with_cache(
+        commands: Receiver<ScanCommand>,
+        events: Sender<Event>,
+        provider: Arc<dyn FsProvider>,
+        registry: NodeRegistry,
+        cache: SharedDirCache,
+    ) -> Self {
+        Self {
+            commands,
+            events_sender: events,
+            provider,
+            registry,
+            active_scans: CancelMap::new(),
+            cache: Some(cache),
         }
     }
 
@@ -65,7 +85,8 @@ impl Scanner {
         let registry = self.registry.clone();
         let events = self.events_sender.clone();
         let active_scans = self.active_scans.clone();
-        
+        let cache = self.cache.clone();
+
         let cancel = active_scans.arm(session);
         tokio::spawn(async move {
             Self::scan_directory(
@@ -76,6 +97,7 @@ impl Scanner {
                 session,
                 pipeline_config,
                 &cancel,
+                cache.as_ref(),
             )
             .await;
             active_scans.remove(session).await;
@@ -95,8 +117,25 @@ impl Scanner {
         session: SessionId,
         pipeline_config: PipelineConfig,
         cancel: &CancellationToken,
+        cache: Option<&SharedDirCache>,
     ) {
-        // 1. List directory
+        // 1. Cache check (before I/O)
+        let cached_nodes = cache.and_then(|c| c.lock().ok()?.get(path));
+        if let Some(cached) = cached_nodes {
+            let parent_id = registry.clone().register(path.to_path_buf());
+            registry.clone().register_batch_file_node(&cached);
+            let pipeline = Pipeline::from_config(&pipeline_config);
+            let groups = pipeline.execute_grouped(cached);
+            send_or_warn_async(events, Event::DirectoryLoaded {
+                parent: parent_id,
+                path: path.to_path_buf(),
+                groups,
+                session,
+            }, "scan result (cached)").await;
+            return;
+        }
+
+        // 2. List directory (cache miss)
         let entries = match provider.list(path).await {
             Ok(entries) => entries,
             Err(e) => {
@@ -105,16 +144,23 @@ impl Scanner {
             }
         };
 
-        // 2. Check cancellation after I/O
+        // Populate cache after successful list
+        if let Some(cache) = cache {
+            if let Ok(mut c) = cache.lock() {
+                c.put(path.to_path_buf(), entries.clone());
+            }
+        }
+
+        // 3. Check cancellation after I/O
         if cancel.is_cancelled() {
             return;
         }
 
-        // 3. Register nodes
+        // 4. Register nodes
         let parent_id = registry.clone().register(path.to_path_buf());
         registry.clone().register_batch_file_node(&entries);
 
-        // 4. Execute pipeline (always returns GroupedNodes)
+        // 5. Execute pipeline (always returns GroupedNodes)
         let pipeline = Pipeline::from_config(&pipeline_config);
         let groups = pipeline.execute_grouped(entries);
 

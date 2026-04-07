@@ -23,6 +23,7 @@ use flume::Sender;
 
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
+use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn;
 use scanner::{ScanCommand, Scanner};
 use crate::vfs::provider::FsProvider;
@@ -35,6 +36,7 @@ pub struct ScanModule {
     provider: Arc<dyn FsProvider>,
     scan_tx: Sender<ScanCommand>,
     scan_rx: Option<flume::Receiver<ScanCommand>>,
+    cache: Option<SharedDirCache>,
 }
 
 impl ScanModule {
@@ -44,6 +46,17 @@ impl ScanModule {
             provider,
             scan_tx: tx,
             scan_rx: Some(rx),
+            cache: None,
+        }
+    }
+
+    pub fn with_cache(provider: Arc<dyn FsProvider>, cache: SharedDirCache) -> Self {
+        let (tx, rx) = flume::unbounded();
+        Self {
+            provider,
+            scan_tx: tx,
+            scan_rx: Some(rx),
+            cache: Some(cache),
         }
     }
 
@@ -101,12 +114,21 @@ impl Module for ScanModule {
         });
 
         // ── Spawn Scanner actor ──────────────────────────────────────
-        let scanner = Scanner::new(
-            scan_rx,
-            ctx.events.clone(),
-            self.provider.clone(),
-            ctx.registry.clone(),
-        );
+        let scanner = match self.cache.take() {
+            Some(cache) => Scanner::with_cache(
+                scan_rx,
+                ctx.events.clone(),
+                self.provider.clone(),
+                ctx.registry.clone(),
+                cache,
+            ),
+            None => Scanner::new(
+                scan_rx,
+                ctx.events.clone(),
+                self.provider.clone(),
+                ctx.registry.clone(),
+            ),
+        };
         ctx.actors.spawn(scanner);
     }
 }

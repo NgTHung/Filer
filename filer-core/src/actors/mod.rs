@@ -1,4 +1,3 @@
-pub mod cache;
 pub mod cancel;
 pub mod router;
 

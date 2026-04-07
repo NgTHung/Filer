@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use flume::{Receiver, Sender};
 
@@ -8,10 +8,19 @@ use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry, Module, ModuleContext};
 use crate::api::session_manager::SessionManager;
-use crate::utils::channel::send_or_warn;
 use crate::errors::CoreError;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
+use crate::modules::navigation::NavigationModule;
+use crate::modules::operations::OperationsModule;
+use crate::modules::preview::PreviewModule;
+use crate::modules::scan::ScanModule;
+use crate::modules::search::SearchModule;
+use crate::modules::watch::WatchModule;
+use crate::services::dir_cache::DirCache;
+use crate::utils::channel::send_or_warn;
+use crate::vfs::local::LocalFs;
+use crate::vfs::local_watch::LocalWatchProvider;
 
 /// Public API handle for the filer core runtime.
 ///
@@ -123,15 +132,22 @@ impl FilerCore {
 
     /// Create a FilerCore with all built-in modules loaded.
     ///
-    /// Equivalent to `FilerCore::new()` + loading NavigationModule,
-    /// ScanModule, and all other available modules.
+    /// Equivalent to `FilerCore::new()` + loading all six built-in modules
+    /// backed by the local filesystem and a shared 128 MB directory cache.
     pub fn with_defaults() -> Self {
-        
-        // Built-in modules will be loaded here as they are created:
-        // core.load(ScanModule::new(...));
-        // core.load(NavigationModule::new(...));
-        // etc.
-        Self::new()
+        let core = Self::new();
+        let provider = Arc::new(LocalFs::new(core.registry()));
+        let cache = Arc::new(Mutex::new(DirCache::new(128 * 1024 * 1024)));
+
+        let scan = ScanModule::with_cache(provider.clone(), cache.clone());
+        let nav = NavigationModule::new(scan.sender());
+        core.load(scan);
+        core.load(nav);
+        core.load(WatchModule::new(Arc::new(LocalWatchProvider::new())));
+        core.load(SearchModule::new(provider.clone()));
+        core.load(PreviewModule::new(provider.clone()));
+        core.load(OperationsModule::with_cache(provider, cache));
+        core
     }
 
     /// Load a module into the running system.

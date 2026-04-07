@@ -9,6 +9,7 @@ use crate::api::events::{Event, OperationKind};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
+use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::{CoreError, FsProvider};
 
@@ -54,6 +55,7 @@ pub struct Operator {
     registry: NodeRegistry,
     active_ops: CancelMap,
     trash_fn: Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>,
+    cache: Option<SharedDirCache>,
 }
 
 impl Operator {
@@ -91,7 +93,25 @@ impl Operator {
             registry,
             active_ops: CancelMap::new(),
             trash_fn,
+            cache: None,
         }
+    }
+
+    pub fn with_cache(
+        commands: Receiver<OpsCommand>,
+        events: Sender<Event>,
+        provider: Arc<dyn FsProvider>,
+        registry: NodeRegistry,
+        cache: SharedDirCache,
+    ) -> Self {
+        let mut op = Self::new(commands, events, provider, registry);
+        op.cache = Some(cache);
+        op
+    }
+
+    #[allow(dead_code)]
+    fn invalidate_parent(&self, path: &Path) {
+        invalidate_parent_cache(&self.cache, path);
     }
 
     fn copy(&self, sources: Vec<NodeId>, dest: NodeId, session: SessionId) {
@@ -129,6 +149,7 @@ impl Operator {
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
+        let cache = self.cache.clone();
 
         tokio::spawn(async move {
             let mut affected = Vec::new();
@@ -176,6 +197,7 @@ impl Operator {
                             return;
                         }
                     }
+                    invalidate_parent_cache(&cache, &dst_sub);
                     affected.push(registry.clone().register(dst_sub));
                 } else {
                     let dst_file = dst_path.join(file_name);
@@ -188,6 +210,7 @@ impl Operator {
                         .await;
                         return;
                     }
+                    invalidate_parent_cache(&cache, &dst_file);
                     affected.push(registry.clone().register(dst_file));
                 }
             }
@@ -241,6 +264,7 @@ impl Operator {
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
+        let cache = self.cache.clone();
 
         tokio::spawn(async move {
             let mut affected = Vec::new();
@@ -255,6 +279,8 @@ impl Operator {
 
                 match fs.rename(&src_path, &dst_file).await {
                     Ok(()) => {
+                        invalidate_parent_cache(&cache, &src_path);
+                        invalidate_parent_cache(&cache, &dst_file);
                         affected.push(registry.clone().register(dst_file));
                     }
                     Err(e) if is_cross_device(&e) => {
@@ -276,6 +302,8 @@ impl Operator {
                             .await;
                             return;
                         }
+                        invalidate_parent_cache(&cache, &src_path);
+                        invalidate_parent_cache(&cache, &dst_file);
                         affected.push(registry.clone().register(dst_file));
                     }
                     Err(e) => {
@@ -326,6 +354,7 @@ impl Operator {
         let events = self.events.clone();
         let fs = self.provider.clone();
         let trash_fn = self.trash_fn.clone();
+        let cache = self.cache.clone();
         let total = paths.len();
 
         tokio::spawn(async move {
@@ -354,6 +383,7 @@ impl Operator {
 
                 match result {
                     Ok(()) => {
+                        invalidate_parent_cache(&cache, &path);
                         affected.push(id);
                         items_done += 1;
                         if total > 1 {
@@ -428,6 +458,7 @@ impl Operator {
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
+        let cache = self.cache.clone();
 
         tokio::spawn(async move {
             if fs.exists(&new_path).await.unwrap_or(true) {
@@ -450,6 +481,7 @@ impl Operator {
                 return;
             }
 
+            invalidate_parent_cache(&cache, &src_path);
             let id = registry.register(new_path);
             send_or_warn_async(
                 &events,
@@ -482,6 +514,7 @@ impl Operator {
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
+        let cache = self.cache.clone();
 
         tokio::spawn(async move {
             let full_path = path.join(name);
@@ -507,6 +540,7 @@ impl Operator {
                 .await;
                 return;
             }
+            invalidate_parent_cache(&cache, &full_path);
             let id = registry.register(full_path);
             send_or_warn_async(
                 &events,
@@ -539,6 +573,7 @@ impl Operator {
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
+        let cache = self.cache.clone();
 
         tokio::spawn(async move {
             let full_path = path.join(name);
@@ -564,6 +599,7 @@ impl Operator {
                 .await;
                 return;
             }
+            invalidate_parent_cache(&cache, &full_path);
             let id = registry.register(full_path);
             send_or_warn_async(
                 &events,
@@ -629,6 +665,14 @@ fn is_cross_device(err: &CoreError) -> bool {
         if message.contains("cross-device")
             || message.contains("os error 18")
             || message.contains("os error 17"))
+}
+
+fn invalidate_parent_cache(cache: &Option<SharedDirCache>, path: &Path) {
+    if let (Some(parent), Some(c)) = (path.parent(), cache) {
+        if let Ok(mut guard) = c.lock() {
+            guard.invalidate(parent);
+        }
+    }
 }
 
 impl Actor for Operator {

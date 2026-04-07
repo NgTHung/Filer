@@ -148,15 +148,15 @@ A phase is **done** when:
 
 **Performance budget:** Text preview of a 1 MB file must complete under 5 ms. Image thumbnail generation (1920×1080 → 256×256) must complete under 50 ms. These are not tested automatically but should be validated manually before shipping.
 
-- [ ] Tests: `PreviewRegistry::get_provider` returns highest-priority provider for each `MimeCategory`
-- [ ] Tests: `PreviewRegistry::can_preview` returns false for unsupported MIME types
-- [ ] Tests: `PreviewCache::put` / `get` / TTL expiry / size-based eviction
-- [ ] Tests: `Previewer` actor — cache hit skips generation; cancel mid-generation emits nothing; `ClearCache` resets state
-- [ ] `TextProvider` — `provider.read()` → truncate to `max_bytes`; emit `PreviewData::Text { content, truncated }`
-- [ ] `CodeProvider` — language detection from extension; syntax highlighting via `syntect` [`preview-code` feature]
-- [ ] `ImageProvider` — thumbnail via `image` crate, aspect-ratio preserving; emit `PreviewData::Image { data, width, height, original_width, original_height }` [`preview-image` feature]
-- [ ] `MediaProvider` — emit metadata-derived summary (duration, codec); waveform generation deferred
-- [ ] `ArchiveProvider` — reuse `ArchiveExtractor` output; emit entry listing as `PreviewData::Archive`
+- [x] Tests: `PreviewRegistry::get_provider` returns highest-priority provider for each `MimeCategory`
+- [x] Tests: `PreviewRegistry::can_preview` returns false for unsupported MIME types
+- [x] Tests: `PreviewCache::put` / `get` / TTL expiry / size-based eviction
+- [x] Tests: `Previewer` actor — cache hit skips generation; cancel mid-generation emits nothing; `ClearCache` resets state
+- [x] `TextProvider` — `provider.read()` → truncate to `max_bytes`; emit `PreviewData::Text { content, truncated }`
+- [x] `CodeProvider` — language detection from extension; syntax highlighting via `syntect` [`preview-code` feature]
+- [x] `ImageProvider` — thumbnail via `image` crate, aspect-ratio preserving; emit `PreviewData::Image { data, width, height, original_width, original_height }` [`preview-image` feature]
+- [x] `MediaProvider` — emit metadata-derived summary (duration, codec); waveform generation deferred
+- [x] `ArchiveProvider` — reuse `ArchiveExtractor` output; emit entry listing as `PreviewData::Archive`
 
 ### Phase 12: Directory Cache
 

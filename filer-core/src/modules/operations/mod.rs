@@ -15,6 +15,7 @@ use std::sync::Arc;
 use crate::FsProvider;
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
+use crate::services::dir_cache::SharedDirCache;
 use flume::Sender;
 use operator::{Operator, OpsCommand};
 
@@ -23,6 +24,7 @@ pub struct OperationsModule {
     provider: Arc<dyn FsProvider>,
     ops_tx: Sender<OpsCommand>,
     ops_rx: Option<flume::Receiver<OpsCommand>>,
+    cache: Option<SharedDirCache>,
 }
 
 impl OperationsModule {
@@ -32,6 +34,17 @@ impl OperationsModule {
             provider,
             ops_tx: tx,
             ops_rx: Some(rx),
+            cache: None,
+        }
+    }
+
+    pub fn with_cache(provider: Arc<dyn FsProvider>, cache: SharedDirCache) -> Self {
+        let (tx, rx) = flume::unbounded();
+        Self {
+            provider,
+            ops_tx: tx,
+            ops_rx: Some(rx),
+            cache: Some(cache),
         }
     }
 }
@@ -148,7 +161,16 @@ impl Module for OperationsModule {
         });
 
         // ── Spawn Operator actor ─────────────────────────────────────
-        let operator = Operator::new(ops_rx, ctx.events.clone(), self.provider.clone(), ctx.registry.clone());
+        let operator = match self.cache.take() {
+            Some(cache) => Operator::with_cache(
+                ops_rx,
+                ctx.events.clone(),
+                self.provider.clone(),
+                ctx.registry.clone(),
+                cache,
+            ),
+            None => Operator::new(ops_rx, ctx.events.clone(), self.provider.clone(), ctx.registry.clone()),
+        };
         ctx.actors.spawn(operator);
     }
 }

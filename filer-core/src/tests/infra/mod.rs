@@ -1,5 +1,6 @@
 mod actor_test;
 mod crypto_test;
+mod dir_cache_test;
 mod error_test;
 mod metadata_test;
 mod mime_test;
