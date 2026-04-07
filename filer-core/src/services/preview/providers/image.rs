@@ -1,11 +1,13 @@
 use std::path::Path;
+
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::services::preview::provider::{PreviewData, PreviewOptions, PreviewProvider};
+#[cfg(feature = "preview-image")]
+use crate::services::preview::provider::ImageFormat;
 
-/// Image thumbnail preview provider
 pub struct ImageProvider;
 
 impl ImageProvider {
@@ -13,14 +15,36 @@ impl ImageProvider {
         Self
     }
 
-    /// Generate thumbnail maintaining aspect ratio
-    fn generate_thumbnail(
-        &self,
-        _path: &Path,
-        _max_width: u32,
-        _max_height: u32,
-    ) -> Result<(Vec<u8>, u32, u32, u32, u32), CoreError> {
-        todo!()
+    #[cfg(feature = "preview-image")]
+    async fn generate_thumbnail(
+        path: &Path,
+        max_width: u32,
+        max_height: u32,
+    ) -> Result<PreviewData, CoreError> {
+        let path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            let img = image::open(&path)
+                .map_err(|e| CoreError::InvalidData(e.to_string()))?;
+            let (orig_w, orig_h) = (img.width(), img.height());
+            let thumb = img.thumbnail(max_width, max_height);
+            let (w, h) = (thumb.width(), thumb.height());
+            let mut buf = Vec::new();
+            thumb.write_to(
+                &mut std::io::Cursor::new(&mut buf),
+                image::ImageFormat::Png,
+            )
+            .map_err(|e| CoreError::InvalidData(e.to_string()))?;
+            Ok(PreviewData::Image {
+                data: buf,
+                format: ImageFormat::Png,
+                width: w,
+                height: h,
+                original_width: orig_w,
+                original_height: orig_h,
+            })
+        })
+        .await
+        .map_err(|e| CoreError::ActorError { actor: "image_provider", message: e.to_string() })?
     }
 }
 
@@ -32,11 +56,18 @@ impl PreviewProvider for ImageProvider {
 
     async fn generate(
         &self,
-        _path: &Path,
-        _mime: &MimeInfo,
-        _options: &PreviewOptions,
+        path: &Path,
+        mime: &MimeInfo,
+        options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
-        todo!()
+        #[cfg(feature = "preview-image")]
+        return Self::generate_thumbnail(path, options.max_width, options.max_height).await;
+
+        let _ = (path, options);
+        Ok(PreviewData::Unsupported {
+            mime_type: mime.mime_type.clone(),
+            reason: "Image preview feature not enabled".to_string(),
+        })
     }
 
     fn name(&self) -> &'static str {

@@ -123,6 +123,10 @@ impl PreviewRegistry {
     }
 
     /// Get the highest-priority provider that handles `mime.category`.
+    pub fn get_provider_pub(&self, mime: &MimeInfo) -> Option<&dyn PreviewProvider> {
+        self.get_provider(mime)
+    }
+
     fn get_provider(&self, mime: &MimeInfo) -> Option<&dyn PreviewProvider> {
         self.providers
             .iter()
@@ -132,10 +136,10 @@ impl PreviewRegistry {
 }
 
 impl Default for PreviewRegistry {
-    /// Create registry with all built-in providers pre-registered.
     fn default() -> Self {
         use super::providers::*;
         let mut reg = Self::new();
+        #[cfg(feature = "preview-code")]
         reg.register(Box::new(CodeProvider::new()));
         reg.register(Box::new(ImageProvider::new()));
         reg.register(Box::new(MediaProvider::new()));

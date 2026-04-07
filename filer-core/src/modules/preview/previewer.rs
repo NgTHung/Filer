@@ -71,6 +71,26 @@ impl Previewer {
         }
     }
 
+    pub fn with_components(
+        commands: Receiver<PreviewCommand>,
+        events: Sender<Event>,
+        provider: Arc<dyn FsProvider>,
+        registry: NodeRegistry,
+        preview_registry: Arc<PreviewRegistry>,
+        cache: Arc<Mutex<PreviewCache>>,
+    ) -> Self {
+        Self {
+            commands,
+            events,
+            provider,
+            registry,
+            preview_registry,
+            metadata_registry: Arc::new(MetadataRegistry::with_defaults()),
+            cache,
+            active: CancelMap::new(),
+        }
+    }
+
     // ── Preview generation ────────────────────────────────────────────────────
 
     fn dispatch_preview(
