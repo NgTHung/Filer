@@ -229,6 +229,57 @@ impl FileNode {
         })
     }
 
+    /// Create a FileNode from a directory entry's file type — no stat syscall.
+    ///
+    /// `size`, timestamps, and `NodeMeta` fields are left at their zero/default
+    /// values. Call `metadata()` on the provider when full stat info is needed.
+    pub fn from_dir_entry(
+        path: PathBuf,
+        file_type: std::fs::FileType,
+        reg: Option<NodeRegistry>,
+    ) -> Self {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let id = match reg {
+            Some(r) => r.register(path.clone()),
+            None => NodeId::from_path(&path),
+        };
+
+        let kind = if file_type.is_dir() {
+            NodeKind::Directory { children_count: None }
+        } else if file_type.is_symlink() {
+            let target = std::fs::read_link(&path).unwrap_or_default();
+            NodeKind::Symlink { target }
+        } else {
+            let extension = path.extension().and_then(|e| e.to_str()).map(str::to_string);
+            NodeKind::File { extension }
+        };
+
+        #[cfg(unix)]
+        let hidden = name.starts_with('.');
+        #[cfg(not(unix))]
+        let hidden = false;
+
+        FileNode {
+            id,
+            name,
+            path,
+            kind,
+            size: 0,
+            modified: None,
+            created: None,
+            accessed: None,
+            meta: NodeMeta {
+                hidden,
+                ..NodeMeta::default()
+            },
+        }
+    }
+
     /// Check if this is a directory
     pub fn is_dir(&self) -> bool {
         matches!(self.kind, NodeKind::Directory { .. })

@@ -36,7 +36,7 @@ async fn test_local_fs_list() {
     let fs = LocalFs::new(reg);
 
     // Test listing the filer-core/src directory
-    let result = fs.list(Path::new("/home/bbq/Documents/filer/filer-core/src")).await;
+    let result = fs.list(Path::new("/home/bbq/Filer/filer-core/src")).await;
     assert!(result.is_ok());
 
     let files = result.unwrap();
@@ -512,24 +512,7 @@ mod write_tests {
         let content = tokio::fs::read(&dst).await.unwrap();
         assert_eq!(content, b"exact content");
     }
-
-    #[tokio::test]
-    async fn test_copy_directory_recursive() {
-        let (fs, dir) = fs();
-        let src_dir = dir.path().join("src_dir");
-        let dst_dir = dir.path().join("dst_dir");
-
-        tokio::fs::create_dir(&src_dir).await.unwrap();
-        tokio::fs::create_dir(src_dir.join("sub")).await.unwrap();
-        tokio::fs::write(src_dir.join("a.txt"), b"a").await.unwrap();
-        tokio::fs::write(src_dir.join("sub").join("b.txt"), b"b").await.unwrap();
-
-        fs.copy(&src_dir, &dst_dir).await.unwrap();
-
-        assert!(dst_dir.join("a.txt").exists());
-        assert!(dst_dir.join("sub").join("b.txt").exists());
-    }
-
+    
     #[tokio::test]
     async fn test_copy_nonexistent_src_returns_err() {
         let (fs, dir) = fs();

@@ -27,9 +27,9 @@ fn test_node_id_different_paths() {
 
 #[test]
 fn test_file_node_is_dir() {
-    let f1 = FileNode::from_path(PathBuf::from("~/Documents/filer"),None);
-    let f2 = FileNode::from_path(PathBuf::from("~/Documents/filer/README.md"),None);
-    let f3 = FileNode::from_path(PathBuf::from("~/Documents/filer/no.md"),None);
+    let f1 = FileNode::from_path(PathBuf::from("~/Filer"),None);
+    let f2 = FileNode::from_path(PathBuf::from("~/Filer/README.md"),None);
+    let f3 = FileNode::from_path(PathBuf::from("~/Filer/no.md"),None);
     assert_eq!(f1.is_ok(),true);
     assert_eq!(f2.is_ok(),true);
     assert_eq!(f3.is_ok(),false);
@@ -41,8 +41,8 @@ fn test_file_node_is_dir() {
 
 #[test]
 fn test_file_node_extension() {
-    let f1 = FileNode::from_path(PathBuf::from("~/Documents/filer"),None).unwrap();
-    let f2 = FileNode::from_path(PathBuf::from("~/Documents/filer/README.md"),None).unwrap();
+    let f1 = FileNode::from_path(PathBuf::from("~/Filer"),None).unwrap();
+    let f2 = FileNode::from_path(PathBuf::from("~/Filer/README.md"),None).unwrap();
     assert_eq!(f1.extension(),None);
     assert_eq!(f2.extension(),Some("md"));
 }

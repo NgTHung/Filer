@@ -128,16 +128,16 @@ A phase is **done** when:
 
 **Design notes:** Long-running operations (recursive copy, large delete) must be chunked and yield-point-cancellable. Progress granularity is per-file, not per-byte, to avoid channel saturation. Cross-filesystem move is copy-then-delete, not atomic; the event sequence must reflect this (`OperationComplete` only after delete succeeds). The `Operator` must use `CancelMap` — one cancel token per session per operation.
 
-- [ ] Tests: `Copy` single file → `OperationProgress` events + `OperationComplete { success: true }`
-- [ ] Tests: `Copy` directory recursively → progress reflects file count; cancel mid-flight leaves partial copy
-- [ ] Tests: `Move` same-filesystem → single rename, no progress events, atomic
-- [ ] Tests: `Move` cross-filesystem → copy-then-delete sequence, progress emitted
-- [ ] Tests: `Delete { trash: false }` → file removed; `{ trash: true }` → file in OS trash
-- [ ] Tests: `Rename` file and directory
-- [ ] Tests: `CreateFolder` and `CreateFile` with name collision → `CoreError::AlreadyExists`
-- [ ] Tests: cancel in-flight copy → partial state is cleaned up
-- [ ] `Operator` implementation — uses `CancelMap`, emits `OperationProgress`, calls `provider` write methods
-- [ ] Wire `OperationsModule` into `FilerCore::with_defaults()`
+- [x] Tests: `Copy` single file → `OperationProgress` events + `OperationComplete { success: true }`
+- [x] Tests: `Copy` directory recursively → progress reflects file count; cancel mid-flight leaves partial copy
+- [x] Tests: `Move` same-filesystem → single rename, no progress events, atomic
+- [x] Tests: `Move` cross-filesystem → copy-then-delete sequence, progress emitted
+- [x] Tests: `Delete { trash: false }` → file removed; `{ trash: true }` → file in OS trash
+- [x] Tests: `Rename` file and directory
+- [x] Tests: `CreateFolder` and `CreateFile` with name collision → `CoreError::AlreadyExists`
+- [x] Tests: cancel in-flight copy → partial state is cleaned up
+- [x] `Operator` implementation — uses `CancelMap`, emits `OperationProgress`, calls `provider` write methods
+- [x] Wire `OperationsModule` into `FilerCore::with_defaults()`?
 
 ### Phase 11: Preview Providers
 

@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use crate::errors::CoreError;
-use crate::modules::navigation::navigator::NavState;
 use crate::model::node::{NodeId, NodeMeta};
 use crate::model::session::SessionId;
+use crate::modules::navigation::navigator::NavState;
 use crate::pipeline::GroupedNodes;
 use crate::{ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
 
@@ -20,86 +20,94 @@ pub enum Event {
     /// as a flat list, multiple named groups render section headers.
     DirectoryLoaded {
         parent: NodeId,
-        path: PathBuf,  // Keep path for display in breadcrumb
+        path: PathBuf, // Keep path for display in breadcrumb
         groups: GroupedNodes,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Scan progress update
     ScanProgress {
         scanned: usize,
         current: NodeId,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Batch of files (streaming results)
-    FilesBatch(Vec<FileNode>,SessionId),
-    
+    FilesBatch(Vec<FileNode>, SessionId),
+
     /// Search results
     SearchResults {
         matches: Vec<FileNode>,
         complete: bool,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Filesystem change detected
     FsChanged {
         node: NodeId,
         kind: FsChangeKind,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// File operation completed
     OperationComplete {
         operation: OperationKind,
         success: bool,
         affected: Vec<NodeId>,
-        session: SessionId
+        session: SessionId,
     },
-    
+
+    OperationProgress {
+        operation: OperationKind,
+        total_items: usize,
+        items_done: usize,
+        current_file: NodeId,
+        session: SessionId,
+    },
+
     /// Error occurred
     Error {
         message: String,
         recoverable: bool,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Basic metadata loaded (owner/group populated after load_owner_info)
     MetadataLoaded {
         node: NodeId,
         meta: NodeMeta,
-        session: SessionId
+        session: SessionId,
     },
 
     /// Extended metadata loaded
     ExtendedMetadataLoaded {
         node: NodeId,
         extended: ExtendedMetadata,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Preview ready
     PreviewReady {
         node: NodeId,
         preview: PreviewData,
-        session: SessionId
+        session: SessionId,
     },
-    
+
     /// Preview generation failed
     PreviewFailed {
         node: NodeId,
         reason: String,
-        session: SessionId
+        session: SessionId,
     },
 
     SessionCreated(SessionId),
 
     SessionDestroyed(SessionId),
 
-    CurrentNavigateState{
+    CurrentNavigateState {
         session: SessionId,
-        state: NavState
-    }
+        state: NavState,
+    },
 }
 
 impl Event {

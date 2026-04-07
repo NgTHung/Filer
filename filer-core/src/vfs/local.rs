@@ -34,7 +34,10 @@ impl FsProvider for LocalFs {
         }
     }
 
-    #[cfg(unix)]
+    /// List directory contents using only `d_type` from the dirent — no stat per entry.
+    ///
+    /// `FileNode` fields that require stat (`size`, timestamps, permissions) are
+    /// left at zero/default. Use `list_with_meta` when those fields are needed.
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         let mut dir = tokio::fs::read_dir(path)
             .await
@@ -45,32 +48,10 @@ impl FsProvider for LocalFs {
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
         {
-            match FileNode::from_path(entry.path(), Some(self.reg.clone())) {
-                Ok(node) => res.push(node),
+            match entry.file_type().await {
+                Ok(ft) => res.push(FileNode::from_dir_entry(entry.path(), ft, Some(self.reg.clone()))),
                 Err(e) => {
                     tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in listing");
-                }
-            }
-        }
-        Ok(res)
-    }
-    #[cfg(windows)]
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        let mut dir = tokio::fs::read_dir(path).await?;
-        let mut res = Vec::new();
-        while let Some(entry) = dir.next_entry().await? {
-            let filename = entry.path();
-            let filemeta = match entry.metadata().await {
-                Ok(m) => m,
-                Err(e) => {
-                    tracing::debug!(path = %filename.display(), error = %e, "skipping entry metadata");
-                    continue;
-                }
-            };
-            match FileNode::from_metadata(filemeta, filename.clone(), Some(self.reg.clone())) {
-                Ok(node) => res.push(node),
-                Err(e) => {
-                    tracing::debug!(path = %filename.display(), error = %e, "skipping entry in listing");
                 }
             }
         }
@@ -159,17 +140,9 @@ impl FsProvider for LocalFs {
     }
 
     async fn copy(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
-        let meta = tokio::fs::metadata(src)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))?;
-        if meta.is_dir() {
-            return Self::copy_dir(src, dst)
-                .await
-                .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()));
-        }
         tokio::fs::copy(src, dst)
             .await
-            .map(|_v| ())
+            .map(|_| ())
             .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))
     }
 
@@ -180,15 +153,14 @@ impl FsProvider for LocalFs {
     }
 
     async fn delete(&self, path: &Path) -> Result<(), CoreError> {
-        let meta = tokio::fs::metadata(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        if meta.is_dir() {
-            tokio::fs::remove_dir_all(path).await
-        } else {
-            tokio::fs::remove_file(path).await
+        // Try file first (common case, no stat needed). Fall back to dir removal
+        // if it fails — covers directories and edge cases like non-empty dirs.
+        match tokio::fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(_) => tokio::fs::remove_dir_all(path)
+                .await
+                .map_err(|e| CoreError::from_io_error(e, path.to_path_buf())),
         }
-        .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
     }
 
     async fn mkdir(&self, path: &Path) -> Result<(), CoreError> {
@@ -198,18 +170,34 @@ impl FsProvider for LocalFs {
     }
 }
 impl LocalFs {
-    async fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
-        tokio::fs::create_dir_all(dst).await?;
-        let mut entries = tokio::fs::read_dir(src).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let src_path = entry.path();
-            let dst_path = dst.join(entry.file_name());
-            if entry.file_type().await?.is_dir() {
-                Box::pin(Self::copy_dir(&src_path, &dst_path)).await?;
-            } else {
-                tokio::fs::copy(&src_path, &dst_path).await?;
+    /// List directory with full stat metadata per entry (size, timestamps, permissions).
+    ///
+    /// More expensive than `list()` — uses `entry.metadata()` which issues a
+    /// stat syscall per entry. Use this when the UI needs to display file sizes
+    /// or timestamps, not for internal walks (copy, delete, etc.).
+    pub async fn list_with_meta(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+        let mut dir = tokio::fs::read_dir(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut res = Vec::new();
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
+        {
+            let entry_path = entry.path();
+            match entry.metadata().await {
+                Ok(meta) => match FileNode::from_metadata(meta, entry_path.clone(), Some(self.reg.clone())) {
+                    Ok(node) => res.push(node),
+                    Err(e) => {
+                        tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in listing");
+                    }
+                },
+                Err(e) => {
+                    tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry metadata");
+                }
             }
         }
-        Ok(())
+        Ok(res)
     }
 }

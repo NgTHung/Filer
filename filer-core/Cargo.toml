@@ -51,6 +51,8 @@ kube = { version = "3.0.0", features = [
 ], optional = true }
 k8s-openapi = { version = "0.27.0", features = ["latest"], optional = true }
 
+syntect = { version = "5", default-features = false, features = ["default-fancy"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"], optional = true }
 imagesize = { version = "0.14.0", optional = true }
 kamadak-exif = { version = "0.6.1", optional = true }
 id3 = { version = "1", optional = true }
@@ -96,7 +98,10 @@ metadata = [
     "metadata-document",
     "metadata-archive",
 ]
-all-features = ["crypto", "all-remote", "metadata-archive-rar", "metadata"]
+preview-code  = ["dep:syntect"]
+preview-image = ["dep:image"]
+preview       = ["preview-code", "preview-image"]
+all-features = ["crypto", "all-remote", "metadata-archive-rar", "metadata", "preview"]
 
 [dev-dependencies]
 tempfile = "3.27.0"  # also listed as optional dep for runtime archive chaining
