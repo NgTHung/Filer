@@ -18,7 +18,7 @@ pub use model::node::{FileNode, NodeMeta};
 // Services
 pub use services::metadata::{ExtendedMetadata, MetadataRegistry};
 pub use services::mime::{MimeCategory, MimeDetector, MimeInfo};
-pub use services::preview::{PreviewData, PreviewOptions, PreviewRegistry};
+pub use services::preview::{ArchivePreviewEntry, PreviewData, PreviewOptions, PreviewRegistry};
 
 // Crypto (feature-gated)
 #[cfg(feature = "crypto")]
