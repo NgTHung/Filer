@@ -106,6 +106,18 @@ impl Module for NavigationModule {
             }
         });
 
+        // ── Pipeline state ──────────────────────────────────────────
+        let tx = nav_tx.clone();
+        ctx.handlers.on("navigate.pipeline", move |cmd, _ctx| {
+            if let Command::SetPipeline { session, config } = cmd {
+                send_or_warn(
+                    &tx,
+                    NavCommand::SetPipeline { session, config },
+                    "navigate.pipeline",
+                );
+            }
+        });
+
         // ── Session cleanup hook ─────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {

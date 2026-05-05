@@ -13,10 +13,10 @@ use iced::{Color, Element, Subscription, Task, Theme};
 use tracing::{debug, trace};
 
 use crate::config::{Config, ThemeMode};
-use crate::message::{Message, SortDir, SortField};
+use crate::message::{GroupMode, Message, SortDir, SortField};
 use crate::state::{
-    AppState, ClipboardState, ContextMenuState, CreateFolderState, OperationProgressState,
-    RenameState, SelectMode,
+    AppState, ClipboardState, ContextMenuState, CreateFileState, CreateFolderState,
+    OperationProgressState, RenameState, SelectMode,
 };
 use crate::views;
 
@@ -88,6 +88,7 @@ pub struct App {
     state: AppState,
     sort_field: SortField,
     sort_dir: SortDir,
+    group_mode: GroupMode,
     config: Config,
     theme_mode: ThemeMode,
 }
@@ -109,6 +110,7 @@ impl App {
             state,
             sort_field: SortField::Name,
             sort_dir: SortDir::Asc,
+            group_mode: GroupMode::None,
             theme_mode: config.theme_mode.clone(),
             config,
         };
@@ -117,9 +119,11 @@ impl App {
 
     pub fn subscription(&self) -> Subscription<Message> {
         let keyboard = iced::keyboard::listen().filter_map(map_keyboard);
+        let pointer = iced::event::listen_with(map_pointer_event);
         Subscription::batch([
             Subscription::run_with(CoreRx(self.core.event_receiver()), core_event_stream),
             keyboard,
+            pointer,
         ])
     }
 
@@ -263,6 +267,7 @@ impl App {
                 self.state.context_menu = None;
                 self.state.rename_state = None;
                 self.state.create_folder_state = None;
+                self.state.create_file_state = None;
                 Task::none()
             }
             Message::HideContextMenuOnly => {
@@ -356,6 +361,7 @@ impl App {
                 self.state.create_folder_state = Some(CreateFolderState {
                     name: String::new(),
                 });
+                self.state.create_file_state = None;
                 self.state.context_menu = None;
                 Task::none()
             }
@@ -381,6 +387,38 @@ impl App {
             }
             Message::CreateFolderCancel => {
                 self.state.create_folder_state = None;
+                Task::none()
+            }
+            Message::CreateFileStart => {
+                self.state.create_file_state = Some(CreateFileState {
+                    name: String::new(),
+                });
+                self.state.create_folder_state = None;
+                self.state.context_menu = None;
+                Task::none()
+            }
+            Message::CreateFileInput(s) => {
+                if let Some(c) = &mut self.state.create_file_state {
+                    c.name = s;
+                }
+                Task::none()
+            }
+            Message::CreateFileCommit => {
+                if let Some(c) = self.state.create_file_state.take() {
+                    if !c.name.is_empty() {
+                        if let Some(parent_id) = self.current_node_id() {
+                            let _ = self.core.send(Command::CreateFile {
+                                parent: parent_id,
+                                name: c.name,
+                                session: self.session,
+                            });
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::CreateFileCancel => {
+                self.state.create_file_state = None;
                 Task::none()
             }
 
@@ -420,27 +458,12 @@ impl App {
             Message::SortBy(field, dir) => {
                 self.sort_field = field.clone();
                 self.sort_dir = dir.clone();
-
-                use filer_core::pipeline::config::PipelineConfig;
-                use filer_core::pipeline::sort::{SortField as CoreField, SortOrder};
-
-                let core_field = match field {
-                    SortField::Name => CoreField::Name,
-                    SortField::Size => CoreField::Size,
-                    SortField::Modified => CoreField::Modified,
-                    SortField::Kind => CoreField::Type,
-                };
-                let order = match dir {
-                    SortDir::Asc => SortOrder::Ascending,
-                    SortDir::Desc => SortOrder::Descending,
-                };
-                let pipeline = PipelineConfig::default().sort(core_field, order, true);
-                debug!(session = %self.session, "ui -> core scan with sort");
-                let _ = self.core.send(Command::Scan {
-                    path: self.state.current_path.clone(),
-                    session: self.session,
-                    pipeline,
-                });
+                self.rescan_with_current_pipeline();
+                Task::none()
+            }
+            Message::GroupBy(group) => {
+                self.group_mode = group;
+                self.rescan_with_current_pipeline();
                 Task::none()
             }
 
@@ -485,10 +508,15 @@ impl App {
                     trace!(event_session = %session, app_session = %self.session, "ignoring DirectoryLoaded for inactive session");
                     return Task::none();
                 }
+                let same_path = self.state.current_path == path;
                 self.state.current_path = path.clone();
                 self.state.address_input = path.display().to_string();
                 self.state.groups = groups;
-                self.state.selection.clear();
+                if same_path {
+                    self.state.retain_selection_for_visible_nodes();
+                } else {
+                    self.state.selection.clear();
+                }
                 self.state.operation_progress = None;
                 self.state.add_recent_path(&path, MAX_RECENT_PATHS);
                 self.config.recent_paths = self.state.recent_paths.clone();
@@ -573,6 +601,7 @@ impl App {
             &self.state,
             &self.sort_field,
             &self.sort_dir,
+            &self.group_mode,
             &self.theme_mode,
         )
     }
@@ -680,5 +709,64 @@ impl App {
 
         debug!(node = ?node, session = %self.session, "ui -> core watch current directory");
         let _ = self.core.send(Command::Watch(node, self.session));
+    }
+
+    fn current_pipeline(&self) -> filer_core::pipeline::config::PipelineConfig {
+        use filer_core::pipeline::config::PipelineConfig;
+        use filer_core::pipeline::sort::{SortField as CoreField, SortOrder};
+
+        let core_field = match self.sort_field {
+            SortField::Name => CoreField::Name,
+            SortField::Size => CoreField::Size,
+            SortField::Modified => CoreField::Modified,
+            SortField::Kind => CoreField::Type,
+        };
+        let order = match self.sort_dir {
+            SortDir::Asc => SortOrder::Ascending,
+            SortDir::Desc => SortOrder::Descending,
+        };
+
+        let mut pipeline = PipelineConfig::default().sort(core_field, order, true);
+        pipeline = match self.group_mode {
+            GroupMode::None => pipeline,
+            GroupMode::Extension => pipeline.group_by(filer_core::pipeline::GroupBy::Extension),
+            GroupMode::Date => pipeline.group_by(filer_core::pipeline::GroupBy::Date),
+            GroupMode::Size => pipeline.group_by(filer_core::pipeline::GroupBy::Size),
+            GroupMode::FirstLetter => pipeline.group_by(filer_core::pipeline::GroupBy::FirstLetter),
+        };
+        pipeline
+    }
+
+    fn rescan_with_current_pipeline(&self) {
+        let pipeline = self.current_pipeline();
+        debug!(
+            session = %self.session,
+            group = ?self.group_mode,
+            sort = ?self.sort_field,
+            dir = ?self.sort_dir,
+            "ui -> core scan with current pipeline"
+        );
+        let _ = self.core.send(Command::SetPipeline {
+            session: self.session,
+            config: pipeline.clone(),
+        });
+        let _ = self.core.send(Command::Scan {
+            path: self.state.current_path.clone(),
+            session: self.session,
+            pipeline,
+        });
+    }
+}
+
+fn map_pointer_event(
+    event: iced::Event,
+    _status: iced::event::Status,
+    _window: iced::window::Id,
+) -> Option<Message> {
+    match event {
+        iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+            Some(Message::PointerMoved(position))
+        }
+        _ => None,
     }
 }

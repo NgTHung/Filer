@@ -71,6 +71,14 @@ impl SelectionState {
         self.anchor = None;
     }
 
+    pub fn retain(&mut self, ids: &[NodeId]) {
+        let visible: HashSet<NodeId> = ids.iter().copied().collect();
+        self.selected.retain(|id| visible.contains(id));
+        if self.anchor.is_some_and(|id| !visible.contains(&id)) {
+            self.anchor = self.selected.iter().next().copied();
+        }
+    }
+
     pub fn contains(&self, id: NodeId) -> bool {
         self.selected.contains(&id)
     }

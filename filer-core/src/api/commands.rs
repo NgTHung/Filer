@@ -117,6 +117,12 @@ pub enum Command {
         pipeline: PipelineConfig,
     },
 
+    /// Update the current navigation pipeline for future refreshes.
+    SetPipeline {
+        session: SessionId,
+        config: PipelineConfig,
+    },
+
     /// Cancel an active scan for this session
     CancelScan(SessionId),
 
@@ -195,6 +201,7 @@ impl Command {
             | Command::SearchPath { session, .. }
             | Command::Scan { session, .. }
             | Command::ScanNode { session, .. }
+            | Command::SetPipeline { session, .. }
             | Command::LoadPreview { session, .. }
             | Command::Copy { session, .. }
             | Command::Move { session, .. }
@@ -234,6 +241,7 @@ impl Command {
             Command::CreateFile { .. } => "ops.create_file",
             Command::Scan { .. } => "scan",
             Command::ScanNode { .. } => "scan.node",
+            Command::SetPipeline { .. } => "navigate.pipeline",
             Command::CancelScan(..) => "scan.cancel",
             Command::Watch(..) => "watch",
             Command::Unwatch(..) => "watch.remove",

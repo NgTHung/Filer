@@ -76,6 +76,12 @@ pub fn view(state: &AppState, ctx: &ContextMenuState) -> Element<'static, Messag
         Message::CreateFolderStart,
         false,
     ));
+    items.push(menu_item(
+        icon::file(),
+        "New File",
+        Message::CreateFileStart,
+        false,
+    ));
 
     container(
         column(items)

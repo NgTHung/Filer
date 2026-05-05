@@ -22,6 +22,15 @@ pub enum SortDir {
     Desc,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupMode {
+    None,
+    Extension,
+    Date,
+    Size,
+    FirstLetter,
+}
+
 /// All messages that drive application state changes.
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -71,6 +80,10 @@ pub enum Message {
     CreateFolderInput(String),
     CreateFolderCommit,
     CreateFolderCancel,
+    CreateFileStart,
+    CreateFileInput(String),
+    CreateFileCommit,
+    CreateFileCancel,
 
     // ── Preview ─────────────────────────────────────────────────────
     TogglePreview,
@@ -81,6 +94,7 @@ pub enum Message {
 
     // ── Sort ────────────────────────────────────────────────────────
     SortBy(SortField, SortDir),
+    GroupBy(GroupMode),
 
     // ── Bookmarks ───────────────────────────────────────────────────
     AddBookmark,

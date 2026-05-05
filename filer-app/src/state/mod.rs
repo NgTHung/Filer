@@ -33,6 +33,12 @@ pub struct CreateFolderState {
     pub name: String,
 }
 
+/// State for an in-progress file creation.
+#[derive(Debug, Clone)]
+pub struct CreateFileState {
+    pub name: String,
+}
+
 /// State for a visible context menu.
 #[derive(Debug, Clone)]
 pub struct ContextMenuState {
@@ -84,6 +90,7 @@ pub struct AppState {
     pub last_pointer: iced::Point,
     pub rename_state: Option<RenameState>,
     pub create_folder_state: Option<CreateFolderState>,
+    pub create_file_state: Option<CreateFileState>,
     pub operation_progress: Option<OperationProgressState>,
 
     // ── Sidebar ─────────────────────────────────────────────────────
@@ -126,6 +133,7 @@ impl AppState {
             last_pointer: iced::Point::ORIGIN,
             rename_state: None,
             create_folder_state: None,
+            create_file_state: None,
             operation_progress: None,
             bookmarks,
             recent_paths,
@@ -168,6 +176,11 @@ impl AppState {
             .filter(|n| self.selection.contains(n.id))
             .map(|n| n.size)
             .sum()
+    }
+
+    pub fn retain_selection_for_visible_nodes(&mut self) {
+        let visible = self.visible_ids();
+        self.selection.retain(&visible);
     }
 }
 
