@@ -29,7 +29,7 @@ use tokio::task::JoinHandle;
 pub trait Actor: Send + 'static {
     /// Start the actor's main loop (consumes self)
     fn run(self) -> impl std::future::Future<Output = ()> + Send;
-    
+
     /// Get actor name for logging
     fn name(&self) -> &'static str;
 }

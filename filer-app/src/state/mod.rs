@@ -12,6 +12,14 @@ use filer_core::{FileNode, PreviewData};
 pub use clipboard::ClipboardState;
 pub use selection::{SelectMode, SelectionState};
 
+/// Active tab in the right-side details panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PanelTab {
+    #[default]
+    Preview,
+    Details,
+}
+
 /// State for an in-progress rename.
 #[derive(Debug, Clone)]
 pub struct RenameState {
@@ -45,7 +53,10 @@ pub struct OperationProgressState {
 pub struct AppState {
     // ── Navigation ──────────────────────────────────────────────────
     pub current_path: PathBuf,
+    pub address_input: String,
     pub nav: Option<NavState>,
+    pub current_watch: Option<NodeId>,
+    pub watch_refresh_pending: bool,
 
     // ── File list ───────────────────────────────────────────────────
     pub groups: GroupedNodes,
@@ -57,55 +68,79 @@ pub struct AppState {
     pub search_pending: Option<String>,
     pub search_results: Option<Vec<FileNode>>,
     pub search_active: bool,
-    /// Whether the search bar is currently open/visible.
-    pub search_bar_open: bool,
+    pub search_result_count: usize,
 
     // ── Clipboard ───────────────────────────────────────────────────
     pub clipboard: Option<ClipboardState>,
 
     // ── Preview ─────────────────────────────────────────────────────
     pub preview_visible: bool,
+    pub panel_tab: PanelTab,
     pub preview_node: Option<NodeId>,
     pub preview_data: Option<PreviewData>,
 
     // ── Overlays ────────────────────────────────────────────────────
     pub context_menu: Option<ContextMenuState>,
+    pub last_pointer: iced::Point,
     pub rename_state: Option<RenameState>,
     pub create_folder_state: Option<CreateFolderState>,
     pub operation_progress: Option<OperationProgressState>,
 
     // ── Sidebar ─────────────────────────────────────────────────────
     pub bookmarks: Vec<PathBuf>,
+    pub recent_paths: Vec<PathBuf>,
     pub places: Vec<(String, PathBuf)>,
 
     // ── Thumbnails (NodeId → PNG bytes for loaded thumbs) ──────────
     pub thumbnails: HashMap<NodeId, Vec<u8>>,
+
+    // ── Error display ───────────────────────────────────────────────
+    pub error_message: Option<String>,
 }
 
 impl AppState {
-    pub fn new(preview_visible: bool, bookmarks: Vec<PathBuf>) -> Self {
+    pub fn new(preview_visible: bool, bookmarks: Vec<PathBuf>, recent_paths: Vec<PathBuf>) -> Self {
         let places = build_places();
         Self {
             current_path: home_dir(),
+            address_input: home_dir().display().to_string(),
             nav: None,
-            groups: GroupedNodes { groups: vec![], total_count: 0 },
+            current_watch: None,
+            watch_refresh_pending: false,
+            groups: GroupedNodes {
+                groups: vec![],
+                total_count: 0,
+            },
             selection: SelectionState::new(),
             search_query: String::new(),
             search_pending: None,
             search_results: None,
             search_active: false,
-            search_bar_open: false,
+            search_result_count: 0,
             clipboard: None,
             preview_visible,
+            panel_tab: PanelTab::Preview,
             preview_node: None,
             preview_data: None,
             context_menu: None,
+            last_pointer: iced::Point::ORIGIN,
             rename_state: None,
             create_folder_state: None,
             operation_progress: None,
             bookmarks,
+            recent_paths,
             places,
             thumbnails: HashMap::new(),
+            error_message: None,
+        }
+    }
+
+    /// Add `path` to the top of recents, keeping it unique and bounded.
+    pub fn add_recent_path(&mut self, path: &PathBuf, max: usize) {
+        self.recent_paths.retain(|p| p != path);
+        self.recent_paths.insert(0, path.clone());
+        if self.recent_paths.len() > max {
+            self.recent_paths.truncate(max);
         }
     }
 
@@ -114,7 +149,11 @@ impl AppState {
         if let Some(results) = &self.search_results {
             return results.clone();
         }
-        self.groups.groups.iter().flat_map(|g| g.nodes.clone()).collect()
+        self.groups
+            .groups
+            .iter()
+            .flat_map(|g| g.nodes.clone())
+            .collect()
     }
 
     /// Ordered NodeIds of all visible nodes (for range selection).
@@ -159,6 +198,20 @@ fn build_places() -> Vec<(String, PathBuf)> {
     if let Some(p) = dirs::audio_dir() {
         places.push(("Music".to_string(), p));
     }
-    places.push(("Root".to_string(), PathBuf::from("/")));
+    #[cfg(windows)]
+    {
+        for letter in b'A'..=b'Z' {
+            let drive = format!("{}:\\", letter as char);
+            let path = PathBuf::from(&drive);
+            if path.exists() {
+                places.push((format!("Drive {}", letter as char), path));
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        places.push(("Root".to_string(), PathBuf::from("/")));
+    }
     places
 }

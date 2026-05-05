@@ -193,7 +193,12 @@ impl Operator {
                         Ok(()) => {}
                         Err(CoreError::Cancelled) => return,
                         Err(e) => {
-                            send_or_warn_async(&events, Event::from_error(e, session), "operator: copy dir").await;
+                            send_or_warn_async(
+                                &events,
+                                Event::from_error(e, session),
+                                "operator: copy dir",
+                            )
+                            .await;
                             return;
                         }
                     }

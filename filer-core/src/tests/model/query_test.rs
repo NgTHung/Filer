@@ -14,7 +14,10 @@ use crate::model::query::{QueryFilter, SearchQuery};
 
 fn make_file(name: &str, size: u64) -> FileNode {
     let path = PathBuf::from("/test").join(name);
-    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_string);
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_string);
     FileNode {
         id: NodeId::from_path(&path),
         name: name.to_string(),
@@ -24,7 +27,12 @@ fn make_file(name: &str, size: u64) -> FileNode {
         modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
         created: None,
         accessed: None,
-        meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
+        meta: NodeMeta {
+            hidden: false,
+            readonly: false,
+            permissions: None,
+            ..Default::default()
+        },
     }
 }
 
@@ -34,12 +42,19 @@ fn make_dir(name: &str) -> FileNode {
         id: NodeId::from_path(&path),
         name: name.to_string(),
         path,
-        kind: NodeKind::Directory { children_count: None },
+        kind: NodeKind::Directory {
+            children_count: None,
+        },
         size: 0,
         modified: Some(SystemTime::UNIX_EPOCH),
         created: None,
         accessed: None,
-        meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
+        meta: NodeMeta {
+            hidden: false,
+            readonly: false,
+            permissions: None,
+            ..Default::default()
+        },
     }
 }
 
@@ -152,10 +167,7 @@ mod tests {
     #[test]
     fn parse_name_contains() {
         let q = SearchQuery::parse("name:config").unwrap();
-        assert_eq!(
-            q.filters,
-            vec![QueryFilter::NameContains("config".into())]
-        );
+        assert_eq!(q.filters, vec![QueryFilter::NameContains("config".into())]);
     }
 
     #[test]
@@ -189,10 +201,12 @@ mod tests {
 
     #[test]
     fn parse_combined_query() {
-        let q =
-            SearchQuery::parse("*.rs ext:rs size:>1kb type:file case:yes depth:5").unwrap();
+        let q = SearchQuery::parse("*.rs ext:rs size:>1kb type:file case:yes depth:5").unwrap();
         assert_eq!(q.text, "*.rs");
-        assert!(q.filters.contains(&QueryFilter::Extension(vec!["rs".into()])));
+        assert!(
+            q.filters
+                .contains(&QueryFilter::Extension(vec!["rs".into()]))
+        );
         assert!(q.filters.contains(&QueryFilter::SizeGreaterThan(1024)));
         assert!(q.filters.contains(&QueryFilter::IsFile));
         assert!(q.options.case_sensitive);
@@ -419,8 +433,8 @@ mod matches_tests {
     fn multiple_filters_all_must_pass() {
         let q = SearchQuery::parse("ext:rs size:>100").unwrap();
         assert!(q.matches(&make_file("big.rs", 200)));
-        assert!(!q.matches(&make_file("small.rs", 50)));   // size fails
-        assert!(!q.matches(&make_file("big.py", 200)));    // ext fails
+        assert!(!q.matches(&make_file("small.rs", 50))); // size fails
+        assert!(!q.matches(&make_file("big.py", 200))); // ext fails
     }
 
     #[test]
@@ -428,7 +442,7 @@ mod matches_tests {
         let q = SearchQuery::parse("test ext:rs").unwrap();
         assert!(q.matches(&make_file("test_main.rs", 100)));
         assert!(!q.matches(&make_file("test_main.py", 100))); // ext fails
-        assert!(!q.matches(&make_file("main.rs", 100)));       // text fails
+        assert!(!q.matches(&make_file("main.rs", 100))); // text fails
     }
 
     // ── QueryFilter::matches directly ─────────────────────────────────────────

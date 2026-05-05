@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
@@ -13,8 +13,8 @@ pub struct FtpConfig {
     pub port: u16,
     pub username: Option<String>,
     pub password: Option<String>,
-    pub secure: bool,           // FTPS
-    pub use_sftp: bool,         // SFTP instead of FTP
+    pub secure: bool,   // FTPS
+    pub use_sftp: bool, // SFTP instead of FTP
     pub private_key: Option<String>,
     pub passive_mode: bool,
 }
@@ -87,11 +87,7 @@ impl FtpFs {
 #[async_trait]
 impl FsProvider for FtpFs {
     fn scheme(&self) -> &'static str {
-        if self.config.use_sftp {
-            "sftp"
-        } else {
-            "ftp"
-        }
+        if self.config.use_sftp { "sftp" } else { "ftp" }
     }
 
     fn capabilities(&self) -> Capabilities {

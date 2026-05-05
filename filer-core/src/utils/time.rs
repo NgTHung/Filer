@@ -18,11 +18,11 @@ pub fn format_time(time: SystemTime) -> String {
 /// Format SystemTime as relative string (e.g., "2 hours ago")
 pub fn format_relative(time: SystemTime) -> String {
     let now = SystemTime::now();
-    
+
     match now.duration_since(time) {
         Ok(duration) => {
             let secs = duration.as_secs();
-            
+
             if secs < 60 {
                 format!("{} seconds ago", secs)
             } else if secs < 3600 {
@@ -53,7 +53,7 @@ pub fn format_relative(time: SystemTime) -> String {
             match time.duration_since(now) {
                 Ok(duration) => {
                     let secs = duration.as_secs();
-                    
+
                     if secs < 60 {
                         format!("in {} seconds", secs)
                     } else if secs < 3600 {
@@ -91,7 +91,7 @@ pub fn format_duration(seconds: f64) -> String {
     let hours = total_secs / 3600;
     let mins = (total_secs % 3600) / 60;
     let secs = total_secs % 60;
-    
+
     if hours > 0 {
         format!("{}:{:02}:{:02}", hours, mins, secs)
     } else {
@@ -102,7 +102,7 @@ pub fn format_duration(seconds: f64) -> String {
 /// Parse duration string to seconds (e.g., "1:23:45" -> 5025.0)
 pub fn parse_duration(s: &str) -> Option<f64> {
     let parts: Vec<&str> = s.split(':').collect();
-    
+
     match parts.len() {
         2 => {
             // MM:SS format
@@ -179,21 +179,21 @@ impl TimeGroup {
 /// Group a SystemTime into a time category
 pub fn time_group(time: SystemTime) -> TimeGroup {
     let now = SystemTime::now();
-    
+
     let duration = match now.duration_since(time) {
         Ok(d) => d,
         Err(_) => return TimeGroup::Unknown, // Future time
     };
-    
+
     let secs = duration.as_secs();
-    
+
     const HOUR: u64 = 3600;
     const DAY: u64 = 86400;
     const WEEK: u64 = 7 * DAY;
     const MONTH: u64 = 30 * DAY;
     const YEAR: u64 = 365 * DAY;
     const DECADE: u64 = 10 * YEAR;
-    
+
     if secs < HOUR {
         TimeGroup::LastHour
     } else if secs < DAY {

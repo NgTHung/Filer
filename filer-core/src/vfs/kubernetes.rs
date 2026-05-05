@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
@@ -58,32 +58,65 @@ impl K8sFs {
     }
 
     /// List resources in namespace
-    async fn list_resources(&self, namespace: &str, kind: K8sResourceKind) -> Result<Vec<FileNode>, CoreError> {
+    async fn list_resources(
+        &self,
+        namespace: &str,
+        kind: K8sResourceKind,
+    ) -> Result<Vec<FileNode>, CoreError> {
         todo!()
     }
 
     /// Get resource as YAML
-    async fn get_resource_yaml(&self, namespace: &str, kind: K8sResourceKind, name: &str) -> Result<String, CoreError> {
+    async fn get_resource_yaml(
+        &self,
+        namespace: &str,
+        kind: K8sResourceKind,
+        name: &str,
+    ) -> Result<String, CoreError> {
         todo!()
     }
 
     /// Get pod logs
-    async fn get_pod_logs(&self, namespace: &str, pod: &str, container: Option<&str>) -> Result<String, CoreError> {
+    async fn get_pod_logs(
+        &self,
+        namespace: &str,
+        pod: &str,
+        container: Option<&str>,
+    ) -> Result<String, CoreError> {
         todo!()
     }
 
     /// Exec into pod (returns path to PTY or stream)
-    async fn exec_pod(&self, namespace: &str, pod: &str, container: Option<&str>, command: &[&str]) -> Result<(), CoreError> {
+    async fn exec_pod(
+        &self,
+        namespace: &str,
+        pod: &str,
+        container: Option<&str>,
+        command: &[&str],
+    ) -> Result<(), CoreError> {
         todo!()
     }
 
     /// Copy file from pod
-    async fn copy_from_pod(&self, namespace: &str, pod: &str, container: Option<&str>, remote_path: &str) -> Result<Vec<u8>, CoreError> {
+    async fn copy_from_pod(
+        &self,
+        namespace: &str,
+        pod: &str,
+        container: Option<&str>,
+        remote_path: &str,
+    ) -> Result<Vec<u8>, CoreError> {
         todo!()
     }
 
     /// Copy file to pod
-    async fn copy_to_pod(&self, namespace: &str, pod: &str, container: Option<&str>, remote_path: &str, data: &[u8]) -> Result<(), CoreError> {
+    async fn copy_to_pod(
+        &self,
+        namespace: &str,
+        pod: &str,
+        container: Option<&str>,
+        remote_path: &str,
+        data: &[u8],
+    ) -> Result<(), CoreError> {
         todo!()
     }
 }

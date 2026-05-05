@@ -10,8 +10,8 @@ pub mod pipeline;
 mod vfs;
 
 // Re-exports
-pub use api::{commands::Command, events::Event, handle::FilerCore};
 pub use api::module::Module;
+pub use api::{commands::Command, events::Event, handle::FilerCore};
 pub use errors::CoreError;
 pub use model::node::{FileNode, NodeMeta};
 
@@ -35,19 +35,19 @@ pub use actors::Actor;
 pub use pipeline::{PipelineConfig, SortConfig};
 
 #[cfg(feature = "s3")]
-pub use vfs::s3::{S3Fs, S3Config};
+pub use vfs::s3::{S3Config, S3Fs};
 
 #[cfg(feature = "webdav")]
-pub use vfs::webdav::{WebDavFs, WebDavConfig};
+pub use vfs::webdav::{WebDavConfig, WebDavFs};
 
 #[cfg(any(feature = "ftp", feature = "sftp"))]
-pub use vfs::ftp::{FtpFs, FtpConfig};
+pub use vfs::ftp::{FtpConfig, FtpFs};
 
 #[cfg(feature = "fuse")]
-pub use vfs::fuse::{FuseFs, FuseConfig};
+pub use vfs::fuse::{FuseConfig, FuseFs};
 
 #[cfg(feature = "kubernetes")]
-pub use vfs::kubernetes::{K8sFs, K8sConfig};
+pub use vfs::kubernetes::{K8sConfig, K8sFs};
 
 #[cfg(test)]
 mod tests;

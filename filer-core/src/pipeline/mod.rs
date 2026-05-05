@@ -70,19 +70,19 @@ impl Pipeline {
             if !filter_config.include_extensions.is_empty() {
                 pipeline = pipeline.add(filter::FilterByExtension::new(
                     filter_config.include_extensions.clone(),
-                    false
+                    false,
                 ));
             }
-            
+
             // TODO: Add more filter stages as implemented
             // - exclude_extensions
             if !filter_config.exclude_extensions.is_empty() {
                 pipeline = pipeline.add(filter::FilterByExtension::new(
                     filter_config.exclude_extensions.clone(),
-                    true
+                    true,
                 ));
             }
-            
+
             // - min_size / max_size
             // - name_pattern
         }
@@ -122,11 +122,11 @@ impl Pipeline {
 
     pub fn execute(&self, data: Vec<FileNode>) -> PipelineData {
         let mut pipeline_data = PipelineData::Flat(data);
-        
+
         for stage in &self.stages {
             pipeline_data = stage.process(pipeline_data);
         }
-        
+
         pipeline_data
     }
 
@@ -158,9 +158,7 @@ impl Pipeline {
             PipelineData::Flat(nodes) => nodes,
             PipelineData::Grouped(grouped) => {
                 // Flatten if needed
-                grouped.groups.into_iter()
-                    .flat_map(|g| g.nodes)
-                    .collect()
+                grouped.groups.into_iter().flat_map(|g| g.nodes).collect()
             }
         }
     }

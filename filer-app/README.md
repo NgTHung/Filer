@@ -1,10 +1,39 @@
 # filer-app
 
-Main application binary for the Filer file explorer.
+`filer-app` is the Iced desktop frontend for Filer. It is the user-facing file
+manager that consumes `filer-core` for navigation, search, preview generation,
+file operations, and filesystem events.
 
-## Overview
+The app target is simple: make local file management feel clean, fast, and
+predictable before expanding into more advanced workflows. The visual direction
+is inspired by Windows Explorer and Files Community: quiet surfaces, clear
+hierarchy, compact controls, and a polished details list. The workflow intent is
+closer to Xplorer: efficient navigation, quick access, useful context actions,
+and fast feedback while working with files.
 
-This crate is the entry point that combines `filer-core` with a GUI frontend.
+## Current Capabilities
+
+- Local folder navigation through the core navigation module.
+- Details-list file view with sortable columns.
+- Quick Access places, bookmarks, and recent folders.
+- Search with debounced input and streamed results.
+- Right-side Preview and Details panel.
+- Basic file operations: copy, cut, paste, rename, create folder, and delete.
+- Context-menu actions for selected files and folders.
+- Bottom status bar with item, selection, search, and sort state.
+- Light, dark, and automatic theme modes.
+
+## Design Goals
+
+- Look good enough to use daily while the larger feature roadmap is still in
+  progress.
+- Keep the first screen as the actual file manager, not a landing page or demo
+  shell.
+- Prefer a Files-style interface: simple, elegant, readable, and native-feeling.
+- Keep Xplorer-style intent: dense enough for work, fast to scan, and focused on
+  file-management actions.
+- Make right-click, preview, search, the topbar, the status bar, and Quick Access
+  feel complete before adding larger features.
 
 ## Running
 
@@ -15,20 +44,30 @@ cargo run -p filer-app
 ## Building
 
 ```bash
-# Debug
 cargo build -p filer-app
-
-# Release
 cargo build -p filer-app --release
 ```
 
-## Features
+## Testing
 
 ```bash
-# Enable all remote providers
-cargo run -p filer-app --features "s3,webdav,ftp,fuse,k8s"
+cargo test -p filer-app
+cargo check --workspace
+```
 
-# Enable encryption
-cargo run -p filer-app --features "encryption"
+For core behavior, run:
+
+```bash
+cargo test -p filer-core --lib
 ```
-```
+
+## Known Limitations
+
+- The app is currently local-first; remote providers in `filer-core` are not yet
+  surfaced as first-class UI locations.
+- The primary file view is details-list only. Tile/grid views are planned later.
+- Drag and drop is not complete yet.
+- Preview quality depends on the current core preview providers and available
+  feature flags.
+- Advanced workflows such as tabs, split panes, command palette, and operations
+  history are planned but not part of the initial polish pass.

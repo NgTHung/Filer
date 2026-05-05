@@ -225,7 +225,10 @@ mod size_tests {
         assert_eq!(SizeUnit::Kilobytes.multiplier(), 1024);
         assert_eq!(SizeUnit::Megabytes.multiplier(), 1024 * 1024);
         assert_eq!(SizeUnit::Gigabytes.multiplier(), 1024 * 1024 * 1024);
-        assert_eq!(SizeUnit::Terabytes.multiplier(), 1024u64 * 1024 * 1024 * 1024);
+        assert_eq!(
+            SizeUnit::Terabytes.multiplier(),
+            1024u64 * 1024 * 1024 * 1024
+        );
     }
 
     #[test]

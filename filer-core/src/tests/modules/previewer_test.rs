@@ -12,9 +12,11 @@ use crate::errors::CoreError;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
-use crate::modules::preview::previewer::{Previewer, PreviewCommand};
+use crate::modules::preview::previewer::{PreviewCommand, Previewer};
 use crate::services::mime::{MimeCategory, MimeInfo};
-use crate::services::preview::{PreviewCache, PreviewData, PreviewOptions, PreviewProvider, PreviewRegistry};
+use crate::services::preview::{
+    PreviewCache, PreviewData, PreviewOptions, PreviewProvider, PreviewRegistry,
+};
 use crate::vfs::provider::{Capabilities, FsProvider};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
@@ -25,15 +27,32 @@ struct NullProvider;
 
 #[async_trait]
 impl FsProvider for NullProvider {
-    fn scheme(&self) -> &'static str { "null" }
-    fn capabilities(&self) -> Capabilities {
-        Capabilities { read: false, write: false, watch: false, search: false }
+    fn scheme(&self) -> &'static str {
+        "null"
     }
-    async fn list(&self, _: &Path) -> Result<Vec<crate::model::node::FileNode>, CoreError> { Ok(vec![]) }
-    async fn read(&self, p: &Path) -> Result<Vec<u8>, CoreError> { Err(CoreError::NotFound(p.to_path_buf())) }
-    async fn read_range(&self, p: &Path, _: u64, _: u64) -> Result<Vec<u8>, CoreError> { Err(CoreError::NotFound(p.to_path_buf())) }
-    async fn exists(&self, _: &Path) -> Result<bool, CoreError> { Ok(false) }
-    async fn metadata(&self, p: &Path) -> Result<crate::model::node::FileNode, CoreError> { Err(CoreError::NotFound(p.to_path_buf())) }
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            read: false,
+            write: false,
+            watch: false,
+            search: false,
+        }
+    }
+    async fn list(&self, _: &Path) -> Result<Vec<crate::model::node::FileNode>, CoreError> {
+        Ok(vec![])
+    }
+    async fn read(&self, p: &Path) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::NotFound(p.to_path_buf()))
+    }
+    async fn read_range(&self, p: &Path, _: u64, _: u64) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::NotFound(p.to_path_buf()))
+    }
+    async fn exists(&self, _: &Path) -> Result<bool, CoreError> {
+        Ok(false)
+    }
+    async fn metadata(&self, p: &Path) -> Result<crate::model::node::FileNode, CoreError> {
+        Err(CoreError::NotFound(p.to_path_buf()))
+    }
 }
 
 // ── MockPreviewProvider ──────────────────────────────────────────────────────
@@ -47,11 +66,19 @@ struct MockPreviewProvider {
 
 impl MockPreviewProvider {
     fn instant(result: PreviewData) -> Self {
-        Self { result, call_count: Arc::new(Mutex::new(0)), delay_ms: 0 }
+        Self {
+            result,
+            call_count: Arc::new(Mutex::new(0)),
+            delay_ms: 0,
+        }
     }
 
     fn slow(result: PreviewData, delay_ms: u64) -> Self {
-        Self { result, call_count: Arc::new(Mutex::new(0)), delay_ms }
+        Self {
+            result,
+            call_count: Arc::new(Mutex::new(0)),
+            delay_ms,
+        }
     }
 
     fn calls(&self) -> usize {
@@ -65,7 +92,12 @@ impl PreviewProvider for MockPreviewProvider {
         &[MimeCategory::Text]
     }
 
-    async fn generate(&self, _path: &Path, _mime: &MimeInfo, _options: &PreviewOptions) -> Result<PreviewData, CoreError> {
+    async fn generate(
+        &self,
+        _path: &Path,
+        _mime: &MimeInfo,
+        _options: &PreviewOptions,
+    ) -> Result<PreviewData, CoreError> {
         if self.delay_ms > 0 {
             tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
         }
@@ -73,17 +105,27 @@ impl PreviewProvider for MockPreviewProvider {
         Ok(self.result.clone())
     }
 
-    fn name(&self) -> &'static str { "mock" }
+    fn name(&self) -> &'static str {
+        "mock"
+    }
 }
 
 fn text_preview() -> PreviewData {
-    PreviewData::Text { content: "hello".to_string(), truncated: false, total_lines: 1 }
+    PreviewData::Text {
+        content: "hello".to_string(),
+        truncated: false,
+        total_lines: 1,
+    }
 }
 
 fn spawn_previewer(
     mock: MockPreviewProvider,
     registry: NodeRegistry,
-) -> (flume::Sender<PreviewCommand>, Receiver<Event>, Arc<Mutex<PreviewCache>>) {
+) -> (
+    flume::Sender<PreviewCommand>,
+    Receiver<Event>,
+    Arc<Mutex<PreviewCache>>,
+) {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
 
@@ -91,10 +133,14 @@ fn spawn_previewer(
     preview_reg.register(Box::new(mock));
     let preview_reg = Arc::new(preview_reg);
 
-    let cache = Arc::new(Mutex::new(PreviewCache::new(64 * 1024 * 1024, Duration::from_secs(300))));
+    let cache = Arc::new(Mutex::new(PreviewCache::new(
+        64 * 1024 * 1024,
+        Duration::from_secs(300),
+    )));
 
     let previewer = Previewer::with_components(
-        cmd_rx, evt_tx,
+        cmd_rx,
+        evt_tx,
         Arc::new(NullProvider),
         registry,
         preview_reg,
@@ -133,10 +179,12 @@ mod lifecycle_tests {
         let reg = Arc::new(PreviewRegistry::new());
 
         let previewer = Previewer::with_components(
-            cmd_rx, evt_tx,
+            cmd_rx,
+            evt_tx,
             Arc::new(NullProvider),
             NodeRegistry::new(),
-            reg, cache,
+            reg,
+            cache,
         );
         let handle = tokio::spawn(async move { previewer.run().await });
         drop(cmd_tx);
@@ -165,11 +213,21 @@ mod cache_tests {
         // Pre-populate cache
         cache.lock().unwrap().put(path, text_preview());
 
-        cmd_tx.send(PreviewCommand::Generate { path: node_id, options: None, session }).unwrap();
+        cmd_tx
+            .send(PreviewCommand::Generate {
+                path: node_id,
+                options: None,
+                session,
+            })
+            .unwrap();
 
         let event = wait_for_preview(&evt_rx, session).await;
         assert!(matches!(event, Event::PreviewReady { .. }));
-        assert_eq!(mock.calls(), 0, "Provider should not be called on cache hit");
+        assert_eq!(
+            mock.calls(),
+            0,
+            "Provider should not be called on cache hit"
+        );
     }
 
     #[tokio::test]
@@ -182,7 +240,13 @@ mod cache_tests {
         let mock = MockPreviewProvider::instant(text_preview());
         let (cmd_tx, evt_rx, _cache) = spawn_previewer(mock.clone(), registry);
 
-        cmd_tx.send(PreviewCommand::Generate { path: node_id, options: None, session }).unwrap();
+        cmd_tx
+            .send(PreviewCommand::Generate {
+                path: node_id,
+                options: None,
+                session,
+            })
+            .unwrap();
 
         let event = wait_for_preview(&evt_rx, session).await;
         assert!(matches!(event, Event::PreviewReady { .. }));
@@ -205,7 +269,13 @@ mod cancel_tests {
         let mock = MockPreviewProvider::slow(text_preview(), 200);
         let (cmd_tx, evt_rx, _cache) = spawn_previewer(mock, registry);
 
-        cmd_tx.send(PreviewCommand::Generate { path: node_id, options: None, session }).unwrap();
+        cmd_tx
+            .send(PreviewCommand::Generate {
+                path: node_id,
+                options: None,
+                session,
+            })
+            .unwrap();
         tokio::task::yield_now().await;
         cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
 
@@ -219,12 +289,19 @@ mod cancel_tests {
             }
         }
 
-        let session_events: Vec<_> = events.iter().filter(|e| match e {
-            Event::PreviewReady { session: s, .. } | Event::PreviewFailed { session: s, .. } => *s == session,
-            _ => false,
-        }).collect();
+        let session_events: Vec<_> = events
+            .iter()
+            .filter(|e| match e {
+                Event::PreviewReady { session: s, .. }
+                | Event::PreviewFailed { session: s, .. } => *s == session,
+                _ => false,
+            })
+            .collect();
 
-        assert!(session_events.is_empty(), "Cancelled preview should not emit PreviewReady or PreviewFailed");
+        assert!(
+            session_events.is_empty(),
+            "Cancelled preview should not emit PreviewReady or PreviewFailed"
+        );
     }
 }
 
@@ -251,10 +328,20 @@ mod clear_cache_tests {
 
         // Now generate — should miss cache and call provider
         let session2 = SessionId::new();
-        cmd_tx.send(PreviewCommand::Generate { path: node_id, options: None, session: session2 }).unwrap();
+        cmd_tx
+            .send(PreviewCommand::Generate {
+                path: node_id,
+                options: None,
+                session: session2,
+            })
+            .unwrap();
 
         let _ = wait_for_preview(&evt_rx, session2).await;
-        assert_eq!(mock.calls(), 1, "Provider should be called after cache clear");
+        assert_eq!(
+            mock.calls(),
+            1,
+            "Provider should be called after cache clear"
+        );
 
         let _ = session; // suppress unused warning
     }

@@ -42,17 +42,20 @@ impl CodeProvider {
     fn highlight(code: &str, language: &str, theme: &str) -> String {
         use syntect::easy::HighlightLines;
         use syntect::highlighting::ThemeSet;
-        use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
+        use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
         use syntect::parsing::SyntaxSet;
         use syntect::util::LinesWithEndings;
 
         let ss = SyntaxSet::load_defaults_newlines();
         let ts = ThemeSet::load_defaults();
 
-        let syntax = ss.find_syntax_by_name(language)
+        let syntax = ss
+            .find_syntax_by_name(language)
             .unwrap_or_else(|| ss.find_syntax_plain_text());
 
-        let theme_obj = ts.themes.get(theme)
+        let theme_obj = ts
+            .themes
+            .get(theme)
             .or_else(|| ts.themes.get("base16-ocean.dark"))
             .unwrap_or_else(|| ts.themes.values().next().unwrap());
 
@@ -87,7 +90,9 @@ impl PreviewProvider for CodeProvider {
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
 
         let mut buf = vec![0u8; options.max_bytes];
-        let n = file.read(&mut buf).await
+        let n = file
+            .read(&mut buf)
+            .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         buf.truncate(n);
 
@@ -106,7 +111,11 @@ impl PreviewProvider for CodeProvider {
             });
         }
 
-        Ok(PreviewData::Text { content, truncated, total_lines })
+        Ok(PreviewData::Text {
+            content,
+            truncated,
+            total_lines,
+        })
     }
 
     fn priority(&self) -> u8 {

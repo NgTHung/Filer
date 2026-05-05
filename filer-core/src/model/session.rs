@@ -123,4 +123,3 @@ impl SessionPolicy for RestrictedPolicy {
         "restricted"
     }
 }
-

@@ -14,12 +14,9 @@
 
 use std::path::Path;
 
-use crate::services::mime::{
-    DetectionConfidence, DetectionStrategy, MimeCategory, MimeDetector,
-};
+use crate::services::mime::{DetectionConfidence, DetectionStrategy, MimeCategory, MimeDetector};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
 
 fn png_header() -> Vec<u8> {
     vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
@@ -55,7 +52,7 @@ fn ogg_header() -> Vec<u8> {
 
 fn elf_header() -> Vec<u8> {
     let mut res = vec![0x7F, 0x45, 0x4C, 0x46];
-    res.append(&mut vec![0x32;100]);
+    res.append(&mut vec![0x32; 100]);
     res
     // vec![0x7F, 0x45, 0x4C, 0x46] // \x7FELF
 }
@@ -224,7 +221,7 @@ mod detect_from_bytes_tests {
     #[test]
     fn elf_magic_is_binary_definitive() {
         let info = MimeDetector::detect_from_bytes(&elf_header());
-        println!("{}",infer::app::is_elf(&elf_header()));
+        println!("{}", infer::app::is_elf(&elf_header()));
         assert_eq!(info.category, MimeCategory::Binary);
         assert_eq!(info.confidence, DetectionConfidence::Definitive);
     }

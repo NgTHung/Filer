@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::services::metadata::extended::{DocumentMetadata, ExtendedMetadata};
@@ -32,12 +32,12 @@ impl DocumentExtractor {
             .map_err(|e| CoreError::InvalidData(format!("Cannot parse PDF: {e}")))?;
 
         Ok(DocumentMetadata {
-            title:      meta.title,
-            author:     meta.author,
+            title: meta.title,
+            author: meta.author,
             page_count: Some(meta.page_count),
             word_count: None, // requires full text extraction
-            created:    meta.creation_date,
-            modified:   meta.modification_date,
+            created: meta.creation_date,
+            modified: meta.modification_date,
         })
     }
 }
@@ -65,12 +65,12 @@ impl MetadataExtractor for DocumentExtractor {
                 // Office / e-book formats: lopdf cannot read these.
                 // Return a stub — add a dedicated crate (e.g. docx-rs) to fill fields.
                 _ => DocumentMetadata {
-                    title:      None,
-                    author:     None,
+                    title: None,
+                    author: None,
                     page_count: None,
                     word_count: None,
-                    created:    None,
-                    modified:   None,
+                    created: None,
+                    modified: None,
                 },
             };
 

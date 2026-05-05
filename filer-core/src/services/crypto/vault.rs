@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use async_trait::async_trait;
+use std::path::{Path, PathBuf};
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
@@ -45,12 +45,20 @@ impl Vault {
     }
 
     /// Create new vault with password
-    pub async fn create(config: VaultConfig, inner: Box<dyn FsProvider>, password: &[u8]) -> Result<Self, CoreError> {
+    pub async fn create(
+        config: VaultConfig,
+        inner: Box<dyn FsProvider>,
+        password: &[u8],
+    ) -> Result<Self, CoreError> {
         todo!()
     }
 
     /// Open existing vault with password
-    pub async fn open(config: VaultConfig, inner: Box<dyn FsProvider>, password: &[u8]) -> Result<Self, CoreError> {
+    pub async fn open(
+        config: VaultConfig,
+        inner: Box<dyn FsProvider>,
+        password: &[u8],
+    ) -> Result<Self, CoreError> {
         todo!()
     }
 
@@ -71,7 +79,11 @@ impl Vault {
     }
 
     /// Change vault password
-    pub async fn change_password(&mut self, old_password: &[u8], new_password: &[u8]) -> Result<(), CoreError> {
+    pub async fn change_password(
+        &mut self,
+        old_password: &[u8],
+        new_password: &[u8],
+    ) -> Result<(), CoreError> {
         todo!()
     }
 

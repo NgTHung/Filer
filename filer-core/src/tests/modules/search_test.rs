@@ -58,7 +58,10 @@ impl MockProvider {
     }
 
     fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
-        self.files_by_path.lock().unwrap().push((dir.into(), children));
+        self.files_by_path
+            .lock()
+            .unwrap()
+            .push((dir.into(), children));
     }
 
     fn add_fail_path(&self, path: impl Into<PathBuf>) {
@@ -81,8 +84,13 @@ impl MockProvider {
             size,
             modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
             created: None,
-            meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
-            accessed: None
+            meta: NodeMeta {
+                hidden: false,
+                readonly: false,
+                permissions: None,
+                ..Default::default()
+            },
+            accessed: None,
         }
     }
 
@@ -97,12 +105,19 @@ impl MockProvider {
             id: NodeId::from_path(&PathBuf::from(parent).join(name)),
             name: name.to_string(),
             path: PathBuf::from(parent).join(name),
-            kind: NodeKind::Directory { children_count: None },
+            kind: NodeKind::Directory {
+                children_count: None,
+            },
             size: 0,
             modified: Some(SystemTime::UNIX_EPOCH),
             created: None,
-            meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
-            accessed: None
+            meta: NodeMeta {
+                hidden: false,
+                readonly: false,
+                permissions: None,
+                ..Default::default()
+            },
+            accessed: None,
         }
     }
 
@@ -121,10 +136,17 @@ impl MockProvider {
 
 #[async_trait]
 impl FsProvider for MockProvider {
-    fn scheme(&self) -> &'static str { "mock" }
+    fn scheme(&self) -> &'static str {
+        "mock"
+    }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { read: true, write: false, watch: false, search: true }
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: true,
+        }
     }
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
@@ -150,15 +172,17 @@ impl FsProvider for MockProvider {
             .unwrap_or_default())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> { Ok(vec![]) }
-
-    async fn read_range(
-        &self, _path: &Path, _start: u64, _len: u64,
-    ) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> { Ok(true) }
+    async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
+        Ok(vec![])
+    }
+
+    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+        Ok(true)
+    }
 
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
         Err(CoreError::NotFound(path.to_path_buf()))
@@ -176,9 +200,12 @@ async fn wait_for_search_complete(
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults { matches: batch, complete, session, .. }))
-                if session == expected_session =>
-            {
+            Ok(Ok(Event::SearchResults {
+                matches: batch,
+                complete,
+                session,
+                ..
+            })) if session == expected_session => {
                 matches.extend(batch);
                 if complete {
                     return matches;
@@ -213,7 +240,9 @@ fn spawn_searcher(
     let (evt_tx, evt_rx) = flume::unbounded::<Event>();
 
     let searcher = Searcher::new(cmd_rx, evt_tx, Arc::new(provider), registry);
-    tokio::spawn(async move { searcher.run().await; });
+    tokio::spawn(async move {
+        searcher.run().await;
+    });
 
     (cmd_tx, evt_rx)
 }
@@ -234,13 +263,18 @@ mod searcher_lifecycle_tests {
         let registry = NodeRegistry::new();
 
         let searcher = Searcher::new(cmd_rx, evt_tx, provider, registry);
-        let handle = tokio::spawn(async move { searcher.run().await; });
+        let handle = tokio::spawn(async move {
+            searcher.run().await;
+        });
 
         // Drop command sender — actor should exit gracefully
         drop(cmd_tx);
 
         let result = timeout(Duration::from_millis(500), handle).await;
-        assert!(result.is_ok(), "Searcher should exit when command channel closes");
+        assert!(
+            result.is_ok(),
+            "Searcher should exit when command channel closes"
+        );
     }
 
     #[tokio::test]
@@ -251,17 +285,24 @@ mod searcher_lifecycle_tests {
             let provider = Arc::new(MockProvider::new());
             let registry = NodeRegistry::new();
             let searcher = Searcher::new(cmd_rx, evt_tx, provider, registry);
-            tokio::spawn(async move { searcher.run().await; });
+            tokio::spawn(async move {
+                searcher.run().await;
+            });
             (cmd_tx, evt_rx)
         };
 
         // Cancel a session that doesn't exist — should not crash
-        cmd_tx.send(SearchCommand::Cancel(SessionId::new())).unwrap();
+        cmd_tx
+            .send(SearchCommand::Cancel(SessionId::new()))
+            .unwrap();
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // No events should be emitted
-        assert!(evt_rx.try_recv().is_err(), "No events expected for cancel of nonexistent session");
+        assert!(
+            evt_rx.try_recv().is_err(),
+            "No events expected for cancel of nonexistent session"
+        );
 
         drop(cmd_tx);
     }
@@ -274,11 +315,14 @@ mod searcher_basic_tests {
     #[tokio::test]
     async fn test_search_returns_matching_files() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("readme.md", "/root", 100),
-            MockProvider::make_file("other.txt", "/root", 200),
-            MockProvider::make_file("README.txt", "/root", 150),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("readme.md", "/root", 100),
+                MockProvider::make_file("other.txt", "/root", 200),
+                MockProvider::make_file("README.txt", "/root", 150),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -286,20 +330,35 @@ mod searcher_basic_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("readme").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         // Case insensitive by default: should match both "readme.md" and "README.txt"
-        assert_eq!(matches.len(), 2, "should match both readme files (case insensitive)");
-        assert!(matches.iter().all(|m| m.name.to_lowercase().contains("readme")));
+        assert_eq!(
+            matches.len(),
+            2,
+            "should match both readme files (case insensitive)"
+        );
+        assert!(
+            matches
+                .iter()
+                .all(|m| m.name.to_lowercase().contains("readme"))
+        );
     }
 
     #[tokio::test]
     async fn test_search_no_matches_returns_empty() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("hello.txt", "/root", 100),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![MockProvider::make_file("hello.txt", "/root", 100)],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -307,18 +366,28 @@ mod searcher_basic_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("nonexistent").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert!(matches.is_empty(), "should return empty when nothing matches");
+        assert!(
+            matches.is_empty(),
+            "should return empty when nothing matches"
+        );
     }
 
     #[tokio::test]
     async fn test_search_case_insensitive_by_default() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("readme.md", "/root", 100),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![MockProvider::make_file("readme.md", "/root", 100)],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -326,19 +395,32 @@ mod searcher_basic_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("README").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 1, "case insensitive: README should match readme.md");
+        assert_eq!(
+            matches.len(),
+            1,
+            "case insensitive: README should match readme.md"
+        );
     }
 
     #[tokio::test]
     async fn test_search_case_sensitive() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("readme.md", "/root", 100),
-            MockProvider::make_file("README.md", "/root", 200),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("readme.md", "/root", 100),
+                MockProvider::make_file("README.md", "/root", 200),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -346,10 +428,20 @@ mod searcher_basic_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("README case:yes").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 1, "case sensitive: only README.md should match");
+        assert_eq!(
+            matches.len(),
+            1,
+            "case sensitive: only README.md should match"
+        );
         assert_eq!(matches[0].name, "README.md");
     }
 }
@@ -361,13 +453,17 @@ mod searcher_traversal_tests {
     #[tokio::test]
     async fn test_search_traverses_subdirectories() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("a.txt", "/root", 100),
-            MockProvider::make_dir("sub", "/root"),
-        ]);
-        provider.add_dir("/root/sub", vec![
-            MockProvider::make_file("b.txt", "/root/sub", 200),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("a.txt", "/root", 100),
+                MockProvider::make_dir("sub", "/root"),
+            ],
+        );
+        provider.add_dir(
+            "/root/sub",
+            vec![MockProvider::make_file("b.txt", "/root/sub", 200)],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -375,10 +471,20 @@ mod searcher_traversal_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("txt").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 2, "should find files in both root and subdirectory");
+        assert_eq!(
+            matches.len(),
+            2,
+            "should find files in both root and subdirectory"
+        );
 
         let names: Vec<&str> = matches.iter().map(|m| m.name.as_str()).collect();
         assert!(names.contains(&"a.txt"));
@@ -389,19 +495,26 @@ mod searcher_traversal_tests {
     async fn test_search_respects_max_depth() {
         let provider = MockProvider::new();
         // depth 0: /root
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("level0.txt", "/root", 10),
-            MockProvider::make_dir("d1", "/root"),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("level0.txt", "/root", 10),
+                MockProvider::make_dir("d1", "/root"),
+            ],
+        );
         // depth 1: /root/d1
-        provider.add_dir("/root/d1", vec![
-            MockProvider::make_file("level1.txt", "/root/d1", 20),
-            MockProvider::make_dir("d2", "/root/d1"),
-        ]);
+        provider.add_dir(
+            "/root/d1",
+            vec![
+                MockProvider::make_file("level1.txt", "/root/d1", 20),
+                MockProvider::make_dir("d2", "/root/d1"),
+            ],
+        );
         // depth 2: /root/d1/d2
-        provider.add_dir("/root/d1/d2", vec![
-            MockProvider::make_file("level2.txt", "/root/d1/d2", 30),
-        ]);
+        provider.add_dir(
+            "/root/d1/d2",
+            vec![MockProvider::make_file("level2.txt", "/root/d1/d2", 30)],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -410,31 +523,53 @@ mod searcher_traversal_tests {
         let session = SessionId::new();
         // depth:1 means traverse root (depth 0) and one level down (depth 1)
         let query = SearchQuery::parse("level depth:1").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 2, "depth:1 should find level0.txt and level1.txt only");
+        assert_eq!(
+            matches.len(),
+            2,
+            "depth:1 should find level0.txt and level1.txt only"
+        );
 
         let names: Vec<&str> = matches.iter().map(|m| m.name.as_str()).collect();
         assert!(names.contains(&"level0.txt"));
         assert!(names.contains(&"level1.txt"));
-        assert!(!names.contains(&"level2.txt"), "level2 should be excluded by depth limit");
+        assert!(
+            !names.contains(&"level2.txt"),
+            "level2 should be excluded by depth limit"
+        );
     }
 
     #[tokio::test]
     async fn test_search_bfs_order() {
         // BFS should return shallow matches before deep ones
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("shallow.rs", "/root", 100),
-            MockProvider::make_dir("deep", "/root"),
-        ]);
-        provider.add_dir("/root/deep", vec![
-            MockProvider::make_dir("deeper", "/root/deep"),
-        ]);
-        provider.add_dir("/root/deep/deeper", vec![
-            MockProvider::make_file("deep_file.rs", "/root/deep/deeper", 200),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("shallow.rs", "/root", 100),
+                MockProvider::make_dir("deep", "/root"),
+            ],
+        );
+        provider.add_dir(
+            "/root/deep",
+            vec![MockProvider::make_dir("deeper", "/root/deep")],
+        );
+        provider.add_dir(
+            "/root/deep/deeper",
+            vec![MockProvider::make_file(
+                "deep_file.rs",
+                "/root/deep/deeper",
+                200,
+            )],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -442,13 +577,25 @@ mod searcher_traversal_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("rs").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 2);
         // BFS: shallow.rs should appear before deep_file.rs
-        assert_eq!(matches[0].name, "shallow.rs", "BFS: shallow match should come first");
-        assert_eq!(matches[1].name, "deep_file.rs", "BFS: deep match should come second");
+        assert_eq!(
+            matches[0].name, "shallow.rs",
+            "BFS: shallow match should come first"
+        );
+        assert_eq!(
+            matches[1].name, "deep_file.rs",
+            "BFS: deep match should come second"
+        );
     }
 }
 
@@ -459,12 +606,15 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_by_extension() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("main.rs", "/root", 100),
-            MockProvider::make_file("lib.rs", "/root", 200),
-            MockProvider::make_file("readme.md", "/root", 50),
-            MockProvider::make_file("config.toml", "/root", 75),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("main.rs", "/root", 100),
+                MockProvider::make_file("lib.rs", "/root", 200),
+                MockProvider::make_file("readme.md", "/root", 50),
+                MockProvider::make_file("config.toml", "/root", 75),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -472,7 +622,13 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("ext:rs").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 2, "should match only .rs files");
@@ -482,11 +638,14 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_by_size_greater_than() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("small.txt", "/root", 100),
-            MockProvider::make_file("medium.txt", "/root", 500),
-            MockProvider::make_file("large.txt", "/root", 2000),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("small.txt", "/root", 100),
+                MockProvider::make_file("medium.txt", "/root", 500),
+                MockProvider::make_file("large.txt", "/root", 2000),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -494,7 +653,13 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("size:>1000").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 1);
@@ -504,11 +669,14 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_by_size_less_than() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("small.txt", "/root", 100),
-            MockProvider::make_file("medium.txt", "/root", 500),
-            MockProvider::make_file("large.txt", "/root", 2000),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("small.txt", "/root", 100),
+                MockProvider::make_file("medium.txt", "/root", 500),
+                MockProvider::make_file("large.txt", "/root", 2000),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -516,7 +684,13 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("size:<500").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 1);
@@ -526,10 +700,13 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_by_type_file() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("file.txt", "/root", 100),
-            MockProvider::make_dir("subdir", "/root"),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("file.txt", "/root", 100),
+                MockProvider::make_dir("subdir", "/root"),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -537,7 +714,13 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("type:file").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 1);
@@ -547,10 +730,13 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_by_type_directory() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("file.txt", "/root", 100),
-            MockProvider::make_dir("subdir", "/root"),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("file.txt", "/root", 100),
+                MockProvider::make_dir("subdir", "/root"),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -558,7 +744,13 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("type:dir").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 1);
@@ -568,10 +760,13 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_is_hidden() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("visible.txt", "/root", 100),
-            MockProvider::make_hidden_file(".secret", "/root", 200),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("visible.txt", "/root", 100),
+                MockProvider::make_hidden_file(".secret", "/root", 200),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -580,21 +775,34 @@ mod searcher_filter_tests {
         let session = SessionId::new();
         // hidden:yes enables include_hidden AND adds IsHidden filter
         let query = SearchQuery::parse("hidden:yes").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 1, "hidden:yes filter should only return hidden files");
+        assert_eq!(
+            matches.len(),
+            1,
+            "hidden:yes filter should only return hidden files"
+        );
         assert_eq!(matches[0].name, ".secret");
     }
 
     #[tokio::test]
     async fn test_filter_name_contains() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("app_config.toml", "/root", 100),
-            MockProvider::make_file("config.json", "/root", 200),
-            MockProvider::make_file("readme.md", "/root", 50),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("app_config.toml", "/root", 100),
+                MockProvider::make_file("config.json", "/root", 200),
+                MockProvider::make_file("readme.md", "/root", 50),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -602,7 +810,13 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("name:config").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 2);
@@ -612,12 +826,15 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_name_matches_regex() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("test_search.rs", "/root", 100),
-            MockProvider::make_file("test_scan.rs", "/root", 200),
-            MockProvider::make_file("main.rs", "/root", 300),
-            MockProvider::make_file("test_nav.py", "/root", 400),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("test_search.rs", "/root", 100),
+                MockProvider::make_file("test_scan.rs", "/root", 200),
+                MockProvider::make_file("main.rs", "/root", 300),
+                MockProvider::make_file("test_nav.py", "/root", 400),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -625,22 +842,39 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse(r"match:^test_.*\.rs$").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 2, "regex should match test_search.rs and test_scan.rs");
-        assert!(matches.iter().all(|m| m.name.starts_with("test_") && m.name.ends_with(".rs")));
+        assert_eq!(
+            matches.len(),
+            2,
+            "regex should match test_search.rs and test_scan.rs"
+        );
+        assert!(
+            matches
+                .iter()
+                .all(|m| m.name.starts_with("test_") && m.name.ends_with(".rs"))
+        );
     }
 
     #[tokio::test]
     async fn test_filter_modified_after() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            // modified at epoch + 100s (very old)
-            MockProvider::make_file_with_time("old.txt", "/root", 50, 100),
-            // modified at epoch + 2_000_000_000s (~2033)
-            MockProvider::make_file_with_time("new.txt", "/root", 50, 2_000_000_000),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                // modified at epoch + 100s (very old)
+                MockProvider::make_file_with_time("old.txt", "/root", 50, 100),
+                // modified at epoch + 2_000_000_000s (~2033)
+                MockProvider::make_file_with_time("new.txt", "/root", 50, 2_000_000_000),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -649,7 +883,13 @@ mod searcher_filter_tests {
         let session = SessionId::new();
         // after:1700000000 (~Nov 2023)
         let query = SearchQuery::parse("after:1700000000").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 1);
@@ -659,10 +899,13 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_filter_modified_before() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file_with_time("old.txt", "/root", 50, 100),
-            MockProvider::make_file_with_time("new.txt", "/root", 50, 2_000_000_000),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file_with_time("old.txt", "/root", 50, 100),
+                MockProvider::make_file_with_time("new.txt", "/root", 50, 2_000_000_000),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -670,7 +913,13 @@ mod searcher_filter_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("before:1700000000").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 1);
@@ -680,12 +929,15 @@ mod searcher_filter_tests {
     #[tokio::test]
     async fn test_multiple_filters_and_semantics() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("big.rs", "/root", 2000),
-            MockProvider::make_file("small.rs", "/root", 50),
-            MockProvider::make_file("big.py", "/root", 3000),
-            MockProvider::make_file("tiny.rs", "/root", 10),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("big.rs", "/root", 2000),
+                MockProvider::make_file("small.rs", "/root", 50),
+                MockProvider::make_file("big.py", "/root", 3000),
+                MockProvider::make_file("tiny.rs", "/root", 10),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -694,10 +946,20 @@ mod searcher_filter_tests {
         let session = SessionId::new();
         // Both filters must match (AND): .rs files AND size > 100
         let query = SearchQuery::parse("ext:rs size:>100").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 1, "only big.rs matches both ext:rs AND size:>100");
+        assert_eq!(
+            matches.len(),
+            1,
+            "only big.rs matches both ext:rs AND size:>100"
+        );
         assert_eq!(matches[0].name, "big.rs");
     }
 }
@@ -709,10 +971,13 @@ mod searcher_hidden_tests {
     #[tokio::test]
     async fn test_search_excludes_hidden_by_default() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("visible.txt", "/root", 100),
-            MockProvider::make_hidden_file(".hidden", "/root", 200),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("visible.txt", "/root", 100),
+                MockProvider::make_hidden_file(".hidden", "/root", 200),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -721,24 +986,40 @@ mod searcher_hidden_tests {
         let session = SessionId::new();
         // Default: include_hidden = false, no text filter so matches name
         let query = SearchQuery::parse("type:file").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 1, "hidden files should be excluded by default");
+        assert_eq!(
+            matches.len(),
+            1,
+            "hidden files should be excluded by default"
+        );
         assert_eq!(matches[0].name, "visible.txt");
     }
 
     #[tokio::test]
     async fn test_search_skips_hidden_directories() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("visible.txt", "/root", 100),
-            MockProvider::make_hidden_dir(".git", "/root"),
-        ]);
-        provider.add_dir("/root/.git", vec![
-            MockProvider::make_file("HEAD", "/root/.git", 50),
-            MockProvider::make_file("config", "/root/.git", 75),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("visible.txt", "/root", 100),
+                MockProvider::make_hidden_dir(".git", "/root"),
+            ],
+        );
+        provider.add_dir(
+            "/root/.git",
+            vec![
+                MockProvider::make_file("HEAD", "/root/.git", 50),
+                MockProvider::make_file("config", "/root/.git", 75),
+            ],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -746,7 +1027,13 @@ mod searcher_hidden_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("type:file").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 1, "should not traverse into .git directory");
@@ -754,21 +1041,31 @@ mod searcher_hidden_tests {
 
         // Verify .git was never listed
         let calls = provider.list_calls();
-        assert!(!calls.contains(&PathBuf::from("/root/.git")),
-            "provider.list() should never be called on hidden directory");
+        assert!(
+            !calls.contains(&PathBuf::from("/root/.git")),
+            "provider.list() should never be called on hidden directory"
+        );
     }
 
     #[tokio::test]
     async fn test_search_includes_hidden_when_requested() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("visible.txt", "/root", 100),
-            MockProvider::make_hidden_file(".env", "/root", 200),
-            MockProvider::make_hidden_dir(".config", "/root"),
-        ]);
-        provider.add_dir("/root/.config", vec![
-            MockProvider::make_hidden_file(".settings", "/root/.config", 50),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("visible.txt", "/root", 100),
+                MockProvider::make_hidden_file(".env", "/root", 200),
+                MockProvider::make_hidden_dir(".config", "/root"),
+            ],
+        );
+        provider.add_dir(
+            "/root/.config",
+            vec![MockProvider::make_hidden_file(
+                ".settings",
+                "/root/.config",
+                50,
+            )],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -777,12 +1074,24 @@ mod searcher_hidden_tests {
         let session = SessionId::new();
         // hidden:yes enables include_hidden AND adds IsHidden filter (only hidden files match)
         let query = SearchQuery::parse("hidden:yes").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         // Should find .env, .config dir, and .settings inside .config
-        assert!(matches.len() >= 2, "should include hidden files and traverse hidden dirs");
-        assert!(matches.iter().all(|m| m.meta.hidden), "all results should be hidden");
+        assert!(
+            matches.len() >= 2,
+            "should include hidden files and traverse hidden dirs"
+        );
+        assert!(
+            matches.iter().all(|m| m.meta.hidden),
+            "all results should be hidden"
+        );
     }
 }
 
@@ -796,7 +1105,9 @@ mod searcher_limit_tests {
         let mut files = Vec::new();
         for i in 0..10 {
             files.push(MockProvider::make_file(
-                &format!("file{}.txt", i), "/root", (i + 1) * 100,
+                &format!("file{}.txt", i),
+                "/root",
+                (i + 1) * 100,
             ));
         }
         provider.add_dir("/root", files);
@@ -807,7 +1118,13 @@ mod searcher_limit_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("file max:3").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
         assert_eq!(matches.len(), 3, "max:3 should return exactly 3 results");
@@ -820,7 +1137,9 @@ mod searcher_limit_tests {
         let mut files = Vec::new();
         for i in 0..75 {
             files.push(MockProvider::make_file(
-                &format!("item{:03}.txt", i), "/root", (i + 1) * 10,
+                &format!("item{:03}.txt", i),
+                "/root",
+                (i + 1) * 10,
             ));
         }
         provider.add_dir("/root", files);
@@ -831,7 +1150,13 @@ mod searcher_limit_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("item").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         // Count the number of SearchResults events
         let mut batch_count = 0;
@@ -840,12 +1165,17 @@ mod searcher_limit_tests {
 
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::SearchResults { matches, complete, session: s, .. }))
-                    if s == session =>
-                {
+                Ok(Ok(Event::SearchResults {
+                    matches,
+                    complete,
+                    session: s,
+                    ..
+                })) if s == session => {
                     batch_count += 1;
                     total_matches += matches.len();
-                    if complete { break; }
+                    if complete {
+                        break;
+                    }
                 }
                 Ok(Ok(_)) => {}
                 _ => panic!("timed out waiting for search batches"),
@@ -853,7 +1183,10 @@ mod searcher_limit_tests {
         }
 
         assert_eq!(total_matches, 75, "should find all 75 items across batches");
-        assert!(batch_count >= 2, "75 results should produce at least 2 batches (batch size ~50)");
+        assert!(
+            batch_count >= 2,
+            "75 results should produce at least 2 batches (batch size ~50)"
+        );
     }
 }
 
@@ -885,7 +1218,13 @@ mod searcher_cancellation_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("file").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         // Immediately cancel
         cmd_tx.send(SearchCommand::Cancel(session)).unwrap();
@@ -894,26 +1233,40 @@ mod searcher_cancellation_tests {
         let events = collect_events_for(&evt_rx, Duration::from_millis(500)).await;
 
         // Count matched files across all batches for this session
-        let total_matches: usize = events.iter().filter_map(|e| {
-            if let Event::SearchResults { matches, session: s, .. } = e {
-                if *s == session { return Some(matches.len()); }
-            }
-            None
-        }).sum();
+        let total_matches: usize = events
+            .iter()
+            .filter_map(|e| {
+                if let Event::SearchResults {
+                    matches,
+                    session: s,
+                    ..
+                } = e
+                {
+                    if *s == session {
+                        return Some(matches.len());
+                    }
+                }
+                None
+            })
+            .sum();
 
         // yield_now() in the mock guarantees the scheduler processes the Cancel
         // command between directory listings, so the search stops well before
         // completing all 20 levels. Fewer than half the files is a reliable bound.
-        assert!(total_matches < 10,
-            "cancel should stop search well before finding all 20 files (found {})", total_matches);
+        assert!(
+            total_matches < 10,
+            "cancel should stop search well before finding all 20 files (found {})",
+            total_matches
+        );
     }
 
     #[tokio::test]
     async fn test_cancel_one_session_doesnt_affect_other() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("target.txt", "/root", 100),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![MockProvider::make_file("target.txt", "/root", 100)],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -925,13 +1278,29 @@ mod searcher_cancellation_tests {
         let query1 = SearchQuery::parse("target").unwrap();
         let query2 = SearchQuery::parse("target").unwrap();
 
-        cmd_tx.send(SearchCommand::Search { query: query1, root: root_id, session: session1 }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query: query1,
+                root: root_id,
+                session: session1,
+            })
+            .unwrap();
         cmd_tx.send(SearchCommand::Cancel(session1)).unwrap();
-        cmd_tx.send(SearchCommand::Search { query: query2, root: root_id, session: session2 }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query: query2,
+                root: root_id,
+                session: session2,
+            })
+            .unwrap();
 
         // session2 should still complete
         let matches = wait_for_search_complete(&evt_rx, session2).await;
-        assert_eq!(matches.len(), 1, "cancelling session1 should not affect session2");
+        assert_eq!(
+            matches.len(),
+            1,
+            "cancelling session1 should not affect session2"
+        );
     }
 }
 
@@ -949,7 +1318,13 @@ mod searcher_error_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("anything").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: fake_root, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: fake_root,
+                session,
+            })
+            .unwrap();
 
         // Should get an Error event
         let deadline = tokio::time::Instant::now() + TIMEOUT;
@@ -958,7 +1333,11 @@ mod searcher_error_tests {
                 Ok(Ok(Event::Error { session: s, .. })) if s == session => {
                     return; // Test passes — got expected error
                 }
-                Ok(Ok(Event::SearchResults { session: s, complete, .. })) if s == session => {
+                Ok(Ok(Event::SearchResults {
+                    session: s,
+                    complete,
+                    ..
+                })) if s == session => {
                     if complete {
                         panic!("got SearchResults instead of Error for unresolvable root");
                     }
@@ -973,14 +1352,22 @@ mod searcher_error_tests {
     #[tokio::test]
     async fn test_search_skips_unreadable_directories() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("found.txt", "/root", 100),
-            MockProvider::make_dir("readable", "/root"),
-            MockProvider::make_dir("forbidden", "/root"),
-        ]);
-        provider.add_dir("/root/readable", vec![
-            MockProvider::make_file("also_found.txt", "/root/readable", 200),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![
+                MockProvider::make_file("found.txt", "/root", 100),
+                MockProvider::make_dir("readable", "/root"),
+                MockProvider::make_dir("forbidden", "/root"),
+            ],
+        );
+        provider.add_dir(
+            "/root/readable",
+            vec![MockProvider::make_file(
+                "also_found.txt",
+                "/root/readable",
+                200,
+            )],
+        );
         // /root/forbidden will fail on list()
         provider.add_fail_path("/root/forbidden");
 
@@ -990,10 +1377,20 @@ mod searcher_error_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("found").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let matches = wait_for_search_complete(&evt_rx, session).await;
-        assert_eq!(matches.len(), 2, "should find files in readable dirs, skip forbidden");
+        assert_eq!(
+            matches.len(),
+            2,
+            "should find files in readable dirs, skip forbidden"
+        );
 
         let names: Vec<&str> = matches.iter().map(|m| m.name.as_str()).collect();
         assert!(names.contains(&"found.txt"));
@@ -1008,9 +1405,10 @@ mod searcher_session_tests {
     #[tokio::test]
     async fn test_search_result_carries_correct_session() {
         let provider = MockProvider::new();
-        provider.add_dir("/root", vec![
-            MockProvider::make_file("file.txt", "/root", 100),
-        ]);
+        provider.add_dir(
+            "/root",
+            vec![MockProvider::make_file("file.txt", "/root", 100)],
+        );
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
@@ -1018,14 +1416,29 @@ mod searcher_session_tests {
 
         let session = SessionId::new();
         let query = SearchQuery::parse("file").unwrap();
-        cmd_tx.send(SearchCommand::Search { query, root: root_id, session }).unwrap();
+        cmd_tx
+            .send(SearchCommand::Search {
+                query,
+                root: root_id,
+                session,
+            })
+            .unwrap();
 
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::SearchResults { session: s, complete, .. })) => {
-                    assert_eq!(s, session, "SearchResults should carry the correct session ID");
-                    if complete { return; }
+                Ok(Ok(Event::SearchResults {
+                    session: s,
+                    complete,
+                    ..
+                })) => {
+                    assert_eq!(
+                        s, session,
+                        "SearchResults should carry the correct session ID"
+                    );
+                    if complete {
+                        return;
+                    }
                 }
                 Ok(Ok(_)) => {}
                 _ => panic!("timed out or channel closed"),
@@ -1033,4 +1446,3 @@ mod searcher_session_tests {
         }
     }
 }
-

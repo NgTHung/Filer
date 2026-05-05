@@ -153,11 +153,11 @@ impl SizeGroup {
         match self {
             SizeGroup::Empty => 0,
             SizeGroup::Tiny => 1,
-            SizeGroup::Small => 10 * 1024,                    // 10 KB
-            SizeGroup::Medium => 1024 * 1024,                 // 1 MB
-            SizeGroup::Large => 100 * 1024 * 1024,            // 100 MB
-            SizeGroup::Huge => 1024 * 1024 * 1024,            // 1 GB
-            SizeGroup::Massive => 10 * 1024 * 1024 * 1024,    // 10 GB
+            SizeGroup::Small => 10 * 1024,                 // 10 KB
+            SizeGroup::Medium => 1024 * 1024,              // 1 MB
+            SizeGroup::Large => 100 * 1024 * 1024,         // 100 MB
+            SizeGroup::Huge => 1024 * 1024 * 1024,         // 1 GB
+            SizeGroup::Massive => 10 * 1024 * 1024 * 1024, // 10 GB
         }
     }
 
@@ -176,15 +176,15 @@ impl SizeGroup {
 }
 
 /// Group a file size into a size category
-pub fn size_group(bytes: u64) -> SizeGroup {    
+pub fn size_group(bytes: u64) -> SizeGroup {
     match bytes {
         0 => SizeGroup::Empty,
-        1..=10239 => SizeGroup::Tiny,                           // < 10 KB
-        10240..=1048575 => SizeGroup::Small,                    // 10 KB - 1 MB
-        1048576..=104857599 => SizeGroup::Medium,               // 1 MB - 100 MB
-        104857600..=1073741823 => SizeGroup::Large,             // 100 MB - 1 GB
-        1073741824..=10737418239 => SizeGroup::Huge,            // 1 GB - 10 GB
-        _ => SizeGroup::Massive,                                // > 10 GB
+        1..=10239 => SizeGroup::Tiny,                // < 10 KB
+        10240..=1048575 => SizeGroup::Small,         // 10 KB - 1 MB
+        1048576..=104857599 => SizeGroup::Medium,    // 1 MB - 100 MB
+        104857600..=1073741823 => SizeGroup::Large,  // 100 MB - 1 GB
+        1073741824..=10737418239 => SizeGroup::Huge, // 1 GB - 10 GB
+        _ => SizeGroup::Massive,                     // > 10 GB
     }
 }
 

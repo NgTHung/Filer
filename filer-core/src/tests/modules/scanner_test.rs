@@ -166,14 +166,23 @@ mod scanner_cache_tests {
     const SCAN_TIMEOUT: Duration = Duration::from_millis(2000);
 
     fn default_pipeline() -> PipelineConfig {
-        PipelineConfig { sort: None, filter: None, group: None }
+        PipelineConfig {
+            sort: None,
+            filter: None,
+            group: None,
+        }
     }
 
-    async fn wait_for_dir_loaded(evt_rx: &Receiver<Event>, session: SessionId) {
+    async fn wait_for_dir_loaded(
+        evt_rx: &Receiver<Event>,
+        session: SessionId,
+    ) -> crate::pipeline::GroupedNodes {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryLoaded { session: s, .. })) if s == session => return,
+                Ok(Ok(Event::DirectoryLoaded {
+                    session: s, groups, ..
+                })) if s == session => return groups,
                 Ok(Ok(_)) => {}
                 _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
             }
@@ -190,27 +199,38 @@ mod scanner_cache_tests {
         let (evt_tx, evt_rx) = flume::unbounded::<Event>();
         let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
 
-        let scanner = Scanner::with_cache(
-            cmd_rx,
-            evt_tx,
-            Arc::new(provider.clone()),
-            registry,
-            cache,
-        );
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
         tokio::spawn(async move { scanner.run().await });
 
         let path = std::path::PathBuf::from("/tmp/dir");
         let s1 = SessionId::new();
         let s2 = SessionId::new();
 
-        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s1, pipeline: default_pipeline() }).unwrap();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: s1,
+                pipeline: default_pipeline(),
+            })
+            .unwrap();
         wait_for_dir_loaded(&evt_rx, s1).await;
 
-        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s2, pipeline: default_pipeline() }).unwrap();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: s2,
+                pipeline: default_pipeline(),
+            })
+            .unwrap();
         wait_for_dir_loaded(&evt_rx, s2).await;
 
         let calls = provider.get_list_calls();
-        assert_eq!(calls.len(), 1, "provider.list() should only be called once (second scan hits cache)");
+        assert_eq!(
+            calls.len(),
+            1,
+            "provider.list() should only be called once (second scan hits cache)"
+        );
     }
 
     #[tokio::test]
@@ -234,18 +254,90 @@ mod scanner_cache_tests {
 
         let path = std::path::PathBuf::from("/tmp/dir2");
         let s1 = SessionId::new();
-        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s1, pipeline: default_pipeline() }).unwrap();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: s1,
+                pipeline: default_pipeline(),
+            })
+            .unwrap();
         wait_for_dir_loaded(&evt_rx, s1).await;
 
         // Invalidate the cache entry
         cache.lock().unwrap().invalidate(&path);
 
         let s2 = SessionId::new();
-        cmd_tx.send(ScanCommand::Scan { path: path.clone(), session: s2, pipeline: default_pipeline() }).unwrap();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: s2,
+                pipeline: default_pipeline(),
+            })
+            .unwrap();
         wait_for_dir_loaded(&evt_rx, s2).await;
 
         let calls = provider.get_list_calls();
-        assert_eq!(calls.len(), 2, "provider.list() should be called twice after cache invalidation");
+        assert_eq!(
+            calls.len(),
+            2,
+            "provider.list() should be called twice after cache invalidation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_node_invalidates_cache_before_scan() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("before.txt", "/tmp/refresh", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner = Scanner::with_cache(
+            cmd_rx,
+            evt_tx,
+            Arc::new(provider.clone()),
+            registry.clone(),
+            cache,
+        );
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = std::path::PathBuf::from("/tmp/refresh");
+        let node = registry.register(path);
+        let s1 = SessionId::new();
+        let s2 = SessionId::new();
+
+        cmd_tx
+            .send(ScanCommand::ScanNode {
+                node,
+                session: s1,
+                pipeline: default_pipeline(),
+            })
+            .unwrap();
+        wait_for_dir_loaded(&evt_rx, s1).await;
+
+        provider.add_file(make_file("after.txt", "/tmp/refresh", 20, false));
+
+        cmd_tx
+            .send(ScanCommand::RefreshNode {
+                node,
+                session: s2,
+                pipeline: default_pipeline(),
+            })
+            .unwrap();
+        let groups = wait_for_dir_loaded(&evt_rx, s2).await;
+
+        let calls = provider.get_list_calls();
+        assert_eq!(
+            calls.len(),
+            2,
+            "RefreshNode should bypass cached directory entries"
+        );
+        assert_eq!(
+            groups.total_count, 2,
+            "RefreshNode should emit the fresh provider listing"
+        );
     }
 }
 
@@ -255,7 +347,7 @@ mod scanner_cache_tests {
 mod scanner_command_tests {
     use std::path::PathBuf;
 
-    use crate::{modules::scan::scanner::ScanCommand, model::session};
+    use crate::{model::session, modules::scan::scanner::ScanCommand};
 
     #[test]
     fn test_scan_command_clone() {
@@ -281,7 +373,7 @@ mod scanner_command_tests {
                 },
                 ScanCommand::Scan {
                     path: p2,
-                    pipeline:pl2,
+                    pipeline: pl2,
                     session: s2,
                 },
             ) => {
@@ -297,7 +389,8 @@ mod scanner_command_tests {
     fn test_scan_command_debug() {
         let session = session::SessionId::new();
         let cmd = ScanCommand::Scan {
-            path: PathBuf::from("/test/path"),pipeline: crate::pipeline::PipelineConfig {
+            path: PathBuf::from("/test/path"),
+            pipeline: crate::pipeline::PipelineConfig {
                 sort: None,
                 filter: None,
                 group: None,

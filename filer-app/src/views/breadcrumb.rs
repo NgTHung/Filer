@@ -4,6 +4,7 @@ use iced::widget::{button, row, text};
 use iced::{Element, Length};
 
 use crate::message::Message;
+use crate::views::theme::top_button;
 
 /// Build a clickable breadcrumb bar from the current path.
 pub fn view(path: &Path) -> Element<'static, Message> {
@@ -23,6 +24,7 @@ pub fn view(path: &Path) -> Element<'static, Message> {
             button(text(label).size(13))
                 .on_press(Message::Navigate(target))
                 .padding([2, 6])
+                .style(|theme, status| top_button(theme, status, false))
                 .into(),
         );
         items.push(text(" › ").size(13).into());

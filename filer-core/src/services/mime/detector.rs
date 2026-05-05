@@ -349,4 +349,3 @@ impl MimeDetector {
         AMBIGUOUS_EXTENSIONS.contains(&ext)
     }
 }
-

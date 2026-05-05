@@ -6,26 +6,23 @@ use flume::SendError;
 #[derive(Debug)]
 pub enum CoreError {
     /// IO error with path context
-    Io {
-        path: PathBuf,
-        message: String,
-    },
-    
+    Io { path: PathBuf, message: String },
+
     /// Path not found
     NotFound(PathBuf),
-    
+
     /// Permission denied
     PermissionDenied(PathBuf),
-    
+
     /// Invalid path (already exists, not a directory, etc.)
     InvalidPath(String),
-    
+
     /// Channel closed — the receiving end has been dropped
     ChannelClosed(String),
-    
+
     /// Operation cancelled
     Cancelled,
-    
+
     /// Actor error (named actor reported a failure)
     ActorError {
         actor: &'static str,
@@ -40,7 +37,7 @@ pub enum CoreError {
 
     /// Invalid input from client/caller
     InvalidInput(String),
-    
+
     /// Wraps an underlying `std::io::Error` that doesn't fit other variants
     Other(IoError),
 }
@@ -137,7 +134,6 @@ impl CoreError {
                 path,
                 message: err.to_string(),
             },
-            
         }
     }
 }

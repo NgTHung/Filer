@@ -30,33 +30,28 @@ impl Stage for GroupBy {
             PipelineData::Flat(v) => v,
             PipelineData::Grouped(g) => {
                 // Flatten existing groups if re-grouping
-                g.groups.into_iter()
-                    .flat_map(|g| g.nodes)
-                    .collect()
+                g.groups.into_iter().flat_map(|g| g.nodes).collect()
             }
         };
-        
+
         let mut groups_map: RapidHashMap<String, Vec<FileNode>> = RapidHashMap::default();
-        
+
         for node in nodes {
             let key = match self.field {
-                GroupField::Extension => {
-                    node.extension()
-                        .unwrap_or("No extension")
-                        .to_string()
-                }
+                GroupField::Extension => node.extension().unwrap_or("No extension").to_string(),
                 GroupField::Date => {
                     utils::time_group_name(node.modified.unwrap_or(SystemTime::now())).to_string()
                 }
                 GroupField::Size => utils::size_group_name(node.size).to_string(),
-                GroupField::FirstLetter => {
-                    node.name.chars().next()
-                        .unwrap_or('#')
-                        .to_uppercase()
-                        .to_string()
-                }
+                GroupField::FirstLetter => node
+                    .name
+                    .chars()
+                    .next()
+                    .unwrap_or('#')
+                    .to_uppercase()
+                    .to_string(),
             };
-            
+
             groups_map.entry(key).or_default().push(node);
         }
 
@@ -73,7 +68,7 @@ impl Stage for GroupBy {
 
         // Sort groups by label
         groups.sort_by(|a, b| a.label.cmp(&b.label));
-        
+
         // Update order after sorting
         for (idx, group) in groups.iter_mut().enumerate() {
             group.order = idx;
@@ -86,7 +81,7 @@ impl Stage for GroupBy {
             total_count,
         })
     }
-    
+
     fn name(&self) -> &'static str {
         "group_by"
     }

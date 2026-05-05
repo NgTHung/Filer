@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use flume::{Receiver, Sender};
 
-use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::actors::Actor;
+use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::model::node::NodeId;
 use crate::model::query::SearchQuery;
@@ -75,38 +75,57 @@ impl Searcher {
         let mut queue = VecDeque::new();
         let mut batch = vec![];
         let mut total_found = 0;
-        queue.push_back((path,0));
+        queue.push_back((path, 0));
         'outer: while let Some((dir, depth)) = queue.pop_front() {
-            if cancel.is_cancelled(){
+            if cancel.is_cancelled() {
                 break;
             }
-            let Ok(entries) = provider.list(&dir).await else{
+            let Ok(entries) = provider.list(&dir).await else {
                 continue;
             };
-            if cancel.is_cancelled(){
+            if cancel.is_cancelled() {
                 break;
             }
             for entry in entries {
                 if !query.options.include_hidden && entry.meta.hidden {
                     continue;
                 }
-                if entry.is_dir()
-                    && query.options.max_depth.is_none_or(|v| depth < v){
-                        queue.push_back((entry.path.clone(), depth + 1));
-                    }
+                if entry.is_dir() && query.options.max_depth.is_none_or(|v| depth < v) {
+                    queue.push_back((entry.path.clone(), depth + 1));
+                }
                 if query.matches(&entry) {
                     batch.push(entry);
                     total_found += 1;
-                    if batch.len() >= query.options.batch_size.unwrap_or(DEFAULT_BATCH_SIZE){
-                        send_or_warn(event, Event::SearchResults { matches: std::mem::take(&mut batch), complete: false, session }, "emit partial search result");
+                    if batch.len() >= query.options.batch_size.unwrap_or(DEFAULT_BATCH_SIZE) {
+                        send_or_warn(
+                            event,
+                            Event::SearchResults {
+                                matches: std::mem::take(&mut batch),
+                                complete: false,
+                                session,
+                            },
+                            "emit partial search result",
+                        );
                     }
                 }
-                if query.options.max_results.is_some_and(|max| total_found >= max){
+                if query
+                    .options
+                    .max_results
+                    .is_some_and(|max| total_found >= max)
+                {
                     break 'outer;
                 }
             }
         }
-        send_or_warn(event, Event::SearchResults{matches: batch, complete: true, session}, "emit remaining files after search");
+        send_or_warn(
+            event,
+            Event::SearchResults {
+                matches: batch,
+                complete: true,
+                session,
+            },
+            "emit remaining files after search",
+        );
     }
 
     fn cancel_search(&self, session: SessionId) {
@@ -127,11 +146,15 @@ impl Actor for Searcher {
                     session,
                 }) => {
                     let Some(path) = self.registry.resolve(root) else {
-                        send_or_warn(&self.events, Event::Error {
-                            message: format!("Unable to resolve ID: {root:?}"),
-                            recoverable: true,
-                            session,
-                        }, "search resolve error");
+                        send_or_warn(
+                            &self.events,
+                            Event::Error {
+                                message: format!("Unable to resolve ID: {root:?}"),
+                                recoverable: true,
+                                session,
+                            },
+                            "search resolve error",
+                        );
                         continue;
                     };
                     self.dispatch_search(query, path, session);

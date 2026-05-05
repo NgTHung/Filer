@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use filer_core::api::events::OperationKind;
 use filer_core::model::node::NodeId;
 
-use crate::state::SelectMode;
+use crate::config::ThemeMode;
+use crate::state::{PanelTab, SelectMode};
 
 /// Serializable sort field.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,13 +30,19 @@ pub enum Message {
 
     // ── Navigation ──────────────────────────────────────────────────
     Navigate(PathBuf),
+    AddressInputChanged(String),
+    AddressSubmit,
     NavigateBack,
     NavigateForward,
     NavigateUp,
     Refresh,
 
     // ── File list ───────────────────────────────────────────────────
+    ActivateNode(NodeId),
+    OpenContextMenu(NodeId),
+    PointerMoved(iced::Point),
     OpenNode(NodeId),
+    OpenSelected,
     SelectNode(NodeId, SelectMode),
     SelectAll,
 
@@ -47,12 +54,15 @@ pub enum Message {
     // ── Context menu ────────────────────────────────────────────────
     ShowContextMenu(NodeId, iced::Point),
     HideContextMenu,
+    HideContextMenuOnly,
 
     // ── Clipboard & operations ───────────────────────────────────────
     CopySelected,
     CutSelected,
     Paste,
-    DeleteSelected { trash: bool },
+    DeleteSelected {
+        trash: bool,
+    },
     RenameStart(NodeId),
     RenameInput(String),
     RenameCommit,
@@ -64,6 +74,10 @@ pub enum Message {
 
     // ── Preview ─────────────────────────────────────────────────────
     TogglePreview,
+    SetPanelTab(PanelTab),
+
+    // ── Theme ───────────────────────────────────────────────────────
+    SetThemeMode(ThemeMode),
 
     // ── Sort ────────────────────────────────────────────────────────
     SortBy(SortField, SortDir),
@@ -74,6 +88,12 @@ pub enum Message {
 
     // ── Operations progress ─────────────────────────────────────────
     OperationProgress(OperationKind, usize, usize),
+
+    // ── Error display ───────────────────────────────────────────────
+    DismissError,
+
+    // ── Watch refresh debounce ──────────────────────────────────────
+    WatchRefreshDue,
 
     // ── Debounce tick ───────────────────────────────────────────────
     /// Fired after 150 ms; commits a pending search query.

@@ -21,18 +21,20 @@ use async_trait::async_trait;
 use flume::Receiver;
 use tokio::time::timeout;
 
-use filer_core::{Actor, Capabilities, Command, CoreError, Event, FilerCore, FsProvider, PipelineConfig};
 use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session::SessionId;
 use filer_core::modules::scan::ScanModule;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
 use filer_core::modules::search::SearchModule;
+use filer_core::{
+    Actor, Capabilities, Command, CoreError, Event, FilerCore, FsProvider, PipelineConfig,
+};
 
 // ── Timeouts ──────────────────────────────────────────────────────────────────
 
 const SHORT: Duration = Duration::from_secs(5);
-const LONG:  Duration = Duration::from_secs(30);
+const LONG: Duration = Duration::from_secs(30);
 
 // ── MockProvider (HashMap-backed, O(1) directory lookup) ──────────────────────
 
@@ -46,7 +48,9 @@ struct MockFs {
 
 impl MockFs {
     fn new() -> Self {
-        Self { dirs: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            dirs: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     fn add_dir(&self, path: impl Into<PathBuf>, children: Vec<FileNode>) {
@@ -54,7 +58,10 @@ impl MockFs {
     }
 
     fn file_count(&self) -> usize {
-        self.dirs.lock().unwrap().values()
+        self.dirs
+            .lock()
+            .unwrap()
+            .values()
             .flat_map(|v| v.iter().filter(|n| n.is_file()))
             .count()
     }
@@ -62,10 +69,17 @@ impl MockFs {
 
 #[async_trait]
 impl FsProvider for MockFs {
-    fn scheme(&self) -> &'static str { "stress-mock" }
+    fn scheme(&self) -> &'static str {
+        "stress-mock"
+    }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { read: true, write: false, watch: false, search: true }
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: true,
+        }
     }
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
@@ -75,13 +89,17 @@ impl FsProvider for MockFs {
         Ok(guard.get(path).cloned().unwrap_or_default())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> { Ok(vec![]) }
+    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
+        Ok(vec![])
+    }
 
     async fn read_range(&self, _path: &Path, _s: u64, _l: u64) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> { Ok(true) }
+    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+        Ok(true)
+    }
 
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
         Err(CoreError::NotFound(path.to_path_buf()))
@@ -96,11 +114,11 @@ impl FsProvider for MockFs {
 // This makes arbitrarily large trees testable without OOM.
 
 struct LazyTreeFs {
-    root:         PathBuf,
-    width:        usize, // subdirectory fan-out per level
-    max_depth:    usize, // 0 = root only (no subdirs); root is depth 0
+    root: PathBuf,
+    width: usize,     // subdirectory fan-out per level
+    max_depth: usize, // 0 = root only (no subdirs); root is depth 0
     files_per_dir: usize,
-    match_every:  usize, // file at index f matches when f % match_every == 0
+    match_every: usize, // file at index f matches when f % match_every == 0
 }
 
 impl LazyTreeFs {
@@ -111,7 +129,13 @@ impl LazyTreeFs {
         files_per_dir: usize,
         match_every: usize,
     ) -> Self {
-        Self { root: root.into(), width, max_depth, files_per_dir, match_every }
+        Self {
+            root: root.into(),
+            width,
+            max_depth,
+            files_per_dir,
+            match_every,
+        }
     }
 
     /// Total directories in the tree (sum of geometric series).
@@ -132,13 +156,15 @@ impl LazyTreeFs {
     }
 
     fn depth_of(&self, path: &Path) -> Option<usize> {
-        path.strip_prefix(&self.root).ok().map(|r| r.components().count())
+        path.strip_prefix(&self.root)
+            .ok()
+            .map(|r| r.components().count())
     }
 
     fn children_of(&self, path: &Path) -> Vec<FileNode> {
         let d = match self.depth_of(path) {
             Some(d) => d,
-            None    => return vec![],
+            None => return vec![],
         };
         let mut out = Vec::with_capacity(self.files_per_dir + self.width);
         for f in 0..self.files_per_dir {
@@ -160,10 +186,17 @@ impl LazyTreeFs {
 
 #[async_trait]
 impl FsProvider for LazyTreeFs {
-    fn scheme(&self) -> &'static str { "lazy-tree" }
+    fn scheme(&self) -> &'static str {
+        "lazy-tree"
+    }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { read: true, write: false, watch: false, search: true }
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: true,
+        }
     }
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
@@ -171,9 +204,15 @@ impl FsProvider for LazyTreeFs {
         Ok(self.children_of(path))
     }
 
-    async fn read(&self, _p: &Path) -> Result<Vec<u8>, CoreError> { Ok(vec![]) }
-    async fn read_range(&self, _p: &Path, _s: u64, _l: u64) -> Result<Vec<u8>, CoreError> { Ok(vec![]) }
-    async fn exists(&self, _p: &Path) -> Result<bool, CoreError> { Ok(true) }
+    async fn read(&self, _p: &Path) -> Result<Vec<u8>, CoreError> {
+        Ok(vec![])
+    }
+    async fn read_range(&self, _p: &Path, _s: u64, _l: u64) -> Result<Vec<u8>, CoreError> {
+        Ok(vec![])
+    }
+    async fn exists(&self, _p: &Path) -> Result<bool, CoreError> {
+        Ok(true)
+    }
     async fn metadata(&self, p: &Path) -> Result<FileNode, CoreError> {
         Err(CoreError::NotFound(p.to_path_buf()))
     }
@@ -182,7 +221,10 @@ impl FsProvider for LazyTreeFs {
 // ── Node builders ─────────────────────────────────────────────────────────────
 
 fn file(name: &str, parent: &Path, size: u64) -> FileNode {
-    let ext = Path::new(name).extension().and_then(|e| e.to_str()).map(str::to_string);
+    let ext = Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_string);
     FileNode {
         id: NodeId::from_path(&parent.join(name)),
         name: name.to_string(),
@@ -191,8 +233,13 @@ fn file(name: &str, parent: &Path, size: u64) -> FileNode {
         size,
         modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size % 1_000_000)),
         created: None,
-        meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
-        accessed: None
+        meta: NodeMeta {
+            hidden: false,
+            readonly: false,
+            permissions: None,
+            ..Default::default()
+        },
+        accessed: None,
     }
 }
 
@@ -201,12 +248,19 @@ fn dir(name: &str, parent: &Path) -> FileNode {
         id: NodeId::from_path(&parent.join(name)),
         name: name.to_string(),
         path: parent.join(name),
-        kind: NodeKind::Directory { children_count: None },
+        kind: NodeKind::Directory {
+            children_count: None,
+        },
         size: 0,
         modified: Some(SystemTime::UNIX_EPOCH),
         created: None,
-        meta: NodeMeta { hidden: false, readonly: false, permissions: None, ..Default::default() },
-        accessed: None
+        meta: NodeMeta {
+            hidden: false,
+            readonly: false,
+            permissions: None,
+            ..Default::default()
+        },
+        accessed: None,
     }
 }
 
@@ -241,20 +295,31 @@ async fn create_session(core: &FilerCore, rx: &Receiver<Event>) -> SessionId {
 }
 
 /// Drain SearchResults until `complete: true`, returning all matched files.
-async fn drain_search(rx: &Receiver<Event>, session: SessionId, deadline: Duration) -> Vec<FileNode> {
+async fn drain_search(
+    rx: &Receiver<Event>,
+    session: SessionId,
+    deadline: Duration,
+) -> Vec<FileNode> {
     let mut all = Vec::new();
     let limit = tokio::time::Instant::now() + deadline;
     loop {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults { matches, complete, session: s })) if s == session => {
+            Ok(Ok(Event::SearchResults {
+                matches,
+                complete,
+                session: s,
+            })) if s == session => {
                 all.extend(matches);
-                if complete { return all; }
+                if complete {
+                    return all;
+                }
             }
             Ok(Ok(_)) => {}
             Ok(Err(_)) => panic!("event channel closed before search completed"),
             Err(_) => panic!(
                 "search timed out after {:.1}s — found {} matches so far",
-                deadline.as_secs_f32(), all.len()
+                deadline.as_secs_f32(),
+                all.len()
             ),
         }
     }
@@ -276,7 +341,7 @@ async fn stress_search_large_flat_dir() {
     let children: Vec<FileNode> = (0..TOTAL)
         .map(|i| {
             let name = if i % 2 == 0 {
-                format!("target_{:04}.rs", i)   // even → matches "target"
+                format!("target_{:04}.rs", i) // even → matches "target"
             } else {
                 format!("other_{:04}.rs", i)
             };
@@ -291,12 +356,20 @@ async fn stress_search_large_flat_dir() {
     let (session, rx) = handshake(&core).await;
     let root_id = core.registry().register(root);
 
-    core.send(Command::Search { query: "target".to_string(), root: root_id, session }).unwrap();
+    core.send(Command::Search {
+        query: "target".to_string(),
+        root: root_id,
+        session,
+    })
+    .unwrap();
 
     let results = drain_search(&rx, session, LONG).await;
     assert_eq!(
-        results.len(), MATCHES,
-        "expected exactly {} matches in a flat dir of {} files", MATCHES, TOTAL
+        results.len(),
+        MATCHES,
+        "expected exactly {} matches in a flat dir of {} files",
+        MATCHES,
+        TOTAL
     );
     assert!(
         results.iter().all(|n| n.name.contains("target")),
@@ -326,7 +399,10 @@ async fn stress_search_deep_tree() {
         path = path.join(subdir_name);
     }
     // Leaf directory — one final file, no further subdirs
-    fs.add_dir(path.clone(), vec![file(&format!("needle_{:03}.txt", DEPTH), &path, 1024)]);
+    fs.add_dir(
+        path.clone(),
+        vec![file(&format!("needle_{:03}.txt", DEPTH), &path, 1024)],
+    );
 
     let core = build_core(fs);
     let (session, rx) = handshake(&core).await;
@@ -336,12 +412,15 @@ async fn stress_search_deep_tree() {
         query: "needle".to_string(),
         root: root_id,
         session,
-    }).unwrap();
+    })
+    .unwrap();
 
     let results = drain_search(&rx, session, LONG).await;
     assert_eq!(
-        results.len(), DEPTH + 1,
-        "BFS must visit all {} levels and find a needle at each", DEPTH + 1
+        results.len(),
+        DEPTH + 1,
+        "BFS must visit all {} levels and find a needle at each",
+        DEPTH + 1
     );
 }
 
@@ -374,11 +453,20 @@ async fn stress_search_wide_deep_tree() {
         query: "match".to_string(),
         root: root_id,
         session,
-    }).unwrap();
+    })
+    .unwrap();
 
     let results = drain_search(&rx, session, LONG).await;
-    assert_eq!(results.len(), expected, "wide+deep lazy tree: expected {} matches", expected);
-    assert!(results.iter().all(|n| n.name.starts_with("match_")), "all results must start with 'match_'");
+    assert_eq!(
+        results.len(),
+        expected,
+        "wide+deep lazy tree: expected {} matches",
+        expected
+    );
+    assert!(
+        results.iter().all(|n| n.name.starts_with("match_")),
+        "all results must start with 'match_'"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -396,8 +484,11 @@ async fn stress_concurrent_sessions() {
     let root = PathBuf::from("/stress/concurrent");
     let children: Vec<FileNode> = (0..FILES_PER_DIR)
         .map(|i| {
-            let name = if i % 2 == 0 { format!("hit_{:03}.txt", i) }
-                       else           { format!("miss_{:03}.txt", i) };
+            let name = if i % 2 == 0 {
+                format!("hit_{:03}.txt", i)
+            } else {
+                format!("miss_{:03}.txt", i)
+            };
             file(&name, &root, 1024)
         })
         .collect();
@@ -418,7 +509,12 @@ async fn stress_concurrent_sessions() {
 
     // Fire off all searches at once
     for &session in &sessions {
-        core.send(Command::Search { query: "hit".to_string(), root: root_id, session }).unwrap();
+        core.send(Command::Search {
+            query: "hit".to_string(),
+            root: root_id,
+            session,
+        })
+        .unwrap();
     }
 
     // Drain from the shared receiver, routing results by session ID
@@ -429,22 +525,32 @@ async fn stress_concurrent_sessions() {
 
     while completed < SESSIONS {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults { matches, complete, session })) => {
+            Ok(Ok(Event::SearchResults {
+                matches,
+                complete,
+                session,
+            })) => {
                 if let Some(c) = counts.get_mut(&session) {
                     *c += matches.len();
-                    if complete { completed += 1; }
+                    if complete {
+                        completed += 1;
+                    }
                 }
             }
             Ok(Ok(_)) => {}
             Ok(Err(_)) => panic!("channel closed after {}/{} sessions", completed, SESSIONS),
-            Err(_)     => panic!("timed out after {}/{} sessions completed", completed, SESSIONS),
+            Err(_) => panic!(
+                "timed out after {}/{} sessions completed",
+                completed, SESSIONS
+            ),
         }
     }
 
     for (i, &session) in sessions.iter().enumerate() {
         assert_eq!(
             counts[&session], EXPECTED_MATCHES,
-            "session {} got {} matches, expected {}", i, counts[&session], EXPECTED_MATCHES
+            "session {} got {} matches, expected {}",
+            i, counts[&session], EXPECTED_MATCHES
         );
     }
 }
@@ -463,13 +569,16 @@ async fn stress_rapid_cancel_restart() {
     let mut path = PathBuf::from("/stress/cancel");
     for i in 0..50 {
         let sub = format!("sub_{}", i);
-        fs.add_dir(path.clone(), vec![
-            file(&format!("f{}.txt", i), &path, 1024),
-            dir(&sub, &path),
-        ]);
+        fs.add_dir(
+            path.clone(),
+            vec![file(&format!("f{}.txt", i), &path, 1024), dir(&sub, &path)],
+        );
         path = path.join(sub);
     }
-    fs.add_dir(path, vec![file("last.txt", Path::new("/stress/cancel/leaf"), 512)]);
+    fs.add_dir(
+        path,
+        vec![file("last.txt", Path::new("/stress/cancel/leaf"), 512)],
+    );
 
     let core = build_core(fs);
     let (session, rx) = handshake(&core).await;
@@ -481,7 +590,8 @@ async fn stress_rapid_cancel_restart() {
             query: "f".to_string(),
             root: root_id,
             session,
-        }).unwrap();
+        })
+        .unwrap();
         core.send(Command::Cancel(session)).unwrap();
     }
 
@@ -494,9 +604,14 @@ async fn stress_rapid_cancel_restart() {
         query: "f".to_string(),
         root: root_id,
         session,
-    }).unwrap();
+    })
+    .unwrap();
     let results = drain_search(&rx, session, LONG).await;
-    assert!(!results.is_empty(), "final search after {} cancel cycles must still return results", CYCLES);
+    assert!(
+        !results.is_empty(),
+        "final search after {} cancel cycles must still return results",
+        CYCLES
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -517,15 +632,17 @@ async fn stress_all_filters_combined() {
     let mut expected = 0usize;
     let children: Vec<FileNode> = (0..TOTAL)
         .map(|i| {
-            let is_rs   = i % 3 == 0;
-            let is_big  = i % 4 == 0; // size > 1000
-            let is_new  = i % 5 == 0; // modified after base_ts
+            let is_rs = i % 3 == 0;
+            let is_big = i % 4 == 0; // size > 1000
+            let is_new = i % 5 == 0; // modified after base_ts
 
-            let ext  = if is_rs { "rs" } else { "py" };
+            let ext = if is_rs { "rs" } else { "py" };
             let size = if is_big { 2048u64 } else { 100u64 };
-            let ts   = if is_new { base_ts + 1 } else { base_ts - 1 };
+            let ts = if is_new { base_ts + 1 } else { base_ts - 1 };
 
-            if is_rs && is_big && is_new { expected += 1; }
+            if is_rs && is_big && is_new {
+                expected += 1;
+            }
 
             let name = format!("file_{:04}.{}", i, ext);
             let mut node = file(&name, &root, size);
@@ -542,15 +659,28 @@ async fn stress_all_filters_combined() {
 
     // ext:rs AND size:>1000 AND after:<base_ts>
     let query = format!("ext:rs size:>1000 after:{}", base_ts);
-    core.send(Command::Search { query, root: root_id, session }).unwrap();
+    core.send(Command::Search {
+        query,
+        root: root_id,
+        session,
+    })
+    .unwrap();
 
     let results = drain_search(&rx, session, LONG).await;
     assert_eq!(
-        results.len(), expected,
-        "combined filters: expected {} files matching ext:rs + size:>1000 + after:ts", expected
+        results.len(),
+        expected,
+        "combined filters: expected {} files matching ext:rs + size:>1000 + after:ts",
+        expected
     );
-    assert!(results.iter().all(|n| n.name.ends_with(".rs")), "all results must be .rs files");
-    assert!(results.iter().all(|n| n.size > 1000), "all results must be > 1000 bytes");
+    assert!(
+        results.iter().all(|n| n.name.ends_with(".rs")),
+        "all results must be .rs files"
+    );
+    assert!(
+        results.iter().all(|n| n.size > 1000),
+        "all results must be > 1000 bytes"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -574,7 +704,12 @@ async fn stress_streaming_batch_accuracy() {
     let (session, rx) = handshake(&core).await;
     let root_id = core.registry().register(root);
 
-    core.send(Command::Search { query: "item".to_string(), root: root_id, session }).unwrap();
+    core.send(Command::Search {
+        query: "item".to_string(),
+        root: root_id,
+        session,
+    })
+    .unwrap();
 
     // Manually count batches and total items to verify no results are dropped
     let mut total = 0usize;
@@ -583,20 +718,40 @@ async fn stress_streaming_batch_accuracy() {
 
     loop {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults { matches, complete, session: s })) if s == session => {
-                assert!(!matches.is_empty() || complete, "every non-final batch must be non-empty");
+            Ok(Ok(Event::SearchResults {
+                matches,
+                complete,
+                session: s,
+            })) if s == session => {
+                assert!(
+                    !matches.is_empty() || complete,
+                    "every non-final batch must be non-empty"
+                );
                 total += matches.len();
                 batch_count += 1;
-                if complete { break; }
+                if complete {
+                    break;
+                }
             }
             Ok(Ok(_)) => {}
             Ok(Err(_)) => panic!("channel closed"),
-            Err(_) => panic!("batch stream timed out after {} items in {} batches", total, batch_count),
+            Err(_) => panic!(
+                "batch stream timed out after {} items in {} batches",
+                total, batch_count
+            ),
         }
     }
 
-    assert_eq!(total, TOTAL, "all {} items must arrive across {} batches", TOTAL, batch_count);
-    assert!(batch_count >= 2, "750 items with batch_size=50 must produce >= 2 batches, got {}", batch_count);
+    assert_eq!(
+        total, TOTAL,
+        "all {} items must arrive across {} batches",
+        TOTAL, batch_count
+    );
+    assert!(
+        batch_count >= 2,
+        "750 items with batch_size=50 must produce >= 2 batches, got {}",
+        batch_count
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -623,11 +778,17 @@ async fn stress_scanner_large_dir() {
     tokio::spawn(async move { scanner.run().await });
 
     let session = SessionId::new();
-    cmd_tx.send(ScanCommand::Scan {
-        path: root,
-        pipeline: PipelineConfig { sort: None, filter: None, group: None },
-        session,
-    }).unwrap();
+    cmd_tx
+        .send(ScanCommand::Scan {
+            path: root,
+            pipeline: PipelineConfig {
+                sort: None,
+                filter: None,
+                group: None,
+            },
+            session,
+        })
+        .unwrap();
 
     let event = timeout(LONG, evt_rx.recv_async())
         .await
@@ -642,8 +803,11 @@ async fn stress_scanner_large_dir() {
         other => panic!("unexpected event: {:?}", other),
     };
 
-    assert_eq!(total, FILE_COUNT,
-        "scanner must emit all {} files in the directory", FILE_COUNT);
+    assert_eq!(
+        total, FILE_COUNT,
+        "scanner must emit all {} files in the directory",
+        FILE_COUNT
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -673,14 +837,34 @@ async fn stress_session_isolation_under_cancellation() {
     let sd = create_session(&core, &rx).await;
 
     // Launch A and B, then immediately cancel them
-    core.send(Command::Search { query: "doc".to_string(), root: root_id, session: sa }).unwrap();
-    core.send(Command::Search { query: "doc".to_string(), root: root_id, session: sb }).unwrap();
+    core.send(Command::Search {
+        query: "doc".to_string(),
+        root: root_id,
+        session: sa,
+    })
+    .unwrap();
+    core.send(Command::Search {
+        query: "doc".to_string(),
+        root: root_id,
+        session: sb,
+    })
+    .unwrap();
     core.send(Command::Cancel(sa)).unwrap();
     core.send(Command::Cancel(sb)).unwrap();
 
     // Launch C and D — these must complete despite A/B cancellations
-    core.send(Command::Search { query: "doc".to_string(), root: root_id, session: sc }).unwrap();
-    core.send(Command::Search { query: "doc".to_string(), root: root_id, session: sd }).unwrap();
+    core.send(Command::Search {
+        query: "doc".to_string(),
+        root: root_id,
+        session: sc,
+    })
+    .unwrap();
+    core.send(Command::Search {
+        query: "doc".to_string(),
+        root: root_id,
+        session: sd,
+    })
+    .unwrap();
 
     // Drain the shared receiver, counting results only for C and D
     let mut count_c = 0usize;
@@ -691,19 +875,40 @@ async fn stress_session_isolation_under_cancellation() {
 
     while !done_c || !done_d {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults { matches, complete, session })) => {
-                if session == sc      { count_c += matches.len(); if complete { done_c = true; } }
-                else if session == sd { count_d += matches.len(); if complete { done_d = true; } }
+            Ok(Ok(Event::SearchResults {
+                matches,
+                complete,
+                session,
+            })) => {
+                if session == sc {
+                    count_c += matches.len();
+                    if complete {
+                        done_c = true;
+                    }
+                } else if session == sd {
+                    count_d += matches.len();
+                    if complete {
+                        done_d = true;
+                    }
+                }
                 // sa/sb events are intentionally discarded
             }
             Ok(Ok(_)) => {}
             Ok(Err(_)) => panic!("channel closed before C and D completed"),
-            Err(_)     => panic!("timed out — C done={}, D done={}", done_c, done_d),
+            Err(_) => panic!("timed out — C done={}, D done={}", done_c, done_d),
         }
     }
 
-    assert_eq!(count_c, FILES, "session C must find all {} files despite A/B cancellations", FILES);
-    assert_eq!(count_d, FILES, "session D must find all {} files despite A/B cancellations", FILES);
+    assert_eq!(
+        count_c, FILES,
+        "session C must find all {} files despite A/B cancellations",
+        FILES
+    );
+    assert_eq!(
+        count_d, FILES,
+        "session D must find all {} files despite A/B cancellations",
+        FILES
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -729,15 +934,34 @@ async fn stress_search_determinism() {
     let rx = core.event_receiver();
 
     let s1 = create_session(&core, &rx).await;
-    core.send(Command::Search { query: "stable".to_string(), root: root_id, session: s1 }).unwrap();
-    let run1: Vec<String> = drain_search(&rx, s1, LONG).await
-        .into_iter().map(|n| n.name).collect();
+    core.send(Command::Search {
+        query: "stable".to_string(),
+        root: root_id,
+        session: s1,
+    })
+    .unwrap();
+    let run1: Vec<String> = drain_search(&rx, s1, LONG)
+        .await
+        .into_iter()
+        .map(|n| n.name)
+        .collect();
 
     let s2 = create_session(&core, &rx).await;
-    core.send(Command::Search { query: "stable".to_string(), root: root_id, session: s2 }).unwrap();
-    let run2: Vec<String> = drain_search(&rx, s2, LONG).await
-        .into_iter().map(|n| n.name).collect();
+    core.send(Command::Search {
+        query: "stable".to_string(),
+        root: root_id,
+        session: s2,
+    })
+    .unwrap();
+    let run2: Vec<String> = drain_search(&rx, s2, LONG)
+        .await
+        .into_iter()
+        .map(|n| n.name)
+        .collect();
 
     assert_eq!(run1.len(), FILES);
-    assert_eq!(run1, run2, "identical queries on the same tree must return results in the same order");
+    assert_eq!(
+        run1, run2,
+        "identical queries on the same tree must return results in the same order"
+    );
 }

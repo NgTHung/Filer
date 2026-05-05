@@ -21,21 +21,21 @@ mod command_router_tests {
     use flume::{Receiver, Sender};
     use tokio::time::timeout;
 
+    use crate::actors::Actor;
+    use crate::actors::router::CommandRouter;
     use crate::api::commands::Command;
     use crate::api::events::Event;
     use crate::api::module::{HandlerContext, HandlerRegistry};
     use crate::api::session_manager::SessionManager;
-    use crate::modules::navigation::navigator::NavCommand;
-    use crate::modules::operations::operator::OpsCommand;
-    use crate::actors::router::CommandRouter;
-    use crate::modules::scan::scanner::ScanCommand;
-    use crate::modules::search::searcher::SearchCommand;
-    use crate::modules::watch::watcher::WatchCommand;
-    use crate::modules::preview::previewer::PreviewCommand;
-    use crate::actors::Actor;
     use crate::model::node::NodeId;
     use crate::model::registry::NodeRegistry;
     use crate::model::session::SessionId;
+    use crate::modules::navigation::navigator::NavCommand;
+    use crate::modules::operations::operator::OpsCommand;
+    use crate::modules::preview::previewer::PreviewCommand;
+    use crate::modules::scan::scanner::ScanCommand;
+    use crate::modules::search::searcher::SearchCommand;
+    use crate::modules::watch::watcher::WatchCommand;
 
     /// Timeout for async operations in tests
     const TEST_TIMEOUT: Duration = Duration::from_millis(500);
@@ -152,7 +152,12 @@ mod command_router_tests {
             {
                 let tx = search_tx.clone();
                 handlers.on("search", move |cmd, _ctx| {
-                    if let Command::Search { query, root, session } = cmd {
+                    if let Command::Search {
+                        query,
+                        root,
+                        session,
+                    } = cmd
+                    {
                         let _ = tx.send(SearchCommand::Search {
                             query: crate::model::query::SearchQuery::parse(&query).unwrap(),
                             root,
@@ -200,8 +205,17 @@ mod command_router_tests {
             {
                 let tx = preview_tx.clone();
                 handlers.on("preview.load", move |cmd, _ctx| {
-                    if let Command::LoadPreview { id, options, session } = cmd {
-                        let _ = tx.send(PreviewCommand::Generate { path: id, options, session });
+                    if let Command::LoadPreview {
+                        id,
+                        options,
+                        session,
+                    } = cmd
+                    {
+                        let _ = tx.send(PreviewCommand::Generate {
+                            path: id,
+                            options,
+                            session,
+                        });
                     }
                 });
             }
@@ -234,48 +248,102 @@ mod command_router_tests {
             {
                 let tx = ops_tx.clone();
                 handlers.on("ops.copy", move |cmd, _ctx| {
-                    if let Command::Copy { sources, destination, session } = cmd {
-                        let _ = tx.send(OpsCommand::Copy { sources, destination, session });
+                    if let Command::Copy {
+                        sources,
+                        destination,
+                        session,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::Copy {
+                            sources,
+                            destination,
+                            session,
+                        });
                     }
                 });
             }
             {
                 let tx = ops_tx.clone();
                 handlers.on("ops.move", move |cmd, _ctx| {
-                    if let Command::Move { sources, destination, session } = cmd {
-                        let _ = tx.send(OpsCommand::Move { sources, destination, session });
+                    if let Command::Move {
+                        sources,
+                        destination,
+                        session,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::Move {
+                            sources,
+                            destination,
+                            session,
+                        });
                     }
                 });
             }
             {
                 let tx = ops_tx.clone();
                 handlers.on("ops.delete", move |cmd, _ctx| {
-                    if let Command::Delete { nodes, trash, session } = cmd {
-                        let _ = tx.send(OpsCommand::Delete { targets: nodes, trash, session });
+                    if let Command::Delete {
+                        nodes,
+                        trash,
+                        session,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::Delete {
+                            targets: nodes,
+                            trash,
+                            session,
+                        });
                     }
                 });
             }
             {
                 let tx = ops_tx.clone();
                 handlers.on("ops.rename", move |cmd, _ctx| {
-                    if let Command::Rename { node, new_name, session } = cmd {
-                        let _ = tx.send(OpsCommand::Rename { source: node, new_name, session });
+                    if let Command::Rename {
+                        node,
+                        new_name,
+                        session,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::Rename {
+                            source: node,
+                            new_name,
+                            session,
+                        });
                     }
                 });
             }
             {
                 let tx = ops_tx.clone();
                 handlers.on("ops.create_folder", move |cmd, _ctx| {
-                    if let Command::CreateFolder { parent, name, session } = cmd {
-                        let _ = tx.send(OpsCommand::CreateFolder { parent, name, session });
+                    if let Command::CreateFolder {
+                        parent,
+                        name,
+                        session,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::CreateFolder {
+                            parent,
+                            name,
+                            session,
+                        });
                     }
                 });
             }
             {
                 let tx = ops_tx.clone();
                 handlers.on("ops.create_file", move |cmd, _ctx| {
-                    if let Command::CreateFile { parent, name, session } = cmd {
-                        let _ = tx.send(OpsCommand::CreateFile { parent, name, session });
+                    if let Command::CreateFile {
+                        parent,
+                        name,
+                        session,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::CreateFile {
+                            parent,
+                            name,
+                            session,
+                        });
                     }
                 });
             }
@@ -314,7 +382,10 @@ mod command_router_tests {
 
         /// Send a command and wait briefly for routing
         async fn send(&self, cmd: Command) {
-            self.command_tx.send_async(cmd).await.expect("Failed to send command");
+            self.command_tx
+                .send_async(cmd)
+                .await
+                .expect("Failed to send command");
             // Small yield to let the router process
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -344,7 +415,10 @@ mod command_router_tests {
             .expect("NavCommand channel closed");
 
         match nav_cmd {
-            NavCommand::NavigateToPath { session: s, path: p } => {
+            NavCommand::NavigateToPath {
+                session: s,
+                path: p,
+            } => {
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(p, path, "Path must be forwarded correctly");
             }
@@ -366,7 +440,10 @@ mod command_router_tests {
             .expect("NavCommand channel closed");
 
         match nav_cmd {
-            NavCommand::Navigate { session: s, node: n } => {
+            NavCommand::Navigate {
+                session: s,
+                node: n,
+            } => {
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(n, node, "NodeId must be forwarded correctly");
             }
@@ -441,7 +518,11 @@ mod command_router_tests {
             .expect("SearchCommand channel closed");
 
         match search_cmd {
-            SearchCommand::Search { query, root: r, session: s } => {
+            SearchCommand::Search {
+                query,
+                root: r,
+                session: s,
+            } => {
                 assert_eq!(query.text, "*.rs", "Query text must be forwarded");
                 assert_eq!(r, registered_id, "Root NodeId must be forwarded");
                 assert_eq!(s, session, "Session must be the same for both command");
@@ -578,9 +659,16 @@ mod command_router_tests {
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::Generate { path: p, options, session: s } => {
+            PreviewCommand::Generate {
+                path: p,
+                options,
+                session: s,
+            } => {
                 assert_eq!(p, node, "Preview NodeId must match request command");
-                assert!(options.is_none(), "Options should be None when not provided");
+                assert!(
+                    options.is_none(),
+                    "Options should be None when not provided"
+                );
                 assert_eq!(s, session, "Preview session id must match request command");
             }
             other => panic!("Expected PreviewCommand::Generate, got {:?}", other),
@@ -637,7 +725,9 @@ mod command_router_tests {
         let path = PathBuf::from("/home/user/music.mp3");
         let node = harness.registry.clone().register(path.clone());
 
-        harness.send(Command::LoadExtendedMetadata(node, session)).await;
+        harness
+            .send(Command::LoadExtendedMetadata(node, session))
+            .await;
 
         let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
             .await
@@ -649,7 +739,10 @@ mod command_router_tests {
                 assert_eq!(p, node, "Extended metadata NodeId must match request");
                 assert_eq!(s, session, "Extended metadata session must match request");
             }
-            other => panic!("Expected PreviewCommand::LoadExtendedMetadata, got {:?}", other),
+            other => panic!(
+                "Expected PreviewCommand::LoadExtendedMetadata, got {:?}",
+                other
+            ),
         }
     }
 
@@ -661,7 +754,10 @@ mod command_router_tests {
     async fn test_route_copy_to_operator() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
-        let src = harness.registry.clone().register(PathBuf::from("/a/file.txt"));
+        let src = harness
+            .registry
+            .clone()
+            .register(PathBuf::from("/a/file.txt"));
         let dst = harness.registry.clone().register(PathBuf::from("/b"));
 
         harness
@@ -678,7 +774,11 @@ mod command_router_tests {
             .expect("OpsCommand channel closed");
 
         match ops_cmd {
-            OpsCommand::Copy { sources, destination, session: s } => {
+            OpsCommand::Copy {
+                sources,
+                destination,
+                session: s,
+            } => {
                 assert_eq!(sources, vec![src]);
                 assert_eq!(destination, dst);
                 assert_eq!(s, session);
@@ -691,7 +791,10 @@ mod command_router_tests {
     async fn test_route_create_file_to_operator() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
-        let parent = harness.registry.clone().register(PathBuf::from("/home/user"));
+        let parent = harness
+            .registry
+            .clone()
+            .register(PathBuf::from("/home/user"));
 
         harness
             .send(Command::CreateFile {
@@ -707,7 +810,11 @@ mod command_router_tests {
             .expect("OpsCommand channel closed");
 
         match ops_cmd {
-            OpsCommand::CreateFile { parent: p, name, session: s } => {
+            OpsCommand::CreateFile {
+                parent: p,
+                name,
+                session: s,
+            } => {
                 assert_eq!(p, parent);
                 assert_eq!(name, "notes.txt");
                 assert_eq!(s, session);
@@ -772,7 +879,10 @@ mod command_router_tests {
             .await;
 
         // Session B searches
-        let root = harness.registry.clone().register(PathBuf::from("/search/root"));
+        let root = harness
+            .registry
+            .clone()
+            .register(PathBuf::from("/search/root"));
         harness
             .send(Command::Search {
                 query: "find me".to_string(),
@@ -863,9 +973,16 @@ mod command_router_tests {
         match event {
             Event::SessionCreated(s) => {
                 // A new session ID should have been generated
-                assert_ne!(s, SessionId::DEFAULT, "Generated session should not be DEFAULT");
+                assert_ne!(
+                    s,
+                    SessionId::DEFAULT,
+                    "Generated session should not be DEFAULT"
+                );
                 // Session should now exist in the manager
-                assert!(harness.session_manager.exists(s), "Session must exist after Handshake");
+                assert!(
+                    harness.session_manager.exists(s),
+                    "Session must exist after Handshake"
+                );
             }
             other => panic!("Expected SessionCreated, got {:?}", other),
         }
@@ -925,10 +1042,15 @@ mod command_router_tests {
 
         match event {
             Event::SessionDestroyed(s) => {
-                assert_eq!(s, session, "SessionDestroyed must carry the correct session");
+                assert_eq!(
+                    s, session,
+                    "SessionDestroyed must carry the correct session"
+                );
                 // Session should be removed from manager
-                assert!(!harness.session_manager.exists(session),
-                    "Session must not exist after DestroySession");
+                assert!(
+                    !harness.session_manager.exists(session),
+                    "Session must not exist after DestroySession"
+                );
             }
             other => panic!("Expected SessionDestroyed, got {:?}", other),
         }
@@ -949,7 +1071,10 @@ mod command_router_tests {
 
         match watch_cmd {
             WatchCommand::UnwatchSession(s) => {
-                assert_eq!(s, session, "UnwatchSession must carry the destroyed session");
+                assert_eq!(
+                    s, session,
+                    "UnwatchSession must carry the destroyed session"
+                );
             }
             other => panic!("Expected WatchCommand::UnwatchSession, got {:?}", other),
         }
@@ -974,18 +1099,28 @@ mod command_router_tests {
             .expect("Event channel closed");
 
         match event {
-            Event::Error { message, recoverable, session } => {
+            Event::Error {
+                message,
+                recoverable,
+                session,
+            } => {
                 assert_eq!(session, unknown, "Error must carry the unknown session");
                 assert!(recoverable, "Unknown session should be a recoverable error");
-                assert!(message.contains("Unknown session"),
-                    "Error message should mention unknown session, got: {}", message);
+                assert!(
+                    message.contains("Unknown session"),
+                    "Error message should mention unknown session, got: {}",
+                    message
+                );
             }
             other => panic!("Expected Event::Error, got {:?}", other),
         }
 
         // Navigator should NOT have received anything
         let nav_result = timeout(Duration::from_millis(50), harness.nav_rx.recv_async()).await;
-        assert!(nav_result.is_err(), "Navigator should not receive command for unknown session");
+        assert!(
+            nav_result.is_err(),
+            "Navigator should not receive command for unknown session"
+        );
     }
 
     #[tokio::test]
@@ -1015,8 +1150,12 @@ mod command_router_tests {
         }
 
         // Searcher should NOT have received anything
-        let search_result = timeout(Duration::from_millis(50), harness.search_rx.recv_async()).await;
-        assert!(search_result.is_err(), "Searcher should not receive command for unknown session");
+        let search_result =
+            timeout(Duration::from_millis(50), harness.search_rx.recv_async()).await;
+        assert!(
+            search_result.is_err(),
+            "Searcher should not receive command for unknown session"
+        );
     }
 
     #[tokio::test]
@@ -1033,7 +1172,11 @@ mod command_router_tests {
             .expect("Event channel closed");
 
         match event {
-            Event::Error { session, recoverable, message } => {
+            Event::Error {
+                session,
+                recoverable,
+                message,
+            } => {
                 assert_eq!(session, unknown);
                 assert!(recoverable);
                 assert!(message.contains("Unknown session"));
@@ -1043,7 +1186,10 @@ mod command_router_tests {
 
         // Watcher should NOT have received anything
         let watch_result = timeout(Duration::from_millis(50), harness.watch_rx.recv_async()).await;
-        assert!(watch_result.is_err(), "Watcher should not receive command for unknown session");
+        assert!(
+            watch_result.is_err(),
+            "Watcher should not receive command for unknown session"
+        );
     }
 
     #[tokio::test]
@@ -1074,7 +1220,10 @@ mod command_router_tests {
 
         // Operator should NOT have received anything
         let ops_result = timeout(Duration::from_millis(50), harness.ops_rx.recv_async()).await;
-        assert!(ops_result.is_err(), "Operator should not receive command for unknown session");
+        assert!(
+            ops_result.is_err(),
+            "Operator should not receive command for unknown session"
+        );
     }
 
     #[tokio::test]
@@ -1150,7 +1299,10 @@ mod command_router_tests {
 
         // Navigator should NOT receive the post-destroy command
         let nav_result = timeout(Duration::from_millis(50), harness.nav_rx.recv_async()).await;
-        assert!(nav_result.is_err(), "Navigator should not receive commands for destroyed session");
+        assert!(
+            nav_result.is_err(),
+            "Navigator should not receive commands for destroyed session"
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1179,7 +1331,10 @@ mod command_router_tests {
 
         // Router should exit gracefully
         let result = timeout(Duration::from_millis(500), handle).await;
-        assert!(result.is_ok(), "Router should exit when command channel closes");
+        assert!(
+            result.is_ok(),
+            "Router should exit when command channel closes"
+        );
     }
 
     #[tokio::test]
@@ -1232,15 +1387,24 @@ mod command_router_tests {
 
         // Searcher should NOT get anything
         let search = timeout(Duration::from_millis(50), harness.search_rx.recv_async()).await;
-        assert!(search.is_err(), "Searcher should not receive Navigate commands");
+        assert!(
+            search.is_err(),
+            "Searcher should not receive Navigate commands"
+        );
 
         // Watcher should NOT get anything
         let watch = timeout(Duration::from_millis(50), harness.watch_rx.recv_async()).await;
-        assert!(watch.is_err(), "Watcher should not receive Navigate commands");
+        assert!(
+            watch.is_err(),
+            "Watcher should not receive Navigate commands"
+        );
 
         // Previewer should NOT get anything
         let preview = timeout(Duration::from_millis(50), harness.preview_rx.recv_async()).await;
-        assert!(preview.is_err(), "Previewer should not receive Navigate commands");
+        assert!(
+            preview.is_err(),
+            "Previewer should not receive Navigate commands"
+        );
     }
 
     #[tokio::test]
@@ -1288,7 +1452,10 @@ mod command_router_tests {
 
         // Searcher should NOT get anything
         let search = timeout(Duration::from_millis(50), harness.search_rx.recv_async()).await;
-        assert!(search.is_err(), "Searcher should not receive Watch commands");
+        assert!(
+            search.is_err(),
+            "Searcher should not receive Watch commands"
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1324,9 +1491,19 @@ mod command_router_tests {
             .expect("Channel closed");
 
         match preview_cmd {
-            PreviewCommand::Generate { path: p, options: o, session: s } => {
-                assert_eq!(p, node, "Preview request NodeId must match requested command");
-                assert_eq!(s, session, "Preview request session id must match requested command");
+            PreviewCommand::Generate {
+                path: p,
+                options: o,
+                session: s,
+            } => {
+                assert_eq!(
+                    p, node,
+                    "Preview request NodeId must match requested command"
+                );
+                assert_eq!(
+                    s, session,
+                    "Preview request session id must match requested command"
+                );
                 assert!(o.is_some(), "Options should be forwarded");
                 let opts = o.unwrap();
                 assert_eq!(opts.max_width, 800);

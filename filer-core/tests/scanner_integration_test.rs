@@ -10,11 +10,11 @@ use std::time::{Duration, SystemTime};
 use async_trait::async_trait;
 use tokio::time::timeout;
 
-use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
 use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
+use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,8 +30,13 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
         size,
         modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
         created: None,
-        meta: NodeMeta { hidden, readonly: false, permissions: None, ..Default::default() },
-        accessed: None
+        meta: NodeMeta {
+            hidden,
+            readonly: false,
+            permissions: None,
+            ..Default::default()
+        },
+        accessed: None,
     }
 }
 
@@ -68,10 +73,17 @@ impl MockProvider {
 
 #[async_trait]
 impl FsProvider for MockProvider {
-    fn scheme(&self) -> &'static str { "mock" }
+    fn scheme(&self) -> &'static str {
+        "mock"
+    }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities { read: true, write: false, watch: false, search: false }
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: false,
+        }
     }
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
@@ -82,13 +94,17 @@ impl FsProvider for MockProvider {
         Ok(self.files.lock().unwrap().clone())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> { Ok(vec![]) }
+    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
+        Ok(vec![])
+    }
 
     async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> { Ok(true) }
+    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+        Ok(true)
+    }
 
     async fn metadata(&self, _path: &Path) -> Result<FileNode, CoreError> {
         Err(CoreError::NotFound(PathBuf::from("test")))
@@ -113,7 +129,10 @@ async fn test_scanner_actor_starts_and_stops() {
     drop(cmd_tx);
 
     let result = timeout(Duration::from_millis(500), handle).await;
-    assert!(result.is_ok(), "Scanner should exit when command channel closes");
+    assert!(
+        result.is_ok(),
+        "Scanner should exit when command channel closes"
+    );
 }
 
 #[tokio::test]
@@ -135,7 +154,11 @@ async fn test_scanner_processes_scan_command() {
     cmd_tx
         .send(ScanCommand::Scan {
             path: PathBuf::from("/test"),
-            pipeline: PipelineConfig { sort: None, filter: None, group: None },
+            pipeline: PipelineConfig {
+                sort: None,
+                filter: None,
+                group: None,
+            },
             session: sess,
         })
         .expect("Failed to send scan command");
@@ -146,7 +169,10 @@ async fn test_scanner_processes_scan_command() {
         .expect("Failed to receive event");
 
     let calls = provider_clone.get_list_calls();
-    assert!(!calls.is_empty(), "Scanner should have called list() on provider");
+    assert!(
+        !calls.is_empty(),
+        "Scanner should have called list() on provider"
+    );
     assert_eq!(calls[0], PathBuf::from("/test"));
 
     match event {
@@ -176,7 +202,9 @@ async fn test_scanner_handles_cancellation() {
         .send(ScanCommand::Scan {
             path: PathBuf::from("/test"),
             pipeline: PipelineConfig {
-                sort: Some(SortConfig { ..Default::default() }),
+                sort: Some(SortConfig {
+                    ..Default::default()
+                }),
                 filter: None,
                 group: None,
             },
@@ -207,7 +235,11 @@ async fn test_scanner_handles_multiple_scans() {
     cmd_tx
         .send(ScanCommand::Scan {
             path: PathBuf::from("/dir1"),
-            pipeline: PipelineConfig { sort: None, filter: None, group: None },
+            pipeline: PipelineConfig {
+                sort: None,
+                filter: None,
+                group: None,
+            },
             session: sess,
         })
         .unwrap();
@@ -215,7 +247,11 @@ async fn test_scanner_handles_multiple_scans() {
     cmd_tx
         .send(ScanCommand::Scan {
             path: PathBuf::from("/dir2"),
-            pipeline: PipelineConfig { sort: None, filter: None, group: None },
+            pipeline: PipelineConfig {
+                sort: None,
+                filter: None,
+                group: None,
+            },
             session: sess,
         })
         .unwrap();
@@ -223,7 +259,10 @@ async fn test_scanner_handles_multiple_scans() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let calls = provider_clone.get_list_calls();
-    assert!(calls.len() >= 2, "Scanner should process multiple scan commands");
+    assert!(
+        calls.len() >= 2,
+        "Scanner should process multiple scan commands"
+    );
 }
 
 #[tokio::test]
@@ -242,7 +281,11 @@ async fn test_scanner_handles_provider_errors() {
     cmd_tx
         .send(ScanCommand::Scan {
             path: PathBuf::from("/nonexistent"),
-            pipeline: PipelineConfig { sort: None, filter: None, group: None },
+            pipeline: PipelineConfig {
+                sort: None,
+                filter: None,
+                group: None,
+            },
             session: sess,
         })
         .unwrap();
@@ -274,7 +317,11 @@ async fn test_scanner_depth_limiting() {
     cmd_tx
         .send(ScanCommand::Scan {
             path: PathBuf::from("/test"),
-            pipeline: PipelineConfig { sort: None, filter: None, group: None },
+            pipeline: PipelineConfig {
+                sort: None,
+                filter: None,
+                group: None,
+            },
             session: sess,
         })
         .unwrap();
@@ -303,7 +350,11 @@ async fn test_scanner_emits_progress_events() {
     cmd_tx
         .send(ScanCommand::Scan {
             path: PathBuf::from("/test"),
-            pipeline: PipelineConfig { sort: None, filter: None, group: None },
+            pipeline: PipelineConfig {
+                sort: None,
+                filter: None,
+                group: None,
+            },
             session: sess,
         })
         .unwrap();
@@ -318,5 +369,8 @@ async fn test_scanner_emits_progress_events() {
         }
     }
 
-    assert!(!received_events.is_empty(), "Scanner should emit events during scan");
+    assert!(
+        !received_events.is_empty(),
+        "Scanner should emit events during scan"
+    );
 }

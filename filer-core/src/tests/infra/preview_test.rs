@@ -5,8 +5,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::mime::{MimeCategory, MimeInfo, DetectionConfidence};
-use crate::services::preview::{PreviewCache, PreviewData, PreviewOptions, PreviewProvider, PreviewRegistry};
+use crate::services::mime::{DetectionConfidence, MimeCategory, MimeInfo};
+use crate::services::preview::{
+    PreviewCache, PreviewData, PreviewOptions, PreviewProvider, PreviewRegistry,
+};
 
 fn text_preview(content: &str) -> PreviewData {
     PreviewData::Text {
@@ -36,7 +38,12 @@ impl PreviewProvider for StubProvider {
     fn supported_categories(&self) -> &[MimeCategory] {
         self.categories
     }
-    async fn generate(&self, _path: &std::path::Path, _mime: &MimeInfo, _options: &PreviewOptions) -> Result<PreviewData, CoreError> {
+    async fn generate(
+        &self,
+        _path: &std::path::Path,
+        _mime: &MimeInfo,
+        _options: &PreviewOptions,
+    ) -> Result<PreviewData, CoreError> {
         Ok(text_preview(self.name))
     }
     fn priority(&self) -> u8 {
@@ -54,8 +61,16 @@ mod registry_tests {
     #[test]
     fn test_get_provider_returns_highest_priority_for_text() {
         let mut reg = PreviewRegistry::new();
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Text], priority: 50, name: "low" }));
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Text], priority: 100, name: "high" }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 50,
+            name: "low",
+        }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 100,
+            name: "high",
+        }));
 
         let info = mime(MimeCategory::Text);
         let provider = reg.get_provider_pub(&info).unwrap();
@@ -65,9 +80,21 @@ mod registry_tests {
     #[test]
     fn test_priority_ordering_on_register() {
         let mut reg = PreviewRegistry::new();
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Text], priority: 10, name: "last" }));
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Text], priority: 200, name: "first" }));
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Text], priority: 100, name: "middle" }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 10,
+            name: "last",
+        }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 200,
+            name: "first",
+        }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 100,
+            name: "middle",
+        }));
 
         let info = mime(MimeCategory::Text);
         assert_eq!(reg.get_provider_pub(&info).unwrap().name(), "first");
@@ -76,13 +103,40 @@ mod registry_tests {
     #[test]
     fn test_get_provider_returns_correct_category() {
         let mut reg = PreviewRegistry::new();
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Image], priority: 100, name: "image" }));
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Audio], priority: 100, name: "audio" }));
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Text], priority: 100, name: "text" }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Image],
+            priority: 100,
+            name: "image",
+        }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Audio],
+            priority: 100,
+            name: "audio",
+        }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 100,
+            name: "text",
+        }));
 
-        assert_eq!(reg.get_provider_pub(&mime(MimeCategory::Image)).unwrap().name(), "image");
-        assert_eq!(reg.get_provider_pub(&mime(MimeCategory::Audio)).unwrap().name(), "audio");
-        assert_eq!(reg.get_provider_pub(&mime(MimeCategory::Text)).unwrap().name(), "text");
+        assert_eq!(
+            reg.get_provider_pub(&mime(MimeCategory::Image))
+                .unwrap()
+                .name(),
+            "image"
+        );
+        assert_eq!(
+            reg.get_provider_pub(&mime(MimeCategory::Audio))
+                .unwrap()
+                .name(),
+            "audio"
+        );
+        assert_eq!(
+            reg.get_provider_pub(&mime(MimeCategory::Text))
+                .unwrap()
+                .name(),
+            "text"
+        );
     }
 
     #[test]
@@ -94,14 +148,22 @@ mod registry_tests {
     #[test]
     fn test_can_preview_returns_true_when_provider_exists() {
         let mut reg = PreviewRegistry::new();
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Text], priority: 100, name: "text" }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 100,
+            name: "text",
+        }));
         assert!(reg.can_preview(std::path::Path::new("file.txt")));
     }
 
     #[test]
     fn test_get_provider_returns_none_for_unregistered_category() {
         let mut reg = PreviewRegistry::new();
-        reg.register(Box::new(StubProvider { categories: &[MimeCategory::Image], priority: 100, name: "image" }));
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Image],
+            priority: 100,
+            name: "image",
+        }));
         assert!(reg.get_provider_pub(&mime(MimeCategory::Audio)).is_none());
     }
 }

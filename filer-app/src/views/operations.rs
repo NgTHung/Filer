@@ -3,8 +3,9 @@ use iced::{Element, Length};
 
 use crate::message::Message;
 use crate::state::OperationProgressState;
+use crate::views::theme::panel_alt_surface;
 
-/// Build the operation-progress overlay.
+/// Build the operation-progress tray.
 pub fn view(op: &OperationProgressState) -> Element<'static, Message> {
     let fraction = if op.total > 0 {
         op.done as f32 / op.total as f32
@@ -16,31 +17,17 @@ pub fn view(op: &OperationProgressState) -> Element<'static, Message> {
 
     container(
         column![
-            text(label).size(13),
-            progress_bar(0.0..=1.0, fraction).length(Length::Fixed(280.0)),
+            text(label).size(11),
+            progress_bar(0.0..=1.0, fraction).length(Length::Fill),
         ]
-        .spacing(8)
-        .padding(16),
+        .spacing(6)
+        .padding([6, 10]),
     )
-    .style(overlay_style)
+    .style(tray_style)
+    .width(Length::Fill)
     .into()
 }
 
-fn overlay_style(theme: &iced::Theme) -> iced::widget::container::Style {
-    let palette = theme.extended_palette();
-    iced::widget::container::Style {
-        background: Some(iced::Background::Color(palette.background.base.color)),
-        border: iced::Border {
-            color: palette.background.strong.color,
-            width: 1.0,
-            radius: 8.0.into(),
-        },
-        shadow: iced::Shadow {
-            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.4),
-            offset: iced::Vector::new(0.0, 4.0),
-            blur_radius: 12.0,
-        },
-        text_color: None,
-        snap: false,
-    }
+fn tray_style(theme: &iced::Theme) -> iced::widget::container::Style {
+    panel_alt_surface(theme)
 }

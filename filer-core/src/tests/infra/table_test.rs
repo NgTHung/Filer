@@ -3,8 +3,8 @@
 //! Verifies that `EXT_TABLE` is correctly sorted (required for binary search)
 //! and that key entries return the expected MIME type and category.
 
-use crate::services::mime::{MimeCategory, MimeDetector};
 use crate::services::mime::table::lookup_extension;
+use crate::services::mime::{MimeCategory, MimeDetector};
 
 // ── Structural integrity ───────────────────────────────────────────────────────
 

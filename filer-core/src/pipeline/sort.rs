@@ -37,14 +37,14 @@ impl SortBy {
             directories_first,
         }
     }
-    
+
     fn handle_order(&self, ord: std::cmp::Ordering) -> std::cmp::Ordering {
         match self.order {
             SortOrder::Ascending => ord,
             SortOrder::Descending => ord.reverse(),
         }
     }
-    
+
     fn sort_nodes(&self, mut nodes: Vec<FileNode>) -> Vec<FileNode> {
         nodes.sort_by(|a, b| {
             if self.directories_first && a.is_dir() != b.is_dir() {
@@ -53,8 +53,7 @@ impl SortBy {
                 } else {
                     std::cmp::Ordering::Greater
                 }
-            }
-            else {
+            } else {
                 match self.field {
                     SortField::Name => self.handle_order(a.name.cmp(&b.name)),
                     SortField::Size => self.handle_order(a.size.cmp(&b.size)),
@@ -64,22 +63,19 @@ impl SortBy {
                         let exta = a.extension();
                         let extb = b.extension();
                         if exta.is_some() != extb.is_some() {
-                            if exta.is_some(){
+                            if exta.is_some() {
                                 self.handle_order(std::cmp::Ordering::Less)
-                            }
-                            else{
+                            } else {
                                 self.handle_order(std::cmp::Ordering::Greater)
                             }
-                        }
-                        else if exta.is_none() {
+                        } else if exta.is_none() {
                             std::cmp::Ordering::Equal
-                        }
-                        else {
+                        } else {
                             let exta = exta.unwrap();
                             let extb = extb.unwrap();
                             self.handle_order(exta.cmp(extb))
                         }
-                    },
+                    }
                     SortField::Type => self.handle_order(a.name.cmp(&b.name)),
                 }
             }
@@ -91,9 +87,7 @@ impl SortBy {
 impl Stage for SortBy {
     fn process(&self, input: PipelineData) -> PipelineData {
         match input {
-            PipelineData::Flat(nodes) => {
-                PipelineData::Flat(self.sort_nodes(nodes))
-            }
+            PipelineData::Flat(nodes) => PipelineData::Flat(self.sort_nodes(nodes)),
             PipelineData::Grouped(mut grouped) => {
                 // Sort within each group
                 for group in &mut grouped.groups {

@@ -47,7 +47,10 @@ mod dir_cache_tests {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
         cache.put(path.clone(), vec![make_node("old.txt")]);
-        cache.put(path.clone(), vec![make_node("new1.txt"), make_node("new2.txt")]);
+        cache.put(
+            path.clone(),
+            vec![make_node("new1.txt"), make_node("new2.txt")],
+        );
         let result = cache.get(&path).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].name, "new1.txt");
@@ -112,7 +115,10 @@ mod dir_cache_tests {
         // pa should have been evicted (it's the oldest accessed), pc should be present
         assert!(cache.get(&pc).is_some());
         // The cache size is bounded
-        assert!(cache.current_size_bytes() <= capacity + cache.current_size_bytes().saturating_sub(capacity));
+        assert!(
+            cache.current_size_bytes()
+                <= capacity + cache.current_size_bytes().saturating_sub(capacity)
+        );
     }
 
     #[test]

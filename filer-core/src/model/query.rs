@@ -43,8 +43,7 @@ pub enum QueryFilter {
     NameMatches(String), // Regex
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SearchOptions {
     pub case_sensitive: bool,
     pub include_hidden: bool,
@@ -52,7 +51,6 @@ pub struct SearchOptions {
     pub max_results: Option<usize>,
     pub batch_size: Option<usize>,
 }
-
 
 impl SearchQuery {
     /// Parse a query string into a structured `SearchQuery`.
@@ -115,9 +113,11 @@ impl SearchQuery {
                     )))
                 }
             } else if let Some(value) = token.strip_prefix("hidden:") {
-                Self::parse_bool(value, position).map(|yes| ParsedToken::Option(OptionSet::Hidden(yes)))
+                Self::parse_bool(value, position)
+                    .map(|yes| ParsedToken::Option(OptionSet::Hidden(yes)))
             } else if let Some(value) = token.strip_prefix("case:") {
-                Self::parse_bool(value, position).map(|yes| ParsedToken::Option(OptionSet::Case(yes)))
+                Self::parse_bool(value, position)
+                    .map(|yes| ParsedToken::Option(OptionSet::Case(yes)))
             } else if let Some(value) = token.strip_prefix("depth:") {
                 value
                     .parse::<usize>()
@@ -192,7 +192,10 @@ impl SearchQuery {
     fn parse_size(value: &str, position: usize) -> Result<ParsedToken, QueryParseError> {
         if value.len() < 2 {
             return Err(QueryParseError {
-                message: format!("Invalid size filter: '{}' (use size:>1kb or size:<1mb)", value),
+                message: format!(
+                    "Invalid size filter: '{}' (use size:>1kb or size:<1mb)",
+                    value
+                ),
                 position,
             });
         }
@@ -204,10 +207,7 @@ impl SearchQuery {
             ">" => Ok(ParsedToken::Filter(QueryFilter::SizeGreaterThan(bytes))),
             "<" => Ok(ParsedToken::Filter(QueryFilter::SizeLessThan(bytes))),
             _ => Err(QueryParseError {
-                message: format!(
-                    "Invalid size comparator '{}' (use > or <)",
-                    comparator
-                ),
+                message: format!("Invalid size comparator '{}' (use > or <)", comparator),
                 position,
             }),
         }
@@ -244,10 +244,7 @@ impl SearchQuery {
                 Ok(ParsedToken::Filter(QueryFilter::IsDirectory))
             }
             _ => Err(QueryParseError {
-                message: format!(
-                    "Unknown type '{}' (use file, dir, folder, f, or d)",
-                    value
-                ),
+                message: format!("Unknown type '{}' (use file, dir, folder, f, or d)", value),
                 position,
             }),
         }
@@ -320,8 +317,20 @@ impl SearchQuery {
         for y in 1970..year {
             days += if is_leap_year(y) { 366 } else { 365 };
         }
-        let month_days = [31, 28 + if is_leap_year(year) { 1 } else { 0 },
-            31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let month_days = [
+            31,
+            28 + if is_leap_year(year) { 1 } else { 0 },
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
+        ];
         for m in month_days.iter().take((month - 1) as usize) {
             days += m;
         }
@@ -432,7 +441,11 @@ pub struct QueryParseError {
 
 impl std::fmt::Display for QueryParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "query parse error at {}: {}", self.position, self.message)
+        write!(
+            f,
+            "query parse error at {}: {}",
+            self.position, self.message
+        )
     }
 }
 

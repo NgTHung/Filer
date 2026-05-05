@@ -55,18 +55,19 @@ impl DirCache {
         }
 
         // Evict LRU entries until the new entry fits.
-        while !self.entries.is_empty()
-            && self.current_size_bytes + new_size > self.max_size_bytes
-        {
+        while !self.entries.is_empty() && self.current_size_bytes + new_size > self.max_size_bytes {
             self.evict_lru();
         }
 
         self.current_size_bytes += new_size;
-        self.entries.insert(path, CacheEntry {
-            nodes,
-            size_bytes: new_size,
-            accessed: Instant::now(),
-        });
+        self.entries.insert(
+            path,
+            CacheEntry {
+                nodes,
+                size_bytes: new_size,
+                accessed: Instant::now(),
+            },
+        );
     }
 
     /// Remove the entry for `path` (no-op if not present).
@@ -111,11 +112,7 @@ impl DirCache {
 fn estimate_size(nodes: &[FileNode]) -> usize {
     nodes
         .iter()
-        .map(|n| {
-            std::mem::size_of::<FileNode>()
-                + n.name.capacity()
-                + n.path.as_os_str().len()
-        })
+        .map(|n| std::mem::size_of::<FileNode>() + n.name.capacity() + n.path.as_os_str().len())
         .sum::<usize>()
         .max(64)
 }

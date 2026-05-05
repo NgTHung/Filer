@@ -32,10 +32,19 @@ impl Module for SearchModule {
         // ── Search ───────────────────────────────────────────────────
         let tx = search_tx.clone();
         ctx.handlers.on("search", move |cmd, _ctx| {
-            if let Command::Search { query, root, session } = cmd
-                && let Ok(query) = SearchQuery::parse(&query){
-                    let _ = tx.send(SearchCommand::Search { query, root, session });
-                }
+            if let Command::Search {
+                query,
+                root,
+                session,
+            } = cmd
+                && let Ok(query) = SearchQuery::parse(&query)
+            {
+                let _ = tx.send(SearchCommand::Search {
+                    query,
+                    root,
+                    session,
+                });
+            }
         });
 
         // ── Cancel search ────────────────────────────────────────────
@@ -52,7 +61,12 @@ impl Module for SearchModule {
             let _ = tx.send(SearchCommand::Cancel(session));
         });
 
-        let searcher = searcher::Searcher::new(search_rx, ctx.events.clone(), self.provider.clone(), ctx.registry.clone());
+        let searcher = searcher::Searcher::new(
+            search_rx,
+            ctx.events.clone(),
+            self.provider.clone(),
+            ctx.registry.clone(),
+        );
         ctx.actors.spawn(searcher);
     }
 }

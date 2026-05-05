@@ -75,6 +75,12 @@ impl Watcher {
         if let Some(entry) = self.watches.get_mut(&node_id) {
             if !entry.sessions.contains(&session_id) {
                 entry.sessions.push(session_id);
+                tracing::debug!(
+                    node = ?node_id,
+                    path = %entry.path.display(),
+                    session = ?session_id,
+                    "Added session to existing watch"
+                );
             }
             return;
         }
@@ -88,10 +94,15 @@ impl Watcher {
                     handle,
                 };
                 self.watches.insert(node_id, entry);
-                tracing::debug!("Started watching {:?} for session {:?}", path, session_id);
+                tracing::debug!(
+                    node = ?node_id,
+                    path = %path.display(),
+                    session = ?session_id,
+                    "Started watching path"
+                );
             }
             Err(e) => {
-                tracing::error!("Failed to watch {:?}: {}", path, e);
+                tracing::error!(path = %path.display(), error = %e, "Failed to watch path");
             }
         }
     }
@@ -100,9 +111,9 @@ impl Watcher {
     async fn handle_unwatch(&mut self, node_id: NodeId) {
         if let Some(entry) = self.watches.remove(&node_id) {
             if let Err(e) = self.provider.unwatch(&entry.path).await {
-                tracing::error!("Failed to unwatch {:?}: {}", entry.path, e);
+                tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path");
             } else {
-                tracing::debug!("Stopped watching {:?}", entry.path);
+                tracing::debug!(path = %entry.path.display(), "Stopped watching path");
             }
             // handle is dropped here, which also cleans up provider resources
         }
@@ -121,9 +132,10 @@ impl Watcher {
 
         for node_id in to_remove {
             if let Some(entry) = self.watches.remove(&node_id)
-                && let Err(e) = self.provider.unwatch(&entry.path).await {
-                    tracing::error!("Failed to unwatch {:?}: {}", entry.path, e);
-                }
+                && let Err(e) = self.provider.unwatch(&entry.path).await
+            {
+                tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path for session cleanup");
+            }
         }
     }
 
@@ -132,16 +144,28 @@ impl Watcher {
         let entries: Vec<_> = self.watches.drain().collect();
         for (_, entry) in entries {
             if let Err(e) = self.provider.unwatch(&entry.path).await {
-                tracing::error!("Failed to unwatch {:?}: {}", entry.path, e);
+                tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path during shutdown");
             }
         }
     }
 
     /// Route a raw [`FsChange`] from the provider to the matching sessions.
     fn dispatch_change(&self, change: FsChange) {
+        tracing::trace!(
+            path = %change.path.display(),
+            kind = ?change.kind,
+            "Watcher received provider change"
+        );
         for (node_id, entry) in &self.watches {
             if change.path.starts_with(&entry.path) {
                 for session in &entry.sessions {
+                    tracing::debug!(
+                        node = ?node_id,
+                        path = %change.path.display(),
+                        kind = ?change.kind,
+                        session = ?session,
+                        "Watcher dispatching FsChanged"
+                    );
                     let evt = Event::FsChanged {
                         node: *node_id,
                         kind: change.kind.clone(),

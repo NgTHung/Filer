@@ -30,11 +30,11 @@ pub mod navigator;
 
 use flume::Sender;
 
+use super::scan::scanner::ScanCommand;
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
 use crate::utils::channel::send_or_warn;
 use navigator::{NavCommand, Navigator};
-use super::scan::scanner::ScanCommand;
 
 /// Navigation module — owns the Navigator actor.
 ///
@@ -58,7 +58,11 @@ impl Module for NavigationModule {
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate", move |cmd, _ctx| {
             if let Command::Navigate(path, session) = cmd {
-                send_or_warn(&tx, NavCommand::NavigateToPath { session, path }, "navigate");
+                send_or_warn(
+                    &tx,
+                    NavCommand::NavigateToPath { session, path },
+                    "navigate",
+                );
             }
         });
 
@@ -86,6 +90,14 @@ impl Module for NavigationModule {
             }
         });
 
+        // ── Navigate forward ─────────────────────────────────────────
+        let tx = nav_tx.clone();
+        ctx.handlers.on("navigate.forward", move |cmd, _ctx| {
+            if let Command::NavigateForward(session) = cmd {
+                send_or_warn(&tx, NavCommand::Forward(session), "navigate.forward");
+            }
+        });
+
         // ── Refresh ──────────────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.refresh", move |cmd, _ctx| {
@@ -97,7 +109,11 @@ impl Module for NavigationModule {
         // ── Session cleanup hook ─────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
-            send_or_warn(&tx, NavCommand::RemoveSession(session), "nav session cleanup");
+            send_or_warn(
+                &tx,
+                NavCommand::RemoveSession(session),
+                "nav session cleanup",
+            );
         });
 
         // ── Spawn Navigator actor ────────────────────────────────────

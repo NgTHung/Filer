@@ -4,7 +4,9 @@ use async_trait::async_trait;
 
 use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeInfo};
-use crate::services::preview::provider::{ArchivePreviewEntry, PreviewData, PreviewOptions, PreviewProvider};
+use crate::services::preview::provider::{
+    ArchivePreviewEntry, PreviewData, PreviewOptions, PreviewProvider,
+};
 
 pub struct ArchiveProvider;
 
@@ -19,12 +21,13 @@ impl ArchiveProvider {
         tokio::task::spawn_blocking(move || {
             let file = std::fs::File::open(&path)
                 .map_err(|e| CoreError::from_io_error(e, path.clone()))?;
-            let mut archive = zip::ZipArchive::new(file)
-                .map_err(|e| CoreError::InvalidData(e.to_string()))?;
+            let mut archive =
+                zip::ZipArchive::new(file).map_err(|e| CoreError::InvalidData(e.to_string()))?;
             let total = archive.len();
             let mut entries = Vec::new();
             for i in 0..total.min(max_entries) {
-                let entry = archive.by_index(i)
+                let entry = archive
+                    .by_index(i)
                     .map_err(|e| CoreError::InvalidData(e.to_string()))?;
                 entries.push(ArchivePreviewEntry {
                     path: entry.name().to_string(),
@@ -39,7 +42,10 @@ impl ArchiveProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError { actor: "archive_provider", message: e.to_string() })?
+        .map_err(|e| CoreError::ActorError {
+            actor: "archive_provider",
+            message: e.to_string(),
+        })?
     }
 
     #[cfg(feature = "metadata-archive")]
@@ -51,16 +57,25 @@ impl ArchiveProvider {
             let mut archive = tar::Archive::new(file);
             let mut entries = Vec::new();
             let mut total = 0usize;
-            for entry in archive.entries().map_err(|e| CoreError::InvalidData(e.to_string()))? {
+            for entry in archive
+                .entries()
+                .map_err(|e| CoreError::InvalidData(e.to_string()))?
+            {
                 let entry = entry.map_err(|e| CoreError::InvalidData(e.to_string()))?;
                 total += 1;
                 if entries.len() < max_entries {
-                    let name = entry.path()
+                    let name = entry
+                        .path()
                         .map(|p| p.to_string_lossy().into_owned())
                         .unwrap_or_else(|_| "<invalid>".to_string());
                     let size = entry.header().size().unwrap_or(0);
-                    let is_directory = matches!(entry.header().entry_type(), tar::EntryType::Directory);
-                    entries.push(ArchivePreviewEntry { path: name, size, is_directory });
+                    let is_directory =
+                        matches!(entry.header().entry_type(), tar::EntryType::Directory);
+                    entries.push(ArchivePreviewEntry {
+                        path: name,
+                        size,
+                        is_directory,
+                    });
                 }
             }
             Ok(PreviewData::Archive {
@@ -70,7 +85,10 @@ impl ArchiveProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError { actor: "archive_provider", message: e.to_string() })?
+        .map_err(|e| CoreError::ActorError {
+            actor: "archive_provider",
+            message: e.to_string(),
+        })?
     }
 }
 

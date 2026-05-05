@@ -32,7 +32,9 @@ impl PreviewProvider for TextProvider {
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
 
         let mut buf = vec![0u8; options.max_bytes];
-        let n = file.read(&mut buf).await
+        let n = file
+            .read(&mut buf)
+            .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         buf.truncate(n);
 
@@ -40,7 +42,11 @@ impl PreviewProvider for TextProvider {
         let content = String::from_utf8_lossy(&buf).into_owned();
         let total_lines = content.lines().count();
 
-        Ok(PreviewData::Text { content, truncated, total_lines })
+        Ok(PreviewData::Text {
+            content,
+            truncated,
+            total_lines,
+        })
     }
 
     fn priority(&self) -> u8 {

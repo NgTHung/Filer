@@ -23,9 +23,16 @@ impl MetadataExtractor for CodeExtractor {
         &[MimeCategory::Text]
     }
 
-    async fn extract(&self, path: &Path, mime: &MimeInfo, provider: &dyn FsProvider) -> Result<ExtendedMetadata, CoreError> {
+    async fn extract(
+        &self,
+        path: &Path,
+        mime: &MimeInfo,
+        provider: &dyn FsProvider,
+    ) -> Result<ExtendedMetadata, CoreError> {
         if mime.category != MimeCategory::Text {
-            return Err(CoreError::InvalidData("Invalid type of extractor".to_string()));
+            return Err(CoreError::InvalidData(
+                "Invalid type of extractor".to_string(),
+            ));
         }
         let lang = match mime.mime_type.as_str() {
             "text/x-c" => "C",

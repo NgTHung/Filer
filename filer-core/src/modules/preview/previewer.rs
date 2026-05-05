@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use flume::{Receiver, Sender};
 
-use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::actors::Actor;
+use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::model::node::{FileNode, NodeId};
 use crate::model::registry::NodeRegistry;
@@ -40,31 +40,32 @@ pub enum PreviewCommand {
 /// or extended-metadata extraction). Dispatching a new operation for a session
 /// cancels the previous one.
 pub struct Previewer {
-    commands:          Receiver<PreviewCommand>,
-    events:            Sender<Event>,
-    preview_registry:  Arc<PreviewRegistry>,
+    commands: Receiver<PreviewCommand>,
+    events: Sender<Event>,
+    preview_registry: Arc<PreviewRegistry>,
     metadata_registry: Arc<MetadataRegistry>,
-    cache:             Arc<Mutex<PreviewCache>>,
-    provider:          Arc<dyn FsProvider>,
-    registry:          NodeRegistry,
-    active:            CancelMap,
+    cache: Arc<Mutex<PreviewCache>>,
+    provider: Arc<dyn FsProvider>,
+    registry: NodeRegistry,
+    active: CancelMap,
 }
 
 impl Previewer {
     pub fn new(
         commands: Receiver<PreviewCommand>,
-        events:   Sender<Event>,
+        events: Sender<Event>,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
     ) -> Self {
         Self {
             commands,
             events,
-            preview_registry:  Arc::new(PreviewRegistry::with_defaults()),
+            preview_registry: Arc::new(PreviewRegistry::with_defaults()),
             metadata_registry: Arc::new(MetadataRegistry::with_defaults()),
-            cache:             Arc::new(Mutex::new(
-                PreviewCache::new(64 * 1024 * 1024, Duration::from_secs(300)),
-            )),
+            cache: Arc::new(Mutex::new(PreviewCache::new(
+                64 * 1024 * 1024,
+                Duration::from_secs(300),
+            ))),
             provider,
             registry,
             active: CancelMap::new(),
@@ -93,42 +94,53 @@ impl Previewer {
 
     // ── Preview generation ────────────────────────────────────────────────────
 
-    fn dispatch_preview(
-        &self,
-        node:    NodeId,
-        options: Option<PreviewOptions>,
-        session: SessionId,
-    ) {
+    fn dispatch_preview(&self, node: NodeId, options: Option<PreviewOptions>, session: SessionId) {
         let Some(path) = self.registry.resolve(node) else {
-            send_or_warn(&self.events, Event::Error {
-                message:     format!("Cannot resolve node {node:?}"),
-                recoverable: true,
-                session,
-            }, "previewer: resolve");
+            send_or_warn(
+                &self.events,
+                Event::Error {
+                    message: format!("Cannot resolve node {node:?}"),
+                    recoverable: true,
+                    session,
+                },
+                "previewer: resolve",
+            );
             return;
         };
 
         // Check cache first — no spawn needed on hit.
         if let Ok(cache) = self.cache.lock() {
             if let Some(preview) = cache.get(&path) {
-                send_or_warn(&self.events, Event::PreviewReady { node, preview, session }, "previewer: cache hit");
+                send_or_warn(
+                    &self.events,
+                    Event::PreviewReady {
+                        node,
+                        preview,
+                        session,
+                    },
+                    "previewer: cache hit",
+                );
                 return;
             }
         }
 
         let cancel = self.arm_cancel(session);
-        let events           = self.events.clone();
+        let events = self.events.clone();
         let preview_registry = self.preview_registry.clone();
-        let cache            = self.cache.clone();
-        let active           = self.active.clone();
-        let opts             = options.unwrap_or_default();
+        let cache = self.cache.clone();
+        let active = self.active.clone();
+        let opts = options.unwrap_or_default();
 
         tokio::spawn(async move {
-            if cancel.is_cancelled() { return; }
+            if cancel.is_cancelled() {
+                return;
+            }
 
             let result = preview_registry.generate_with_options(&path, &opts).await;
 
-            if cancel.is_cancelled() { return; }
+            if cancel.is_cancelled() {
+                return;
+            }
 
             match result {
                 Ok(preview) => {
@@ -136,14 +148,28 @@ impl Previewer {
                     if let Ok(mut c) = cache.lock() {
                         c.put(path, preview.clone());
                     }
-                    send_or_warn_async(&events, Event::PreviewReady { node, preview, session }, "preview ready").await;
+                    send_or_warn_async(
+                        &events,
+                        Event::PreviewReady {
+                            node,
+                            preview,
+                            session,
+                        },
+                        "preview ready",
+                    )
+                    .await;
                 }
                 Err(e) => {
-                    send_or_warn_async(&events, Event::PreviewFailed {
-                        node,
-                        reason: e.to_string(),
-                        session,
-                    }, "preview failed").await;
+                    send_or_warn_async(
+                        &events,
+                        Event::PreviewFailed {
+                            node,
+                            reason: e.to_string(),
+                            session,
+                        },
+                        "preview failed",
+                    )
+                    .await;
                 }
             }
 
@@ -155,32 +181,46 @@ impl Previewer {
 
     fn dispatch_metadata(&self, node: NodeId, session: SessionId) {
         let Some(path) = self.registry.resolve(node) else {
-            send_or_warn(&self.events, Event::Error {
-                message:     format!("Cannot resolve node {node:?}"),
-                recoverable: true,
-                session,
-            }, "previewer: resolve");
+            send_or_warn(
+                &self.events,
+                Event::Error {
+                    message: format!("Cannot resolve node {node:?}"),
+                    recoverable: true,
+                    session,
+                },
+                "previewer: resolve",
+            );
             return;
         };
 
-        let events   = self.events.clone();
+        let events = self.events.clone();
         let registry = self.registry.clone();
 
         tokio::spawn(async move {
             match FileNode::from_path(path, Some(registry)) {
                 Ok(file_node) => {
-                    send_or_warn_async(&events, Event::MetadataLoaded {
-                        node,
-                        meta: file_node.meta,
-                        session,
-                    }, "metadata loaded").await;
+                    send_or_warn_async(
+                        &events,
+                        Event::MetadataLoaded {
+                            node,
+                            meta: file_node.meta,
+                            session,
+                        },
+                        "metadata loaded",
+                    )
+                    .await;
                 }
                 Err(e) => {
-                    send_or_warn_async(&events, Event::Error {
-                        message:     e.to_string(),
-                        recoverable: true,
-                        session,
-                    }, "metadata error").await;
+                    send_or_warn_async(
+                        &events,
+                        Event::Error {
+                            message: e.to_string(),
+                            recoverable: true,
+                            session,
+                        },
+                        "metadata error",
+                    )
+                    .await;
                 }
             }
         });
@@ -190,22 +230,28 @@ impl Previewer {
 
     fn dispatch_extended_metadata(&self, node: NodeId, session: SessionId) {
         let Some(path) = self.registry.resolve(node) else {
-            send_or_warn(&self.events, Event::Error {
-                message:     format!("Cannot resolve node {node:?}"),
-                recoverable: true,
-                session,
-            }, "previewer: resolve");
+            send_or_warn(
+                &self.events,
+                Event::Error {
+                    message: format!("Cannot resolve node {node:?}"),
+                    recoverable: true,
+                    session,
+                },
+                "previewer: resolve",
+            );
             return;
         };
 
-        let cancel            = self.arm_cancel(session);
-        let events            = self.events.clone();
+        let cancel = self.arm_cancel(session);
+        let events = self.events.clone();
         let metadata_registry = self.metadata_registry.clone();
-        let provider          = self.provider.clone();
-        let active            = self.active.clone();
+        let provider = self.provider.clone();
+        let active = self.active.clone();
 
         tokio::spawn(async move {
-            if cancel.is_cancelled() { return; }
+            if cancel.is_cancelled() {
+                return;
+            }
 
             // Tier 1: extension-based MIME detection (zero I/O).
             // Upgrade to magic bytes if extension is ambiguous.
@@ -224,18 +270,37 @@ impl Previewer {
                 }
             };
 
-            if cancel.is_cancelled() { return; }
+            if cancel.is_cancelled() {
+                return;
+            }
 
-            match metadata_registry.extract(&path, &mime, provider.as_ref()).await {
+            match metadata_registry
+                .extract(&path, &mime, provider.as_ref())
+                .await
+            {
                 Ok(extended) => {
-                    send_or_warn_async(&events, Event::ExtendedMetadataLoaded { node, extended, session }, "extended metadata").await;
+                    send_or_warn_async(
+                        &events,
+                        Event::ExtendedMetadataLoaded {
+                            node,
+                            extended,
+                            session,
+                        },
+                        "extended metadata",
+                    )
+                    .await;
                 }
                 Err(e) => {
-                    send_or_warn_async(&events, Event::Error {
-                        message:     e.to_string(),
-                        recoverable: true,
-                        session,
-                    }, "extended metadata error").await;
+                    send_or_warn_async(
+                        &events,
+                        Event::Error {
+                            message: e.to_string(),
+                            recoverable: true,
+                            session,
+                        },
+                        "extended metadata error",
+                    )
+                    .await;
                 }
             }
 
@@ -258,7 +323,11 @@ impl Actor for Previewer {
     async fn run(self) {
         loop {
             match self.commands.recv_async().await {
-                Ok(PreviewCommand::Generate { path, options, session }) => {
+                Ok(PreviewCommand::Generate {
+                    path,
+                    options,
+                    session,
+                }) => {
                     self.dispatch_preview(path, options, session);
                 }
                 Ok(PreviewCommand::LoadMetadata(node, session)) => {

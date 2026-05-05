@@ -23,6 +23,9 @@ pub enum Command {
     /// Go back in history
     NavigateBack(SessionId),
 
+    /// Go forward in history
+    NavigateForward(SessionId),
+
     /// Refresh current directory
     Refresh(SessionId),
 
@@ -185,7 +188,8 @@ impl Command {
             | Command::LoadExtendedMetadata(_, s)
             | Command::Watch(_, s)
             | Command::UnwatchSession(s)
-            | Command::NavigateBack(s) => Some(*s),
+            | Command::NavigateBack(s)
+            | Command::NavigateForward(s) => Some(*s),
 
             Command::Search { session, .. }
             | Command::SearchPath { session, .. }
@@ -213,6 +217,7 @@ impl Command {
             Command::NavigateToNode(..) => "navigate.node",
             Command::NavigateUp(..) => "navigate.up",
             Command::NavigateBack(..) => "navigate.back",
+            Command::NavigateForward(..) => "navigate.forward",
             Command::Refresh(..) => "navigate.refresh",
             Command::Search { .. } => "search",
             Command::SearchPath { .. } => "search.path",

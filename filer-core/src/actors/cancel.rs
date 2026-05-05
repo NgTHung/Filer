@@ -15,7 +15,9 @@ pub struct CancellationToken {
 
 impl CancellationToken {
     pub fn new() -> Self {
-        Self { cancelled: Arc::new(AtomicBool::new(false)) }
+        Self {
+            cancelled: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     pub fn cancel(&self) {
@@ -96,7 +98,12 @@ impl CancelMap {
 
     /// Cancel all in-flight tasks — called during actor shutdown.
     pub async fn cancel_all(&self) {
-        self.inner.iter_async(|_, v| { v.cancel(); true }).await;
+        self.inner
+            .iter_async(|_, v| {
+                v.cancel();
+                true
+            })
+            .await;
     }
 }
 

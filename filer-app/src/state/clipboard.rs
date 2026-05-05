@@ -14,11 +14,17 @@ pub struct ClipboardState {
 
 impl ClipboardState {
     pub fn copy(nodes: Vec<NodeId>) -> Self {
-        Self { op: ClipboardOp::Copy, nodes }
+        Self {
+            op: ClipboardOp::Copy,
+            nodes,
+        }
     }
 
     pub fn cut(nodes: Vec<NodeId>) -> Self {
-        Self { op: ClipboardOp::Cut, nodes }
+        Self {
+            op: ClipboardOp::Cut,
+            nodes,
+        }
     }
 
     pub fn is_cut(&self) -> bool {

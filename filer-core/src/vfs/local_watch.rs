@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use notify::event::{CreateKind, EventKind, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config as NotifyConfig, Event as NotifyEvent, RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{new_debouncer_opt, DebounceEventResult, Debouncer, NoCache};
+use notify_debouncer_full::{DebounceEventResult, Debouncer, NoCache, new_debouncer_opt};
 use std::time::Duration;
 
 use crate::errors::CoreError;
@@ -33,10 +33,7 @@ impl LocalWatchProvider {
     }
     #[allow(unused)]
     /// Ensure the debouncer is initialised, lazily creating it on first watch.
-    fn ensure_debouncer(
-        &self,
-        tx: &flume::Sender<FsChange>,
-    ) -> Result<(), CoreError> {
+    fn ensure_debouncer(&self, tx: &flume::Sender<FsChange>) -> Result<(), CoreError> {
         let mut guard = self.debouncer.lock().unwrap();
         if guard.is_some() {
             return Ok(());
@@ -46,20 +43,18 @@ impl LocalWatchProvider {
         let debouncer = new_debouncer_opt(
             Duration::from_secs(1),
             Some(Duration::from_millis(100)),
-            move |result: DebounceEventResult| {
-                match result {
-                    Ok(events) => {
-                        for debounced in events {
-                            let changes = notify_to_changes(&debounced.event);
-                            for change in changes {
-                                let _ = tx.send(change);
-                            }
+            move |result: DebounceEventResult| match result {
+                Ok(events) => {
+                    for debounced in events {
+                        let changes = notify_to_changes(&debounced.event);
+                        for change in changes {
+                            let _ = tx.send(change);
                         }
                     }
-                    Err(errors) => {
-                        for error in errors {
-                            tracing::error!("notify watch error: {:?}", error);
-                        }
+                }
+                Err(errors) => {
+                    for error in errors {
+                        tracing::error!("notify watch error: {:?}", error);
                     }
                 }
             },
@@ -101,12 +96,10 @@ impl WatchProvider for LocalWatchProvider {
     async fn unwatch(&self, path: &Path) -> Result<(), CoreError> {
         let mut guard = self.debouncer.lock().unwrap();
         if let Some(debouncer) = guard.as_mut() {
-            debouncer
-                .unwatch(path)
-                .map_err(|e| CoreError::Io {
-                    path: path.to_path_buf(),
-                    message: format!("notify unwatch failed: {e}"),
-                })?;
+            debouncer.unwatch(path).map_err(|e| CoreError::Io {
+                path: path.to_path_buf(),
+                message: format!("notify unwatch failed: {e}"),
+            })?;
         }
         Ok(())
     }

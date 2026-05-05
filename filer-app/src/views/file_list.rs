@@ -1,101 +1,172 @@
+use filer_core::FileNode;
 use filer_core::model::node::NodeKind;
 use filer_core::pipeline::GroupedNodes;
-use filer_core::FileNode;
-use iced::widget::{button, container, row, scrollable, text, Column};
+use iced::widget::{Column, button, container, mouse_area, row, scrollable, text};
 use iced::{Color, Element, Length};
 
 use crate::format::{size_human, time_relative};
 use crate::icons;
-use crate::message::Message;
-use crate::state::{AppState, SelectMode};
+use crate::message::{Message, SortDir, SortField};
+use crate::state::AppState;
+use crate::views::theme::palette;
 
-const ROW_HEIGHT: f32 = 28.0;
-const VIRTUALIZE_THRESHOLD: usize = 500;
-
-/// Build the file list view.
-pub fn view(state: &AppState) -> Element<'static, Message> {
-    // Choose between search results and grouped directory listing.
-    if let Some(results) = &state.search_results {
+pub fn view(
+    state: &AppState,
+    sort_field: &SortField,
+    sort_dir: &SortDir,
+) -> Element<'static, Message> {
+    let rows = if let Some(results) = &state.search_results {
         flat_list(results, state)
     } else {
         grouped_list(&state.groups, state)
-    }
+    };
+
+    Column::new()
+        .push(header_row(sort_field, sort_dir))
+        .push(iced::widget::rule::horizontal(1))
+        .push(rows)
+        .height(Length::Fill)
+        .into()
+}
+
+fn header_row(sort_field: &SortField, sort_dir: &SortDir) -> Element<'static, Message> {
+    let indicator = |field: &SortField| -> &'static str {
+        if field == sort_field {
+            match sort_dir {
+                SortDir::Asc => " ↑",
+                SortDir::Desc => " ↓",
+            }
+        } else {
+            ""
+        }
+    };
+
+    let next_dir = |field: &SortField| -> SortDir {
+        if field == sort_field {
+            match sort_dir {
+                SortDir::Asc => SortDir::Desc,
+                SortDir::Desc => SortDir::Asc,
+            }
+        } else {
+            SortDir::Asc
+        }
+    };
+
+    let icon_spacer = text("").width(Length::Fixed(24.0));
+    let name = button(text(format!("Name{}", indicator(&SortField::Name))).size(11))
+        .on_press(Message::SortBy(SortField::Name, next_dir(&SortField::Name)))
+        .style(iced::widget::button::text)
+        .width(Length::Fill)
+        .padding([2, 4]);
+    let kind = button(text(format!("Type{}", indicator(&SortField::Kind))).size(11))
+        .on_press(Message::SortBy(SortField::Kind, next_dir(&SortField::Kind)))
+        .style(iced::widget::button::text)
+        .width(Length::Fixed(95.0))
+        .padding([2, 4]);
+    let size = button(text(format!("Size{}", indicator(&SortField::Size))).size(11))
+        .on_press(Message::SortBy(SortField::Size, next_dir(&SortField::Size)))
+        .style(iced::widget::button::text)
+        .width(Length::Fixed(90.0))
+        .padding([2, 4]);
+    let modified = button(text(format!("Modified{}", indicator(&SortField::Modified))).size(11))
+        .on_press(Message::SortBy(
+            SortField::Modified,
+            next_dir(&SortField::Modified),
+        ))
+        .style(iced::widget::button::text)
+        .width(Length::Fixed(130.0))
+        .padding([2, 4]);
+
+    container(
+        row![icon_spacer, name, kind, size, modified]
+            .spacing(8)
+            .padding([5, 10]),
+    )
+    .style(header_style)
+    .into()
 }
 
 fn grouped_list(groups: &GroupedNodes, state: &AppState) -> Element<'static, Message> {
     let total: usize = groups.groups.iter().map(|g| g.nodes.len()).sum();
-
     if total == 0 {
-        return empty_state();
+        return empty_state("Empty folder");
     }
 
-    let mut col: Vec<Element<Message>> = Vec::new();
-
+    let mut rows: Vec<Element<Message>> = Vec::new();
     for group in &groups.groups {
         if !group.label.is_empty() {
-            col.push(
-                text(group.label.clone())
-                    .size(11)
-                    .color(Color::from_rgb(0.5, 0.5, 0.5))
-                    .into(),
+            rows.push(
+                container(
+                    text(group.label.clone())
+                        .size(10)
+                        .color(Color::from_rgb(0.50, 0.50, 0.50)),
+                )
+                .padding([4, 10])
+                .into(),
             );
         }
         for node in &group.nodes {
-            col.push(file_row(node, state));
+            rows.push(file_row(node, state));
         }
     }
 
-    scrollable(Column::with_children(col).spacing(1).padding([0, 4]))
+    scrollable(Column::with_children(rows).spacing(1).padding([0, 4]))
         .height(Length::Fill)
         .into()
 }
 
 fn flat_list(nodes: &[FileNode], state: &AppState) -> Element<'static, Message> {
     if nodes.is_empty() {
-        return container(text("No results").size(13))
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .into();
+        return empty_state("No results");
     }
 
-    let col = Column::with_children(nodes.iter().map(|n| file_row(n, state)).collect::<Vec<_>>())
-        .spacing(1)
-        .padding([0, 4]);
-
-    scrollable(col).height(Length::Fill).into()
+    let rows = nodes
+        .iter()
+        .map(|node| file_row(node, state))
+        .collect::<Vec<_>>();
+    scrollable(Column::with_children(rows).spacing(1).padding([0, 4]))
+        .height(Length::Fill)
+        .into()
 }
 
 fn file_row(node: &FileNode, state: &AppState) -> Element<'static, Message> {
     let selected = state.selection.contains(node.id);
+
     let icon = text(icons::for_node(node)).size(14);
-    let name = text(node.name.clone()).size(13).width(Length::Fill);
-    let size_str = match &node.kind {
+    let name = text(node.name.clone()).size(12).width(Length::Fill);
+    let kind = text(kind_label(&node.kind))
+        .size(11)
+        .width(Length::Fixed(95.0));
+    let size_label = match &node.kind {
         NodeKind::Directory { .. } => "—".to_string(),
         _ => size_human(node.size),
     };
-    let size = text(size_str).size(12).width(Length::Fixed(80.0));
+    let size = text(size_label).size(11).width(Length::Fixed(90.0));
     let modified = text(time_relative(node.modified))
-        .size(12)
-        .width(Length::Fixed(110.0));
+        .size(11)
+        .width(Length::Fixed(130.0));
 
-    let content = row![icon, name, size, modified]
+    let content = row![icon, name, kind, size, modified]
         .spacing(8)
-        .padding([4, 8])
+        .padding([7, 10])
         .align_y(iced::Alignment::Center);
 
-    let id = node.id;
-    let is_dir = matches!(node.kind, NodeKind::Directory { .. });
-    // Directories navigate on single click; files select (and load preview).
-    let msg = if is_dir {
-        Message::OpenNode(id)
-    } else {
-        Message::SelectNode(id, SelectMode::Single)
-    };
-    button(content)
-        .on_press(msg)
-        .width(Length::Fill)
+    let row_btn = button(content)
+        .on_press(Message::ActivateNode(node.id))
         .style(move |theme, status| row_style(theme, status, selected))
+        .width(Length::Fill);
+    mouse_area(row_btn)
+        .on_move(Message::PointerMoved)
+        .on_right_press(Message::OpenContextMenu(node.id))
         .into()
+}
+
+fn kind_label(kind: &NodeKind) -> &'static str {
+    match kind {
+        NodeKind::Directory { .. } => "Folder",
+        NodeKind::File { .. } => "File",
+        NodeKind::Symlink { .. } => "Symlink",
+    }
 }
 
 fn row_style(
@@ -103,40 +174,66 @@ fn row_style(
     status: iced::widget::button::Status,
     selected: bool,
 ) -> iced::widget::button::Style {
-    let palette = theme.extended_palette();
+    let c = palette(theme);
+
     if selected {
-        iced::widget::button::Style {
-            background: Some(iced::Background::Color(palette.primary.weak.color)),
-            text_color: palette.primary.weak.text,
-            border: iced::Border::default(),
+        return iced::widget::button::Style {
+            background: Some(iced::Background::Color(c.accent_soft)),
+            text_color: c.text,
+            border: iced::Border {
+                color: c.accent,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
             shadow: iced::Shadow::default(),
             snap: false,
-        }
-    } else {
-        match status {
-            iced::widget::button::Status::Hovered => iced::widget::button::Style {
-                background: Some(iced::Background::Color(
-                    palette.background.strong.color,
-                )),
-                text_color: palette.background.base.text,
-                border: iced::Border::default(),
-                shadow: iced::Shadow::default(),
-                snap: false,
+        };
+    }
+
+    match status {
+        iced::widget::button::Status::Hovered => iced::widget::button::Style {
+            background: Some(iced::Background::Color(c.surface_alt)),
+            text_color: c.text,
+            border: iced::Border {
+                color: c.border,
+                width: 1.0,
+                radius: 6.0.into(),
             },
-            _ => iced::widget::button::Style {
-                background: None,
-                text_color: palette.background.base.text,
-                border: iced::Border::default(),
-                shadow: iced::Shadow::default(),
-                snap: false,
+            shadow: iced::Shadow::default(),
+            snap: false,
+        },
+        _ => iced::widget::button::Style {
+            background: None,
+            text_color: c.text,
+            border: iced::Border {
+                color: Color::TRANSPARENT,
+                width: 1.0,
+                radius: 6.0.into(),
             },
-        }
+            shadow: iced::Shadow::default(),
+            snap: false,
+        },
     }
 }
 
-fn empty_state() -> Element<'static, Message> {
-    container(text("Empty folder").size(13).color(Color::from_rgb(0.5, 0.5, 0.5)))
-        .center_x(Length::Fill)
-        .center_y(Length::Fill)
-        .into()
+fn header_style(theme: &iced::Theme) -> iced::widget::container::Style {
+    let c = palette(theme);
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(c.surface_alt)),
+        text_color: Some(c.muted),
+        border: iced::Border::default(),
+        shadow: iced::Shadow::default(),
+        snap: false,
+    }
+}
+
+fn empty_state(label: &str) -> Element<'static, Message> {
+    container(
+        text(label.to_string())
+            .size(12)
+            .color(Color::from_rgb(0.5, 0.55, 0.6)),
+    )
+    .center_x(Length::Fill)
+    .center_y(Length::Fill)
+    .into()
 }

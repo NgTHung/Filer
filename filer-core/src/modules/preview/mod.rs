@@ -33,8 +33,17 @@ impl Module for PreviewModule {
         // ── Load preview ─────────────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on("preview.load", move |cmd, _ctx| {
-            if let Command::LoadPreview { id, options, session } = cmd {
-                let _ = tx.send(PreviewCommand::Generate { path: id, options, session });
+            if let Command::LoadPreview {
+                id,
+                options,
+                session,
+            } = cmd
+            {
+                let _ = tx.send(PreviewCommand::Generate {
+                    path: id,
+                    options,
+                    session,
+                });
             }
         });
 

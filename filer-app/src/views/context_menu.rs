@@ -1,8 +1,10 @@
 use iced::widget::{button, column, container, text};
 use iced::{Element, Length};
 
+use crate::icon;
 use crate::message::Message;
-use crate::state::{AppState, ContextMenuState};
+use crate::state::{AppState, ContextMenuState, PanelTab};
+use crate::views::theme::palette;
 
 /// Build the context menu overlay at `ctx.position`.
 ///
@@ -31,45 +33,80 @@ pub fn view(state: &AppState, ctx: &ContextMenuState) -> Element<'static, Messag
     };
 
     let mut items: Vec<Element<Message>> = vec![
-        menu_item(&copy_label, Message::CopySelected),
-        menu_item(&cut_label, Message::CutSelected),
+        menu_item(icon::file(), "Open", Message::OpenSelected, false),
+        menu_item(
+            icon::info(),
+            "Details",
+            Message::SetPanelTab(PanelTab::Details),
+            false,
+        ),
+        menu_item(icon::copy(), &copy_label, Message::CopySelected, false),
+        menu_item(icon::cut(), &cut_label, Message::CutSelected, false),
     ];
 
     if has_clipboard {
-        items.push(menu_item("Paste", Message::Paste));
+        items.push(menu_item(icon::paste(), "Paste", Message::Paste, false));
     }
 
-    items.push(menu_item(&delete_label, Message::DeleteSelected { trash: true }));
-    items.push(menu_item("Delete Permanently", Message::DeleteSelected { trash: false }));
+    items.push(menu_item(
+        icon::trash(),
+        &delete_label,
+        Message::DeleteSelected { trash: true },
+        false,
+    ));
+    items.push(menu_item(
+        icon::trash(),
+        "Delete Permanently",
+        Message::DeleteSelected { trash: false },
+        true,
+    ));
 
     if sel_count == 1 {
-        items.push(menu_item("Rename", Message::RenameStart(ctx.node)));
+        items.push(menu_item(
+            icon::pencil(),
+            "Rename",
+            Message::RenameStart(ctx.node),
+            false,
+        ));
     }
 
-    items.push(menu_item("New Folder", Message::CreateFolderStart));
+    items.push(menu_item(
+        icon::folder_plus(),
+        "New Folder",
+        Message::CreateFolderStart,
+        false,
+    ));
 
     container(
-        column(items).spacing(2).padding(4).width(Length::Fixed(180.0)),
+        column(items)
+            .spacing(2)
+            .padding(4)
+            .width(Length::Fixed(180.0)),
     )
     .style(menu_style)
     .into()
 }
 
-fn menu_item(label: &str, msg: Message) -> Element<'static, Message> {
-    button(text(label.to_owned()).size(13))
+fn menu_item(
+    glyph: iced::widget::Text<'static>,
+    label: &str,
+    msg: Message,
+    danger: bool,
+) -> Element<'static, Message> {
+    button(iced::widget::row![glyph.size(13), text(label.to_owned()).size(13)].spacing(8))
         .on_press(msg)
         .width(Length::Fill)
         .padding([5, 10])
-        .style(iced::widget::button::text)
+        .style(move |theme, status| item_style(theme, status, danger))
         .into()
 }
 
 fn menu_style(theme: &iced::Theme) -> iced::widget::container::Style {
-    let palette = theme.extended_palette();
+    let c = palette(theme);
     iced::widget::container::Style {
-        background: Some(iced::Background::Color(palette.background.base.color)),
+        background: Some(iced::Background::Color(c.surface)),
         border: iced::Border {
-            color: palette.background.strong.color,
+            color: c.border,
             width: 1.0,
             radius: 4.0.into(),
         },
@@ -80,5 +117,37 @@ fn menu_style(theme: &iced::Theme) -> iced::widget::container::Style {
         },
         text_color: None,
         snap: false,
+    }
+}
+
+fn item_style(
+    theme: &iced::Theme,
+    status: iced::widget::button::Status,
+    danger: bool,
+) -> iced::widget::button::Style {
+    let c = palette(theme);
+    match status {
+        iced::widget::button::Status::Hovered => iced::widget::button::Style {
+            background: Some(iced::Background::Color(c.surface_alt)),
+            text_color: if danger { c.danger } else { c.text },
+            border: iced::Border {
+                color: c.border,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            snap: false,
+        },
+        _ => iced::widget::button::Style {
+            background: None,
+            text_color: if danger { c.danger } else { c.text },
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            snap: false,
+        },
     }
 }

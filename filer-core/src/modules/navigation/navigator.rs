@@ -393,7 +393,7 @@ impl Navigator {
                 self.sessions
                     .read_async(&session_id, |_k, v| {
                         if let Some(cur) = v.current {
-                            Self::trigger_scan(session_id, cur, v, self.scanner_tx.clone());
+                            Self::trigger_refresh_scan(session_id, cur, v, self.scanner_tx.clone());
                         } else {
                             send_or_warn(
                                 &self.events,
@@ -472,6 +472,28 @@ impl Navigator {
                 pipeline: state.pipeline_config.clone(),
             },
             "trigger scan",
+        );
+    }
+
+    /// Trigger a fresh scan of the current directory.
+    ///
+    /// Refresh is user- or watcher-driven and must bypass the directory cache;
+    /// otherwise filesystem changes can be detected but hidden by stale cached
+    /// listings.
+    fn trigger_refresh_scan(
+        session: SessionId,
+        node: NodeId,
+        state: &NavigatorState,
+        scanner_tx: Sender<ScanCommand>,
+    ) {
+        send_or_warn(
+            &scanner_tx,
+            ScanCommand::RefreshNode {
+                node,
+                session,
+                pipeline: state.pipeline_config.clone(),
+            },
+            "trigger refresh scan",
         );
     }
 }

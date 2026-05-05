@@ -40,12 +40,20 @@ impl Cipher {
     }
 
     /// Encrypt file in-place or to destination
-    pub async fn encrypt_file(&self, src: &std::path::Path, dst: Option<&std::path::Path>) -> Result<(), CoreError> {
+    pub async fn encrypt_file(
+        &self,
+        src: &std::path::Path,
+        dst: Option<&std::path::Path>,
+    ) -> Result<(), CoreError> {
         todo!()
     }
 
     /// Decrypt file in-place or to destination
-    pub async fn decrypt_file(&self, src: &std::path::Path, dst: Option<&std::path::Path>) -> Result<(), CoreError> {
+    pub async fn decrypt_file(
+        &self,
+        src: &std::path::Path,
+        dst: Option<&std::path::Path>,
+    ) -> Result<(), CoreError> {
         todo!()
     }
 

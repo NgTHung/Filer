@@ -29,7 +29,7 @@ fn make_file(name: &str, size: u64, hidden: bool) -> FileNode {
             permissions: None,
             ..Default::default()
         },
-        accessed: None
+        accessed: None,
     }
 }
 
@@ -50,7 +50,7 @@ fn make_file_with_ext(name: &str, ext: Option<&str>, size: u64) -> FileNode {
             permissions: None,
             ..Default::default()
         },
-        accessed: None
+        accessed: None,
     }
 }
 
@@ -71,7 +71,7 @@ fn make_dir(name: &str, hidden: bool) -> FileNode {
             permissions: None,
             ..Default::default()
         },
-        accessed: None
+        accessed: None,
     }
 }
 
@@ -770,7 +770,6 @@ fn test_pipeline_filter_sort_dirs_first() {
     } else {
         panic!("Expected Flat output");
     }
-
 }
 
 #[test]
@@ -797,7 +796,6 @@ fn test_pipeline_three_stages() {
     } else {
         panic!("Expected Flat output");
     }
-
 }
 
 #[test]
@@ -925,7 +923,6 @@ fn test_pipeline_from_config_with_sort() {
     } else {
         panic!("Expected Flat output");
     }
-
 }
 
 #[test]
@@ -955,7 +952,6 @@ fn test_pipeline_from_config_full() {
     } else {
         panic!("Expected Flat output");
     }
-
 }
 
 #[test]
@@ -978,7 +974,6 @@ fn test_pipeline_from_config_with_extension_filter() {
     } else {
         panic!("Expected Flat output");
     }
-
 }
 
 #[test]

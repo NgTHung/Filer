@@ -169,7 +169,12 @@ impl Module for OperationsModule {
                 ctx.registry.clone(),
                 cache,
             ),
-            None => Operator::new(ops_rx, ctx.events.clone(), self.provider.clone(), ctx.registry.clone()),
+            None => Operator::new(
+                ops_rx,
+                ctx.events.clone(),
+                self.provider.clone(),
+                ctx.registry.clone(),
+            ),
         };
         ctx.actors.spawn(operator);
     }

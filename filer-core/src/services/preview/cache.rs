@@ -7,8 +7,8 @@ use rapidhash::fast::RandomState;
 use super::provider::PreviewData;
 
 struct CacheEntry {
-    data:       PreviewData,
-    created:    Instant,
+    data: PreviewData,
+    created: Instant,
     size_bytes: usize,
 }
 
@@ -18,10 +18,10 @@ struct CacheEntry {
 /// cache is still over capacity after TTL eviction, the entire cache is
 /// cleared (simple but sufficient for a single-user file manager).
 pub struct PreviewCache {
-    entries:          Arc<scc::HashMap<PathBuf, CacheEntry, RandomState>>,
-    max_size_bytes:   usize,
+    entries: Arc<scc::HashMap<PathBuf, CacheEntry, RandomState>>,
+    max_size_bytes: usize,
     current_size_bytes: usize,
-    ttl:              Duration,
+    ttl: Duration,
 }
 
 impl PreviewCache {
@@ -36,13 +36,15 @@ impl PreviewCache {
 
     /// Return a clone of the cached preview if the entry exists and has not expired.
     pub fn get(&self, path: &PathBuf) -> Option<PreviewData> {
-        self.entries.read_sync(path, |_, entry| {
-            if entry.created.elapsed() < self.ttl {
-                Some(entry.data.clone())
-            } else {
-                None
-            }
-        }).flatten()
+        self.entries
+            .read_sync(path, |_, entry| {
+                if entry.created.elapsed() < self.ttl {
+                    Some(entry.data.clone())
+                } else {
+                    None
+                }
+            })
+            .flatten()
     }
 
     /// Insert or replace a preview, evicting if necessary.
@@ -58,7 +60,11 @@ impl PreviewCache {
             self.evict(size);
         }
 
-        let entry = CacheEntry { data, created: Instant::now(), size_bytes: size };
+        let entry = CacheEntry {
+            data,
+            created: Instant::now(),
+            size_bytes: size,
+        };
         if self.entries.insert_sync(path, entry).is_ok() {
             self.current_size_bytes += size;
         }
@@ -101,22 +107,22 @@ impl PreviewCache {
     /// Estimate the in-memory footprint of a `PreviewData` value.
     fn estimate_size(data: &PreviewData) -> usize {
         match data {
-            PreviewData::Text { content, .. }            => content.len(),
+            PreviewData::Text { content, .. } => content.len(),
             PreviewData::HighlightedText { content, .. } => content.len(),
-            PreviewData::Image { data, .. }              => data.len(),
-            PreviewData::Audio { waveform, album_art, .. } => {
+            PreviewData::Image { data, .. } => data.len(),
+            PreviewData::Audio {
+                waveform,
+                album_art,
+                ..
+            } => {
                 waveform.as_ref().map(|w| w.len() * 4).unwrap_or(0)
                     + album_art.as_ref().map(|a| a.len()).unwrap_or(0)
             }
-            PreviewData::Video { thumbnails, .. } => {
-                thumbnails.iter().map(|t| t.data.len()).sum()
-            }
-            PreviewData::Document { pages, .. } => {
-                pages.iter().map(|p| p.image.len()).sum()
-            }
+            PreviewData::Video { thumbnails, .. } => thumbnails.iter().map(|t| t.data.len()).sum(),
+            PreviewData::Document { pages, .. } => pages.iter().map(|p| p.image.len()).sum(),
             PreviewData::Archive { entries, .. } => entries.len() * 64,
-            PreviewData::Binary { hex_dump, .. }   => hex_dump.len(),
-            PreviewData::Unsupported { .. }        => 64,
+            PreviewData::Binary { hex_dump, .. } => hex_dump.len(),
+            PreviewData::Unsupported { .. } => 64,
         }
     }
 }

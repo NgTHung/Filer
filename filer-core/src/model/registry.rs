@@ -27,22 +27,28 @@ impl NodeRegistry {
         let _ = self.id_to_path.insert_sync(hash, path);
         hash
     }
-    
+
     /// Register multiple paths
     pub fn register_batch(self, paths: &[PathBuf]) -> Vec<NodeId> {
-        paths.iter().map(|v| {
-            let hash = NodeId::from_path(v);
-            let _ = self.id_to_path.insert_sync(hash, v.clone());
-            hash
-        }).collect()
+        paths
+            .iter()
+            .map(|v| {
+                let hash = NodeId::from_path(v);
+                let _ = self.id_to_path.insert_sync(hash, v.clone());
+                hash
+            })
+            .collect()
     }
 
     pub fn register_batch_file_node(self, paths: &[FileNode]) -> Vec<NodeId> {
-        paths.iter().map(|v| {
-            let hash = NodeId::from_path(&v.path);
-            let _ = self.id_to_path.insert_sync(hash, v.path.clone());
-            hash
-        }).collect()
+        paths
+            .iter()
+            .map(|v| {
+                let hash = NodeId::from_path(&v.path);
+                let _ = self.id_to_path.insert_sync(hash, v.path.clone());
+                hash
+            })
+            .collect()
     }
 
     /// Resolve NodeId to PathBuf
@@ -92,8 +98,7 @@ impl NodeRegistry {
     pub fn get_par(&self, id: NodeId) -> Option<PathBuf> {
         if let Some(path) = self.resolve(id) {
             path.clone().parent().map(|p| p.to_path_buf())
-        }
-        else {
+        } else {
             None
         }
     }

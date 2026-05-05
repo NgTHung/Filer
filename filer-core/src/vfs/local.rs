@@ -49,7 +49,11 @@ impl FsProvider for LocalFs {
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
         {
             match entry.file_type().await {
-                Ok(ft) => res.push(FileNode::from_dir_entry(entry.path(), ft, Some(self.reg.clone()))),
+                Ok(ft) => res.push(FileNode::from_dir_entry(
+                    entry.path(),
+                    ft,
+                    Some(self.reg.clone()),
+                )),
                 Err(e) => {
                     tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in listing");
                 }
@@ -187,12 +191,15 @@ impl LocalFs {
         {
             let entry_path = entry.path();
             match entry.metadata().await {
-                Ok(meta) => match FileNode::from_metadata(meta, entry_path.clone(), Some(self.reg.clone())) {
-                    Ok(node) => res.push(node),
-                    Err(e) => {
-                        tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in listing");
+                Ok(meta) => {
+                    match FileNode::from_metadata(meta, entry_path.clone(), Some(self.reg.clone()))
+                    {
+                        Ok(node) => res.push(node),
+                        Err(e) => {
+                            tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in listing");
+                        }
                     }
-                },
+                }
                 Err(e) => {
                     tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry metadata");
                 }

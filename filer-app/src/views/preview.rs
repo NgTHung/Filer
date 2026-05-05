@@ -1,61 +1,119 @@
+use filer_core::model::node::NodeKind;
 use filer_core::{ArchivePreviewEntry, FileNode, PreviewData};
-use iced::widget::{column, container, image, row, scrollable, text, Column};
-use iced::{ContentFit, Element, Length};
+use iced::widget::{Column, button, column, container, image, row, rule, scrollable, text};
+use iced::{Color, ContentFit, Element, Length};
 
 use crate::format::{size_human, time_relative};
 use crate::message::Message;
-use crate::state::AppState;
+use crate::state::{AppState, PanelTab};
+use crate::views::theme::{panel_alt_surface, top_button};
 
-/// Build the preview panel.
-pub fn view(state: &AppState, all_nodes: &[FileNode]) -> Element<'static, Message> {
-    let inner: Element<Message> = match &state.preview_data {
-        Some(PreviewData::Text { content, truncated, total_lines }) => {
-            text_preview(content, *truncated, *total_lines)
+pub fn view(state: &AppState) -> Element<'static, Message> {
+    let all_nodes = state.visible_nodes();
+    let selected = state
+        .preview_node
+        .and_then(|id| all_nodes.iter().find(|n| n.id == id).cloned());
+
+    let details_tab = tab_button("Details", PanelTab::Details, state.panel_tab);
+    let preview_tab = tab_button("Preview", PanelTab::Preview, state.panel_tab);
+    let tabs = row![details_tab, preview_tab].spacing(4);
+
+    let content = match state.panel_tab {
+        PanelTab::Details => {
+            if let Some(node) = &selected {
+                node_metadata_view(node)
+            } else {
+                placeholder("Select a file or folder")
+            }
         }
-        Some(PreviewData::HighlightedText { content, truncated, .. }) => {
-            // Display as plain text; syntax colours deferred to a later phase.
-            text_preview(content, *truncated, 0)
+        PanelTab::Preview => preview_content(&selected, state.preview_data.as_ref()),
+    };
+
+    let title = selected
+        .as_ref()
+        .map(|node| node.name.clone())
+        .unwrap_or_else(|| "Details".to_string());
+
+    container(column![text(title).size(12), tabs, rule::horizontal(1), content,].spacing(6))
+        .width(Length::Fixed(320.0))
+        .height(Length::Fill)
+        .padding(12)
+        .style(panel_style)
+        .into()
+}
+
+fn tab_button(label: &'static str, tab: PanelTab, active: PanelTab) -> Element<'static, Message> {
+    let style = if tab == active { true } else { false };
+    button(text(label.to_string()).size(11))
+        .on_press(Message::SetPanelTab(tab))
+        .style(move |theme, status| top_button(theme, status, style))
+        .padding([4, 8])
+        .into()
+}
+
+fn preview_content(
+    selected: &Option<FileNode>,
+    preview: Option<&PreviewData>,
+) -> Element<'static, Message> {
+    match preview {
+        Some(PreviewData::Text {
+            content,
+            truncated,
+            total_lines,
+        }) => text_preview(content, *truncated, *total_lines),
+        Some(PreviewData::HighlightedText {
+            content,
+            language,
+            truncated,
+            ..
+        }) => {
+            let plain = strip_html_tags(content);
+            column![
+                text(format!("Code ({language})"))
+                    .size(11)
+                    .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                text_preview(&plain, *truncated, 0),
+            ]
+            .spacing(4)
+            .into()
         }
-        Some(PreviewData::Image { data, width, height, .. }) => {
-            image_preview(data, *width, *height)
-        }
+        Some(PreviewData::Image {
+            data,
+            width,
+            height,
+            ..
+        }) => image_preview(data, *width, *height),
         Some(PreviewData::Audio { duration_secs, .. }) => {
-            metadata_text(&format!("Audio — {:.0}s", duration_secs))
+            metadata_text(&format!("Audio ({duration_secs:.0}s)"))
         }
         Some(PreviewData::Video { duration_secs, .. }) => {
-            metadata_text(&format!("Video — {:.0}s", duration_secs))
+            metadata_text(&format!("Video ({duration_secs:.0}s)"))
         }
-        Some(PreviewData::Archive { entries, total_entries, truncated }) => {
-            archive_preview(entries, *total_entries, *truncated)
-        }
+        Some(PreviewData::Archive {
+            entries,
+            total_entries,
+            truncated,
+        }) => archive_preview(entries, *total_entries, *truncated),
         Some(PreviewData::Binary { hex_dump, size }) => {
-            metadata_text(&format!("Binary — {}\n\n{}", size_human(*size), hex_dump))
+            metadata_text(&format!("Binary ({})\n\n{}", size_human(*size), hex_dump))
         }
         Some(PreviewData::Document { total_pages, .. }) => {
-            metadata_text(&format!("Document — {total_pages} pages"))
+            metadata_text(&format!("Document ({total_pages} pages)"))
         }
         Some(PreviewData::Unsupported { mime_type, .. }) => {
             metadata_text(&format!("No preview for {mime_type}"))
         }
         None => {
-            // Show basic FileNode metadata if a node is selected.
-            if let Some(id) = state.preview_node {
-                if let Some(node) = all_nodes.iter().find(|n| n.id == id) {
-                    node_metadata_view(node)
-                } else {
-                    placeholder()
+            if let Some(node) = selected {
+                if matches!(node.kind, NodeKind::Directory { .. }) {
+                    return placeholder("No folder preview. Open Details for metadata.");
                 }
+                placeholder("Loading preview...")
             } else {
-                placeholder()
+                placeholder("Select a file to preview")
             }
         }
-    };
-
-    container(inner)
-        .width(Length::Fixed(300.0))
-        .height(Length::Fill)
-        .padding(12)
-        .into()
+    }
 }
 
 fn text_preview(content: &str, truncated: bool, _total_lines: usize) -> Element<'static, Message> {
@@ -74,6 +132,7 @@ fn image_preview(data: &[u8], _w: u32, _h: u32) -> Element<'static, Message> {
     image(handle)
         .content_fit(ContentFit::Contain)
         .width(Length::Fill)
+        .height(Length::Fill)
         .into()
 }
 
@@ -93,7 +152,7 @@ fn archive_preview(
         .collect();
 
     if truncated {
-        items.push(text(format!("… ({total} total)")).size(11).into());
+        items.push(text(format!("... ({total} total entries)")).size(11).into());
     }
 
     scrollable(Column::with_children(items).spacing(2))
@@ -127,16 +186,38 @@ fn node_metadata_view(node: &FileNode) -> Element<'static, Message> {
 
 fn kv(key: &str, value: &str) -> Element<'static, Message> {
     row![
-        text(format!("{key}:")).size(12).width(Length::Fixed(70.0)),
-        text(value.to_owned()).size(12),
+        text(format!("{key}:")).size(11).width(Length::Fixed(72.0)),
+        text(value.to_owned()).size(11),
     ]
     .spacing(4)
     .into()
 }
 
-fn placeholder() -> Element<'static, Message> {
-    container(text("Select a file to preview").size(12))
+fn placeholder(label: &str) -> Element<'static, Message> {
+    container(text(label.to_string()).size(12))
         .center_x(Length::Fill)
         .center_y(Length::Fill)
         .into()
+}
+
+fn panel_style(theme: &iced::Theme) -> iced::widget::container::Style {
+    panel_alt_surface(theme)
+}
+
+fn strip_html_tags(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
 }

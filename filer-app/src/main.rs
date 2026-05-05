@@ -1,27 +1,27 @@
 mod app;
 mod config;
 mod format;
+mod icon;
 mod icons;
 mod message;
 mod state;
 mod views;
 
-use std::sync::Arc;
 use app::App;
+use std::sync::Arc;
 
 fn main() -> iced::Result {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| {
-                    // Suppress iced's benign "subscription channel full" warning
-                    // (expected: our CoreRx subscription ignores iced's event input).
-                    "filer_app=debug,filer_core=debug,\
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                // Suppress iced's benign "subscription channel full" warning
+                // (expected: our CoreRx subscription ignores iced's event input).
+                "filer_app=trace,filer_core=trace,\
                      iced_futures::subscription::tracker=error,\
                      warn"
-                        .parse()
-                        .unwrap()
-                }),
+                    .parse()
+                    .unwrap()
+            }),
         )
         .init();
     iced::application(
@@ -34,6 +34,7 @@ fn main() -> iced::Result {
         App::update,
         App::view,
     )
+    .font(icon::FONT)
     .subscription(App::subscription)
     .theme(App::theme)
     .title("Filer")

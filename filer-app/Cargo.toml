@@ -10,6 +10,9 @@ tracing ={ workspace = true}
 serde = { workspace = true }
 serde_json = { workspace = true }
 dirs = "6" 
-filer-core = { path = "../filer-core" }
+filer-core = { path = "../filer-core", features = ["preview"] }
 flume = "0.12"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[build-dependencies]
+iced_lucide = "0.1.0"

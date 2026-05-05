@@ -27,7 +27,10 @@ impl MediaProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError { actor: "media_provider", message: e.to_string() })?
+        .map_err(|e| CoreError::ActorError {
+            actor: "media_provider",
+            message: e.to_string(),
+        })?
     }
 
     #[cfg(feature = "metadata-video")]
@@ -41,12 +44,18 @@ impl MediaProvider {
             let context = mp4parse::read_mp4(&mut cursor)
                 .map_err(|e| CoreError::InvalidData(format!("{e:?}")))?;
 
-            let duration_secs = context.tracks.iter().filter_map(|t| {
-                let d = t.duration?;
-                let timescale = t.timescale?.0;
-                if timescale == 0 { return None; }
-                Some(d.0 as f64 / timescale as f64)
-            }).fold(0f64, f64::max);
+            let duration_secs = context
+                .tracks
+                .iter()
+                .filter_map(|t| {
+                    let d = t.duration?;
+                    let timescale = t.timescale?.0;
+                    if timescale == 0 {
+                        return None;
+                    }
+                    Some(d.0 as f64 / timescale as f64)
+                })
+                .fold(0f64, f64::max);
 
             Ok(PreviewData::Video {
                 thumbnails: vec![],
@@ -54,7 +63,10 @@ impl MediaProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError { actor: "media_provider", message: e.to_string() })?
+        .map_err(|e| CoreError::ActorError {
+            actor: "media_provider",
+            message: e.to_string(),
+        })?
     }
 }
 

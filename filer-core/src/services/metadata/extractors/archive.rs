@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use std::io::Read;
 use std::path::Path;
-use async_trait::async_trait;
 
 use crate::errors::CoreError;
 use crate::services::metadata::extended::{ArchiveEntry, ArchiveMetadata, ExtendedMetadata};
@@ -24,10 +24,14 @@ impl ArchiveExtractor {
         path.file_name()
             .and_then(|n| n.to_str())
             .map(|name| {
-                name.ends_with(".tar.gz")  || name.ends_with(".tgz")  ||
-                name.ends_with(".tar.bz2") || name.ends_with(".tbz2") ||
-                name.ends_with(".tar.xz")  || name.ends_with(".txz")  ||
-                name.ends_with(".tar.zst") || name.ends_with(".tzst")
+                name.ends_with(".tar.gz")
+                    || name.ends_with(".tgz")
+                    || name.ends_with(".tar.bz2")
+                    || name.ends_with(".tbz2")
+                    || name.ends_with(".tar.xz")
+                    || name.ends_with(".txz")
+                    || name.ends_with(".tar.zst")
+                    || name.ends_with(".tzst")
             })
             .unwrap_or(false)
     }
@@ -48,7 +52,14 @@ impl ArchiveExtractor {
         } else {
             0.0
         };
-        ArchiveMetadata { format: format.to_string(), file_count, total_size, compressed_size, compression_ratio, entries }
+        ArchiveMetadata {
+            format: format.to_string(),
+            file_count,
+            total_size,
+            compressed_size,
+            compression_ratio,
+            entries,
+        }
     }
 
     /// Parse a ZIP archive (needs `Read + Seek`).
@@ -58,13 +69,14 @@ impl ArchiveExtractor {
             .map_err(|e| CoreError::InvalidData(format!("Cannot open ZIP: {e}")))?;
         let mut entries = Vec::with_capacity(archive.len());
         for i in 0..archive.len() {
-            let f = archive.by_index(i)
+            let f = archive
+                .by_index(i)
                 .map_err(|e| CoreError::InvalidData(format!("ZIP entry {i}: {e}")))?;
             entries.push(ArchiveEntry {
-                path:            f.name().to_owned(),
-                size:            f.size(),
+                path: f.name().to_owned(),
+                size: f.size(),
                 compressed_size: f.compressed_size(),
-                is_directory:    f.is_dir(),
+                is_directory: f.is_dir(),
             });
         }
         Ok(entries)
@@ -76,16 +88,20 @@ impl ArchiveExtractor {
     fn parse_tar<R: Read>(reader: R) -> Result<Vec<ArchiveEntry>, CoreError> {
         let mut archive = tar::Archive::new(reader);
         let mut entries = Vec::new();
-        for entry in archive.entries()
+        for entry in archive
+            .entries()
             .map_err(|e| CoreError::InvalidData(format!("Cannot read TAR: {e}")))?
         {
             let e = entry.map_err(|e| CoreError::InvalidData(format!("TAR entry: {e}")))?;
             let h = e.header();
             entries.push(ArchiveEntry {
-                path:            h.path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
-                size:            h.size().unwrap_or(0),
+                path: h
+                    .path()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                size: h.size().unwrap_or(0),
                 compressed_size: 0, // TAR does not store per-entry compressed sizes
-                is_directory:    h.entry_type().is_dir(),
+                is_directory: h.entry_type().is_dir(),
             });
         }
         Ok(entries)
@@ -101,10 +117,10 @@ impl ArchiveExtractor {
         reader_7z
             .for_each_entries(|entry, _| {
                 entries.push(ArchiveEntry {
-                    path:            entry.name().to_owned(),
-                    size:            entry.size(),
+                    path: entry.name().to_owned(),
+                    size: entry.size(),
                     compressed_size: entry.compressed_size,
-                    is_directory:    entry.is_directory(),
+                    is_directory: entry.is_directory(),
                 });
                 Ok(true)
             })
@@ -115,11 +131,19 @@ impl ArchiveExtractor {
     /// Decompress a single-file stream, counting bytes without allocating the
     /// full content in memory. Returns `(uncompressed_size, entry_name)`.
     #[cfg(feature = "metadata-archive")]
-    fn count_decompressed<R: Read>(mut decoder: R, entry_name: String) -> Result<(u64, String), CoreError> {
+    fn count_decompressed<R: Read>(
+        mut decoder: R,
+        entry_name: String,
+    ) -> Result<(u64, String), CoreError> {
         struct Sink(u64);
         impl std::io::Write for Sink {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> { self.0 += buf.len() as u64; Ok(buf.len()) }
-            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0 += buf.len() as u64;
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
         }
         let mut sink = Sink(0);
         std::io::copy(&mut decoder, &mut sink)
@@ -145,16 +169,20 @@ impl MetadataExtractor for ArchiveExtractor {
 
         #[cfg(feature = "metadata-archive")]
         {
-            use flate2::read::GzDecoder;
             use bzip2::read::BzDecoder;
+            use flate2::read::GzDecoder;
             use xz2::read::XzDecoder;
 
             let tarball = Self::is_tarball(path);
             // Stem name for single-file compressed formats (e.g. "data.txt.gz" → "data.txt").
-            let stem = || path.file_stem().and_then(|s| s.to_str()).unwrap_or("file").to_owned();
+            let stem = || {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("file")
+                    .to_owned()
+            };
 
             let meta = match &*mime.mime_type {
-
                 // ── ZIP ──────────────────────────────────────────────────────
                 "application/zip" => {
                     let entries = Self::parse_zip(provider.open_reader(path).await?)?;
@@ -169,54 +197,104 @@ impl MetadataExtractor for ArchiveExtractor {
 
                 // ── GZ ───────────────────────────────────────────────────────
                 "application/gzip" if tarball => {
-                    let entries = Self::parse_tar(GzDecoder::new(provider.open_reader(path).await?))?;
+                    let entries =
+                        Self::parse_tar(GzDecoder::new(provider.open_reader(path).await?))?;
                     Self::build("TAR+GZ", entries, 0)
                 }
                 "application/gzip" => {
                     let compressed = provider.read(path).await?;
                     let compressed_size = compressed.len() as u64;
-                    let (size, name) = Self::count_decompressed(GzDecoder::new(std::io::Cursor::new(compressed)), stem())?;
-                    Self::build("GZ", vec![ArchiveEntry { path: name, size, compressed_size, is_directory: false }], compressed_size)
+                    let (size, name) = Self::count_decompressed(
+                        GzDecoder::new(std::io::Cursor::new(compressed)),
+                        stem(),
+                    )?;
+                    Self::build(
+                        "GZ",
+                        vec![ArchiveEntry {
+                            path: name,
+                            size,
+                            compressed_size,
+                            is_directory: false,
+                        }],
+                        compressed_size,
+                    )
                 }
 
                 // ── BZ2 ──────────────────────────────────────────────────────
                 "application/x-bzip2" if tarball => {
-                    let entries = Self::parse_tar(BzDecoder::new(provider.open_reader(path).await?))?;
+                    let entries =
+                        Self::parse_tar(BzDecoder::new(provider.open_reader(path).await?))?;
                     Self::build("TAR+BZ2", entries, 0)
                 }
                 "application/x-bzip2" => {
                     let compressed = provider.read(path).await?;
                     let compressed_size = compressed.len() as u64;
-                    let (size, name) = Self::count_decompressed(BzDecoder::new(std::io::Cursor::new(compressed)), stem())?;
-                    Self::build("BZ2", vec![ArchiveEntry { path: name, size, compressed_size, is_directory: false }], compressed_size)
+                    let (size, name) = Self::count_decompressed(
+                        BzDecoder::new(std::io::Cursor::new(compressed)),
+                        stem(),
+                    )?;
+                    Self::build(
+                        "BZ2",
+                        vec![ArchiveEntry {
+                            path: name,
+                            size,
+                            compressed_size,
+                            is_directory: false,
+                        }],
+                        compressed_size,
+                    )
                 }
 
                 // ── XZ ───────────────────────────────────────────────────────
                 "application/x-xz" if tarball => {
-                    let entries = Self::parse_tar(XzDecoder::new(provider.open_reader(path).await?))?;
+                    let entries =
+                        Self::parse_tar(XzDecoder::new(provider.open_reader(path).await?))?;
                     Self::build("TAR+XZ", entries, 0)
                 }
                 "application/x-xz" => {
                     let compressed = provider.read(path).await?;
                     let compressed_size = compressed.len() as u64;
-                    let (size, name) = Self::count_decompressed(XzDecoder::new(std::io::Cursor::new(compressed)), stem())?;
-                    Self::build("XZ", vec![ArchiveEntry { path: name, size, compressed_size, is_directory: false }], compressed_size)
+                    let (size, name) = Self::count_decompressed(
+                        XzDecoder::new(std::io::Cursor::new(compressed)),
+                        stem(),
+                    )?;
+                    Self::build(
+                        "XZ",
+                        vec![ArchiveEntry {
+                            path: name,
+                            size,
+                            compressed_size,
+                            is_directory: false,
+                        }],
+                        compressed_size,
+                    )
                 }
 
                 // ── ZSTD ─────────────────────────────────────────────────────
                 "application/zstd" if tarball => {
-                    let decoder = zstd::stream::read::Decoder::new(provider.open_reader(path).await?)
-                        .map_err(|e| CoreError::InvalidData(format!("ZSTD: {e}")))?;
+                    let decoder =
+                        zstd::stream::read::Decoder::new(provider.open_reader(path).await?)
+                            .map_err(|e| CoreError::InvalidData(format!("ZSTD: {e}")))?;
                     let entries = Self::parse_tar(decoder)?;
                     Self::build("TAR+ZSTD", entries, 0)
                 }
                 "application/zstd" => {
                     let compressed = provider.read(path).await?;
                     let compressed_size = compressed.len() as u64;
-                    let decoder = zstd::stream::read::Decoder::new(std::io::Cursor::new(compressed))
-                        .map_err(|e| CoreError::InvalidData(format!("ZSTD: {e}")))?;
+                    let decoder =
+                        zstd::stream::read::Decoder::new(std::io::Cursor::new(compressed))
+                            .map_err(|e| CoreError::InvalidData(format!("ZSTD: {e}")))?;
                     let (size, name) = Self::count_decompressed(decoder, stem())?;
-                    Self::build("ZSTD", vec![ArchiveEntry { path: name, size, compressed_size, is_directory: false }], compressed_size)
+                    Self::build(
+                        "ZSTD",
+                        vec![ArchiveEntry {
+                            path: name,
+                            size,
+                            compressed_size,
+                            is_directory: false,
+                        }],
+                        compressed_size,
+                    )
                 }
 
                 // ── 7Z ───────────────────────────────────────────────────────
@@ -233,12 +311,13 @@ impl MetadataExtractor for ArchiveExtractor {
                         .map_err(|e| CoreError::InvalidData(format!("Cannot open RAR: {e}")))?;
                     let mut entries = Vec::new();
                     for header in archive.by_ref() {
-                        let h = header.map_err(|e| CoreError::InvalidData(format!("RAR entry: {e}")))?;
+                        let h = header
+                            .map_err(|e| CoreError::InvalidData(format!("RAR entry: {e}")))?;
                         entries.push(ArchiveEntry {
-                            path:            h.filename.to_string_lossy().into_owned(),
-                            size:            h.unpacked_size,
+                            path: h.filename.to_string_lossy().into_owned(),
+                            size: h.unpacked_size,
                             compressed_size: 0, // unrar crate does not expose packed size
-                            is_directory:    h.is_directory(),
+                            is_directory: h.is_directory(),
                         });
                     }
                     Self::build("RAR", entries, 0)
@@ -246,8 +325,11 @@ impl MetadataExtractor for ArchiveExtractor {
 
                 _ => ArchiveMetadata {
                     format: "Unknown".to_string(),
-                    file_count: 0, total_size: 0, compressed_size: 0,
-                    compression_ratio: 0.0, entries: Vec::new(),
+                    file_count: 0,
+                    total_size: 0,
+                    compressed_size: 0,
+                    compression_ratio: 0.0,
+                    entries: Vec::new(),
                 },
             };
 

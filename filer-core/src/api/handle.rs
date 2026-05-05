@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use flume::{Receiver, Sender};
 
-use crate::actors::router::CommandRouter;
 use crate::actors::ActorSystem;
+use crate::actors::router::CommandRouter;
 use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry, Module, ModuleContext};
@@ -24,7 +24,7 @@ use crate::vfs::local_watch::LocalWatchProvider;
 
 /// Public API handle for the filer core runtime.
 ///
-/// FilerCore provides the bus infrastructure (events, 
+/// FilerCore provides the bus infrastructure (events,
 /// sessions, registry, actor lifecycle) and lets modules
 /// supply the actual behavior.
 ///
@@ -105,13 +105,21 @@ impl FilerCore {
         // ── Register built-in session lifecycle handlers ─────────────
         handlers.on("session.handshake", |_cmd, ctx| {
             let session = ctx.sessions.create_session(ctx.events.clone());
-            send_or_warn(&ctx.events, Event::SessionCreated(session), "emit SessionCreated");
+            send_or_warn(
+                &ctx.events,
+                Event::SessionCreated(session),
+                "emit SessionCreated",
+            );
         });
 
         handlers.on("session.destroy", |cmd, ctx| {
             if let Command::DestroySession(session_id) = cmd {
                 ctx.sessions.remove(session_id);
-                send_or_warn(&ctx.events, Event::SessionDestroyed(session_id), "emit SessionDestroyed");
+                send_or_warn(
+                    &ctx.events,
+                    Event::SessionDestroyed(session_id),
+                    "emit SessionDestroyed",
+                );
             }
         });
 

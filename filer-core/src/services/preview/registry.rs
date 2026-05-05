@@ -34,7 +34,8 @@ impl PreviewRegistry {
     /// `get_provider` always returns the highest-priority match.
     pub fn register(&mut self, provider: Box<dyn PreviewProvider>) {
         self.providers.push(provider);
-        self.providers.sort_by_key(|b| std::cmp::Reverse(b.priority()))
+        self.providers
+            .sort_by_key(|b| std::cmp::Reverse(b.priority()))
     }
 
     /// Set default preview options.
@@ -44,7 +45,8 @@ impl PreviewRegistry {
 
     /// Generate preview for a file using default options.
     pub async fn generate(&self, path: &Path) -> Result<PreviewData, CoreError> {
-        self.generate_with_options(path, &self.default_options).await
+        self.generate_with_options(path, &self.default_options)
+            .await
     }
 
     /// Create registry with all built-in providers pre-registered.

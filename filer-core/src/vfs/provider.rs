@@ -75,19 +75,19 @@ pub trait FsProvider: Send + Sync {
         Ok(Box::new(std::io::Cursor::new(bytes)))
     }
 
-    async fn write(&self, path: &Path, _data: &[u8]) -> Result<(), CoreError>{
+    async fn write(&self, path: &Path, _data: &[u8]) -> Result<(), CoreError> {
         Err(CoreError::PermissionDenied(path.to_path_buf()))
     }
-    async fn copy(&self, _src: &Path, dst: &Path) -> Result<(), CoreError>{
+    async fn copy(&self, _src: &Path, dst: &Path) -> Result<(), CoreError> {
         Err(CoreError::PermissionDenied(dst.to_path_buf()))
     }
-    async fn rename(&self, _src: &Path, dst: &Path) -> Result<(), CoreError>{
+    async fn rename(&self, _src: &Path, dst: &Path) -> Result<(), CoreError> {
         Err(CoreError::PermissionDenied(dst.to_path_buf()))
     }
-    async fn delete(&self, path: &Path) -> Result<(), CoreError>{
+    async fn delete(&self, path: &Path) -> Result<(), CoreError> {
         Err(CoreError::PermissionDenied(path.to_path_buf()))
     }
-    async fn mkdir(&self, path: &Path) -> Result<(), CoreError>{
+    async fn mkdir(&self, path: &Path) -> Result<(), CoreError> {
         Err(CoreError::PermissionDenied(path.to_path_buf()))
     }
 }

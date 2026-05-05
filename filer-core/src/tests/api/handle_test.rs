@@ -20,7 +20,7 @@ mod handle_tests {
     use crate::api::commands::Command;
     use crate::api::events::Event;
     use crate::api::handle::FilerCore;
-    
+
     use crate::model::session::SessionId;
 
     /// Timeout for async operations in tests
@@ -68,7 +68,11 @@ mod handle_tests {
 
         match event.unwrap() {
             Ok(Event::SessionCreated(session_id)) => {
-                assert_ne!(session_id, SessionId::DEFAULT, "should be a real session id");
+                assert_ne!(
+                    session_id,
+                    SessionId::DEFAULT,
+                    "should be a real session id"
+                );
             }
             other => panic!("expected SessionCreated, got {:?}", other),
         }
@@ -181,7 +185,10 @@ mod handle_tests {
             other => panic!("expected SessionCreated for session 2, got {:?}", other),
         };
 
-        assert_ne!(session1, session2, "each handshake should get a unique session");
+        assert_ne!(
+            session1, session2,
+            "each handshake should get a unique session"
+        );
 
         // Destroy session 1 — should get SessionDestroyed for session 1
         core.send(Command::DestroySession(session1)).unwrap();

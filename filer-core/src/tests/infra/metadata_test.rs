@@ -16,15 +16,15 @@
 
 use std::io::Write;
 
+use crate::model::registry::NodeRegistry;
 use crate::services::metadata::extractor::MetadataExtractor; // trait must be in scope
-use crate::services::metadata::{ExtendedMetadata, MetadataRegistry};
 use crate::services::metadata::extractors::{
     ArchiveExtractor, AudioExtractor, CodeExtractor, DocumentExtractor, ImageExtractor,
     VideoExtractor,
 };
+use crate::services::metadata::{ExtendedMetadata, MetadataRegistry};
 use crate::services::mime::{DetectionConfidence, MimeCategory, MimeInfo};
 use crate::vfs::local::LocalFs;
-use crate::model::registry::NodeRegistry;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,45 +56,40 @@ fn temp_file_with(bytes: &[u8], suffix: &str) -> tempfile::NamedTempFile {
 fn png_1x1() -> Vec<u8> {
     vec![
         // PNG signature
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-        // IHDR chunk (length=13)
-        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, // width  = 1
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // IHDR chunk (length=13)
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, // width  = 1
         0x00, 0x00, 0x00, 0x01, // height = 1
-        0x08, 0x06,             // 8-bit RGBA
-        0x00, 0x00, 0x00,       // compression / filter / interlace
+        0x08, 0x06, // 8-bit RGBA
+        0x00, 0x00, 0x00, // compression / filter / interlace
         0x1F, 0x15, 0xC4, 0x89, // CRC
         // IDAT chunk (length=10)
-        0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54,
-        0x78, 0x9C, 0x62, 0x00, 0x01, 0x00, 0x00, 0x05,
-        0x00, 0x01,
-        0x0D, 0x0A, 0x2D, 0xB4, // CRC
+        0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, // CRC
         // IEND chunk (length=0)
-        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
-        0xAE, 0x42, 0x60, 0x82, // CRC
+        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82, // CRC
     ]
 }
 
 /// Minimal JPEG: SOI + JFIF APP0 marker + EOI.
 fn jpeg_minimal() -> Vec<u8> {
     vec![
-        0xFF, 0xD8,             // SOI
+        0xFF, 0xD8, // SOI
         0xFF, 0xE0, 0x00, 0x10, // APP0 marker + length
         0x4A, 0x46, 0x49, 0x46, 0x00, // "JFIF\0"
-        0x01, 0x01,             // version 1.1
-        0x00,                   // aspect-ratio units
+        0x01, 0x01, // version 1.1
+        0x00, // aspect-ratio units
         0x00, 0x01, 0x00, 0x01, // X / Y density
-        0x00, 0x00,             // thumbnail dimensions
-        0xFF, 0xD9,             // EOI
+        0x00, 0x00, // thumbnail dimensions
+        0xFF, 0xD9, // EOI
     ]
 }
 
 /// Minimal ID3v2.3 tag with zero frames (MP3 file stub).
 fn mp3_id3_header() -> Vec<u8> {
     vec![
-        0x49, 0x44, 0x33,       // "ID3"
-        0x03, 0x00,             // version 2.3, revision 0
-        0x00,                   // flags
+        0x49, 0x44, 0x33, // "ID3"
+        0x03, 0x00, // version 2.3, revision 0
+        0x00, // flags
         0x00, 0x00, 0x00, 0x00, // syncsafe tag size = 0 (no frames)
     ]
 }
@@ -140,13 +135,13 @@ fn pdf_one_page() -> Vec<u8> {
 fn zip_empty() -> Vec<u8> {
     vec![
         0x50, 0x4B, 0x05, 0x06, // EOCD signature
-        0x00, 0x00,             // disk number
-        0x00, 0x00,             // disk with CD
-        0x00, 0x00,             // entries on disk
-        0x00, 0x00,             // total entries
+        0x00, 0x00, // disk number
+        0x00, 0x00, // disk with CD
+        0x00, 0x00, // entries on disk
+        0x00, 0x00, // total entries
         0x00, 0x00, 0x00, 0x00, // CD size
         0x00, 0x00, 0x00, 0x00, // CD offset
-        0x00, 0x00,             // comment length
+        0x00, 0x00, // comment length
     ]
 }
 
@@ -267,9 +262,11 @@ mod image_extractor_tests {
 
     #[test]
     fn supported_categories_contains_image() {
-        assert!(extractor()
-            .supported_categories()
-            .contains(&MimeCategory::Image));
+        assert!(
+            extractor()
+                .supported_categories()
+                .contains(&MimeCategory::Image)
+        );
     }
 
     #[test]
@@ -281,7 +278,10 @@ mod image_extractor_tests {
     async fn png_returns_image_variant() {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Image(_)));
     }
 
@@ -289,8 +289,10 @@ mod image_extractor_tests {
     async fn png_has_correct_dimensions() {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
-        let ExtendedMetadata::Image(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Image(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Image variant");
         };
@@ -302,8 +304,10 @@ mod image_extractor_tests {
     async fn png_format_string_is_png() {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
-        let ExtendedMetadata::Image(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Image(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Image variant");
         };
@@ -314,8 +318,10 @@ mod image_extractor_tests {
     async fn png_without_exif_has_none_exif() {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
-        let ExtendedMetadata::Image(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Image(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Image variant");
         };
@@ -327,7 +333,10 @@ mod image_extractor_tests {
     async fn jpeg_returns_image_variant() {
         let f = temp_file_with(&jpeg_minimal(), ".jpg");
         let info = mime("image/jpeg", MimeCategory::Image);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Image(_)));
     }
 
@@ -335,8 +344,10 @@ mod image_extractor_tests {
     async fn jpeg_format_string_is_jpeg() {
         let f = temp_file_with(&jpeg_minimal(), ".jpg");
         let info = mime("image/jpeg", MimeCategory::Image);
-        let ExtendedMetadata::Image(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Image(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Image variant");
         };
@@ -361,9 +372,11 @@ mod audio_extractor_tests {
 
     #[test]
     fn supported_categories_contains_audio() {
-        assert!(extractor()
-            .supported_categories()
-            .contains(&MimeCategory::Audio));
+        assert!(
+            extractor()
+                .supported_categories()
+                .contains(&MimeCategory::Audio)
+        );
     }
 
     #[test]
@@ -375,7 +388,10 @@ mod audio_extractor_tests {
     async fn mp3_returns_audio_variant() {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Audio(_)));
     }
 
@@ -383,8 +399,10 @@ mod audio_extractor_tests {
     async fn mp3_format_string_is_mp3() {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
-        let ExtendedMetadata::Audio(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Audio(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Audio variant");
         };
@@ -395,8 +413,10 @@ mod audio_extractor_tests {
     async fn audio_duration_is_non_negative() {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
-        let ExtendedMetadata::Audio(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Audio(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Audio variant");
         };
@@ -407,7 +427,10 @@ mod audio_extractor_tests {
     async fn ogg_returns_audio_variant() {
         let f = temp_file_with(&ogg_capture(), ".ogg");
         let info = mime("audio/ogg", MimeCategory::Audio);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Audio(_)));
     }
 
@@ -416,8 +439,10 @@ mod audio_extractor_tests {
         // ID3 header with zero frames → no title, artist, or album.
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
-        let ExtendedMetadata::Audio(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Audio(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Audio variant");
         };
@@ -439,9 +464,11 @@ mod video_extractor_tests {
 
     #[test]
     fn supported_categories_contains_video() {
-        assert!(extractor()
-            .supported_categories()
-            .contains(&MimeCategory::Video));
+        assert!(
+            extractor()
+                .supported_categories()
+                .contains(&MimeCategory::Video)
+        );
     }
 
     #[test]
@@ -453,7 +480,10 @@ mod video_extractor_tests {
     async fn mp4_returns_video_variant() {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Video(_)));
     }
 
@@ -461,8 +491,10 @@ mod video_extractor_tests {
     async fn mp4_format_string_is_mp4() {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
-        let ExtendedMetadata::Video(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Video(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Video variant");
         };
@@ -473,8 +505,10 @@ mod video_extractor_tests {
     async fn video_duration_is_non_negative() {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
-        let ExtendedMetadata::Video(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Video(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Video variant");
         };
@@ -486,8 +520,10 @@ mod video_extractor_tests {
         // Dimensions may be 0 for a stub file, but the fields must exist and be populated.
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
-        let ExtendedMetadata::Video(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Video(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Video variant");
         };
@@ -508,9 +544,11 @@ mod document_extractor_tests {
 
     #[test]
     fn supported_categories_contains_document() {
-        assert!(extractor()
-            .supported_categories()
-            .contains(&MimeCategory::Document));
+        assert!(
+            extractor()
+                .supported_categories()
+                .contains(&MimeCategory::Document)
+        );
     }
 
     #[test]
@@ -522,7 +560,10 @@ mod document_extractor_tests {
     async fn pdf_returns_document_variant() {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
         let info = mime("application/pdf", MimeCategory::Document);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Document(_)));
     }
 
@@ -530,8 +571,10 @@ mod document_extractor_tests {
     async fn pdf_page_count_is_one() {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
         let info = mime("application/pdf", MimeCategory::Document);
-        let ExtendedMetadata::Document(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Document(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Document variant");
         };
@@ -542,8 +585,10 @@ mod document_extractor_tests {
     async fn pdf_title_is_none_when_absent() {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
         let info = mime("application/pdf", MimeCategory::Document);
-        let ExtendedMetadata::Document(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Document(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Document variant");
         };
@@ -564,9 +609,11 @@ mod archive_extractor_tests {
 
     #[test]
     fn supported_categories_contains_archive() {
-        assert!(extractor()
-            .supported_categories()
-            .contains(&MimeCategory::Archive));
+        assert!(
+            extractor()
+                .supported_categories()
+                .contains(&MimeCategory::Archive)
+        );
     }
 
     #[test]
@@ -578,7 +625,10 @@ mod archive_extractor_tests {
     async fn empty_zip_returns_archive_variant() {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Archive(_)));
     }
 
@@ -586,8 +636,10 @@ mod archive_extractor_tests {
     async fn empty_zip_has_zero_file_count() {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
-        let ExtendedMetadata::Archive(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Archive(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Archive variant");
         };
@@ -599,8 +651,10 @@ mod archive_extractor_tests {
     async fn empty_zip_format_string_is_zip() {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
-        let ExtendedMetadata::Archive(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Archive(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Archive variant");
         };
@@ -611,8 +665,10 @@ mod archive_extractor_tests {
     async fn empty_zip_has_zero_total_size() {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
-        let ExtendedMetadata::Archive(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Archive(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Archive variant");
         };
@@ -632,9 +688,11 @@ mod code_extractor_tests {
 
     #[test]
     fn supported_categories_contains_text() {
-        assert!(extractor()
-            .supported_categories()
-            .contains(&MimeCategory::Text));
+        assert!(
+            extractor()
+                .supported_categories()
+                .contains(&MimeCategory::Text)
+        );
     }
 
     #[test]
@@ -647,7 +705,10 @@ mod code_extractor_tests {
         let src = b"fn main() {\n    println!(\"hello\");\n}\n";
         let f = temp_file_with(src, ".rs");
         let info = mime("text/x-rust", MimeCategory::Text);
-        let result = extractor().extract(f.path(), &info, &local_provider()).await.unwrap();
+        let result = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap();
         assert!(matches!(result, ExtendedMetadata::Code(_)));
     }
 
@@ -656,8 +717,10 @@ mod code_extractor_tests {
         let src = b"fn main() {}\n";
         let f = temp_file_with(src, ".rs");
         let info = mime("text/x-rust", MimeCategory::Text);
-        let ExtendedMetadata::Code(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Code(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Code variant");
         };
@@ -669,8 +732,10 @@ mod code_extractor_tests {
         let src = b"def hello():\n    print('hi')\n";
         let f = temp_file_with(src, ".py");
         let info = mime("text/x-python", MimeCategory::Text);
-        let ExtendedMetadata::Code(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Code(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Code variant");
         };
@@ -682,8 +747,10 @@ mod code_extractor_tests {
         let src = b"hello world\n";
         let f = temp_file_with(src, ".txt");
         let info = mime("text/plain", MimeCategory::Text);
-        let ExtendedMetadata::Code(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Code(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Code variant");
         };
@@ -700,8 +767,10 @@ mod code_extractor_tests {
         let src = b"line1\nline2\nline3\n";
         let f = temp_file_with(src, ".txt");
         let info = mime("text/plain", MimeCategory::Text);
-        let ExtendedMetadata::Code(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Code(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Code variant");
         };
@@ -712,8 +781,10 @@ mod code_extractor_tests {
     async fn empty_file_has_zero_lines() {
         let f = temp_file_with(b"", ".txt");
         let info = mime("text/plain", MimeCategory::Text);
-        let ExtendedMetadata::Code(meta) =
-            extractor().extract(f.path(), &info, &local_provider()).await.unwrap()
+        let ExtendedMetadata::Code(meta) = extractor()
+            .extract(f.path(), &info, &local_provider())
+            .await
+            .unwrap()
         else {
             panic!("expected Code variant");
         };

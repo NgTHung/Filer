@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::services::mime::{DetectionStrategy, MimeCategory, MimeInfo};
@@ -59,16 +59,10 @@ pub enum PreviewData {
     },
 
     /// Binary hex dump
-    Binary {
-        hex_dump: String,
-        size: u64,
-    },
+    Binary { hex_dump: String, size: u64 },
 
     /// Preview not available
-    Unsupported {
-        mime_type: String,
-        reason: String,
-    },
+    Unsupported { mime_type: String, reason: String },
 }
 
 #[derive(Debug, Clone, Copy)]

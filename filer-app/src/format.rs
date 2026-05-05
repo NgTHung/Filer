@@ -68,7 +68,16 @@ fn epoch_to_ymd(mut days: u64) -> (u64, u64, u64) {
     let months = [
         31u64,
         if is_leap(year) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut month = 1u64;
     for dm in &months {

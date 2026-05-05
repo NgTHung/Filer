@@ -2,8 +2,8 @@ use flume::{Receiver, Sender};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::actors::Actor;
+use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
@@ -22,6 +22,11 @@ pub enum ScanCommand {
         pipeline: PipelineConfig,
     },
     ScanNode {
+        node: NodeId,
+        session: SessionId,
+        pipeline: PipelineConfig,
+    },
+    RefreshNode {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
@@ -80,7 +85,13 @@ impl Scanner {
     /// after resolving to a `PathBuf`.  NodeId resolution is cheap
     /// (in-memory registry lookup) and happens *before* the spawn so we
     /// fail fast without creating cancellation tokens for invalid nodes.
-    fn dispatch_scan(&self, path: PathBuf, session: SessionId, pipeline_config: PipelineConfig) {
+    fn dispatch_scan(
+        &self,
+        path: PathBuf,
+        session: SessionId,
+        pipeline_config: PipelineConfig,
+        invalidate_cache: bool,
+    ) {
         let provider = self.provider.clone();
         let registry = self.registry.clone();
         let events = self.events_sender.clone();
@@ -98,6 +109,7 @@ impl Scanner {
                 pipeline_config,
                 &cancel,
                 cache.as_ref(),
+                invalidate_cache,
             )
             .await;
             active_scans.remove(session).await;
@@ -118,24 +130,41 @@ impl Scanner {
         pipeline_config: PipelineConfig,
         cancel: &CancellationToken,
         cache: Option<&SharedDirCache>,
+        invalidate_cache: bool,
     ) {
+        if invalidate_cache {
+            if let Some(cache) = cache {
+                if let Ok(mut cache) = cache.lock() {
+                    tracing::debug!(path = %path.display(), "Invalidating directory cache before scan");
+                    cache.invalidate(path);
+                }
+            }
+        }
+
         // 1. Cache check (before I/O)
         let cached_nodes = cache.and_then(|c| c.lock().ok()?.get(path));
         if let Some(cached) = cached_nodes {
+            tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
             let parent_id = registry.clone().register(path.to_path_buf());
             registry.clone().register_batch_file_node(&cached);
             let pipeline = Pipeline::from_config(&pipeline_config);
             let groups = pipeline.execute_grouped(cached);
-            send_or_warn_async(events, Event::DirectoryLoaded {
-                parent: parent_id,
-                path: path.to_path_buf(),
-                groups,
-                session,
-            }, "scan result (cached)").await;
+            send_or_warn_async(
+                events,
+                Event::DirectoryLoaded {
+                    parent: parent_id,
+                    path: path.to_path_buf(),
+                    groups,
+                    session,
+                },
+                "scan result (cached)",
+            )
+            .await;
             return;
         }
 
         // 2. List directory (cache miss)
+        tracing::trace!(path = %path.display(), session = %session, "Directory scan cache miss, listing provider");
         let entries = match provider.list(path).await {
             Ok(entries) => entries,
             Err(e) => {
@@ -148,6 +177,7 @@ impl Scanner {
         if let Some(cache) = cache {
             if let Ok(mut c) = cache.lock() {
                 c.put(path.to_path_buf(), entries.clone());
+                tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
             }
         }
 
@@ -170,12 +200,17 @@ impl Scanner {
         }
 
         // 6. Send result
-        send_or_warn_async(events, Event::DirectoryLoaded {
-            parent: parent_id,
-            path: path.to_path_buf(),
-            groups,
-            session,
-        }, "scan result").await;
+        send_or_warn_async(
+            events,
+            Event::DirectoryLoaded {
+                parent: parent_id,
+                path: path.to_path_buf(),
+                groups,
+                session,
+            },
+            "scan result",
+        )
+        .await;
     }
 
     fn cancel_scan(&self, session: SessionId) {
@@ -192,7 +227,7 @@ impl Actor for Scanner {
                     session,
                     pipeline,
                 }) => {
-                    self.dispatch_scan(path, session, pipeline);
+                    self.dispatch_scan(path, session, pipeline, false);
                 }
                 Ok(ScanCommand::ScanNode {
                     node,
@@ -202,14 +237,37 @@ impl Actor for Scanner {
                     // Resolve NodeId → PathBuf before spawning.
                     // Cheap in-memory lookup; fail fast if invalid.
                     let Some(path) = self.registry.resolve(node) else {
-                        send_or_warn(&self.events_sender, Event::Error {
-                            message: format!("Unable to resolve ID: {node:?}"),
-                            recoverable: false,
-                            session,
-                        }, "scan resolve error");
+                        send_or_warn(
+                            &self.events_sender,
+                            Event::Error {
+                                message: format!("Unable to resolve ID: {node:?}"),
+                                recoverable: false,
+                                session,
+                            },
+                            "scan resolve error",
+                        );
                         continue;
                     };
-                    self.dispatch_scan(path, session, pipeline);
+                    self.dispatch_scan(path, session, pipeline, false);
+                }
+                Ok(ScanCommand::RefreshNode {
+                    node,
+                    session,
+                    pipeline,
+                }) => {
+                    let Some(path) = self.registry.resolve(node) else {
+                        send_or_warn(
+                            &self.events_sender,
+                            Event::Error {
+                                message: format!("Unable to resolve ID: {node:?}"),
+                                recoverable: false,
+                                session,
+                            },
+                            "scan refresh resolve error",
+                        );
+                        continue;
+                    };
+                    self.dispatch_scan(path, session, pipeline, true);
                 }
                 Ok(ScanCommand::Cancel(session)) => {
                     self.cancel_scan(session);

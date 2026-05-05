@@ -36,7 +36,8 @@ async fn test_local_fs_list() {
     let fs = LocalFs::new(reg);
 
     // Test listing the filer-core/src directory
-    let result = fs.list(Path::new("/home/bbq/Filer/filer-core/src")).await;
+    let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let result = fs.list(&src_dir).await;
     assert!(result.is_ok());
 
     let files = result.unwrap();
@@ -512,7 +513,7 @@ mod write_tests {
         let content = tokio::fs::read(&dst).await.unwrap();
         assert_eq!(content, b"exact content");
     }
-    
+
     #[tokio::test]
     async fn test_copy_nonexistent_src_returns_err() {
         let (fs, dir) = fs();
@@ -581,7 +582,9 @@ mod write_tests {
 
         tokio::fs::create_dir(&root).await.unwrap();
         tokio::fs::create_dir(root.join("sub")).await.unwrap();
-        tokio::fs::write(root.join("sub").join("file.txt"), b"data").await.unwrap();
+        tokio::fs::write(root.join("sub").join("file.txt"), b"data")
+            .await
+            .unwrap();
 
         fs.delete(&root).await.unwrap();
 

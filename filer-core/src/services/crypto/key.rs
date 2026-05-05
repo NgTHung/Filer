@@ -35,7 +35,11 @@ impl Default for KdfParams {
 }
 
 /// Derive key from password
-pub fn derive_key(password: &[u8], params: &KdfParams, key_len: usize) -> Result<Vec<u8>, CoreError> {
+pub fn derive_key(
+    password: &[u8],
+    params: &KdfParams,
+    key_len: usize,
+) -> Result<Vec<u8>, CoreError> {
     todo!()
 }
 
@@ -62,8 +66,8 @@ impl KeyStore {
     }
 
     /// Get key by identifier
-    pub fn get(&self, id: &str) -> Option<Vec<u8>>  {
-        self.keys.read_sync(id, |_,v: &Vec::<u8>| v.clone())
+    pub fn get(&self, id: &str) -> Option<Vec<u8>> {
+        self.keys.read_sync(id, |_, v: &Vec<u8>| v.clone())
     }
 
     /// Remove key

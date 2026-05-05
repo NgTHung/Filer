@@ -250,12 +250,17 @@ impl FileNode {
         };
 
         let kind = if file_type.is_dir() {
-            NodeKind::Directory { children_count: None }
+            NodeKind::Directory {
+                children_count: None,
+            }
         } else if file_type.is_symlink() {
             let target = std::fs::read_link(&path).unwrap_or_default();
             NodeKind::Symlink { target }
         } else {
-            let extension = path.extension().and_then(|e| e.to_str()).map(str::to_string);
+            let extension = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_string);
             NodeKind::File { extension }
         };
 
@@ -316,10 +321,10 @@ impl FileNode {
         let metadata = std::fs::metadata(&self.path)
             .map_err(|e| CoreError::from_io_error(e, self.path.clone()))?;
 
-        self.meta.owner = get_user_by_uid(metadata.uid())
-            .map(|u| u.name().to_string_lossy().into_owned());
-        self.meta.group = get_group_by_gid(metadata.gid())
-            .map(|g| g.name().to_string_lossy().into_owned());
+        self.meta.owner =
+            get_user_by_uid(metadata.uid()).map(|u| u.name().to_string_lossy().into_owned());
+        self.meta.group =
+            get_group_by_gid(metadata.gid()).map(|g| g.name().to_string_lossy().into_owned());
 
         Ok(())
     }
@@ -334,8 +339,8 @@ impl NodeId {
     /// Generate ID from path
     pub fn from_path(path: &Path) -> Self {
         NodeId({
-            use std::hash::Hasher;
             use rapidhash::fast::RapidHasher;
+            use std::hash::Hasher;
             let mut h = RapidHasher::default();
             h.write(path.to_str().unwrap().as_bytes());
             h.finish()

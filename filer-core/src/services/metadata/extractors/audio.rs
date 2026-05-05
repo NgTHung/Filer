@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::services::metadata::extended::{AudioMetadata, ExtendedMetadata};
@@ -27,11 +27,7 @@ impl AudioExtractor {
     ///
     /// `(duration_secs, sample_rate, channels, bit_rate, tags)`
     #[cfg(feature = "metadata-audio")]
-    async fn read_tag(
-        &self,
-        path: &Path,
-        provider: &dyn FsProvider,
-    ) -> Option<(f64, AudioTags)> {
+    async fn read_tag(&self, path: &Path, provider: &dyn FsProvider) -> Option<(f64, AudioTags)> {
         use id3::TagLike;
 
         let mut reader = provider.open_reader(path).await.ok()?;
@@ -46,12 +42,12 @@ impl AudioExtractor {
             .map(|p| p.data.clone());
 
         let tags = AudioTags {
-            title:     tag.title().map(str::to_owned),
-            artist:    tag.artist().map(str::to_owned),
-            album:     tag.album().map(str::to_owned),
-            year:      tag.year().map(|y| y as u32),
-            track:     tag.track(),
-            genre:     tag.genre().map(str::to_owned),
+            title: tag.title().map(str::to_owned),
+            artist: tag.artist().map(str::to_owned),
+            album: tag.album().map(str::to_owned),
+            year: tag.year().map(|y| y as u32),
+            track: tag.track(),
+            genre: tag.genre().map(str::to_owned),
             album_art,
         };
 
@@ -77,16 +73,16 @@ impl MetadataExtractor for AudioExtractor {
         #[cfg(feature = "metadata-audio")]
         {
             let format = match &*mime.mime_type {
-                "audio/mpeg"  => "MP3",
-                "audio/ogg"   => "OGG",
-                "audio/flac"  => "FLAC",
-                "audio/wav"   => "WAV",
-                "audio/aac"   => "AAC",
-                "audio/mp4"   => "M4A",
+                "audio/mpeg" => "MP3",
+                "audio/ogg" => "OGG",
+                "audio/flac" => "FLAC",
+                "audio/wav" => "WAV",
+                "audio/aac" => "AAC",
+                "audio/mp4" => "M4A",
                 "audio/x-m4a" => "M4A",
-                "audio/aiff"  => "AIFF",
-                "audio/opus"  => "Opus",
-                _             => "Unknown",
+                "audio/aiff" => "AIFF",
+                "audio/opus" => "Opus",
+                _ => "Unknown",
             };
 
             let (duration_secs, tags) = self
@@ -97,9 +93,9 @@ impl MetadataExtractor for AudioExtractor {
             Ok(ExtendedMetadata::Audio(AudioMetadata {
                 duration_secs,
                 sample_rate: None, // requires decoder crate (e.g. symphonia)
-                channels:    None,
-                bit_rate:    None,
-                format:      format.to_string(),
+                channels: None,
+                bit_rate: None,
+                format: format.to_string(),
                 tags,
             }))
         }

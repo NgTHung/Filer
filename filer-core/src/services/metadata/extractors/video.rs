@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::services::metadata::extended::{ExtendedMetadata, VideoMetadata};
@@ -24,21 +24,20 @@ impl VideoExtractor {
     fn codec_name(codec: mp4parse::CodecType) -> Option<String> {
         use mp4parse::CodecType;
         match codec {
-            CodecType::H264           => Some("H.264".into()),
-            CodecType::AV1            => Some("AV1".into()),
-            CodecType::VP9            => Some("VP9".into()),
-            CodecType::VP8            => Some("VP8".into()),
-            CodecType::MP4V           => Some("MPEG-4".into()),
-            CodecType::H263           => Some("H.263".into()),
-            CodecType::AAC            => Some("AAC".into()),
-            CodecType::MP3            => Some("MP3".into()),
-            CodecType::Opus           => Some("Opus".into()),
-            CodecType::FLAC           => Some("FLAC".into()),
-            CodecType::ALAC           => Some("ALAC".into()),
-            CodecType::LPCM           => Some("LPCM".into()),
-            CodecType::EncryptedVideo |
-            CodecType::EncryptedAudio => Some("Encrypted".into()),
-            _                         => None,
+            CodecType::H264 => Some("H.264".into()),
+            CodecType::AV1 => Some("AV1".into()),
+            CodecType::VP9 => Some("VP9".into()),
+            CodecType::VP8 => Some("VP8".into()),
+            CodecType::MP4V => Some("MPEG-4".into()),
+            CodecType::H263 => Some("H.263".into()),
+            CodecType::AAC => Some("AAC".into()),
+            CodecType::MP3 => Some("MP3".into()),
+            CodecType::Opus => Some("Opus".into()),
+            CodecType::FLAC => Some("FLAC".into()),
+            CodecType::ALAC => Some("ALAC".into()),
+            CodecType::LPCM => Some("LPCM".into()),
+            CodecType::EncryptedVideo | CodecType::EncryptedAudio => Some("Encrypted".into()),
+            _ => None,
         }
     }
 
@@ -53,7 +52,7 @@ impl VideoExtractor {
         provider: &dyn FsProvider,
         format: &str,
     ) -> Result<VideoMetadata, CoreError> {
-        use mp4parse::{read_mp4, SampleEntry, TrackType};
+        use mp4parse::{SampleEntry, TrackType, read_mp4};
 
         // read_mp4 requires T: Sized, so we can't pass a trait object directly.
         // Buffer the file and wrap in Cursor for a concrete Sized type.
@@ -62,8 +61,14 @@ impl VideoExtractor {
         let context = read_mp4(&mut cursor)
             .map_err(|e| CoreError::InvalidData(format!("Cannot parse MP4: {e:?}")))?;
 
-        let video_track = context.tracks.iter().find(|t| t.track_type == TrackType::Video);
-        let audio_track = context.tracks.iter().find(|t| t.track_type == TrackType::Audio);
+        let video_track = context
+            .tracks
+            .iter()
+            .find(|t| t.track_type == TrackType::Video);
+        let audio_track = context
+            .tracks
+            .iter()
+            .find(|t| t.track_type == TrackType::Audio);
 
         // Dimensions + video codec from the first video sample entry.
         let (width, height, video_codec) = video_track
@@ -94,7 +99,11 @@ impl VideoExtractor {
             .and_then(|t| {
                 let ticks = t.duration?.0 as f64;
                 let scale = t.timescale?.0 as f64;
-                if scale == 0.0 { None } else { Some(ticks / scale) }
+                if scale == 0.0 {
+                    None
+                } else {
+                    Some(ticks / scale)
+                }
             })
             .unwrap_or(0.0);
 
@@ -128,29 +137,31 @@ impl MetadataExtractor for VideoExtractor {
         #[cfg(feature = "metadata-video")]
         {
             let format = match &*mime.mime_type {
-                "video/mp4"       => "MP4",
+                "video/mp4" => "MP4",
                 "video/quicktime" => "MOV",
-                "video/x-m4v"     => "M4V",
+                "video/x-m4v" => "M4V",
                 "video/x-msvideo" => "AVI",
-                "video/x-matroska"=> "MKV",
-                "video/webm"      => "WebM",
-                "video/ogg"       => "OGV",
-                "video/mpeg"      => "MPEG",
-                "video/3gpp"      => "3GP",
-                "video/3gpp2"     => "3G2",
-                _                 => "Unknown",
+                "video/x-matroska" => "MKV",
+                "video/webm" => "WebM",
+                "video/ogg" => "OGV",
+                "video/mpeg" => "MPEG",
+                "video/3gpp" => "3GP",
+                "video/3gpp2" => "3G2",
+                _ => "Unknown",
             };
 
             // Non-MP4 containers won't parse; return zeroed metadata rather than error.
-            let metadata = self.parse_mp4(path, provider, format).await
+            let metadata = self
+                .parse_mp4(path, provider, format)
+                .await
                 .unwrap_or(VideoMetadata {
-                    width:        0,
-                    height:       0,
+                    width: 0,
+                    height: 0,
                     duration_secs: 0.0,
-                    frame_rate:   None,
-                    video_codec:  None,
-                    audio_codec:  None,
-                    format:       format.to_string(),
+                    frame_rate: None,
+                    video_codec: None,
+                    audio_codec: None,
+                    format: format.to_string(),
                 });
 
             Ok(ExtendedMetadata::Video(metadata))

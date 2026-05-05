@@ -1,5 +1,5 @@
-use std::path::Path;
 use async_trait::async_trait;
+use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
@@ -32,13 +32,13 @@ impl Default for RemoteConfig {
 pub trait RemoteProvider: FsProvider {
     /// Connect to remote server
     async fn connect(&mut self) -> Result<(), CoreError>;
-    
+
     /// Disconnect from remote server
     async fn disconnect(&mut self) -> Result<(), CoreError>;
-    
+
     /// Check if connected
     fn is_connected(&self) -> bool;
-    
+
     /// Reconnect if disconnected
     async fn ensure_connected(&mut self) -> Result<(), CoreError> {
         if !self.is_connected() {

@@ -25,8 +25,8 @@ use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn;
-use scanner::{ScanCommand, Scanner};
 use crate::vfs::provider::FsProvider;
+use scanner::{ScanCommand, Scanner};
 
 /// Scan module — owns the Scanner actor and its command channel.
 ///
@@ -82,11 +82,15 @@ impl Module for ScanModule {
                 pipeline,
             } = cmd
             {
-                send_or_warn(&tx, ScanCommand::Scan {
-                    path,
-                    session,
-                    pipeline,
-                }, "scan");
+                send_or_warn(
+                    &tx,
+                    ScanCommand::Scan {
+                        path,
+                        session,
+                        pipeline,
+                    },
+                    "scan",
+                );
             }
         });
 
@@ -98,11 +102,15 @@ impl Module for ScanModule {
                 pipeline,
             } = cmd
             {
-                send_or_warn(&tx, ScanCommand::ScanNode {
-                    node,
-                    session,
-                    pipeline,
-                }, "scan.node");
+                send_or_warn(
+                    &tx,
+                    ScanCommand::ScanNode {
+                        node,
+                        session,
+                        pipeline,
+                    },
+                    "scan.node",
+                );
             }
         });
 
