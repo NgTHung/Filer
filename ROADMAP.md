@@ -1,368 +1,494 @@
-# Filer — Engineering Roadmap
-
-> **Development model:** Test-driven. Tests are written before implementation for every non-trivial item.
-> A phase is **complete** when: all tests pass, `cargo clippy` is clean, and public API is documented.
+# Filer Core Roadmap
 
----
+This roadmap tracks the core engine and shared project architecture. The desktop
+app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
+roadmap lives in `filer-ecosystem/ROADMAP.md`.
 
-## Architecture & Design Invariants
+## Product Direction
 
-These constraints are not negotiable. Any phase that violates them requires a design review.
+Filer should be a fast Explorer replacement with useful programmer support. It
+should remain a file manager first: dependable navigation, file operations,
+search, previews, provider support, and extension points that help real work
+without turning the project into a full IDE.
 
-**`filer-core` is a library, not an application.**
-Every frontend — desktop, web, mobile — is a thin consumer of the same core. The core never imports GUI, HTTP, or platform-specific crates. Features are gated. Frontends are in separate crates.
+The core exists to make that possible across frontends. The Iced app, future web
+client, server transport, extension host, and package tools should all consume
+the same core behavior instead of reimplementing filesystem logic.
 
-**All I/O goes through `FsProvider`.**
-Extractors, previewers, and actors never call `std::fs`, `tokio::fs`, or any I/O crate directly. The `FsProvider` abstraction is the seam that makes remote backends (S3, WebDAV, SFTP) and virtual providers (archives, vaults) transparent to all consumers. Violating this couples business logic to the local filesystem and cannot be tested without real files.
+The extension system should improve core mechanics by adding semantic
+capabilities around the file-manager kernel. Extensions may contribute commands,
+providers, previews, metadata, file decorations, status badges, panels, and
+other structured outputs, but core remains the authority for navigation,
+scanning, search, operations, sessions, provider access, cache correctness, and
+event routing. Clients render extension output; extensions should not depend on
+desktop-only UI code.
 
-**Actors own their state exclusively.**
-Actors communicate only via `flume` channels. No actor field is accessed from outside the actor's own `run()` loop — the only shared data between actors and spawned tasks is `Arc`-wrapped infrastructure (`CancelMap`, `NodeRegistry`, `Arc<dyn FsProvider>`). This prevents data races without `Mutex` on hot paths.
+The current priority is **Core Contract Stabilization**. "Core" means the stable
+contracts that prevent churn across the app, future web clients, and extensions:
+request identity, cancellation, stale-event rejection, operation identity,
+structured recoverable errors, provider addressing, large-directory loading
+contracts, extension output envelopes, and local-profile boundaries. It does not
+mean building every planned extension surface, web transport, marketplace, or
+app rewrite immediately.
 
-**Sessions are the unit of isolation.**
-Every command and event carries a `SessionId`. A UI instance may open multiple sessions (split-pane, tabs). No session leaks state into another. `SessionManager` is the only source of truth for session lifecycle; actors clean up per-session state in `on_session_destroy` hooks.
-
-**The pipeline is the only transformation path.**
-`GroupedNodes` is the sole output type for directory listings. Filters, sorts, and groupings are applied by composing `Stage` implementations in `Pipeline`. Actors do not sort or filter inline — they hand raw `Vec<FileNode>` to the pipeline. This keeps transformation logic testable without actors.
-
-**Feature flags are an architecture concern, not a convenience.**
-Each optional capability is behind a named feature that compiles to zero overhead when disabled. Every extractor, provider, and heavy-weight dependency must be gated. The base `filer-core` (no features) must compile and all core tests must pass in under 30 seconds.
-
----
-
-## Definition of Done
-
-A phase is **done** when:
-1. All listed test cases are implemented and passing.
-2. No `todo!()`, `unimplemented!()`, or `panic!()` in the code path (stubs in unreachable branches are acceptable).
-3. `cargo clippy -p filer-core` produces zero warnings on the changed code.
-4. Public items have doc comments explaining purpose and invariants.
-5. Feature-gated code is verified with `--features` and without.
-
----
-
-## ✅ Milestone 0 — Core Engine (Complete)
-
-*The following phases are fully implemented and tested. Documented here as a stable baseline.*
-
-### Phase 1: Foundation
-- [x] `CoreError` — typed error enum with `from_io_error(err, path)`, display, and recoverable classification
-- [x] `NodeId` — deterministic, content-addressed identifier (path hash); cheaply copied, not interned
-- [x] `SessionId` — UUID-backed, zero-copy clone
-- [x] `FileNode` / `NodeMeta` — filesystem entry representation with lazy owner/group resolution
-- [x] `NodeRegistry` — `Arc<scc::HashMap>` mapping `NodeId ↔ PathBuf`; shared across actors without lock contention
-- [x] `FsProvider` trait — read-only interface: `list`, `read`, `read_range`, `read_header`, `open_reader`, `exists`, `metadata`
-- [x] `LocalFs` — production implementation; `list` uses `tokio::fs::read_dir`, skips unreadable entries with `tracing::debug`; `open_reader` returns `BufReader<std::fs::File>` (zero extra allocation)
-- [x] `Command` / `Event` enums — full set of variants with `SessionId` tagging; `Command::Extension` for plugin extensibility without enum modification
-- [x] `Capabilities` — per-provider capability advertisement (`read`, `write`, `watch`, `search`)
-
-### Phase 2: Pipeline System
-- [x] `Stage` trait — `fn execute(nodes: Vec<FileNode>) -> Vec<FileNode>`; pure function, no I/O
-- [x] `FilterHidden`, `FilterByExtension` — filter stages
-- [x] `SortBy` — sort by name/size/date, ascending/descending, optional directories-first
-- [x] `GroupBy` — group by extension/date/size; degenerate single-group output maintains uniform `GroupedNodes` contract
-- [x] `Pipeline` — composes stages; `execute_grouped` is the sole output path; always returns `GroupedNodes`
-- [x] `PipelineConfig` — serializable, sent from UI to core; core builds `Pipeline` from it
-
-### Phase 3: Actor Infrastructure
-- [x] `Actor` trait — `async fn run(self)`, consumed on spawn; `name()` for tracing
-- [x] `ActorSystem` — tracks `JoinHandle`s; `shutdown()` aborts all tasks, cascading channel closure
-- [x] `CancellationToken` + `CancelMap` — shared atomic-flag cancellation; `arm(session)` cancels previous in-flight task and issues a fresh token; `cancel_all()` used on shutdown; no actor reimplements this
-- [x] `Scanner` — directory traversal: `list → register → pipeline → emit DirectoryLoaded`; cancellable at two yield points (post-list, post-pipeline)
-- [x] `Navigator` — history stack with bounded depth; `NavState` snapshot emitted on every transition
-- [x] `CommandRouter` — string-keyed dispatch via `HandlerRegistry`; `Command::Extension` routes by user-provided key
-
-### Phase 4: FilerCore API
-- [x] `SessionManager` — issues `SessionId`, routes events per session, cleans up on destroy
-- [x] `Module` trait + `ModuleContext` — composable initialization; modules register handlers and spawn actors; swappable without modifying core
-- [x] `HandlerRegistry` — `scc::HashMap`-backed; thread-safe registration and dispatch; `on_session_destroy` hook chain
-- [x] `FilerCore` — public entry point; `send(command)`, `event_receiver()`, `load(module)`, `with_defaults()`
-- [x] Navigation flow integration tests — covers full round-trip from `Command` to `Event`
-
-### Phase 5: File Watching
-- [x] `Watcher` actor — `notify`-based; debounces rapid filesystem events (configurable window); emits `FsChanged` per `NodeId` with `FsChangeKind`
-- [x] Per-session and per-`NodeId` watch/unwatch; session destroy automatically unregisters all watches
-
-### Phase 6: Search
-- [x] `SearchQuery` parser — text, glob (`*.rs`, `test?.txt`), `size:>1mb`, `modified:<1w`, `type:image`; combined filters
-- [x] `Searcher` actor — recursive BFS with configurable depth limit; batched streaming results (`SearchResults { complete: false }` → `{ complete: true }`); cancellable per session; honors `max_results`
-
-### Phase 7: MIME & Metadata
-- [x] `MimeDetector` — static, three-tier: `EXT_TABLE` binary search → `infer` magic bytes → `new_mime_guess` fallback; `Definitive` confidence short-circuits magic-byte I/O; ambiguous extensions (`bin`, `dat`, `tmp`, …) never hit `EXT_TABLE`
-- [x] `MetadataExtractor` trait + `MetadataRegistry` — routes by `MimeCategory`; feature-gate pattern: `#[cfg(not(feature = "..."))] return Ok(Unavailable);`
-- [x] `ImageExtractor` — `imagesize` for dimensions; `kamadak-exif` for EXIF (orientation, GPS, camera model, color space, bit depth) [`metadata-image`]
-- [x] `AudioExtractor` — `id3` for tags (title, artist, album, genre, year) and duration [`metadata-audio`]
-- [x] `VideoExtractor` — `mp4parse` for dimensions, duration, video/audio codec; buffers via `provider.read()` + `Cursor` to satisfy `T: Sized` bound [`metadata-video`]
-- [x] `DocumentExtractor` — `lopdf::Document::load_metadata_from` for PDF page count, title, author, dates [`metadata-document`]
-- [x] `ArchiveExtractor` — ZIP/TAR/GZ/BZ2/XZ/ZSTD/7Z entry listing and size aggregation; RAR behind separate `metadata-archive-rar` feature (C++ dep, RARlab license) [`metadata-archive`]
-
-### Phase 8: Shared Infrastructure
-- [x] `PathUtils`, `SizeUtils`, `TimeUtils` — formatting helpers, no I/O
-- [x] `CancellationToken` + `CancelMap` — extracted from actors into `actors/cancel.rs`; single implementation, three consumers (Scanner, Searcher, Previewer)
-
----
-
-## 🚧 Milestone 1 — MVP Desktop App
-
-> **Goal:** A fully functional, locally-operated file manager with no `todo!()` on any reachable code path.
-> This milestone ends when Phase 13 ships a working Iced application.
-
-### Phase 9: Write Operations — `FsProvider` Extension
-
-> **Blocker:** `FsProvider` currently has no write surface. `Operator` cannot be implemented without it.
-> This is a breaking change to the trait — all provider implementations (including stubs) must be updated.
-
-**Design constraint:** Write methods must be added as non-defaulted `async fn` on `FsProvider`. Providers that advertise `capabilities().write = false` may return `CoreError::PermissionDenied` from write methods, but they must compile. Remote providers that support writes (S3 put, WebDAV PUT) implement these naturally.
-
-- [x] `write(path, data: &[u8])` — create or overwrite; respects parent existence
-- [x] `copy(src, dst)` — provider-local optimized copy; falls back to read+write across providers
-- [x] `rename(src, dst)` — atomic on same filesystem; errors on cross-device without fallback
-- [x] `delete(path, trash: bool)` — trash uses OS facilities (`trash` crate); permanent is recursive for directories
-- [x] `mkdir(path)` — creates intermediate directories (`mkdir -p` semantics)
-- [x] `LocalFs` implementation for all five methods, including cross-platform trash support
-- [x] Update all stub providers (`ArchiveFs`, `S3Fs`, `WebDavFs`, etc.) to compile with new methods
-- [x] Tests: each write operation on `LocalFs` using `tempfile::TempDir`; verify idempotency where applicable
-
-### Phase 10: File Operations Actor
-
-> **Depends on:** Phase 9. `Operator` struct and `OpsCommand` enum are scaffolded; all logic is `todo!()`.
-
-**Design notes:** Long-running operations (recursive copy, large delete) must be chunked and yield-point-cancellable. Progress granularity is per-file, not per-byte, to avoid channel saturation. Cross-filesystem move is copy-then-delete, not atomic; the event sequence must reflect this (`OperationComplete` only after delete succeeds). The `Operator` must use `CancelMap` — one cancel token per session per operation.
-
-- [x] Tests: `Copy` single file → `OperationProgress` events + `OperationComplete { success: true }`
-- [x] Tests: `Copy` directory recursively → progress reflects file count; cancel mid-flight leaves partial copy
-- [x] Tests: `Move` same-filesystem → single rename, no progress events, atomic
-- [x] Tests: `Move` cross-filesystem → copy-then-delete sequence, progress emitted
-- [x] Tests: `Delete { trash: false }` → file removed; `{ trash: true }` → file in OS trash
-- [x] Tests: `Rename` file and directory
-- [x] Tests: `CreateFolder` and `CreateFile` with name collision → `CoreError::AlreadyExists`
-- [x] Tests: cancel in-flight copy → partial state is cleaned up
-- [x] `Operator` implementation — uses `CancelMap`, emits `OperationProgress`, calls `provider` write methods
-- [x] Wire `OperationsModule` into `FilerCore::with_defaults()`?
-
-### Phase 11: Preview Providers
-
-> **Context:** `PreviewRegistry`, `PreviewCache`, and `Previewer` actor are implemented.
-> Zero tests exist for any of these. Five providers are stubbed with `todo!()`.
-
-**Design constraint:** Providers receive a `&Path` and `&PreviewOptions`, not a `&dyn FsProvider`. This is an intentional simplification for the preview tier — previews are generated on local files only for now. Remote preview will route through a local cache file. The `PreviewData` enum must not grow unboundedly; new variants require a design decision on the `serde` boundary.
-
-**Performance budget:** Text preview of a 1 MB file must complete under 5 ms. Image thumbnail generation (1920×1080 → 256×256) must complete under 50 ms. These are not tested automatically but should be validated manually before shipping.
-
-- [x] Tests: `PreviewRegistry::get_provider` returns highest-priority provider for each `MimeCategory`
-- [x] Tests: `PreviewRegistry::can_preview` returns false for unsupported MIME types
-- [x] Tests: `PreviewCache::put` / `get` / TTL expiry / size-based eviction
-- [x] Tests: `Previewer` actor — cache hit skips generation; cancel mid-generation emits nothing; `ClearCache` resets state
-- [x] `TextProvider` — `provider.read()` → truncate to `max_bytes`; emit `PreviewData::Text { content, truncated }`
-- [x] `CodeProvider` — language detection from extension; syntax highlighting via `syntect` [`preview-code` feature]
-- [x] `ImageProvider` — thumbnail via `image` crate, aspect-ratio preserving; emit `PreviewData::Image { data, width, height, original_width, original_height }` [`preview-image` feature]
-- [x] `MediaProvider` — emit metadata-derived summary (duration, codec); waveform generation deferred
-- [x] `ArchiveProvider` — reuse `ArchiveExtractor` output; emit entry listing as `PreviewData::Archive`
-
-### Phase 12: Directory Cache
-
-> **Depends on:** Phase 10. File operations are the primary cache invalidation trigger.
-
-**Design notes:** The cache is a service, not an actor — it lives as an `Arc<Mutex<DirCache>>` shared between `Scanner` and `OperationsModule`. An actor adds unnecessary latency on the hot scan path. Invalidation must be conservative: any write operation on a path invalidates its parent directory entry. The cache must have a hard memory ceiling (configurable, default 128 MB) with LRU eviction.
-
-- [ ] Tests: `DirCache::get` returns `None` on first access, cached result on second
-- [ ] Tests: `FsChanged` event invalidates the correct directory entry
-- [ ] Tests: write operation (copy/move/delete/create) invalidates parent
-- [ ] Tests: LRU eviction respects size ceiling; oldest entry evicted first
-- [ ] `DirCache` implementation — size-bounded LRU, `scc::HashMap`, eviction on insert when over limit
-- [ ] `Scanner` integration — check cache before `provider.list()`; update cache on successful list
-
-### Phase 13: Iced Desktop GUI
-
-> **Milestone gate.** This phase is what makes everything above visible to a user.
-
-**Architecture note:** The GUI crate (`filer-app` or `filer-iced`) imports `filer-core` as a library dependency. All application state derives from `Event` emissions. The GUI never calls filesystem APIs directly. The `FilerCore` instance lives in a `tokio` runtime; Iced subscribes to the event channel via its `Subscription` mechanism.
-
-- [ ] **Application shell** — main window, `App` state machine, `Message` type, runtime bootstrap
-- [ ] **Core subscription** — `Subscription` polls `FilerCore::event_receiver()`; dispatches `Event → Message → update()`
-- [ ] **File list view** — name, size (formatted), modified date, MIME icon; virtualized for directories > 500 entries
-- [ ] **Sidebar** — places (home, documents, downloads, desktop, mounted drives); bookmarks (persistent, user-managed)
-- [ ] **Breadcrumb bar** — clickable path segments derived from `NavState`
-- [ ] **Preview panel** — renders `PreviewData` variants: text (monospace, scrollable), image (scaled), metadata table, archive entry list
-- [ ] **Search bar** — debounced input (150 ms); live `SearchResults` streaming into file list view
-- [ ] **Status bar** — item count, selection count, selection total size, current sort
-- [ ] **Keyboard navigation** — arrows, `Enter` (open), `Backspace` (up), `Alt+Left/Right` (back/forward), `/` (focus search)
-- [ ] **Context menu** — copy, cut, paste, delete, rename, properties; multi-selection aware
-- [ ] **Drag and drop** — within the app triggers `Move`; from external apps triggers `Copy`
-- [ ] **Thumbnail loading** — lazy, off main thread via `Previewer`; placeholder rendered until ready
-- [ ] **Thumbnail disk cache** — persist thumbnails to `$XDG_CACHE_HOME/filer/thumbs` keyed by content hash
-
----
-
-## 🌐 Milestone 2 — Web Application
-
-> **Goal:** Run filer in any browser. The core is already multi-session; the only new layer is transport.
-> The architecture here must not couple `filer-core` to HTTP or WebSocket crates.
-> Transport lives in a thin `filer-server` crate that depends on `filer-core`, not vice versa.
-
-### Phase 14: Serialization Boundary
-
-> **Prerequisite for Milestone 2.** `Command` and `Event` need a stable wire format.
-
-**Design decision:** Use `serde` with a versioned JSON envelope (`{ "v": 1, "type": "Navigate", "payload": {...} }`). This envelope allows protocol evolution without breaking existing clients. `NodeId` and `SessionId` serialize as UUIDs/hex strings, not internal representations.
-
-- [ ] `serde` derives for `Command`, `Event`, `NodeId`, `SessionId`, `FileNode`, `NodeMeta`, `GroupedNodes`, `PreviewData`, `ExtendedMetadata`
-- [ ] Tests: `Command → JSON → Command` roundtrip for all variants
-- [ ] Tests: `Event → JSON → Event` roundtrip for all variants
-- [ ] Tests: unknown fields in JSON are ignored (forward compatibility)
-- [ ] Versioned envelope — `{ "v": 1, "id": "<request-id>", "payload": {...} }`
-
-### Phase 15: WebSocket Server (`filer-server`)
-
-- [ ] `axum` or `tokio-tungstenite` WebSocket server
-- [ ] Connection lifecycle: connect → `Command::Handshake` → `SessionCreated`; disconnect → `Command::DestroySession`
-- [ ] Request/response correlation — client attaches `id` to commands; server echoes `id` in the corresponding response event
-- [ ] Event streaming — all `Event`s for the session are pushed over the same connection
-- [ ] Tests: connect → navigate → receive `DirectoryLoaded`; disconnect → session destroyed
-- [ ] Tests: two concurrent connections receive independent event streams
-
-### Phase 16: WASM Client Library (`filer-web`)
-
-- [ ] Shared types compiled to WASM via `wasm-bindgen`
-- [ ] `WebSocketClient` — async event subscription, typed send/receive
-- [ ] Reconnection with exponential back-off
-- [ ] TypeScript type generation from WASM bindings
-
-### Phase 17: Web UI
-
-- [ ] Framework evaluation: Leptos (fine-grained reactivity, SSR-capable) preferred over Dioxus/Yew based on ecosystem maturity at time of implementation
-- [ ] Core integration via `filer-web` WebSocket client
-- [ ] Parity with Phase 13 desktop views: file list, sidebar, breadcrumb, search, preview panel
-
----
-
-## 🔧 Milestone 3 — Power Features
-
-> These address the extensibility that distinguishes filer from a basic file browser.
-
-### Phase 18: Archive VFS Provider
-
-> `ArchiveFs` stub exists. Implementing this closes the loop on the VFS abstraction — a user should be able to navigate into a ZIP as if it were a directory, using the same `Navigate` command and `DirectoryLoaded` event.
-
-**Design constraint:** `ArchiveFs` is read-only (`capabilities().write = false`). It operates on a single archive file opened through an outer `FsProvider` — it must not open the archive path directly. Seeking is required; the outer provider must support `open_reader()`.
-
-- [ ] Tests: `ArchiveFs::list("/")` on a ZIP returns correct `FileNode` tree
-- [ ] Tests: `ArchiveFs::read("inner/file.txt")` returns correct bytes
-- [ ] Tests: `ArchiveFs::list` on a nested directory within a TAR
-- [ ] `ZipFs` — uses `zip` crate; builds in-memory directory tree on open; `list` and `read` are O(1) lookups
-- [ ] `TarFs` — streams TAR to build index on open; supports gz/bz2/xz/zstd via compression layer
-- [ ] Integration: `FilerCore` detects archive MIME on `Navigate(path)`; swaps provider to `ArchiveFs`; emits `DirectoryLoaded` with archive contents
-
-### Phase 19: Remote VFS Backends (feature-gated)
-
-> Each backend is a separate feature and a separate crate dependency. None affect compile time when disabled.
-> All must implement `FsProvider` in full, including write methods where the protocol supports them.
-
-- [ ] **S3** (`s3`) — `aws-sdk-s3`; `list` maps to `ListObjectsV2`; `read` to `GetObject`; `write` to `PutObject`; `delete` to `DeleteObject`; `rename` is copy+delete (no atomic rename in S3)
-- [ ] **WebDAV** (`webdav`) — `PROPFIND` for `list`/`metadata`; `GET` for `read`; `PUT` for `write`; `MOVE` for `rename`; `DELETE` for delete; `MKCOL` for `mkdir`
-- [ ] **SFTP** (`sftp`) — `ssh2` crate; connection pooling (one connection per provider instance); all standard operations
-- [ ] **FUSE** (`fuse`) — mounts any `FsProvider` as a FUSE filesystem; allows shell and other apps to browse remote/virtual providers
-- [ ] **Kubernetes** (`k8s`) — `kube` crate; namespaces → pods → containers → files; read-only; `read` fetches resource YAML via API
-
-> **API stability note:** Each backend's config struct (`S3Config`, `WebDavConfig`, etc.) is part of the public API from the moment it ships. Design these carefully — field additions are non-breaking, field removals or type changes are.
-
-### Phase 20: Encryption / Vault (`crypto` feature)
-
-> Cipher primitives (`AES-256-GCM`, `XChaCha20-Poly1305`) and key derivation (`Argon2id`) are scaffolded.
-> `Vault` is a `FsProvider` decorator — it wraps any other provider with transparent encryption.
-> This means an encrypted vault can sit on S3, WebDAV, or the local filesystem without code changes.
-
-- [ ] Tests: encrypt/decrypt roundtrip — plaintext in, ciphertext stored, plaintext out
-- [ ] Tests: wrong password fails with `CoreError::PermissionDenied`, not a panic or data corruption
-- [ ] Tests: `Vault::list` decrypts filenames; `Vault::read` decrypts content
-- [ ] Tests: `Vault::change_password` — re-encrypts the master key, not every file
-- [ ] `Vault` implementation — wraps `Box<dyn FsProvider>`; master key encrypted with Argon2-derived KEK; per-file nonces; authenticated encryption prevents silent corruption
-- [ ] Filename encryption — encrypted filenames are base64url-encoded to remain valid path components
-
----
-
-## 🔌 Milestone 4 — Ecosystem
-
-> These make filer a platform. Do not start this milestone until Milestone 2 is complete.
-> Ecosystem features live or die by external adoption — design their APIs to be stable and versioned from day one.
-
-### Phase 21: Plugin System
-
-> `Command::Extension` and `Event` already provide the extension seam. Plugins are `Module` implementations loaded at runtime or compiled in as features.
-
-**Design constraint:** Plugins must declare their capabilities upfront (which command keys they handle, which event types they emit). This allows the core to reject conflicting plugins at load time and enables UI to discover plugin capabilities without running them.
-
-- [ ] Plugin manifest — `name`, `version`, `commands: Vec<&str>`, `events: Vec<&str>`, `requires: Vec<Capability>`
-- [ ] `PluginRegistry` — validates manifests, detects conflicts, loads in dependency order
-- [ ] Dynamic loading path — `libloading` for `.so`/`.dll` plugins (Linux/Windows)
-- [ ] Static plugin path — plugins compiled in via feature flags (zero overhead, no `unsafe`)
-- [ ] Sandboxing — plugins that handle I/O must receive a scoped `FsProvider`; they cannot access the global registry
-- [ ] Example: `git-status` plugin — overlays git status on `FileNode`s using `git2`
-- [ ] Example: `image-optimizer` plugin — registers `ops.optimize` command key; bulk re-encodes images
-
-### Phase 22: Themes & Accessibility
-
-- [ ] `Theme` struct — color tokens, spacing scale, typography; serializable to/from TOML
-- [ ] Icon pack interface — maps `MimeCategory` + `FsChangeKind` to icon identifiers; swappable at runtime
-- [ ] Dark/light mode — follows OS preference (`dark-light` crate); manual override persisted
-- [ ] Keyboard shortcut remapping — `keybindings.toml`; validated on load (no duplicate bindings)
-- [ ] Accessibility metadata — `FileNode` carries enough information for screen readers; no I/O in accessibility paths
-
-### Phase 23: Sync & Backup
-
-- [ ] `SyncEngine` — compares two `FsProvider` instances by path + content hash; produces `SyncPlan` (additions, deletions, conflicts)
-- [ ] Conflict strategies — `newer-wins`, `larger-wins`, `manual` (emits `SyncConflict` event for UI resolution)
-- [ ] Incremental backup — snapshot-based; only changed files since last snapshot are written
-- [ ] Versioning — N retained versions per file; configurable per-vault
-
----
-
-## 📱 Future Consideration
-
-### Phase 24: Mobile
-
-> Do not plan this in detail until Milestone 2 (web) is complete. The web transport layer may serve as the mobile backend via a local loopback server, avoiding a separate FFI bridge.
-
-- [ ] Evaluate: Tauri Mobile (shares Rust core directly) vs. WebSocket-over-loopback (shares web UI)
-- [ ] Touch interaction model (swipe-to-delete, long-press context menu, pinch-zoom in preview)
-- [ ] Adaptive layout: phone (single-pane) / tablet (split-pane)
-- [ ] Background indexing on mobile requires explicit battery/wake-lock management
-
----
+The proof target for this phase is practical: Filer should load a very large
+local directory, such as `C:\Windows\System32`, without blocking the client, and
+then apply git-style decorations asynchronously in a large repository without
+blocking directory loading.
+
+Milestone labels:
+
+- `Core`: engine behavior required by every frontend.
+- `Reliability`: correctness, cache invalidation, watcher behavior, errors, and
+  tests.
+- `Power`: programmer-oriented features and advanced file-manager workflows.
+- `Protocol`: serialization, server transport, and future web/mobile clients.
+- `Ecosystem`: bridge points into `filer-ecosystem`.
+- `Future`: valuable work that should not block the main product.
+
+## Architecture Invariants
+
+These constraints are still the project contract.
+
+### Core Is A Library
+
+`filer-core` is not an application. It must not import GUI frameworks, HTTP
+servers, desktop shell UI, or app-specific state. Frontends depend on core, not
+the other way around.
+
+### All Filesystem Access Goes Through Providers
+
+Core workflows should use `FsProvider` and provider capabilities for list, read,
+write, watch, search, and future remote access. Local filesystem shortcuts are
+allowed only where the current API cannot yet express the required operation,
+and those shortcuts should be tracked as roadmap debt.
+
+### Sessions Are Isolation Boundaries
+
+Every command and event that belongs to user activity must carry a `SessionId`.
+Tabs, split panes, web clients, and extension calls should be separate sessions
+or explicitly scoped to one.
+
+### Actors Own Long-Running Work
+
+Navigation, search, preview, operations, and watch flows should stay behind
+actors or actor-like modules with cancellation and structured events. The UI
+should not block on core work.
+
+### The Pipeline Owns Directory Transformations
+
+Directory filtering, sorting, and grouping should flow through `Pipeline` and
+produce `GroupedNodes`. Actors should not apply ad hoc sort/group logic.
+
+### Extension Contracts Stay Wire-Safe
+
+`Command::Extension` remains useful for trusted in-process modules, but the
+public extension path should move toward serializable envelopes shared with
+`filer-ecosystem`.
+
+### Extensions Produce Semantic UI Data
+
+Extensions should not send pixel-level UI instructions such as exact colors,
+layout, or widget trees. They should emit client-neutral semantic data: file row
+decorations, badges, status kinds, labels, tooltips, action availability,
+preview payloads, metadata, and theme token references. Desktop and web clients
+translate those semantics into their own visuals.
+
+### Core Mechanics Are Not Optional Plugins
+
+Navigation, scanning, search dispatch, watching, file operations, provider
+resolution, sessions, cancellation, cache invalidation, and pipeline execution
+stay in `filer-core`. They may be enhanced by extensions, but the app should not
+need an extension host to perform normal local file management.
+
+### Modules Are Extension-Aware, Not All External Plugins
+
+Built-in modules remain the reliable kernel. Extension-capable areas grow around
+that kernel: git state, metadata providers, preview providers, converters,
+external terminal/editor commands, remote provider implementations, file
+decorations, themes, icons, panels, and status badges. A module may expose
+extension hooks without becoming a third-party plugin itself.
+
+The built-in versus extension-capable split is based on product correctness, not
+only resource cost. A feature stays built-in when normal local file management
+depends on it. A feature becomes extension-capable when it is optional,
+domain-specific, user-customizable, or a provider implementation behind a
+core-owned contract. Built-in prototypes are acceptable when they prove a future
+extension contract.
+
+### Programmer Features Are Helpful Reading Tools
+
+Programmer-oriented work should help users understand and act on files. Git
+status, lightweight metadata, previews, external editor/terminal launchers, and
+converter actions fit this direction. Continuous compilation, debugging,
+language-server diagnostics, and IDE-style project intelligence are outside the
+near-term product boundary.
+
+## Current Baseline
+
+- [x] `Core` `FilerCore` public entry point with module loading, command send,
+  and event subscription.
+- [x] `Core` Session model with `SessionId`, `SessionManager`, and session
+  policies.
+- [x] `Core` Actor infrastructure with cancellation shared by scanner,
+  searcher, previewer, and operations.
+- [x] `Core` `FsProvider` abstraction with local filesystem implementation and
+  provider capability flags.
+- [x] `Core` File operations for create, copy, move, rename, delete, and folder
+  creation.
+- [x] `Core` Navigation actor with history and `DirectoryLoaded` events.
+- [x] `Core` Pipeline support for hidden filtering, extension filtering, sort,
+  and group output.
+- [x] `Core` Search query parsing and streamed recursive search.
+- [x] `Core` Watcher actor with provider-backed watch/unwatch and debounced
+  `FsChanged` events.
+- [x] `Core` MIME detection and metadata extraction services.
+- [x] `Core` Preview registry, preview cache, preview actor, and text, code,
+  image, media, and archive preview providers.
+- [x] `Core` Directory cache service with explicit refresh bypass support.
+- [x] `Ecosystem` Trusted in-process command seam through `Command::Extension`.
+- [x] `Ecosystem` Shared extension manifest, package, registry, and profile
+  operation contracts live in `filer-ecosystem`.
+- [ ] `Ecosystem` Define extension output events for semantic file decorations,
+  status badges, action state, metadata updates, and client-neutral visual
+  hints.
+
+## Core Contract Stabilization
+
+This is the next core phase. It should happen before a major app rewrite, full
+extension runtime, web transport, marketplace, or broad provider expansion.
+
+- [ ] `Core` Add request ids for scan, search, preview, and refresh flows so
+  stale events can be rejected consistently.
+- [ ] `Core` Add operation ids for copy, move, delete, rename, create file, and
+  create folder progress/completion events.
+- [ ] `Core` Standardize structured recoverable errors for permission denied,
+  collision, not found, unsupported provider capability, cancelled, and stale
+  request cases.
+- [ ] `Core` Define a structured provider `Location` model for local, archive,
+  remote, virtual, and extension-backed locations. It should include scheme,
+  provider/profile id, internal path, optional archive/member path, display
+  path, and capability context instead of relying only on string parsing.
+- [ ] `Core` Define the large-directory loading contract: paging,
+  virtualization hints, incremental loading, or another bounded strategy.
+- [ ] `Core` Decide whether `DirectoryLoaded` remains a full listing event or
+  evolves into snapshot/page/delta events for very large folders.
+- [ ] `Core` Define cancellation and timeout behavior for provider calls,
+  previews, search, operations, and future extension calls.
+- [ ] `Ecosystem` Define the extension output envelope and first file
+  decoration payload before implementing a broad runtime.
+- [ ] `Ecosystem` Define scoped core context subscriptions for visible nodes,
+  current directory, selection, provider changes, and filesystem changes.
+- [ ] `Core` Document which state is app-local config, core session snapshot,
+  provider profile reference, extension profile state, and future sync data.
+- [ ] `App` Treat current UI bugs as input to core contracts when they reveal
+  stale events, duplicate loads, preview races, or large-directory limits.
+
+Exit criteria:
+
+- [ ] Stale scan/search/preview results are ignored by request identity.
+- [ ] Operations emit correlated progress/completion by operation id.
+- [ ] Recoverable errors are structured enough for app and web clients to render
+  clear feedback.
+- [ ] The provider `Location` model is documented and tested.
+- [ ] Large-directory loading is bounded and testable.
+- [ ] Archive traversal is modeled as provider navigation, not only preview.
+- [ ] Undo and conflict-resolution data contracts are drafted, even if full UI
+  and behavior come later.
+- [ ] The first trusted git decoration prototype emits semantic decorations
+  without blocking directory loading.
+- [ ] App-local config remains separate from ecosystem profile operations.
+
+## Reliability First
+
+These items should stay ahead of new feature work because the app depends on
+core events being truthful and fresh.
+
+- [ ] `Reliability` Add focused regression tests for watcher-driven refresh so a
+  created, renamed, or deleted file appears after the app refreshes.
+- [ ] `Reliability` Add directory cache invalidation tests for write operations,
+  watcher events, manual refresh, and same-folder navigation.
+- [ ] `Reliability` Ensure every operation that mutates files invalidates the
+  affected parent directories.
+- [ ] `Reliability` Add stale-event guards for preview and search results by
+  session and request identity.
+- [ ] `Reliability` Standardize recoverable errors so app UI can display clear
+  permission, collision, not-found, and unsupported-provider states.
+- [ ] `Reliability` Keep structured tracing for all app-facing command and event
+  paths.
+- [ ] `Reliability` Add stress tests for rapid create/delete/rename watcher
+  bursts.
+- [ ] `Reliability` Add cancellation tests for long operations, search, preview,
+  and provider calls.
+
+## Navigation And Sessions
+
+- [x] `Core` Navigate to absolute paths.
+- [x] `Core` Back and up navigation.
+- [x] `Core` Forward navigation support in app state.
+- [x] `Core` Per-session navigation state and event routing.
+- [ ] `Core` Add first-class forward navigation command if the app still relies
+  on UI-local history.
+- [ ] `Core` Add session snapshots that can restore current path, history,
+  pipeline config, selection hints, and active providers.
+- [ ] `Power` Support tabs as independent sessions.
+- [ ] `Power` Support split panes as independent sessions.
+- [ ] `Power` Add workspace restore primitives for tabs, panes, paths, provider
+  profiles, and layout state.
+- [ ] `Future` Add session handoff for web/server transport.
+
+## Directory Pipeline
+
+- [x] `Core` Sort by name, size, modified date, and extension/type.
+- [x] `Core` Group by extension/type, date, size, and first letter.
+- [x] `Core` Filter hidden files and extensions.
+- [x] `Core` Preserve pipeline config across app refreshes.
+- [ ] `Core` Add view-independent folder preference model for sort, group,
+  hidden files, and density.
+- [ ] `Core` Add natural sort and locale-aware comparison options.
+- [ ] `Core` Add stable grouping labels for empty extension, folder, and unknown
+  type cases.
+- [ ] `Power` Add project-aware grouping for source, config, generated, media,
+  archive, and document categories.
+- [ ] `Core` Add large-directory paging, incremental directory loading, or
+  another bounded result contract once the `DirectoryLoaded` direction is
+  decided.
+
+## Search
+
+- [x] `Core` Parse text, glob, extension, size, type, hidden, depth, max,
+  date, name, and regex search filters.
+- [x] `Core` Stream recursive search results with completion state.
+- [x] `Core` Cancel previous search work per session.
+- [ ] `Core` Add search result request ids so stale result batches can be
+  discarded safely by all frontends.
+- [ ] `Core` Add scoped search roots for selected folders, current folder, and
+  workspace/project search.
+- [ ] `Power` Add indexed search service for large projects.
+- [ ] `Power` Add provider-specific search delegation when a provider advertises
+  native search capability.
+- [ ] `Ecosystem` Expose search provider contribution points through the
+  extension host, while keeping core search cancellation, request identity, and
+  result routing authoritative.
+
+## File Operations
+
+- [x] `Core` Create file and folder.
+- [x] `Core` Copy, move, rename, delete, and trash-aware delete.
+- [x] `Core` Emit operation progress and completion events.
+- [x] `Core` Refresh current app state after completed operations.
+- [ ] `Reliability` Add conflict-resolution primitives for copy and move.
+- [ ] `Reliability` Draft undo and conflict-resolution metadata contracts now so
+  operation implementation does not paint future UI into a corner.
+- [ ] `Reliability` Add operation ids and request correlation for progress,
+  cancellation, and app status bars.
+- [ ] `Reliability` Add atomic best-effort behavior documentation per provider.
+- [ ] `Power` Add operation queue, pause/resume where practical, and operation
+  history.
+- [ ] `Power` Add undo metadata for reversible operations.
+- [ ] `Power` Add bulk rename planning.
+- [ ] `Power` Add archive create, extract, compress, and decompress operations.
+
+## Preview And Metadata
+
+- [x] `Core` Preview registry and cache.
+- [x] `Core` Text preview.
+- [x] `Core` Code preview with syntax highlighting behind feature flag.
+- [x] `Core` Image thumbnail preview behind feature flag.
+- [x] `Core` Media summary preview.
+- [x] `Core` Archive entry preview.
+- [x] `Core` Metadata extractors for image, audio, video, document, archive, and
+  code categories.
+- [ ] `Reliability` Add stale preview request ids and selection guards.
+- [ ] `Core` Move remaining local-path preview assumptions toward provider or
+  provider-backed cache access.
+- [ ] `Core` Decide which `FileNode` fields are synchronous guarantees and
+  which metadata fields are lazy so grouping/sorting clients do not depend on
+  unstable data.
+- [ ] `Core` Add richer text/code preview payloads suitable for app rendering
+  without locking the app to one highlighter.
+- [ ] `Power` Add video preview payloads that can support a player frontend.
+- [ ] `Power` Add audio preview payloads that can support a player frontend.
+- [ ] `Power` Add markdown/document preview payloads.
+- [ ] `Power` Add hex/binary preview payloads.
+- [ ] `Power` Add thumbnail disk cache keyed by stable file identity or content
+  hash.
+- [ ] `Ecosystem` Allow manifest-declared preview and metadata providers to
+  register through a core host bridge.
+- [ ] `Ecosystem` Allow extensions to publish metadata and preview status as
+  structured core events that clients can render consistently.
+
+## Providers And Virtual Filesystems
+
+- [x] `Core` Local filesystem provider.
+- [x] `Core` Provider capability model for read, write, watch, and search.
+- [ ] `Core` Make provider profile/config types serializable for app and sync.
+- [ ] `Core` Introduce provider `Location` as the canonical file identity across
+  local files, archives, remote providers, virtual providers, and extension
+  providers.
+- [ ] `Power` Implement archives as navigable folders.
+- [ ] `Power` Implement SFTP/SSH provider.
+- [ ] `Power` Implement WebDAV provider.
+- [ ] `Power` Implement S3 provider.
+- [ ] `Power` Implement vault/encrypted provider.
+- [ ] `Power` Add provider connection manager primitives.
+- [ ] `Power` Add provider-aware path addressing for local, archive, remote, and
+  virtual locations.
+- [ ] `Ecosystem` Treat non-local providers as extension-friendly
+  implementations of core-owned provider contracts rather than app-specific
+  integrations.
+- [ ] `Future` Add FUSE mount support for any provider.
+- [ ] `Future` Add Kubernetes provider if it still fits the file-manager scope.
+
+## Programmer-Oriented Core Features
+
+- [ ] `Ecosystem` Add git file decoration as the first extension vertical slice:
+  visible nodes in, modified/added/deleted/untracked/ignored/conflicted/clean
+  decorations out.
+- [ ] `Power` Add external terminal and editor command abstractions after the
+  command/action contracts are stable.
+- [ ] `Future` Add git command primitives for status, diff, branch, commit,
+  stash, pull, and push only if they remain helper actions rather than an IDE
+  workflow.
+- [ ] `Future` Add integrated terminal host contract only if it does not pull
+  core or app toward IDE-like project execution.
+- [ ] `Power` Add lightweight project detection for repository roots when it
+  helps file browsing or git decoration invalidation.
+- [ ] `Power` Add converter command contracts for common developer assets and
+  documents.
+- [ ] `Future` Add task/script launcher primitives only as external command
+  launchers, not as a build system or diagnostics runner.
+- [ ] `Ecosystem` Prefer extension implementations for git, converters,
+  terminal helpers, syntax metadata, and provider extras when the capability is
+  not essential core file-manager behavior.
+- [ ] `Ecosystem` Add file decoration primitives for git-style states such as
+  modified, added, deleted, untracked, ignored, conflicted, and clean.
+
+## Wire Protocol And Web
+
+- [ ] `Protocol` Add serde support for public command, event, node, session,
+  metadata, preview, operation, and pipeline types.
+- [ ] `Protocol` Add a versioned envelope for command and event transport.
+- [ ] `Protocol` Add request/response correlation ids where events respond to a
+  specific command.
+- [ ] `Protocol` Add forward-compatible unknown-field behavior tests.
+- [ ] `Protocol` Add `filer-server` as a thin transport crate that depends on
+  core.
+- [ ] `Protocol` Add WebSocket session lifecycle: connect, create session,
+  stream events, destroy session.
+- [ ] `Future` Add WASM or TypeScript client bindings over the same protocol.
+- [ ] `Future` Add web UI parity with the desktop app once transport is stable.
+
+## Ecosystem Bridge
+
+- [x] `Ecosystem` Keep trusted in-process command routing through
+  `Command::Extension`.
+- [x] `Ecosystem` Keep module system as the internal composition point for core
+  actors and built-ins.
+- [ ] `Ecosystem` Prove the extension model with one complete git decoration
+  slice before adding broad surfaces such as panels, marketplace, package
+  install UI, or full WASM runtime behavior.
+- [ ] `Ecosystem` Implement the first host as a trusted in-process prototype or
+  trusted core add-on. Do not present it as an untrusted third-party plugin
+  system until sandboxing and permission enforcement exist.
+- [ ] `Ecosystem` Depend on `filer-ecosystem` from core only when the bridge API
+  is ready, not for manifest storage alone.
+- [ ] `Ecosystem` Add wire-safe extension command/event envelopes.
+- [ ] `Ecosystem` Add a core extension host module that consumes validated
+  manifests.
+- [ ] `Ecosystem` Add an extension output data plane for decorations, badges,
+  panels, context actions, metadata, preview results, and invalidation events.
+- [ ] `Ecosystem` Limit early client-facing output to row decorations, status
+  badges, context/command actions, preview payloads, and metadata payloads.
+  Arbitrary tabs, popups, panels, and layout control should wait until the
+  decoration slice proves the data plane.
+- [ ] `Ecosystem` Map extension permissions to session policies and provider
+  capabilities.
+- [ ] `Ecosystem` Add scoped filesystem host calls for extensions.
+- [ ] `Ecosystem` Allow extensions to contribute commands, preview providers,
+  metadata providers, converters, and providers.
+- [ ] `Ecosystem` Allow extensions to subscribe to relevant core context such as
+  current directory, visible nodes, selected nodes, provider changes, and file
+  change events.
+- [ ] `Ecosystem` Route extension logs through core tracing.
+- [ ] `Ecosystem` Emit recoverable extension failure events for app UI.
+- [ ] `Future` Add WASM runtime host after the wire-safe contract is stable.
+- [ ] `Future` Add native trusted bridge for built-ins and explicitly trusted
+  power integrations.
+
+## Profile, Sync, And Backup
+
+- [ ] `App` Keep near-term local config simple and app-owned: bookmarks, recent
+  paths, theme, layout, panel visibility, density, and sort/group preferences.
+- [ ] `Core` Define session snapshots and provider profile references without
+  taking ownership of app-only UI persistence.
+- [ ] `Ecosystem` Reserve profile operations for extension installs,
+  enablement, extension settings, themes/icon packs, provider profiles,
+  workspaces, and future sync.
+- [ ] `Core` Add provider-profile identifiers that can be referenced by app,
+  core, and profile sync without storing secrets in portable data.
+- [ ] `Power` Add file sync planning between two providers.
+- [ ] `Power` Add conflict strategies for file sync.
+- [ ] `Power` Add incremental backup planning.
+- [ ] `Future` Add server transport for profile operation sync.
+
+## Themes And Accessibility Support
+
+Most visual theme work belongs in `filer-app`, but core should expose the data
+that frontends and extensions need.
+
+- [ ] `Core` Ensure `FileNode`, metadata, and preview payloads carry enough
+  information for accessible labels without extra filesystem calls.
+- [ ] `Ecosystem` Support serializable theme and icon-pack manifests through
+  `filer-ecosystem`.
+- [ ] `Core` Avoid embedding app-specific color, icon, or layout assumptions in
+  core events.
+- [ ] `Protocol` Ensure accessibility-relevant file metadata survives the future
+  wire boundary.
 
 ## Technical Debt Register
 
-*Known issues that do not block any current milestone but should be resolved before the item upstream of them ships.*
+| Issue | Impact | Priority |
+| --- | --- | --- |
+| Watcher refresh and directory cache behavior need stronger regression coverage | App can receive `FsChanged` but still render stale directory contents | High |
+| Preview registry still has local-path assumptions for magic-byte fallback and provider generation | Remote providers and archive providers cannot preview through pure `FsProvider` yet | High |
+| Public command/event types are not fully wire-safe or versioned | Blocks web transport and public extension host | High |
+| Extension seam still uses `Arc<dyn Any>` for payloads | Fine for trusted in-process modules, unsuitable for ecosystem packages | High |
+| Extension contracts describe declarations better than live semantic output | Blocks git-style file badges, status coloring, panel data, and web/app parity | High |
+| Provider config/profile model is not settled | Blocks persistent remote providers, sync, and extension-managed providers | Medium |
+| Large-directory virtualization/paging is not represented in core | App performance will suffer on very large folders | Medium |
+| Directory loading may still assume full snapshots | Very large folders need pages, deltas, or bounded snapshots | Medium |
+| Conflict resolution and undo metadata are not modeled | Limits professional file operation workflows | Medium |
 
-| Issue | Impacts | Priority |
-|-------|---------|----------|
-| `FsProvider` has no write methods; `Operator` stubs all logic | Phase 10 blocked | **High — Phase 9** |
-| `PreviewRegistry`, `PreviewCache`, `Previewer` have zero test coverage | Preview correctness unverified | **High — Phase 11** |
-| `Command::NavigateForward` is absent from the enum; only `NavigateBack` exists | Forward navigation broken | **Medium** |
-| `test_local_fs_list_not_found` and `test_local_fs_read_not_found` fail (2 known failures) | VFS error path correctness | **Medium** |
-| `actors/cache.rs` `Cache` struct is `todo!()` but imported and compiled | Dead code in production binary | **Low — Phase 12** |
-| Preview providers call `tokio::fs` directly for magic-byte detection (registry.rs `read_header`) | Violates VFS abstraction for remote preview | **Low — Phase 11** |
+## Validation Checklist
 
----
+Run these before calling a core milestone complete:
 
-## Feature Flag Reference
+```bash
+cargo fmt
+cargo check -p filer-core
+cargo test -p filer-core
+cargo check --workspace
+```
 
-| Flag | Enables | Additional deps |
-|------|---------|----------------|
-| `metadata-image` | Image dimensions + full EXIF | `imagesize`, `kamadak-exif` |
-| `metadata-audio` | ID3 tags + duration | `id3` |
-| `metadata-video` | Video dimensions, duration, codecs | `mp4parse` |
-| `metadata-document` | PDF page count, title, author | `lopdf` |
-| `metadata-archive` | Archive entry listing (ZIP/TAR/7Z/…) | `zip`, `tar`, `sevenz-rust2`, decompressors |
-| `metadata-archive-rar` | Above + RAR | `unrar` (C++, RARlab license) |
-| `metadata` | All extractors except RAR | — |
-| `preview-code` | Syntax-highlighted code preview | `syntect` |
-| `preview-image` | Image thumbnail generation | `image` |
-| `crypto` | AES-GCM / XChaCha20 + Argon2id vault | `aes-gcm`, `chacha20poly1305`, `argon2` |
-| `s3` | AWS S3 backend | `aws-sdk-s3` |
-| `webdav` | WebDAV backend | `reqwest` |
-| `sftp` | SSH/SFTP backend | `ssh2` |
-| `fuse` | FUSE mount of any `FsProvider` | `fuser` |
-| `k8s` | Kubernetes resource browser | `kube` |
-| `all-features` | Everything including RAR | — |
+Targeted checks for current risk areas:
 
-> **Compile-time rule:** `cargo build -p filer-core` (no features) must complete in under 30 seconds on a mid-range developer machine. Feature additions that push base build time above this threshold require explicit justification.
+```bash
+cargo test -p filer-core watcher -- --nocapture
+cargo test -p filer-core scanner_cache_tests -- --nocapture
+cargo test -p filer-core preview -- --nocapture
+cargo test -p filer-core operator -- --nocapture
+```
+
+Manual checks:
+
+- [ ] Create, rename, and delete files externally while the app watches the
+  current folder; confirm refreshed listings are fresh.
+- [ ] Navigate, refresh, search, sort, group, and preview without losing session
+  isolation.
+- [ ] Run file operations and confirm cache invalidation updates the current
+  directory.
+- [ ] Confirm app/core logs show command, event, watcher, preview, search, and
+  operation flow clearly.
+- [ ] Confirm new core APIs support the app, future web transport, and
+  ecosystem contracts without UI-specific assumptions.

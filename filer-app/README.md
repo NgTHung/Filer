@@ -23,6 +23,29 @@ and fast feedback while working with files.
 - Bottom status bar with item, selection, search, and sort state.
 - Light, dark, and automatic theme modes.
 
+## Extension Rendering Direction
+
+The app should render extension output that comes through core as structured
+semantic data. A git extension, for example, should not directly style Iced
+widgets. It should report states such as modified, added, untracked, ignored,
+or conflicted for visible files. The app can then render those states as badges,
+filename color tokens, tooltips, row decorations, or panel/status content using
+the active theme and layout.
+
+This keeps the desktop app aligned with future web clients: core and extensions
+agree on meaning, while each client owns presentation.
+
+The app may need a substantial refactor, but that should follow core contract
+stabilization. Bugs that reveal contract problems, such as stale search results,
+duplicate directory loads, preview races, or large-directory limits, should feed
+back into core first. Pure UI issues, such as context-menu placement or visual
+polish, can wait for the app refactor.
+
+The next useful visible proof is not a full app rewrite. It is a large folder
+that appears quickly and remains responsive, followed by asynchronous semantic
+decorations such as git badges. The app should treat extension output as a late,
+optional enhancement over already usable directory data.
+
 ## Design Goals
 
 - Look good enough to use daily while the larger feature roadmap is still in
@@ -71,3 +94,5 @@ cargo test -p filer-core --lib
   feature flags.
 - Advanced workflows such as tabs, split panes, command palette, and operations
   history are planned but not part of the initial polish pass.
+- Extension UI is not a plugin-rendered widget system yet. The intended model is
+  client-rendered semantic output from core-hosted extensions.

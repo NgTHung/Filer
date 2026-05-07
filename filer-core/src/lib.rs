@@ -20,10 +20,6 @@ pub use services::metadata::{ExtendedMetadata, MetadataRegistry};
 pub use services::mime::{MimeCategory, MimeDetector, MimeInfo};
 pub use services::preview::{ArchivePreviewEntry, PreviewData, PreviewOptions, PreviewRegistry};
 
-// Crypto (feature-gated)
-#[cfg(feature = "crypto")]
-pub use services::crypto::{Cipher, CipherAlgorithm, Vault, VaultConfig};
-
 // VFS providers
 pub use vfs::local::LocalFs;
 pub use vfs::provider::{Capabilities, FsProvider};

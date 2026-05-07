@@ -1,7 +1,7 @@
 [workspace]
 name = "filer"
 resolver = "3"
-members = ["filer-app", "filer-core"]
+members = ["filer-app", "filer-core", "filer-ecosystem"]
 
 [workspace.dependencies]
 tokio = {version = "1.52.1", features = ["full"]}
