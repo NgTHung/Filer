@@ -59,12 +59,14 @@ impl Module for OperationsModule {
                 sources,
                 destination,
                 session,
+                operation,
             } = cmd
             {
                 let _ = tx.send(OpsCommand::Copy {
                     sources,
                     destination,
                     session,
+                    operation,
                 });
             }
         });
@@ -76,12 +78,14 @@ impl Module for OperationsModule {
                 sources,
                 destination,
                 session,
+                operation,
             } = cmd
             {
                 let _ = tx.send(OpsCommand::Move {
                     sources,
                     destination,
                     session,
+                    operation,
                 });
             }
         });
@@ -93,12 +97,14 @@ impl Module for OperationsModule {
                 nodes,
                 trash,
                 session,
+                operation,
             } = cmd
             {
                 let _ = tx.send(OpsCommand::Delete {
                     targets: nodes,
                     trash,
                     session,
+                    operation,
                 });
             }
         });
@@ -110,12 +116,14 @@ impl Module for OperationsModule {
                 node,
                 new_name,
                 session,
+                operation,
             } = cmd
             {
                 let _ = tx.send(OpsCommand::Rename {
                     source: node,
                     new_name,
                     session,
+                    operation,
                 });
             }
         });
@@ -127,12 +135,14 @@ impl Module for OperationsModule {
                 parent,
                 name,
                 session,
+                operation,
             } = cmd
             {
                 let _ = tx.send(OpsCommand::CreateFolder {
                     parent,
                     name,
                     session,
+                    operation,
                 });
             }
         });
@@ -144,12 +154,14 @@ impl Module for OperationsModule {
                 parent,
                 name,
                 session,
+                operation,
             } = cmd
             {
                 let _ = tx.send(OpsCommand::CreateFile {
                     parent,
                     name,
                     session,
+                    operation,
                 });
             }
         });

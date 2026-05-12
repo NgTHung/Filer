@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use filer_core::model::node::NodeId;
 use filer_core::modules::navigation::navigator::NavState;
 use filer_core::pipeline::GroupedNodes;
-use filer_core::{FileNode, PreviewData};
+use filer_core::{FileNode, OperationId, PreviewData};
 
 pub use clipboard::ClipboardState;
 pub use selection::{SelectMode, SelectionState};
@@ -49,6 +49,7 @@ pub struct ContextMenuState {
 /// State for an ongoing file operation.
 #[derive(Debug, Clone)]
 pub struct OperationProgressState {
+    pub operation_id: OperationId,
     pub label: String,
     pub done: usize,
     pub total: usize,

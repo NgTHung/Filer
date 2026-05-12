@@ -148,6 +148,8 @@ near-term product boundary.
 - [x] `Core` Directory cache service with explicit refresh bypass support.
 - [x] `Core` Request ids and stale-event guards for scan, search, preview, and
   refresh flows.
+- [x] `Core` Operation ids for copy, move, delete, rename, create file, and
+  create folder progress, completion, and operation-scoped errors.
 - [x] `Ecosystem` Trusted in-process command seam through `Command::Extension`.
 - [x] `Ecosystem` Shared extension manifest, package, registry, and profile
   operation contracts live in `filer-ecosystem`.
@@ -162,7 +164,7 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 
 - [x] `Core` Add request ids for scan, search, preview, and refresh flows so
   stale events can be rejected consistently.
-- [ ] `Core` Add operation ids for copy, move, delete, rename, create file, and
+- [x] `Core` Add operation ids for copy, move, delete, rename, create file, and
   create folder progress/completion events.
 - [ ] `Core` Standardize structured recoverable errors for permission denied,
   collision, not found, unsupported provider capability, cancelled, and stale
@@ -189,7 +191,7 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 Exit criteria:
 
 - [x] Stale scan/search/preview results are ignored by request identity.
-- [ ] Operations emit correlated progress/completion by operation id.
+- [x] Operations emit correlated progress/completion by operation id.
 - [ ] Recoverable errors are structured enough for app and web clients to render
   clear feedback.
 - [ ] The provider `Location` model is documented and tested.
@@ -282,7 +284,7 @@ core events being truthful and fresh.
 - [ ] `Reliability` Add conflict-resolution primitives for copy and move.
 - [ ] `Reliability` Draft undo and conflict-resolution metadata contracts now so
   operation implementation does not paint future UI into a corner.
-- [ ] `Reliability` Add operation ids and request correlation for progress,
+- [x] `Reliability` Add operation ids and request correlation for progress,
   cancellation, and app status bars.
 - [ ] `Reliability` Add atomic best-effort behavior documentation per provider.
 - [ ] `Power` Add operation queue, pause/resume where practical, and operation

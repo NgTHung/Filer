@@ -9,6 +9,7 @@ use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry, Module, ModuleContext};
 use crate::api::session_manager::SessionManager;
 use crate::errors::CoreError;
+use crate::model::operation::OperationId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -246,6 +247,11 @@ impl FilerCore {
     /// Generate a new request ID for correlating async command results.
     pub fn next_request_id(&self) -> RequestId {
         RequestId::new()
+    }
+
+    /// Generate a new operation ID for correlating file operation events.
+    pub fn next_operation_id(&self) -> OperationId {
+        OperationId::new()
     }
 
     /// Shut down all actors.

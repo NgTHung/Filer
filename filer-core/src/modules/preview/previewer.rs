@@ -116,6 +116,7 @@ impl Previewer {
                     recoverable: true,
                     session,
                     request: Some(request),
+                    operation: None,
                 },
                 "previewer: resolve",
             );
@@ -210,6 +211,7 @@ impl Previewer {
                     recoverable: true,
                     session,
                     request: Some(request),
+                    operation: None,
                 },
                 "previewer: resolve",
             );
@@ -246,6 +248,7 @@ impl Previewer {
                             recoverable: true,
                             session,
                             request: Some(request),
+                            operation: None,
                         },
                         "metadata error",
                     )
@@ -267,6 +270,7 @@ impl Previewer {
                     recoverable: true,
                     session,
                     request: Some(request),
+                    operation: None,
                 },
                 "previewer: resolve",
             );
@@ -334,6 +338,7 @@ impl Previewer {
                             recoverable: true,
                             session,
                             request: Some(request),
+                            operation: None,
                         },
                         "extended metadata error",
                     )

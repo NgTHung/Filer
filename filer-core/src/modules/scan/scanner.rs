@@ -286,6 +286,7 @@ impl Actor for Scanner {
                                 recoverable: false,
                                 session,
                                 request: Some(request),
+                                operation: None,
                             },
                             "scan resolve error",
                         );
@@ -307,6 +308,7 @@ impl Actor for Scanner {
                                 recoverable: false,
                                 session,
                                 request: Some(request),
+                                operation: None,
                             },
                             "scan refresh resolve error",
                         );

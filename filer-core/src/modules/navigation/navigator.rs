@@ -353,6 +353,7 @@ impl Navigator {
                                     recoverable: true,
                                     session: session_id,
                                     request: Some(request),
+                                    operation: None,
                                 },
                                 "emit back error",
                             );
@@ -382,6 +383,7 @@ impl Navigator {
                                     recoverable: true,
                                     session: session_id,
                                     request: Some(request),
+                                    operation: None,
                                 },
                                 "emit forward error",
                             );
@@ -413,6 +415,7 @@ impl Navigator {
                                     recoverable: true,
                                     session: session_id,
                                     request: Some(request),
+                                    operation: None,
                                 },
                                 "emit up error",
                             );
@@ -441,6 +444,7 @@ impl Navigator {
                                     recoverable: true,
                                     session: session_id,
                                     request: Some(request),
+                                    operation: None,
                                 },
                                 "emit refresh error",
                             );

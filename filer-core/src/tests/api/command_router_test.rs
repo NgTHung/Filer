@@ -28,6 +28,7 @@ mod command_router_tests {
     use crate::api::module::{HandlerContext, HandlerRegistry};
     use crate::api::session_manager::SessionManager;
     use crate::model::node::NodeId;
+    use crate::model::operation::OperationId;
     use crate::model::registry::NodeRegistry;
     use crate::model::request::RequestId;
     use crate::model::session::SessionId;
@@ -286,12 +287,14 @@ mod command_router_tests {
                         sources,
                         destination,
                         session,
+                        operation,
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::Copy {
                             sources,
                             destination,
                             session,
+                            operation,
                         });
                     }
                 });
@@ -303,12 +306,14 @@ mod command_router_tests {
                         sources,
                         destination,
                         session,
+                        operation,
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::Move {
                             sources,
                             destination,
                             session,
+                            operation,
                         });
                     }
                 });
@@ -320,12 +325,14 @@ mod command_router_tests {
                         nodes,
                         trash,
                         session,
+                        operation,
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::Delete {
                             targets: nodes,
                             trash,
                             session,
+                            operation,
                         });
                     }
                 });
@@ -337,12 +344,14 @@ mod command_router_tests {
                         node,
                         new_name,
                         session,
+                        operation,
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::Rename {
                             source: node,
                             new_name,
                             session,
+                            operation,
                         });
                     }
                 });
@@ -354,12 +363,14 @@ mod command_router_tests {
                         parent,
                         name,
                         session,
+                        operation,
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::CreateFolder {
                             parent,
                             name,
                             session,
+                            operation,
                         });
                     }
                 });
@@ -371,12 +382,14 @@ mod command_router_tests {
                         parent,
                         name,
                         session,
+                        operation,
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::CreateFile {
                             parent,
                             name,
                             session,
+                            operation,
                         });
                     }
                 });
@@ -830,12 +843,14 @@ mod command_router_tests {
             .clone()
             .register(PathBuf::from("/a/file.txt"));
         let dst = harness.registry.clone().register(PathBuf::from("/b"));
+        let operation = OperationId::new();
 
         harness
             .send(Command::Copy {
                 sources: vec![src],
                 destination: dst,
                 session,
+                operation,
             })
             .await;
 
@@ -849,10 +864,12 @@ mod command_router_tests {
                 sources,
                 destination,
                 session: s,
+                operation: op,
             } => {
                 assert_eq!(sources, vec![src]);
                 assert_eq!(destination, dst);
                 assert_eq!(s, session);
+                assert_eq!(op, operation);
             }
             other => panic!("Expected OpsCommand::Copy, got {:?}", other),
         }
@@ -866,12 +883,14 @@ mod command_router_tests {
             .registry
             .clone()
             .register(PathBuf::from("/home/user"));
+        let operation = OperationId::new();
 
         harness
             .send(Command::CreateFile {
                 parent,
                 name: "notes.txt".to_string(),
                 session,
+                operation,
             })
             .await;
 
@@ -885,10 +904,12 @@ mod command_router_tests {
                 parent: p,
                 name,
                 session: s,
+                operation: op,
             } => {
                 assert_eq!(p, parent);
                 assert_eq!(name, "notes.txt");
                 assert_eq!(s, session);
+                assert_eq!(op, operation);
             }
             other => panic!("Expected OpsCommand::CreateFile, got {:?}", other),
         }
@@ -1306,6 +1327,7 @@ mod command_router_tests {
                 parent,
                 name: "new_dir".to_string(),
                 session: unknown,
+                operation: OperationId::new(),
             })
             .await;
 

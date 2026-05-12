@@ -36,8 +36,9 @@ UI framework.
 
 The near-term priority is core contract stabilization, not a full plugin
 platform or app rewrite. Request identity and stale-event guards are now in
-place for scan, search, preview, and refresh flows. The project should next
-settle operation identity, structured errors, provider addressing,
+place for scan, search, preview, and refresh flows, and file operations now emit
+correlated operation progress, completion, and error events. The project should
+next settle structured errors, provider addressing,
 large-directory loading contracts, extension output envelopes, and the boundary
 between app-local config and future profile sync.
 

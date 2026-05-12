@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use filer_core::OperationId;
 use filer_core::api::events::OperationKind;
 use filer_core::model::node::NodeId;
 
@@ -101,7 +102,7 @@ pub enum Message {
     RemoveBookmark(PathBuf),
 
     // ── Operations progress ─────────────────────────────────────────
-    OperationProgress(OperationKind, usize, usize),
+    OperationProgress(OperationId, OperationKind, usize, usize),
 
     // ── Error display ───────────────────────────────────────────────
     DismissError,

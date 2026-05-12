@@ -25,6 +25,7 @@ use crate::actors::Actor;
 use crate::api::events::{Event, OperationKind};
 use crate::errors::CoreError;
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+use crate::model::operation::OperationId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::modules::operations::operator::{Operator, OpsCommand};
@@ -445,12 +446,14 @@ mod copy_tests {
         );
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::Copy {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                operation: operation_id,
             })
             .unwrap();
 
@@ -462,6 +465,7 @@ mod copy_tests {
                 success,
                 affected,
                 session: s,
+                ..
             } => {
                 assert!(matches!(operation, OperationKind::Copy));
                 assert!(success);
@@ -501,12 +505,14 @@ mod copy_tests {
         );
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::Copy {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                operation: operation_id,
             })
             .unwrap();
 
@@ -527,10 +533,11 @@ mod copy_tests {
             .iter()
             .filter_map(|e| match e {
                 Event::OperationProgress {
+                    operation_id: id,
                     items_done,
                     session: s,
                     ..
-                } if *s == session => Some(*items_done),
+                } if *s == session && *id == operation_id => Some(*items_done),
                 _ => None,
             })
             .collect();
@@ -543,9 +550,13 @@ mod copy_tests {
 
         match final_event {
             Event::OperationComplete {
-                operation, success, ..
+                operation,
+                operation_id: id,
+                success,
+                ..
             } => {
                 assert!(matches!(operation, OperationKind::Copy));
+                assert_eq!(id, operation_id);
                 assert!(success);
             }
             other => panic!("Expected OperationComplete, got: {other:?}"),
@@ -590,6 +601,7 @@ mod copy_tests {
                 sources: vec![src1_id, src2_id],
                 destination: dst_id,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -634,6 +646,7 @@ mod copy_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -669,6 +682,7 @@ mod copy_tests {
                 sources: vec![fake_src],
                 destination: dst_id,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -713,6 +727,7 @@ mod move_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -775,6 +790,7 @@ mod move_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -828,6 +844,7 @@ mod delete_tests {
                 targets: vec![node_id],
                 trash: false,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -839,6 +856,7 @@ mod delete_tests {
                 success,
                 affected,
                 session: s,
+                ..
             } => {
                 assert!(matches!(operation, OperationKind::Delete));
                 assert!(success);
@@ -870,6 +888,7 @@ mod delete_tests {
                 targets: vec![node_id],
                 trash: true,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -917,6 +936,7 @@ mod delete_tests {
                 targets: vec![id1, id2, id3],
                 trash: false,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -953,6 +973,7 @@ mod delete_tests {
                 targets: vec![node_id],
                 trash: false,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -989,6 +1010,7 @@ mod rename_tests {
                 source: src_id,
                 new_name: "new_name.txt".to_string(),
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -1030,6 +1052,7 @@ mod rename_tests {
                 source: src_id,
                 new_name: "new_dir".to_string(),
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -1068,6 +1091,7 @@ mod rename_tests {
                 source: src_id,
                 new_name: "file_b.txt".to_string(),
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -1111,6 +1135,7 @@ mod create_folder_tests {
                 parent: parent_id,
                 name: "new_folder".to_string(),
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -1122,6 +1147,7 @@ mod create_folder_tests {
                 success,
                 affected,
                 session: s,
+                ..
             } => {
                 assert!(matches!(operation, OperationKind::CreateFolder));
                 assert!(success);
@@ -1154,6 +1180,7 @@ mod create_folder_tests {
                 parent: parent_id,
                 name: "existing_dir".to_string(),
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -1197,6 +1224,7 @@ mod create_file_tests {
                 parent: parent_id,
                 name: "new_file.txt".to_string(),
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -1208,6 +1236,7 @@ mod create_file_tests {
                 success,
                 affected,
                 session: s,
+                ..
             } => {
                 assert!(matches!(operation, OperationKind::CreateFile));
                 assert!(success);
@@ -1235,20 +1264,27 @@ mod create_file_tests {
         provider.add_existing(PathBuf::from("/home/user/exists.txt"));
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::CreateFile {
                 parent: parent_id,
                 name: "exists.txt".to_string(),
                 session,
+                operation: operation_id,
             })
             .unwrap();
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::Error { session: s, .. } => {
+            Event::Error {
+                session: s,
+                operation,
+                ..
+            } => {
                 assert_eq!(s, session);
+                assert_eq!(operation, Some(operation_id));
             }
             other => panic!("Expected Error for file collision, got: {other:?}"),
         }
@@ -1302,6 +1338,7 @@ mod cancel_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 
@@ -1371,6 +1408,7 @@ mod cancel_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                operation: OperationId::new(),
             })
             .unwrap();
 

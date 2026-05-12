@@ -37,7 +37,6 @@ panel entry.
 The next core milestone is contract stabilization. Before a major app rewrite or
 full extension runtime, core should settle:
 
-- operation ids for progress and completion events
 - structured recoverable errors
 - provider addressing beyond raw local paths
 - cancellation and timeout semantics
@@ -49,6 +48,8 @@ full extension runtime, core should settle:
 Completed contract work:
 
 - request ids and stale-event guards for scan, search, preview, and refresh
+- operation ids for copy, move, delete, rename, create file, and create folder
+  progress, completion, and operation-scoped errors
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -61,10 +62,9 @@ capabilities. This keeps local, archive, remote, virtual, and extension-backed
 files addressable through the same core model.
 
 Core stabilization is complete only when large directory loading is bounded,
-operation progress is correlated, recoverable errors are structured, archive
-traversal is modeled as provider navigation, and the trusted git-decoration
-prototype proves extension output can arrive after directory data without
-blocking it.
+recoverable errors are structured, archive traversal is modeled as provider
+navigation, and the trusted git-decoration prototype proves extension output can
+arrive after directory data without blocking it.
 
 ## Request IDs
 
@@ -84,6 +84,23 @@ Scan, search, and preview actors remember the latest request per session. If an
 older task finishes after a newer one, its result events are dropped before they
 reach clients. Request-scoped errors use `Event::Error { request: Some(id), .. }`;
 non-request errors and operation errors currently use `request: None`.
+
+## Operation IDs
+
+File operation commands now carry an `OperationId`. Callers create one operation
+id per user intent and include it on `Copy`, `Move`, `Delete`, `Rename`,
+`CreateFolder`, and `CreateFile` commands. The same id is echoed on
+`OperationProgress` and `OperationComplete` events.
+
+`OperationId::new()` creates runtime-local monotonic ids. `FilerCore` also
+exposes `next_operation_id()` for callers that prefer to allocate ids through
+the handle. `OperationId::DEFAULT` is reserved for compatibility placeholders
+and should not be used for new client-originated work.
+
+Operation-scoped failures use `Event::Error { operation: Some(id), request:
+None, .. }`. Non-operation errors use `operation: None`. Cancellation remains
+session-scoped for now; operation-id-specific cancellation can be added later
+without changing the correlation contract.
 
 ## Usage
 

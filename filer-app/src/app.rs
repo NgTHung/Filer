@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use filer_core::model::node::{NodeId, NodeKind};
 use filer_core::model::session::SessionId;
-use filer_core::{Command, FilerCore, PreviewData, RequestId};
+use filer_core::{Command, FilerCore, OperationId, PreviewData, RequestId};
 use iced::futures::Stream;
 use iced::keyboard::{Key, Modifiers};
 use iced::theme::Mode;
@@ -316,6 +316,7 @@ impl App {
                                 sources: cb.nodes,
                                 destination: dest,
                                 session: self.session,
+                                operation: OperationId::new(),
                             });
                             self.state.clipboard = None;
                         } else {
@@ -323,6 +324,7 @@ impl App {
                                 sources: cb.nodes,
                                 destination: dest,
                                 session: self.session,
+                                operation: OperationId::new(),
                             });
                         }
                     }
@@ -337,6 +339,7 @@ impl App {
                         nodes: ids,
                         trash,
                         session: self.session,
+                        operation: OperationId::new(),
                     });
                 }
                 self.state.context_menu = None;
@@ -366,6 +369,7 @@ impl App {
                         node: r.node,
                         new_name: r.current_name,
                         session: self.session,
+                        operation: OperationId::new(),
                     });
                 }
                 Task::none()
@@ -396,6 +400,7 @@ impl App {
                                 parent: parent_id,
                                 name: c.name,
                                 session: self.session,
+                                operation: OperationId::new(),
                             });
                         }
                     }
@@ -428,6 +433,7 @@ impl App {
                                 parent: parent_id,
                                 name: c.name,
                                 session: self.session,
+                                operation: OperationId::new(),
                             });
                         }
                     }
@@ -484,7 +490,7 @@ impl App {
                 Task::none()
             }
 
-            Message::OperationProgress(kind, done, total) => {
+            Message::OperationProgress(operation_id, kind, done, total) => {
                 use filer_core::api::events::OperationKind;
                 let label = match kind {
                     OperationKind::Copy => "Copying",
@@ -495,7 +501,12 @@ impl App {
                     OperationKind::CreateFile => "Creating file",
                 }
                 .to_string();
-                self.state.operation_progress = Some(OperationProgressState { label, done, total });
+                self.state.operation_progress = Some(OperationProgressState {
+                    operation_id,
+                    label,
+                    done,
+                    total,
+                });
                 Task::none()
             }
 
@@ -570,12 +581,14 @@ impl App {
                 });
             }
             filer_core::Event::OperationProgress {
+                operation_id,
                 operation,
                 items_done,
                 total_items,
                 ..
             } => {
                 return self.update(Message::OperationProgress(
+                    operation_id,
                     operation,
                     items_done,
                     total_items,

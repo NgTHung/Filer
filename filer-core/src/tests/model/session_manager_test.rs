@@ -148,6 +148,7 @@ mod session_manager_tests {
             recoverable: true,
             session: id1,
             request: None,
+            operation: None,
         };
         mgr.send_to(id1, event).unwrap();
 
@@ -181,6 +182,7 @@ mod session_manager_tests {
             recoverable: false,
             session: SessionId::DEFAULT, // broadcast, so session field is illustrative
             request: None,
+            operation: None,
         };
         mgr.broadcast(event);
 
@@ -204,6 +206,7 @@ mod session_manager_tests {
             recoverable: true,
             session: SessionId::DEFAULT,
             request: None,
+            operation: None,
         };
         mgr.broadcast(event);
     }
@@ -221,6 +224,7 @@ mod session_manager_tests {
             recoverable: true,
             session: id,
             request: None,
+            operation: None,
         };
         let result = mgr.send_to(id, event);
         assert!(result.is_ok());
@@ -242,6 +246,7 @@ mod session_manager_tests {
             recoverable: false,
             session: bogus,
             request: None,
+            operation: None,
         };
         let result = mgr.send_to(bogus, event);
         assert!(result.is_err());
@@ -266,6 +271,7 @@ mod session_manager_tests {
             recoverable: false,
             session: id,
             request: None,
+            operation: None,
         };
         let result = mgr.send_to(id, event);
         assert!(result.is_err());
@@ -413,6 +419,7 @@ mod session_manager_tests {
             recoverable: true,
             session: SessionId::DEFAULT,
             request: None,
+            operation: None,
         };
         mgr.broadcast(event);
 
@@ -437,6 +444,7 @@ mod session_manager_tests {
                 recoverable: true,
                 session: id,
                 request: None,
+                operation: None,
             };
             mgr.send_to(id, event).unwrap();
         }

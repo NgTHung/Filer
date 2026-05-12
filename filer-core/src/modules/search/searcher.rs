@@ -197,6 +197,7 @@ impl Actor for Searcher {
                                 recoverable: true,
                                 session,
                                 request: Some(request),
+                                operation: None,
                             },
                             "search resolve error",
                         );

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::errors::CoreError;
 use crate::model::node::{NodeId, NodeMeta};
+use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavState;
@@ -55,6 +56,7 @@ pub enum Event {
 
     /// File operation completed
     OperationComplete {
+        operation_id: OperationId,
         operation: OperationKind,
         success: bool,
         affected: Vec<NodeId>,
@@ -62,6 +64,7 @@ pub enum Event {
     },
 
     OperationProgress {
+        operation_id: OperationId,
         operation: OperationKind,
         total_items: usize,
         items_done: usize,
@@ -75,6 +78,7 @@ pub enum Event {
         recoverable: bool,
         session: SessionId,
         request: Option<RequestId>,
+        operation: Option<OperationId>,
     },
 
     /// Basic metadata loaded (owner/group populated after load_owner_info)
@@ -139,6 +143,7 @@ impl Event {
             recoverable,
             session,
             request: None,
+            operation: None,
         }
     }
 }

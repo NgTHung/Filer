@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::PreviewOptions;
 use crate::model::node::NodeId;
+use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
@@ -84,6 +85,7 @@ pub enum Command {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
+        operation: OperationId,
     },
 
     /// Move nodes to destination
@@ -91,6 +93,7 @@ pub enum Command {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
+        operation: OperationId,
     },
 
     /// Delete nodes
@@ -98,6 +101,7 @@ pub enum Command {
         nodes: Vec<NodeId>,
         trash: bool,
         session: SessionId,
+        operation: OperationId,
     },
 
     /// Rename a node
@@ -105,6 +109,7 @@ pub enum Command {
         node: NodeId,
         new_name: String,
         session: SessionId,
+        operation: OperationId,
     },
 
     /// Create folder in parent
@@ -112,6 +117,7 @@ pub enum Command {
         parent: NodeId,
         name: String,
         session: SessionId,
+        operation: OperationId,
     },
 
     /// Create file in parent
@@ -119,6 +125,7 @@ pub enum Command {
         parent: NodeId,
         name: String,
         session: SessionId,
+        operation: OperationId,
     },
 
     /// Load basic metadata

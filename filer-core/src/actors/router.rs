@@ -72,6 +72,7 @@ impl CommandRouter {
                     recoverable: true,
                     session,
                     request: None,
+                    operation: None,
                 },
                 "unknown session error",
             );

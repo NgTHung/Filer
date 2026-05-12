@@ -17,10 +17,10 @@ badges, status badges, color tokens, tooltips, context actions, panels, previews
 and settings. Extensions should not own desktop widgets directly.
 
 The app roadmap is intentionally downstream of core contract stabilization. A
-large app refactor should wait until operation ids, structured errors, provider
-addressing, extension output envelopes, and large-directory loading contracts are
-settled. Request ids and stale-event guards are already available in core for
-scan, search, preview, and refresh flows. App bugs that expose remaining
+large app refactor should wait until structured errors, provider addressing,
+extension output envelopes, and large-directory loading contracts are settled.
+Request ids, stale-event guards, and operation ids are already available in core
+for app-facing async work. App bugs that expose remaining
 contracts should be treated as core feedback; pure visual and interaction bugs
 can be fixed during the app refactor.
 
@@ -55,6 +55,7 @@ Milestone labels:
 - [x] `MVP` Active-directory watcher hook with debounced refresh.
 - [x] `MVP` Fresh refresh path that invalidates stale directory cache entries.
 - [x] `MVP` Core request ids for scan, search, preview, and refresh commands.
+- [x] `MVP` Core operation ids for operation progress/completion correlation.
 - [x] `MVP` Light, dark, and automatic theme modes.
 - [x] `MVP` Broad UI-core tracing for commands, events, watcher refresh, and
   preview flow.
@@ -101,7 +102,7 @@ Milestone labels:
 - [ ] `MVP` Clear duplicate-name and permission-denied feedback.
 - [ ] `MVP` Multi-selection-aware context actions.
 - [ ] `Polish` Drag and drop for internal move/copy.
-- [ ] `Polish` Operation progress tray for long copy/move/delete operations.
+- [x] `Polish` Operation progress tray for long copy/move/delete operations.
 - [ ] `Polish` Conflict resolution for copy/move collisions.
 - [ ] `Core` Render future undo/conflict metadata once the core operation
   contract exists; full undo UI can wait.

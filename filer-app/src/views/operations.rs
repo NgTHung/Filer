@@ -7,6 +7,7 @@ use crate::views::theme::panel_alt_surface;
 
 /// Build the operation-progress tray.
 pub fn view(op: &OperationProgressState) -> Element<'static, Message> {
+    let _ = op.operation_id;
     let fraction = if op.total > 0 {
         op.done as f32 / op.total as f32
     } else {
