@@ -451,6 +451,7 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session,
                 node: target_node,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -499,6 +500,7 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session,
                 node: node(100),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -508,13 +510,19 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session,
                 node: node(200),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         // Now go back
-        cmd_tx.send(NavCommand::Back(session)).unwrap();
+        cmd_tx
+            .send(NavCommand::Back(
+                session,
+                crate::model::request::RequestId::new(),
+            ))
+            .unwrap();
 
         // Should process without panic
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -542,6 +550,7 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session,
                 node: node(100),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -550,15 +559,26 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session,
                 node: node(200),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
 
-        cmd_tx.send(NavCommand::Back(session)).unwrap();
+        cmd_tx
+            .send(NavCommand::Back(
+                session,
+                crate::model::request::RequestId::new(),
+            ))
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         // Now go forward
-        cmd_tx.send(NavCommand::Forward(session)).unwrap();
+        cmd_tx
+            .send(NavCommand::Forward(
+                session,
+                crate::model::request::RequestId::new(),
+            ))
+            .unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         // Should process without panic
@@ -637,6 +657,7 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session,
                 node: node(100),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -645,7 +666,12 @@ mod navigator_actor_tests {
         while scanner_rx.try_recv().is_ok() {}
 
         // Refresh current directory
-        cmd_tx.send(NavCommand::Refresh(session)).unwrap();
+        cmd_tx
+            .send(NavCommand::Refresh(
+                session,
+                crate::model::request::RequestId::new(),
+            ))
+            .unwrap();
 
         // Should trigger a new scan
         let result = timeout(Duration::from_millis(100), scanner_rx.recv_async()).await;
@@ -672,19 +698,26 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session: session1,
                 node: node(100),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
             .send(NavCommand::Navigate {
                 session: session2,
                 node: node(200),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
         tokio::time::sleep(Duration::from_millis(20)).await;
 
         // Both sessions should be independent
-        cmd_tx.send(NavCommand::Back(session1)).unwrap();
+        cmd_tx
+            .send(NavCommand::Back(
+                session1,
+                crate::model::request::RequestId::new(),
+            ))
+            .unwrap();
         cmd_tx.send(NavCommand::GetState(session2)).unwrap();
 
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -738,18 +771,21 @@ mod navigator_actor_tests {
             .send(NavCommand::Navigate {
                 session,
                 node: node(100),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
                 node: node(200),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
                 node: node(300),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 

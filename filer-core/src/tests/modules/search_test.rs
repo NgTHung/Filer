@@ -335,6 +335,7 @@ mod searcher_basic_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -371,6 +372,7 @@ mod searcher_basic_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -400,6 +402,7 @@ mod searcher_basic_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -433,6 +436,7 @@ mod searcher_basic_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -476,6 +480,7 @@ mod searcher_traversal_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -528,6 +533,7 @@ mod searcher_traversal_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -582,6 +588,7 @@ mod searcher_traversal_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -627,6 +634,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -658,6 +666,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -689,6 +698,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -719,6 +729,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -749,6 +760,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -780,6 +792,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -815,6 +828,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -847,6 +861,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -888,6 +903,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -918,6 +934,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -951,6 +968,7 @@ mod searcher_filter_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -991,6 +1009,7 @@ mod searcher_hidden_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1032,6 +1051,7 @@ mod searcher_hidden_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1079,6 +1099,7 @@ mod searcher_hidden_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1123,6 +1144,7 @@ mod searcher_limit_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1155,6 +1177,7 @@ mod searcher_limit_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1223,6 +1246,7 @@ mod searcher_cancellation_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1283,6 +1307,7 @@ mod searcher_cancellation_tests {
                 query: query1,
                 root: root_id,
                 session: session1,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx.send(SearchCommand::Cancel(session1)).unwrap();
@@ -1291,6 +1316,7 @@ mod searcher_cancellation_tests {
                 query: query2,
                 root: root_id,
                 session: session2,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1323,6 +1349,7 @@ mod searcher_error_tests {
                 query,
                 root: fake_root,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1382,6 +1409,7 @@ mod searcher_error_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -1421,6 +1449,7 @@ mod searcher_session_tests {
                 query,
                 root: root_id,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 

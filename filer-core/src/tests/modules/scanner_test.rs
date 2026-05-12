@@ -212,6 +212,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s1,
                 pipeline: default_pipeline(),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         wait_for_dir_loaded(&evt_rx, s1).await;
@@ -221,6 +222,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s2,
                 pipeline: default_pipeline(),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         wait_for_dir_loaded(&evt_rx, s2).await;
@@ -259,6 +261,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s1,
                 pipeline: default_pipeline(),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         wait_for_dir_loaded(&evt_rx, s1).await;
@@ -272,6 +275,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s2,
                 pipeline: default_pipeline(),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         wait_for_dir_loaded(&evt_rx, s2).await;
@@ -313,6 +317,7 @@ mod scanner_cache_tests {
                 node,
                 session: s1,
                 pipeline: default_pipeline(),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         wait_for_dir_loaded(&evt_rx, s1).await;
@@ -324,6 +329,7 @@ mod scanner_cache_tests {
                 node,
                 session: s2,
                 pipeline: default_pipeline(),
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         let groups = wait_for_dir_loaded(&evt_rx, s2).await;
@@ -360,6 +366,7 @@ mod scanner_command_tests {
                 group: None,
             },
             session,
+            request: crate::model::request::RequestId::new(),
         };
 
         let cloned = cmd.clone();
@@ -370,11 +377,13 @@ mod scanner_command_tests {
                     path: p1,
                     pipeline: pl1,
                     session: s1,
+                    request: _,
                 },
                 ScanCommand::Scan {
                     path: p2,
                     pipeline: pl2,
                     session: s2,
+                    request: _,
                 },
             ) => {
                 assert_eq!(s1, s2);
@@ -396,6 +405,7 @@ mod scanner_command_tests {
                 group: None,
             },
             session,
+            request: crate::model::request::RequestId::new(),
         };
 
         let debug_str = format!("{:?}", cmd);

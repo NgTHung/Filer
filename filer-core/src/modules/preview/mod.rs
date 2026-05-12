@@ -37,12 +37,14 @@ impl Module for PreviewModule {
                 id,
                 options,
                 session,
+                request,
             } = cmd
             {
                 let _ = tx.send(PreviewCommand::Generate {
                     path: id,
                     options,
                     session,
+                    request,
                 });
             }
         });
@@ -58,16 +60,26 @@ impl Module for PreviewModule {
         // ── Load metadata ────────────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on("metadata.load", move |cmd, _ctx| {
-            if let Command::LoadMetadata(node, session) = cmd {
-                let _ = tx.send(PreviewCommand::LoadMetadata(node, session));
+            if let Command::LoadMetadata {
+                node,
+                session,
+                request,
+            } = cmd
+            {
+                let _ = tx.send(PreviewCommand::LoadMetadata(node, session, request));
             }
         });
 
         // ── Load extended metadata ───────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on("metadata.extended", move |cmd, _ctx| {
-            if let Command::LoadExtendedMetadata(node, session) = cmd {
-                let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session));
+            if let Command::LoadExtendedMetadata {
+                node,
+                session,
+                request,
+            } = cmd
+            {
+                let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
             }
         });
 

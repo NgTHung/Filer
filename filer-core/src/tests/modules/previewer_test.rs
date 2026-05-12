@@ -218,6 +218,7 @@ mod cache_tests {
                 path: node_id,
                 options: None,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -245,6 +246,7 @@ mod cache_tests {
                 path: node_id,
                 options: None,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
@@ -274,6 +276,7 @@ mod cancel_tests {
                 path: node_id,
                 options: None,
                 session,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         tokio::task::yield_now().await;
@@ -333,6 +336,7 @@ mod clear_cache_tests {
                 path: node_id,
                 options: None,
                 session: session2,
+                request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 

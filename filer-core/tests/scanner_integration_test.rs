@@ -160,6 +160,7 @@ async fn test_scanner_processes_scan_command() {
                 group: None,
             },
             session: sess,
+            request: filer_core::RequestId::new(),
         })
         .expect("Failed to send scan command");
 
@@ -209,6 +210,7 @@ async fn test_scanner_handles_cancellation() {
                 group: None,
             },
             session: sess,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
 
@@ -241,6 +243,7 @@ async fn test_scanner_handles_multiple_scans() {
                 group: None,
             },
             session: sess,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
 
@@ -253,6 +256,7 @@ async fn test_scanner_handles_multiple_scans() {
                 group: None,
             },
             session: sess,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
 
@@ -287,6 +291,7 @@ async fn test_scanner_handles_provider_errors() {
                 group: None,
             },
             session: sess,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
 
@@ -323,6 +328,7 @@ async fn test_scanner_depth_limiting() {
                 group: None,
             },
             session: sess,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
 
@@ -356,6 +362,7 @@ async fn test_scanner_emits_progress_events() {
                 group: None,
             },
             session: sess,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
 

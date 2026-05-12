@@ -1,4 +1,5 @@
 use flume::{Receiver, Sender};
+use rapidhash::fast::RandomState;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -7,6 +8,7 @@ use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig};
 use crate::services::dir_cache::SharedDirCache;
@@ -20,16 +22,19 @@ pub enum ScanCommand {
         path: PathBuf,
         session: SessionId,
         pipeline: PipelineConfig,
+        request: RequestId,
     },
     ScanNode {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
+        request: RequestId,
     },
     RefreshNode {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
+        request: RequestId,
     },
     Cancel(SessionId),
     Shutdown,
@@ -42,6 +47,7 @@ pub struct Scanner {
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active_scans: CancelMap,
+    latest_scans: Arc<scc::HashMap<SessionId, RequestId, RandomState>>,
     cache: Option<SharedDirCache>,
 }
 
@@ -58,6 +64,7 @@ impl Scanner {
             provider,
             registry,
             active_scans: CancelMap::new(),
+            latest_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             cache: None,
         }
     }
@@ -75,6 +82,7 @@ impl Scanner {
             provider,
             registry,
             active_scans: CancelMap::new(),
+            latest_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             cache: Some(cache),
         }
     }
@@ -91,13 +99,17 @@ impl Scanner {
         session: SessionId,
         pipeline_config: PipelineConfig,
         invalidate_cache: bool,
+        request: RequestId,
     ) {
         let provider = self.provider.clone();
         let registry = self.registry.clone();
         let events = self.events_sender.clone();
         let active_scans = self.active_scans.clone();
+        let latest_scans = self.latest_scans.clone();
         let cache = self.cache.clone();
 
+        let _ = self.latest_scans.remove_sync(&session);
+        let _ = self.latest_scans.insert_sync(session, request);
         let cancel = active_scans.arm(session);
         tokio::spawn(async move {
             Self::scan_directory(
@@ -108,6 +120,8 @@ impl Scanner {
                 session,
                 pipeline_config,
                 &cancel,
+                request,
+                &latest_scans,
                 cache.as_ref(),
                 invalidate_cache,
             )
@@ -129,6 +143,8 @@ impl Scanner {
         session: SessionId,
         pipeline_config: PipelineConfig,
         cancel: &CancellationToken,
+        request: RequestId,
+        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
         cache: Option<&SharedDirCache>,
         invalidate_cache: bool,
     ) {
@@ -149,6 +165,9 @@ impl Scanner {
             registry.clone().register_batch_file_node(&cached);
             let pipeline = Pipeline::from_config(&pipeline_config);
             let groups = pipeline.execute_grouped(cached);
+            if !Self::is_latest(latest_scans, session, request) {
+                return;
+            }
             send_or_warn_async(
                 events,
                 Event::DirectoryLoaded {
@@ -156,6 +175,7 @@ impl Scanner {
                     path: path.to_path_buf(),
                     groups,
                     session,
+                    request,
                 },
                 "scan result (cached)",
             )
@@ -168,7 +188,13 @@ impl Scanner {
         let entries = match provider.list(path).await {
             Ok(entries) => entries,
             Err(e) => {
-                send_or_warn_async(events, Event::from_error(e, session), "scan error").await;
+                if Self::is_latest(latest_scans, session, request) {
+                    let mut event = Event::from_error(e, session);
+                    if let Event::Error { request: r, .. } = &mut event {
+                        *r = Some(request);
+                    }
+                    send_or_warn_async(events, event, "scan error").await;
+                }
                 return;
             }
         };
@@ -198,6 +224,9 @@ impl Scanner {
         if cancel.is_cancelled() {
             return;
         }
+        if !Self::is_latest(latest_scans, session, request) {
+            return;
+        }
 
         // 6. Send result
         send_or_warn_async(
@@ -207,10 +236,21 @@ impl Scanner {
                 path: path.to_path_buf(),
                 groups,
                 session,
+                request,
             },
             "scan result",
         )
         .await;
+    }
+
+    fn is_latest(
+        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
+        session: SessionId,
+        request: RequestId,
+    ) -> bool {
+        latest_scans
+            .read_sync(&session, |_, latest| *latest == request)
+            .unwrap_or(false)
     }
 
     fn cancel_scan(&self, session: SessionId) {
@@ -226,13 +266,15 @@ impl Actor for Scanner {
                     path,
                     session,
                     pipeline,
+                    request,
                 }) => {
-                    self.dispatch_scan(path, session, pipeline, false);
+                    self.dispatch_scan(path, session, pipeline, false, request);
                 }
                 Ok(ScanCommand::ScanNode {
                     node,
                     session,
                     pipeline,
+                    request,
                 }) => {
                     // Resolve NodeId → PathBuf before spawning.
                     // Cheap in-memory lookup; fail fast if invalid.
@@ -243,17 +285,19 @@ impl Actor for Scanner {
                                 message: format!("Unable to resolve ID: {node:?}"),
                                 recoverable: false,
                                 session,
+                                request: Some(request),
                             },
                             "scan resolve error",
                         );
                         continue;
                     };
-                    self.dispatch_scan(path, session, pipeline, false);
+                    self.dispatch_scan(path, session, pipeline, false, request);
                 }
                 Ok(ScanCommand::RefreshNode {
                     node,
                     session,
                     pipeline,
+                    request,
                 }) => {
                     let Some(path) = self.registry.resolve(node) else {
                         send_or_warn(
@@ -262,12 +306,13 @@ impl Actor for Scanner {
                                 message: format!("Unable to resolve ID: {node:?}"),
                                 recoverable: false,
                                 session,
+                                request: Some(request),
                             },
                             "scan refresh resolve error",
                         );
                         continue;
                     };
-                    self.dispatch_scan(path, session, pipeline, true);
+                    self.dispatch_scan(path, session, pipeline, true, request);
                 }
                 Ok(ScanCommand::Cancel(session)) => {
                     self.cancel_scan(session);

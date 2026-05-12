@@ -35,8 +35,9 @@ same extension useful across clients without letting extensions depend on one
 UI framework.
 
 The near-term priority is core contract stabilization, not a full plugin
-platform or app rewrite. The project should first settle request identity,
-stale-event guards, operation identity, structured errors, provider addressing,
+platform or app rewrite. Request identity and stale-event guards are now in
+place for scan, search, preview, and refresh flows. The project should next
+settle operation identity, structured errors, provider addressing,
 large-directory loading contracts, extension output envelopes, and the boundary
 between app-local config and future profile sync.
 

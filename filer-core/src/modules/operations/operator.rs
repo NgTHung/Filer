@@ -122,6 +122,7 @@ impl Operator {
                     message: format!("Cannot resolve destination {dest:?}"),
                     recoverable: true,
                     session,
+                    request: None,
                 },
                 "operator: copy resolve dest",
             );
@@ -137,6 +138,7 @@ impl Operator {
                         message: format!("Cannot resolve source {src_id:?}"),
                         recoverable: true,
                         session,
+                        request: None,
                     },
                     "operator: copy resolve src",
                 );
@@ -166,6 +168,7 @@ impl Operator {
                             message: format!("Cannot stat {}", src_path.display()),
                             recoverable: true,
                             session,
+                            request: None,
                         },
                         "operator: copy stat",
                     )
@@ -242,6 +245,7 @@ impl Operator {
                     message: format!("Cannot resolve destination {dest:?}"),
                     recoverable: true,
                     session,
+                    request: None,
                 },
                 "operator: move resolve dest",
             );
@@ -257,6 +261,7 @@ impl Operator {
                         message: format!("Cannot resolve source {src_id:?}"),
                         recoverable: true,
                         session,
+                        request: None,
                     },
                     "operator: move resolve src",
                 );
@@ -347,6 +352,7 @@ impl Operator {
                         message: format!("Cannot resolve node {target:?}"),
                         recoverable: true,
                         session,
+                        request: None,
                     },
                     "operator: delete resolve",
                 );
@@ -440,6 +446,7 @@ impl Operator {
                     message: format!("Cannot resolve node {source:?}"),
                     recoverable: true,
                     session,
+                    request: None,
                 },
                 "operator: rename resolve",
             );
@@ -453,6 +460,7 @@ impl Operator {
                     message: format!("Cannot get parent of {}", src_path.display()),
                     recoverable: true,
                     session,
+                    request: None,
                 },
                 "operator: rename parent",
             );
@@ -473,6 +481,7 @@ impl Operator {
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
+                        request: None,
                     },
                     "operator: rename collision",
                 )
@@ -510,6 +519,7 @@ impl Operator {
                     message: format!("Cannot resolve node {parent:?}"),
                     recoverable: true,
                     session,
+                    request: None,
                 },
                 "operator: create_file resolve",
             );
@@ -530,6 +540,7 @@ impl Operator {
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
+                        request: None,
                     },
                     "operator: create_file exists",
                 )
@@ -569,6 +580,7 @@ impl Operator {
                     message: format!("Cannot resolve node {parent:?}"),
                     recoverable: true,
                     session,
+                    request: None,
                 },
                 "operator: create_folder resolve",
             );
@@ -589,6 +601,7 @@ impl Operator {
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
+                        request: None,
                     },
                     "operator: create_folder exists",
                 )

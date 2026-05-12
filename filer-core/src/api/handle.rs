@@ -10,6 +10,7 @@ use crate::api::module::{HandlerContext, HandlerRegistry, Module, ModuleContext}
 use crate::api::session_manager::SessionManager;
 use crate::errors::CoreError;
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::NavigationModule;
 use crate::modules::operations::OperationsModule;
@@ -240,6 +241,11 @@ impl FilerCore {
     /// Access the session manager.
     pub fn sessions(&self) -> SessionManager {
         self.sessions.clone()
+    }
+
+    /// Generate a new request ID for correlating async command results.
+    pub fn next_request_id(&self) -> RequestId {
+        RequestId::new()
     }
 
     /// Shut down all actors.

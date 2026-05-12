@@ -2,12 +2,14 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use flume::{Receiver, Sender};
+use rapidhash::fast::RandomState;
 
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::model::node::{FileNode, NodeId};
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::mime::MimeDetector;
 use crate::services::preview::PreviewCache;
@@ -23,11 +25,12 @@ pub enum PreviewCommand {
         path: NodeId,
         options: Option<PreviewOptions>,
         session: SessionId,
+        request: RequestId,
     },
     /// Load basic metadata (NodeMeta) for a file
-    LoadMetadata(NodeId, SessionId),
+    LoadMetadata(NodeId, SessionId, RequestId),
     /// Load extended metadata (EXIF, ID3, page count…) for a file
-    LoadExtendedMetadata(NodeId, SessionId),
+    LoadExtendedMetadata(NodeId, SessionId, RequestId),
     /// Cancel all ongoing work for a session
     Cancel(SessionId),
     /// Drop all cached previews
@@ -48,6 +51,7 @@ pub struct Previewer {
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active: CancelMap,
+    latest: Arc<scc::HashMap<SessionId, RequestId, RandomState>>,
 }
 
 impl Previewer {
@@ -69,6 +73,7 @@ impl Previewer {
             provider,
             registry,
             active: CancelMap::new(),
+            latest: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
 
@@ -89,12 +94,20 @@ impl Previewer {
             metadata_registry: Arc::new(MetadataRegistry::with_defaults()),
             cache,
             active: CancelMap::new(),
+            latest: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
 
     // ── Preview generation ────────────────────────────────────────────────────
 
-    fn dispatch_preview(&self, node: NodeId, options: Option<PreviewOptions>, session: SessionId) {
+    fn dispatch_preview(
+        &self,
+        node: NodeId,
+        options: Option<PreviewOptions>,
+        session: SessionId,
+        request: RequestId,
+    ) {
+        self.mark_latest(session, request);
         let Some(path) = self.registry.resolve(node) else {
             send_or_warn(
                 &self.events,
@@ -102,6 +115,7 @@ impl Previewer {
                     message: format!("Cannot resolve node {node:?}"),
                     recoverable: true,
                     session,
+                    request: Some(request),
                 },
                 "previewer: resolve",
             );
@@ -117,6 +131,7 @@ impl Previewer {
                         node,
                         preview,
                         session,
+                        request,
                     },
                     "previewer: cache hit",
                 );
@@ -129,6 +144,7 @@ impl Previewer {
         let preview_registry = self.preview_registry.clone();
         let cache = self.cache.clone();
         let active = self.active.clone();
+        let latest = self.latest.clone();
         let opts = options.unwrap_or_default();
 
         tokio::spawn(async move {
@@ -139,6 +155,9 @@ impl Previewer {
             let result = preview_registry.generate_with_options(&path, &opts).await;
 
             if cancel.is_cancelled() {
+                return;
+            }
+            if !Self::is_latest(&latest, session, request) {
                 return;
             }
 
@@ -154,6 +173,7 @@ impl Previewer {
                             node,
                             preview,
                             session,
+                            request,
                         },
                         "preview ready",
                     )
@@ -166,6 +186,7 @@ impl Previewer {
                             node,
                             reason: e.to_string(),
                             session,
+                            request,
                         },
                         "preview failed",
                     )
@@ -179,7 +200,8 @@ impl Previewer {
 
     // ── Basic metadata ────────────────────────────────────────────────────────
 
-    fn dispatch_metadata(&self, node: NodeId, session: SessionId) {
+    fn dispatch_metadata(&self, node: NodeId, session: SessionId, request: RequestId) {
+        self.mark_latest(session, request);
         let Some(path) = self.registry.resolve(node) else {
             send_or_warn(
                 &self.events,
@@ -187,6 +209,7 @@ impl Previewer {
                     message: format!("Cannot resolve node {node:?}"),
                     recoverable: true,
                     session,
+                    request: Some(request),
                 },
                 "previewer: resolve",
             );
@@ -195,8 +218,12 @@ impl Previewer {
 
         let events = self.events.clone();
         let registry = self.registry.clone();
+        let latest = self.latest.clone();
 
         tokio::spawn(async move {
+            if !Self::is_latest(&latest, session, request) {
+                return;
+            }
             match FileNode::from_path(path, Some(registry)) {
                 Ok(file_node) => {
                     send_or_warn_async(
@@ -205,6 +232,7 @@ impl Previewer {
                             node,
                             meta: file_node.meta,
                             session,
+                            request,
                         },
                         "metadata loaded",
                     )
@@ -217,6 +245,7 @@ impl Previewer {
                             message: e.to_string(),
                             recoverable: true,
                             session,
+                            request: Some(request),
                         },
                         "metadata error",
                     )
@@ -228,7 +257,8 @@ impl Previewer {
 
     // ── Extended metadata ─────────────────────────────────────────────────────
 
-    fn dispatch_extended_metadata(&self, node: NodeId, session: SessionId) {
+    fn dispatch_extended_metadata(&self, node: NodeId, session: SessionId, request: RequestId) {
+        self.mark_latest(session, request);
         let Some(path) = self.registry.resolve(node) else {
             send_or_warn(
                 &self.events,
@@ -236,6 +266,7 @@ impl Previewer {
                     message: format!("Cannot resolve node {node:?}"),
                     recoverable: true,
                     session,
+                    request: Some(request),
                 },
                 "previewer: resolve",
             );
@@ -247,6 +278,7 @@ impl Previewer {
         let metadata_registry = self.metadata_registry.clone();
         let provider = self.provider.clone();
         let active = self.active.clone();
+        let latest = self.latest.clone();
 
         tokio::spawn(async move {
             if cancel.is_cancelled() {
@@ -273,6 +305,9 @@ impl Previewer {
             if cancel.is_cancelled() {
                 return;
             }
+            if !Self::is_latest(&latest, session, request) {
+                return;
+            }
 
             match metadata_registry
                 .extract(&path, &mime, provider.as_ref())
@@ -285,6 +320,7 @@ impl Previewer {
                             node,
                             extended,
                             session,
+                            request,
                         },
                         "extended metadata",
                     )
@@ -297,6 +333,7 @@ impl Previewer {
                             message: e.to_string(),
                             recoverable: true,
                             session,
+                            request: Some(request),
                         },
                         "extended metadata error",
                     )
@@ -314,6 +351,21 @@ impl Previewer {
         self.active.arm(session)
     }
 
+    fn mark_latest(&self, session: SessionId, request: RequestId) {
+        let _ = self.latest.remove_sync(&session);
+        let _ = self.latest.insert_sync(session, request);
+    }
+
+    fn is_latest(
+        latest: &scc::HashMap<SessionId, RequestId, RandomState>,
+        session: SessionId,
+        request: RequestId,
+    ) -> bool {
+        latest
+            .read_sync(&session, |_, latest| *latest == request)
+            .unwrap_or(false)
+    }
+
     fn cancel(&self, session: SessionId) {
         self.active.cancel(session);
     }
@@ -327,14 +379,15 @@ impl Actor for Previewer {
                     path,
                     options,
                     session,
+                    request,
                 }) => {
-                    self.dispatch_preview(path, options, session);
+                    self.dispatch_preview(path, options, session, request);
                 }
-                Ok(PreviewCommand::LoadMetadata(node, session)) => {
-                    self.dispatch_metadata(node, session);
+                Ok(PreviewCommand::LoadMetadata(node, session, request)) => {
+                    self.dispatch_metadata(node, session, request);
                 }
-                Ok(PreviewCommand::LoadExtendedMetadata(node, session)) => {
-                    self.dispatch_extended_metadata(node, session);
+                Ok(PreviewCommand::LoadExtendedMetadata(node, session, request)) => {
+                    self.dispatch_extended_metadata(node, session, request);
                 }
                 Ok(PreviewCommand::Cancel(session)) => {
                     self.cancel(session);

@@ -17,9 +17,10 @@ badges, status badges, color tokens, tooltips, context actions, panels, previews
 and settings. Extensions should not own desktop widgets directly.
 
 The app roadmap is intentionally downstream of core contract stabilization. A
-large app refactor should wait until request ids, stale-event guards, operation
-ids, structured errors, provider addressing, extension output envelopes, and
-large-directory loading contracts are settled. App bugs that expose those
+large app refactor should wait until operation ids, structured errors, provider
+addressing, extension output envelopes, and large-directory loading contracts are
+settled. Request ids and stale-event guards are already available in core for
+scan, search, preview, and refresh flows. App bugs that expose remaining
 contracts should be treated as core feedback; pure visual and interaction bugs
 can be fixed during the app refactor.
 
@@ -53,6 +54,7 @@ Milestone labels:
   state.
 - [x] `MVP` Active-directory watcher hook with debounced refresh.
 - [x] `MVP` Fresh refresh path that invalidates stale directory cache entries.
+- [x] `MVP` Core request ids for scan, search, preview, and refresh commands.
 - [x] `MVP` Light, dark, and automatic theme modes.
 - [x] `MVP` Broad UI-core tracing for commands, events, watcher refresh, and
   preview flow.
@@ -129,7 +131,7 @@ Milestone labels:
 - [x] `MVP` Preview/Details panel shell.
 - [x] `MVP` Core preview provider integration.
 - [x] `MVP` Image thumbnail bytes stored for loaded previews.
-- [ ] `MVP` Stale preview guards when selection changes quickly.
+- [x] `MVP` Stale preview guards when selection changes quickly.
 - [ ] `MVP` Clear unsupported, loading, error, folder, binary, and empty states.
 - [ ] `Polish` Text and code preview with monospace layout and truncation.
 - [ ] `Polish` Syntax-highlighted code preview when `preview-code` is enabled.
@@ -228,7 +230,7 @@ Milestone labels:
 - [ ] `Polish` Large-directory list virtualization.
 - [ ] `Polish` Align large-directory rendering with the core loading contract
   before rewriting the file list deeply.
-- [ ] `Polish` Non-blocking preview and thumbnail loading under rapid
+- [x] `Polish` Non-blocking preview and thumbnail loading under rapid
   selection.
 - [ ] `Polish` Structured log controls for app/core debugging.
 - [ ] `Polish` Automated UI smoke checks for core workflows.

@@ -19,6 +19,7 @@ use crate::actors::Actor;
 use crate::api::events;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::scan::scanner::ScanCommand;
 use crate::pipeline::{Pipeline, PipelineConfig};
@@ -31,20 +32,22 @@ pub enum NavCommand {
     Navigate {
         session: SessionId,
         node: NodeId,
+        request: RequestId,
     },
     /// Navigate to path (for address bar input)
     NavigateToPath {
         session: SessionId,
         path: std::path::PathBuf,
+        request: RequestId,
     },
     /// Go back in history
-    Back(SessionId),
+    Back(SessionId, RequestId),
     /// Go forward in history
-    Forward(SessionId),
+    Forward(SessionId, RequestId),
     /// Go to parent directory
-    Up(SessionId),
+    Up(SessionId, RequestId),
     /// Refresh current directory
-    Refresh(SessionId),
+    Refresh(SessionId, RequestId),
     /// Update entire pipeline config (sort, filter, group)
     SetPipeline {
         session: SessionId,
@@ -295,17 +298,25 @@ impl Navigator {
     /// Handle a navigation command
     async fn handle_command(&self, cmd: NavCommand) {
         match cmd {
-            NavCommand::Navigate { session, node } => {
+            NavCommand::Navigate {
+                session,
+                node,
+                request,
+            } => {
                 self.get_or_init(session).await;
                 self.sessions
                     .update_async(&session, |_, v| {
                         v.navigate(node);
-                        Self::trigger_scan(session, node, v, self.scanner_tx.clone());
+                        Self::trigger_scan(session, node, v, self.scanner_tx.clone(), request);
                     })
                     .await;
                 self.emit_snapshot(session);
             }
-            NavCommand::NavigateToPath { session, path } => {
+            NavCommand::NavigateToPath {
+                session,
+                path,
+                request,
+            } => {
                 self.get_or_init(session).await;
                 self.sessions
                     .update_async(&session, |_, v| {
@@ -315,18 +326,25 @@ impl Navigator {
                             self.register.clone().register(path),
                             v,
                             self.scanner_tx.clone(),
+                            request,
                         );
                     })
                     .await;
                 self.emit_snapshot(session);
             }
-            NavCommand::Back(session_id) => {
+            NavCommand::Back(session_id, request) => {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_back() {
                             let node = v.back(1).unwrap();
-                            Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
+                            Self::trigger_scan(
+                                session_id,
+                                node,
+                                v,
+                                self.scanner_tx.clone(),
+                                request,
+                            );
                         } else {
                             send_or_warn(
                                 &self.events,
@@ -334,6 +352,7 @@ impl Navigator {
                                     message: "Can't go back: no history".to_string(),
                                     recoverable: true,
                                     session: session_id,
+                                    request: Some(request),
                                 },
                                 "emit back error",
                             );
@@ -342,13 +361,19 @@ impl Navigator {
                     .await;
                 self.emit_snapshot(session_id);
             }
-            NavCommand::Forward(session_id) => {
+            NavCommand::Forward(session_id, request) => {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_forward() {
                             let node = v.forward().unwrap();
-                            Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
+                            Self::trigger_scan(
+                                session_id,
+                                node,
+                                v,
+                                self.scanner_tx.clone(),
+                                request,
+                            );
                         } else {
                             send_or_warn(
                                 &self.events,
@@ -356,6 +381,7 @@ impl Navigator {
                                     message: "Can't go forward: no forward history".to_string(),
                                     recoverable: true,
                                     session: session_id,
+                                    request: Some(request),
                                 },
                                 "emit forward error",
                             );
@@ -364,7 +390,7 @@ impl Navigator {
                     .await;
                 self.emit_snapshot(session_id);
             }
-            NavCommand::Up(session_id) => {
+            NavCommand::Up(session_id, request) => {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .update_async(&session_id, |_, v| {
@@ -372,7 +398,13 @@ impl Navigator {
                         {
                             let node = self.register.clone().register(par);
                             v.navigate(node);
-                            Self::trigger_scan(session_id, node, v, self.scanner_tx.clone());
+                            Self::trigger_scan(
+                                session_id,
+                                node,
+                                v,
+                                self.scanner_tx.clone(),
+                                request,
+                            );
                         } else {
                             send_or_warn(
                                 &self.events,
@@ -380,6 +412,7 @@ impl Navigator {
                                     message: "Can't go up: no parent directory".to_string(),
                                     recoverable: true,
                                     session: session_id,
+                                    request: Some(request),
                                 },
                                 "emit up error",
                             );
@@ -388,12 +421,18 @@ impl Navigator {
                     .await;
                 self.emit_snapshot(session_id);
             }
-            NavCommand::Refresh(session_id) => {
+            NavCommand::Refresh(session_id, request) => {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .read_async(&session_id, |_k, v| {
                         if let Some(cur) = v.current {
-                            Self::trigger_refresh_scan(session_id, cur, v, self.scanner_tx.clone());
+                            Self::trigger_refresh_scan(
+                                session_id,
+                                cur,
+                                v,
+                                self.scanner_tx.clone(),
+                                request,
+                            );
                         } else {
                             send_or_warn(
                                 &self.events,
@@ -401,6 +440,7 @@ impl Navigator {
                                     message: "Can't refresh: no current directory".to_string(),
                                     recoverable: true,
                                     session: session_id,
+                                    request: Some(request),
                                 },
                                 "emit refresh error",
                             );
@@ -444,7 +484,13 @@ impl Navigator {
                         .iter_async(|k, v| {
                             let verd = v.current.map(|c| c == node_id);
                             if verd.is_some() && verd.unwrap() {
-                                Self::trigger_scan(*k, node_id, v, self.scanner_tx.clone());
+                                Self::trigger_scan(
+                                    *k,
+                                    node_id,
+                                    v,
+                                    self.scanner_tx.clone(),
+                                    RequestId::new(),
+                                );
                             }
                             true
                         })
@@ -463,6 +509,7 @@ impl Navigator {
         node: NodeId,
         state: &NavigatorState,
         scanner_tx: Sender<ScanCommand>,
+        request: RequestId,
     ) {
         send_or_warn(
             &scanner_tx,
@@ -470,6 +517,7 @@ impl Navigator {
                 node,
                 session,
                 pipeline: state.pipeline_config.clone(),
+                request,
             },
             "trigger scan",
         );
@@ -485,6 +533,7 @@ impl Navigator {
         node: NodeId,
         state: &NavigatorState,
         scanner_tx: Sender<ScanCommand>,
+        request: RequestId,
     ) {
         send_or_warn(
             &scanner_tx,
@@ -492,6 +541,7 @@ impl Navigator {
                 node,
                 session,
                 pipeline: state.pipeline_config.clone(),
+                request,
             },
             "trigger refresh scan",
         );

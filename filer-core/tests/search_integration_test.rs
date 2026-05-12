@@ -172,6 +172,7 @@ async fn wait_for_search_complete(
                 matches: batch,
                 complete,
                 session,
+                ..
             })) if session == expected_session => {
                 matches.extend(batch);
                 if complete {
@@ -206,6 +207,7 @@ async fn test_search_command_through_filer_core() {
         query: "target".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -239,6 +241,7 @@ async fn test_session_destroy_cancels_search() {
         query: "f".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -262,6 +265,7 @@ async fn test_search_cancel_command() {
         query: "file".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 

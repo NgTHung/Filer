@@ -71,6 +71,7 @@ impl CommandRouter {
                     message: format!("Unknown session: {}", session),
                     recoverable: true,
                     session,
+                    request: None,
                 },
                 "unknown session error",
             );

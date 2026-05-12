@@ -80,6 +80,7 @@ impl Module for ScanModule {
                 path,
                 session,
                 pipeline,
+                request,
             } = cmd
             {
                 send_or_warn(
@@ -88,6 +89,7 @@ impl Module for ScanModule {
                         path,
                         session,
                         pipeline,
+                        request,
                     },
                     "scan",
                 );
@@ -100,6 +102,7 @@ impl Module for ScanModule {
                 node,
                 session,
                 pipeline,
+                request,
             } = cmd
             {
                 send_or_warn(
@@ -108,6 +111,7 @@ impl Module for ScanModule {
                         node,
                         session,
                         pipeline,
+                        request,
                     },
                     "scan.node",
                 );

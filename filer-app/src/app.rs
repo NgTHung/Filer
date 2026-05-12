@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use filer_core::model::node::{NodeId, NodeKind};
 use filer_core::model::session::SessionId;
-use filer_core::{Command, FilerCore, PreviewData};
+use filer_core::{Command, FilerCore, PreviewData, RequestId};
 use iced::futures::Stream;
 use iced::keyboard::{Key, Modifiers};
 use iced::theme::Mode;
@@ -141,7 +141,11 @@ impl App {
                 self.state.preview_data = None;
                 self.state.context_menu = None;
                 self.state.address_input = path.display().to_string();
-                let _ = self.core.send(Command::Navigate(path, self.session));
+                let _ = self.core.send(Command::Navigate {
+                    path,
+                    session: self.session,
+                    request: RequestId::new(),
+                });
                 Task::none()
             }
             Message::AddressInputChanged(value) => {
@@ -158,23 +162,35 @@ impl App {
             }
             Message::NavigateBack => {
                 debug!(session = %self.session, "ui -> core navigate back");
-                let _ = self.core.send(Command::NavigateBack(self.session));
+                let _ = self.core.send(Command::NavigateBack {
+                    session: self.session,
+                    request: RequestId::new(),
+                });
                 Task::none()
             }
             Message::NavigateForward => {
                 debug!(session = %self.session, "ui -> core navigate forward");
-                let _ = self.core.send(Command::NavigateForward(self.session));
+                let _ = self.core.send(Command::NavigateForward {
+                    session: self.session,
+                    request: RequestId::new(),
+                });
                 Task::none()
             }
             Message::NavigateUp => {
                 debug!(session = %self.session, "ui -> core navigate up");
-                let _ = self.core.send(Command::NavigateUp(self.session));
+                let _ = self.core.send(Command::NavigateUp {
+                    session: self.session,
+                    request: RequestId::new(),
+                });
                 Task::none()
             }
             Message::Refresh => {
                 debug!(session = %self.session, "ui -> core refresh");
                 self.state.context_menu = None;
-                let _ = self.core.send(Command::Refresh(self.session));
+                let _ = self.core.send(Command::Refresh {
+                    session: self.session,
+                    request: RequestId::new(),
+                });
                 Task::none()
             }
 
@@ -238,6 +254,7 @@ impl App {
                             query,
                             root,
                             session: self.session,
+                            request: RequestId::new(),
                         });
                     }
                 }
@@ -489,7 +506,10 @@ impl App {
             Message::WatchRefreshDue => {
                 self.state.watch_refresh_pending = false;
                 debug!(session = %self.session, "ui -> core refresh from watcher");
-                let _ = self.core.send(Command::Refresh(self.session));
+                let _ = self.core.send(Command::Refresh {
+                    session: self.session,
+                    request: RequestId::new(),
+                });
                 Task::none()
             }
         }
@@ -503,6 +523,7 @@ impl App {
                 path,
                 groups,
                 session,
+                ..
             } => {
                 if session != self.session {
                     trace!(event_session = %session, app_session = %self.session, "ignoring DirectoryLoaded for inactive session");
@@ -543,7 +564,10 @@ impl App {
             }
             filer_core::Event::OperationComplete { .. } => {
                 self.state.operation_progress = None;
-                let _ = self.core.send(Command::Refresh(self.session));
+                let _ = self.core.send(Command::Refresh {
+                    session: self.session,
+                    request: RequestId::new(),
+                });
             }
             filer_core::Event::OperationProgress {
                 operation,
@@ -561,7 +585,11 @@ impl App {
                 self.session = id;
                 let home = self.state.current_path.clone();
                 debug!(session = %id, home = %home.display(), "core session created, navigating home");
-                let _ = self.core.send(Command::Navigate(home, id));
+                let _ = self.core.send(Command::Navigate {
+                    path: home,
+                    session: id,
+                    request: RequestId::new(),
+                });
             }
             filer_core::Event::CurrentNavigateState { state, .. } => {
                 self.state.nav = Some(state);
@@ -680,6 +708,7 @@ impl App {
                     id,
                     options: None,
                     session: self.session,
+                    request: RequestId::new(),
                 });
             }
         }
@@ -754,6 +783,7 @@ impl App {
             path: self.state.current_path.clone(),
             session: self.session,
             pipeline,
+            request: RequestId::new(),
         });
     }
 }

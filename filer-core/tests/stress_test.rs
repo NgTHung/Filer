@@ -308,6 +308,7 @@ async fn drain_search(
                 matches,
                 complete,
                 session: s,
+                ..
             })) if s == session => {
                 all.extend(matches);
                 if complete {
@@ -360,6 +361,7 @@ async fn stress_search_large_flat_dir() {
         query: "target".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -412,6 +414,7 @@ async fn stress_search_deep_tree() {
         query: "needle".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -453,6 +456,7 @@ async fn stress_search_wide_deep_tree() {
         query: "match".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -513,6 +517,7 @@ async fn stress_concurrent_sessions() {
             query: "hit".to_string(),
             root: root_id,
             session,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
     }
@@ -529,6 +534,7 @@ async fn stress_concurrent_sessions() {
                 matches,
                 complete,
                 session,
+                ..
             })) => {
                 if let Some(c) = counts.get_mut(&session) {
                     *c += matches.len();
@@ -590,6 +596,7 @@ async fn stress_rapid_cancel_restart() {
             query: "f".to_string(),
             root: root_id,
             session,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
         core.send(Command::Cancel(session)).unwrap();
@@ -604,6 +611,7 @@ async fn stress_rapid_cancel_restart() {
         query: "f".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
     let results = drain_search(&rx, session, LONG).await;
@@ -663,6 +671,7 @@ async fn stress_all_filters_combined() {
         query,
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -708,6 +717,7 @@ async fn stress_streaming_batch_accuracy() {
         query: "item".to_string(),
         root: root_id,
         session,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -722,6 +732,7 @@ async fn stress_streaming_batch_accuracy() {
                 matches,
                 complete,
                 session: s,
+                ..
             })) if s == session => {
                 assert!(
                     !matches.is_empty() || complete,
@@ -787,6 +798,7 @@ async fn stress_scanner_large_dir() {
                 group: None,
             },
             session,
+            request: filer_core::RequestId::new(),
         })
         .unwrap();
 
@@ -841,12 +853,14 @@ async fn stress_session_isolation_under_cancellation() {
         query: "doc".to_string(),
         root: root_id,
         session: sa,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
     core.send(Command::Search {
         query: "doc".to_string(),
         root: root_id,
         session: sb,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
     core.send(Command::Cancel(sa)).unwrap();
@@ -857,12 +871,14 @@ async fn stress_session_isolation_under_cancellation() {
         query: "doc".to_string(),
         root: root_id,
         session: sc,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
     core.send(Command::Search {
         query: "doc".to_string(),
         root: root_id,
         session: sd,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
 
@@ -879,6 +895,7 @@ async fn stress_session_isolation_under_cancellation() {
                 matches,
                 complete,
                 session,
+                ..
             })) => {
                 if session == sc {
                     count_c += matches.len();
@@ -938,6 +955,7 @@ async fn stress_search_determinism() {
         query: "stable".to_string(),
         root: root_id,
         session: s1,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
     let run1: Vec<String> = drain_search(&rx, s1, LONG)
@@ -951,6 +969,7 @@ async fn stress_search_determinism() {
         query: "stable".to_string(),
         root: root_id,
         session: s2,
+        request: filer_core::RequestId::new(),
     })
     .unwrap();
     let run2: Vec<String> = drain_search(&rx, s2, LONG)

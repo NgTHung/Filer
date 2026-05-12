@@ -57,10 +57,19 @@ impl Module for NavigationModule {
         // ── Navigate to path ─────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate", move |cmd, _ctx| {
-            if let Command::Navigate(path, session) = cmd {
+            if let Command::Navigate {
+                path,
+                session,
+                request,
+            } = cmd
+            {
                 send_or_warn(
                     &tx,
-                    NavCommand::NavigateToPath { session, path },
+                    NavCommand::NavigateToPath {
+                        session,
+                        path,
+                        request,
+                    },
                     "navigate",
                 );
             }
@@ -69,40 +78,61 @@ impl Module for NavigationModule {
         // ── Navigate to node ─────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.node", move |cmd, _ctx| {
-            if let Command::NavigateToNode(node, session) = cmd {
-                send_or_warn(&tx, NavCommand::Navigate { session, node }, "navigate.node");
+            if let Command::NavigateToNode {
+                node,
+                session,
+                request,
+            } = cmd
+            {
+                send_or_warn(
+                    &tx,
+                    NavCommand::Navigate {
+                        session,
+                        node,
+                        request,
+                    },
+                    "navigate.node",
+                );
             }
         });
 
         // ── Navigate up ──────────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.up", move |cmd, _ctx| {
-            if let Command::NavigateUp(session) = cmd {
-                send_or_warn(&tx, NavCommand::Up(session), "navigate.up");
+            if let Command::NavigateUp { session, request } = cmd {
+                send_or_warn(&tx, NavCommand::Up(session, request), "navigate.up");
             }
         });
 
         // ── Navigate back ────────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.back", move |cmd, _ctx| {
-            if let Command::NavigateBack(session) = cmd {
-                send_or_warn(&tx, NavCommand::Back(session), "navigate.back");
+            if let Command::NavigateBack { session, request } = cmd {
+                send_or_warn(&tx, NavCommand::Back(session, request), "navigate.back");
             }
         });
 
         // ── Navigate forward ─────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.forward", move |cmd, _ctx| {
-            if let Command::NavigateForward(session) = cmd {
-                send_or_warn(&tx, NavCommand::Forward(session), "navigate.forward");
+            if let Command::NavigateForward { session, request } = cmd {
+                send_or_warn(
+                    &tx,
+                    NavCommand::Forward(session, request),
+                    "navigate.forward",
+                );
             }
         });
 
         // ── Refresh ──────────────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.refresh", move |cmd, _ctx| {
-            if let Command::Refresh(session) = cmd {
-                send_or_warn(&tx, NavCommand::Refresh(session), "navigate.refresh");
+            if let Command::Refresh { session, request } = cmd {
+                send_or_warn(
+                    &tx,
+                    NavCommand::Refresh(session, request),
+                    "navigate.refresh",
+                );
             }
         });
 

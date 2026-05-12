@@ -29,6 +29,7 @@ mod command_router_tests {
     use crate::api::session_manager::SessionManager;
     use crate::model::node::NodeId;
     use crate::model::registry::NodeRegistry;
+    use crate::model::request::RequestId;
     use crate::model::session::SessionId;
     use crate::modules::navigation::navigator::NavCommand;
     use crate::modules::operations::operator::OpsCommand;
@@ -110,40 +111,58 @@ mod command_router_tests {
             {
                 let tx = nav_tx.clone();
                 handlers.on("navigate", move |cmd, _ctx| {
-                    if let Command::Navigate(path, session) = cmd {
-                        let _ = tx.send(NavCommand::NavigateToPath { session, path });
+                    if let Command::Navigate {
+                        path,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(NavCommand::NavigateToPath {
+                            session,
+                            path,
+                            request,
+                        });
                     }
                 });
             }
             {
                 let tx = nav_tx.clone();
                 handlers.on("navigate.node", move |cmd, _ctx| {
-                    if let Command::NavigateToNode(node, session) = cmd {
-                        let _ = tx.send(NavCommand::Navigate { session, node });
+                    if let Command::NavigateToNode {
+                        node,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(NavCommand::Navigate {
+                            session,
+                            node,
+                            request,
+                        });
                     }
                 });
             }
             {
                 let tx = nav_tx.clone();
                 handlers.on("navigate.up", move |cmd, _ctx| {
-                    if let Command::NavigateUp(session) = cmd {
-                        let _ = tx.send(NavCommand::Up(session));
+                    if let Command::NavigateUp { session, request } = cmd {
+                        let _ = tx.send(NavCommand::Up(session, request));
                     }
                 });
             }
             {
                 let tx = nav_tx.clone();
                 handlers.on("navigate.back", move |cmd, _ctx| {
-                    if let Command::NavigateBack(session) = cmd {
-                        let _ = tx.send(NavCommand::Back(session));
+                    if let Command::NavigateBack { session, request } = cmd {
+                        let _ = tx.send(NavCommand::Back(session, request));
                     }
                 });
             }
             {
                 let tx = nav_tx.clone();
                 handlers.on("navigate.refresh", move |cmd, _ctx| {
-                    if let Command::Refresh(session) = cmd {
-                        let _ = tx.send(NavCommand::Refresh(session));
+                    if let Command::Refresh { session, request } = cmd {
+                        let _ = tx.send(NavCommand::Refresh(session, request));
                     }
                 });
             }
@@ -156,12 +175,14 @@ mod command_router_tests {
                         query,
                         root,
                         session,
+                        request,
                     } = cmd
                     {
                         let _ = tx.send(SearchCommand::Search {
                             query: crate::model::query::SearchQuery::parse(&query).unwrap(),
                             root,
                             session,
+                            request,
                         });
                     }
                 });
@@ -209,12 +230,14 @@ mod command_router_tests {
                         id,
                         options,
                         session,
+                        request,
                     } = cmd
                     {
                         let _ = tx.send(PreviewCommand::Generate {
                             path: id,
                             options,
                             session,
+                            request,
                         });
                     }
                 });
@@ -230,16 +253,27 @@ mod command_router_tests {
             {
                 let tx = preview_tx.clone();
                 handlers.on("metadata.load", move |cmd, _ctx| {
-                    if let Command::LoadMetadata(node, session) = cmd {
-                        let _ = tx.send(PreviewCommand::LoadMetadata(node, session));
+                    if let Command::LoadMetadata {
+                        node,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(PreviewCommand::LoadMetadata(node, session, request));
                     }
                 });
             }
             {
                 let tx = preview_tx.clone();
                 handlers.on("metadata.extended", move |cmd, _ctx| {
-                    if let Command::LoadExtendedMetadata(node, session) = cmd {
-                        let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session));
+                    if let Command::LoadExtendedMetadata {
+                        node,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ =
+                            tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
                     }
                 });
             }
@@ -407,7 +441,14 @@ mod command_router_tests {
         let session = harness.create_valid_session();
         let path = PathBuf::from("/home/user/documents");
 
-        harness.send(Command::Navigate(path.clone(), session)).await;
+        let request = RequestId::new();
+        harness
+            .send(Command::Navigate {
+                path: path.clone(),
+                session,
+                request,
+            })
+            .await;
 
         let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
             .await
@@ -418,9 +459,11 @@ mod command_router_tests {
             NavCommand::NavigateToPath {
                 session: s,
                 path: p,
+                request: r,
             } => {
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(p, path, "Path must be forwarded correctly");
+                assert_eq!(r, request, "RequestId must be forwarded correctly");
             }
             other => panic!("Expected NavCommand::NavigateToPath, got {:?}", other),
         }
@@ -432,7 +475,14 @@ mod command_router_tests {
         let session = harness.create_valid_session();
         let node = NodeId(42);
 
-        harness.send(Command::NavigateToNode(node, session)).await;
+        let request = RequestId::new();
+        harness
+            .send(Command::NavigateToNode {
+                node,
+                session,
+                request,
+            })
+            .await;
 
         let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
             .await
@@ -443,9 +493,11 @@ mod command_router_tests {
             NavCommand::Navigate {
                 session: s,
                 node: n,
+                request: r,
             } => {
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(n, node, "NodeId must be forwarded correctly");
+                assert_eq!(r, request, "RequestId must be forwarded correctly");
             }
             other => panic!("Expected NavCommand::Navigate, got {:?}", other),
         }
@@ -456,7 +508,8 @@ mod command_router_tests {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
 
-        harness.send(Command::NavigateUp(session)).await;
+        let request = RequestId::new();
+        harness.send(Command::NavigateUp { session, request }).await;
 
         let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
             .await
@@ -464,8 +517,9 @@ mod command_router_tests {
             .expect("NavCommand channel closed");
 
         match nav_cmd {
-            NavCommand::Up(s) => {
+            NavCommand::Up(s, r) => {
                 assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(r, request, "RequestId must be preserved");
             }
             other => panic!("Expected NavCommand::Up, got {:?}", other),
         }
@@ -476,7 +530,8 @@ mod command_router_tests {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
 
-        harness.send(Command::Refresh(session)).await;
+        let request = RequestId::new();
+        harness.send(Command::Refresh { session, request }).await;
 
         let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
             .await
@@ -484,8 +539,9 @@ mod command_router_tests {
             .expect("NavCommand channel closed");
 
         match nav_cmd {
-            NavCommand::Refresh(s) => {
+            NavCommand::Refresh(s, r) => {
                 assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(r, request, "RequestId must be preserved");
             }
             other => panic!("Expected NavCommand::Refresh, got {:?}", other),
         }
@@ -509,6 +565,7 @@ mod command_router_tests {
                 query: "*.rs".to_string(),
                 root: registered_id,
                 session,
+                request: RequestId::new(),
             })
             .await;
 
@@ -522,6 +579,7 @@ mod command_router_tests {
                 query,
                 root: r,
                 session: s,
+                ..
             } => {
                 assert_eq!(query.text, "*.rs", "Query text must be forwarded");
                 assert_eq!(r, registered_id, "Root NodeId must be forwarded");
@@ -543,6 +601,7 @@ mod command_router_tests {
                 query: "test".to_string(),
                 root,
                 session,
+                request: RequestId::new(),
             })
             .await;
 
@@ -650,6 +709,7 @@ mod command_router_tests {
                 id: node,
                 options: None,
                 session,
+                request: RequestId::new(),
             })
             .await;
 
@@ -663,6 +723,7 @@ mod command_router_tests {
                 path: p,
                 options,
                 session: s,
+                ..
             } => {
                 assert_eq!(p, node, "Preview NodeId must match request command");
                 assert!(
@@ -702,7 +763,13 @@ mod command_router_tests {
         let path = PathBuf::from("/home/user/document.pdf");
         let node = harness.registry.clone().register(path.clone());
 
-        harness.send(Command::LoadMetadata(node, session)).await;
+        harness
+            .send(Command::LoadMetadata {
+                node,
+                session,
+                request: RequestId::new(),
+            })
+            .await;
 
         let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
             .await
@@ -710,7 +777,7 @@ mod command_router_tests {
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::LoadMetadata(p, s) => {
+            PreviewCommand::LoadMetadata(p, s, _) => {
                 assert_eq!(p, node, "Metadata NodeId must match request");
                 assert_eq!(s, session, "Load request session id must match the command");
             }
@@ -726,7 +793,11 @@ mod command_router_tests {
         let node = harness.registry.clone().register(path.clone());
 
         harness
-            .send(Command::LoadExtendedMetadata(node, session))
+            .send(Command::LoadExtendedMetadata {
+                node,
+                session,
+                request: RequestId::new(),
+            })
             .await;
 
         let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
@@ -735,7 +806,7 @@ mod command_router_tests {
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::LoadExtendedMetadata(p, s) => {
+            PreviewCommand::LoadExtendedMetadata(p, s, _) => {
                 assert_eq!(p, node, "Extended metadata NodeId must match request");
                 assert_eq!(s, session, "Extended metadata session must match request");
             }
@@ -834,10 +905,18 @@ mod command_router_tests {
         let session_b = harness.create_valid_session();
 
         harness
-            .send(Command::Navigate(PathBuf::from("/a"), session_a))
+            .send(Command::Navigate {
+                path: PathBuf::from("/a"),
+                session: session_a,
+                request: RequestId::new(),
+            })
             .await;
         harness
-            .send(Command::Navigate(PathBuf::from("/b"), session_b))
+            .send(Command::Navigate {
+                path: PathBuf::from("/b"),
+                session: session_b,
+                request: RequestId::new(),
+            })
             .await;
 
         // First command should carry session_a
@@ -846,7 +925,7 @@ mod command_router_tests {
             .expect("Timed out")
             .expect("Channel closed");
         match cmd1 {
-            NavCommand::NavigateToPath { session, path } => {
+            NavCommand::NavigateToPath { session, path, .. } => {
                 assert_eq!(session, session_a);
                 assert_eq!(path, PathBuf::from("/a"));
             }
@@ -859,7 +938,7 @@ mod command_router_tests {
             .expect("Timed out")
             .expect("Channel closed");
         match cmd2 {
-            NavCommand::NavigateToPath { session, path } => {
+            NavCommand::NavigateToPath { session, path, .. } => {
                 assert_eq!(session, session_b);
                 assert_eq!(path, PathBuf::from("/b"));
             }
@@ -875,7 +954,11 @@ mod command_router_tests {
 
         // Session A navigates
         harness
-            .send(Command::Navigate(PathBuf::from("/home/a"), session_a))
+            .send(Command::Navigate {
+                path: PathBuf::from("/home/a"),
+                session: session_a,
+                request: RequestId::new(),
+            })
             .await;
 
         // Session B searches
@@ -888,6 +971,7 @@ mod command_router_tests {
                 query: "find me".to_string(),
                 root,
                 session: session_b,
+                request: RequestId::new(),
             })
             .await;
 
@@ -925,13 +1009,25 @@ mod command_router_tests {
 
         // Interleave commands from 3 sessions going to the same actor
         harness
-            .send(Command::Navigate(PathBuf::from("/s1"), session_1))
+            .send(Command::Navigate {
+                path: PathBuf::from("/s1"),
+                session: session_1,
+                request: RequestId::new(),
+            })
             .await;
         harness
-            .send(Command::Navigate(PathBuf::from("/s2"), session_2))
+            .send(Command::Navigate {
+                path: PathBuf::from("/s2"),
+                session: session_2,
+                request: RequestId::new(),
+            })
             .await;
         harness
-            .send(Command::Navigate(PathBuf::from("/s3"), session_3))
+            .send(Command::Navigate {
+                path: PathBuf::from("/s3"),
+                session: session_3,
+                request: RequestId::new(),
+            })
             .await;
 
         // All should arrive at Navigator, in order, with correct session IDs
@@ -1090,7 +1186,11 @@ mod command_router_tests {
         let unknown = SessionId::new(); // Not registered in SessionManager
 
         harness
-            .send(Command::Navigate(PathBuf::from("/home"), unknown))
+            .send(Command::Navigate {
+                path: PathBuf::from("/home"),
+                session: unknown,
+                request: RequestId::new(),
+            })
             .await;
 
         let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
@@ -1103,6 +1203,7 @@ mod command_router_tests {
                 message,
                 recoverable,
                 session,
+                ..
             } => {
                 assert_eq!(session, unknown, "Error must carry the unknown session");
                 assert!(recoverable, "Unknown session should be a recoverable error");
@@ -1134,6 +1235,7 @@ mod command_router_tests {
                 query: "*.txt".to_string(),
                 root,
                 session: unknown,
+                request: RequestId::new(),
             })
             .await;
 
@@ -1176,6 +1278,7 @@ mod command_router_tests {
                 session,
                 recoverable,
                 message,
+                ..
             } => {
                 assert_eq!(session, unknown);
                 assert!(recoverable);
@@ -1245,7 +1348,11 @@ mod command_router_tests {
 
         // Now use that session to navigate
         harness
-            .send(Command::Navigate(PathBuf::from("/home"), session))
+            .send(Command::Navigate {
+                path: PathBuf::from("/home"),
+                session,
+                request: RequestId::new(),
+            })
             .await;
 
         let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
@@ -1254,7 +1361,9 @@ mod command_router_tests {
             .expect("Nav channel closed");
 
         match nav_cmd {
-            NavCommand::NavigateToPath { session: s, path } => {
+            NavCommand::NavigateToPath {
+                session: s, path, ..
+            } => {
                 assert_eq!(s, session);
                 assert_eq!(path, PathBuf::from("/home"));
             }
@@ -1269,7 +1378,11 @@ mod command_router_tests {
 
         // Verify it works before destroy
         harness
-            .send(Command::Navigate(PathBuf::from("/before"), session))
+            .send(Command::Navigate {
+                path: PathBuf::from("/before"),
+                session,
+                request: RequestId::new(),
+            })
             .await;
         let _ = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async()).await;
 
@@ -1282,7 +1395,11 @@ mod command_router_tests {
 
         // Now try to use the destroyed session
         harness
-            .send(Command::Navigate(PathBuf::from("/after"), session))
+            .send(Command::Navigate {
+                path: PathBuf::from("/after"),
+                session,
+                request: RequestId::new(),
+            })
             .await;
 
         let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
@@ -1345,10 +1462,11 @@ mod command_router_tests {
         // Send multiple navigation commands rapidly
         for i in 0..5 {
             harness
-                .send(Command::Navigate(
-                    PathBuf::from(format!("/dir/{}", i)),
+                .send(Command::Navigate {
+                    path: PathBuf::from(format!("/dir/{}", i)),
                     session,
-                ))
+                    request: RequestId::new(),
+                })
                 .await;
         }
 
@@ -1359,7 +1477,9 @@ mod command_router_tests {
                 .expect("Timed out")
                 .expect("Channel closed");
             match cmd {
-                NavCommand::NavigateToPath { path, session: s } => {
+                NavCommand::NavigateToPath {
+                    path, session: s, ..
+                } => {
                     assert_eq!(s, session);
                     assert_eq!(path, PathBuf::from(format!("/dir/{}", i)));
                 }
@@ -1378,7 +1498,11 @@ mod command_router_tests {
         let session = harness.create_valid_session();
 
         harness
-            .send(Command::Navigate(PathBuf::from("/test"), session))
+            .send(Command::Navigate {
+                path: PathBuf::from("/test"),
+                session,
+                request: RequestId::new(),
+            })
             .await;
 
         // Navigator gets the command
@@ -1418,6 +1542,7 @@ mod command_router_tests {
                 query: "test".to_string(),
                 root,
                 session,
+                request: RequestId::new(),
             })
             .await;
 
@@ -1482,6 +1607,7 @@ mod command_router_tests {
                 id: node,
                 options: Some(options.clone()),
                 session,
+                request: RequestId::new(),
             })
             .await;
 
@@ -1495,6 +1621,7 @@ mod command_router_tests {
                 path: p,
                 options: o,
                 session: s,
+                ..
             } => {
                 assert_eq!(
                     p, node,

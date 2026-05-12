@@ -36,6 +36,7 @@ impl Module for SearchModule {
                 query,
                 root,
                 session,
+                request,
             } = cmd
                 && let Ok(query) = SearchQuery::parse(&query)
             {
@@ -43,6 +44,7 @@ impl Module for SearchModule {
                     query,
                     root,
                     session,
+                    request,
                 });
             }
         });

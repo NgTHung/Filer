@@ -230,8 +230,12 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/home/user/docs"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/home/user/docs"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
 
         let (path, count) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
@@ -252,8 +256,12 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/empty"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/empty"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
 
         let (path, count) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(path, PathBuf::from("/empty"));
@@ -273,8 +281,12 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/data"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/data"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
 
         let rx = core.event_receiver();
         let deadline = tokio::time::Instant::now() + TIMEOUT;
@@ -311,13 +323,21 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Navigate into the child
-        core.send(Command::Navigate(PathBuf::from("/parent/child"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/parent/child"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(path, PathBuf::from("/parent/child"));
 
         // Navigate up — should land in /parent
-        core.send(Command::NavigateUp(session)).unwrap();
+        core.send(Command::NavigateUp {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         let (parent_path, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
             parent_path,
@@ -338,11 +358,19 @@ mod navigation_flow_tests {
         let rx = core.event_receiver();
 
         // Navigate to /a/b, go up, navigate further — no "Unknown session" error
-        core.send(Command::Navigate(PathBuf::from("/a/b"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/a/b"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::NavigateUp(session)).unwrap();
+        core.send(Command::NavigateUp {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         // Verify no error events were emitted for this session
@@ -371,12 +399,20 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // First navigate to root so the navigator has a current directory
-        core.send(Command::Navigate(PathBuf::from("/"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         // Now try to go up from root
-        core.send(Command::NavigateUp(session)).unwrap();
+        core.send(Command::NavigateUp {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let rx = core.event_receiver();
@@ -408,11 +444,19 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/docs"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/docs"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::Refresh(session)).unwrap();
+        core.send(Command::Refresh {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
             path,
@@ -434,13 +478,21 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/work"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/work"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         let calls_after_nav = provider.list_calls().len();
 
-        core.send(Command::Refresh(session)).unwrap();
+        core.send(Command::Refresh {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         let calls_after_refresh = provider.list_calls().len();
@@ -459,7 +511,11 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // No Navigate first — Refresh should fail gracefully
-        core.send(Command::Refresh(session)).unwrap();
+        core.send(Command::Refresh {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let rx = core.event_receiver();
@@ -491,15 +547,27 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/dir_a"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/dir_a"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::Navigate(PathBuf::from("/dir_b"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/dir_b"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::NavigateBack(session)).unwrap();
+        core.send(Command::NavigateBack {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
             path,
@@ -520,16 +588,28 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         for dir in &["/a", "/b", "/c"] {
-            core.send(Command::Navigate(PathBuf::from(dir), session))
-                .unwrap();
+            core.send(Command::Navigate {
+                path: PathBuf::from(dir),
+                session: session,
+                request: filer_core::RequestId::new(),
+            })
+            .unwrap();
             wait_for_directory_loaded(&core, session).await;
         }
 
-        core.send(Command::NavigateBack(session)).unwrap();
+        core.send(Command::NavigateBack {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         let (p, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(p, PathBuf::from("/b"), "first back should yield /b");
 
-        core.send(Command::NavigateBack(session)).unwrap();
+        core.send(Command::NavigateBack {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         let (p, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(p, PathBuf::from("/a"), "second back should yield /a");
     }
@@ -544,11 +624,19 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Single navigation — no history to go back to
-        core.send(Command::Navigate(PathBuf::from("/only"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/only"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::NavigateBack(session)).unwrap();
+        core.send(Command::NavigateBack {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let rx = core.event_receiver();
@@ -572,17 +660,29 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/alpha"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/alpha"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::Navigate(PathBuf::from("/beta"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/beta"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         // Go back — immediately start listening for the NavState snapshot.
         let rx = core.event_receiver();
-        core.send(Command::NavigateBack(session)).unwrap();
+        core.send(Command::NavigateBack {
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
 
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         let mut can_forward = false;
@@ -650,10 +750,18 @@ mod navigation_flow_tests {
 
         assert_ne!(s1, s2);
 
-        core.send(Command::Navigate(PathBuf::from("/s1"), s1))
-            .unwrap();
-        core.send(Command::Navigate(PathBuf::from("/s2"), s2))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/s1"),
+            session: s1,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/s2"),
+            session: s2,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
 
         let (p1, c1) = wait_for_directory_loaded(&core, s1).await;
         let (p2, c2) = wait_for_directory_loaded(&core, s2).await;
@@ -686,10 +794,18 @@ mod navigation_flow_tests {
         };
 
         // Navigate both sessions
-        core.send(Command::Navigate(PathBuf::from("/stay"), session_stay))
-            .unwrap();
-        core.send(Command::Navigate(PathBuf::from("/gone"), session_gone))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/stay"),
+            session: session_stay,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/gone"),
+            session: session_gone,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session_stay).await;
         wait_for_directory_loaded(&core, session_gone).await;
 
@@ -698,7 +814,11 @@ mod navigation_flow_tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // The surviving session should still navigate without errors
-        core.send(Command::Refresh(session_stay)).unwrap();
+        core.send(Command::Refresh {
+            session: session_stay,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         let (path, _) = wait_for_directory_loaded(&core, session_stay).await;
         assert_eq!(
             path,
@@ -720,8 +840,12 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
         let rx = core.event_receiver();
 
-        core.send(Command::Navigate(PathBuf::from("/snap"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/snap"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
 
         // Collect events for a moment
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -760,13 +884,21 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate(PathBuf::from("/x"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/x"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         let rx = core.event_receiver();
-        core.send(Command::Navigate(PathBuf::from("/y"), session))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/y"),
+            session: session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
 
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         let can_back;

@@ -146,6 +146,8 @@ near-term product boundary.
 - [x] `Core` Preview registry, preview cache, preview actor, and text, code,
   image, media, and archive preview providers.
 - [x] `Core` Directory cache service with explicit refresh bypass support.
+- [x] `Core` Request ids and stale-event guards for scan, search, preview, and
+  refresh flows.
 - [x] `Ecosystem` Trusted in-process command seam through `Command::Extension`.
 - [x] `Ecosystem` Shared extension manifest, package, registry, and profile
   operation contracts live in `filer-ecosystem`.
@@ -158,7 +160,7 @@ near-term product boundary.
 This is the next core phase. It should happen before a major app rewrite, full
 extension runtime, web transport, marketplace, or broad provider expansion.
 
-- [ ] `Core` Add request ids for scan, search, preview, and refresh flows so
+- [x] `Core` Add request ids for scan, search, preview, and refresh flows so
   stale events can be rejected consistently.
 - [ ] `Core` Add operation ids for copy, move, delete, rename, create file, and
   create folder progress/completion events.
@@ -186,7 +188,7 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 
 Exit criteria:
 
-- [ ] Stale scan/search/preview results are ignored by request identity.
+- [x] Stale scan/search/preview results are ignored by request identity.
 - [ ] Operations emit correlated progress/completion by operation id.
 - [ ] Recoverable errors are structured enough for app and web clients to render
   clear feedback.
@@ -210,7 +212,7 @@ core events being truthful and fresh.
   watcher events, manual refresh, and same-folder navigation.
 - [ ] `Reliability` Ensure every operation that mutates files invalidates the
   affected parent directories.
-- [ ] `Reliability` Add stale-event guards for preview and search results by
+- [x] `Reliability` Add stale-event guards for preview and search results by
   session and request identity.
 - [ ] `Reliability` Standardize recoverable errors so app UI can display clear
   permission, collision, not-found, and unsupported-provider states.
@@ -260,7 +262,7 @@ core events being truthful and fresh.
   date, name, and regex search filters.
 - [x] `Core` Stream recursive search results with completion state.
 - [x] `Core` Cancel previous search work per session.
-- [ ] `Core` Add search result request ids so stale result batches can be
+- [x] `Core` Add search result request ids so stale result batches can be
   discarded safely by all frontends.
 - [ ] `Core` Add scoped search roots for selected folders, current folder, and
   workspace/project search.
@@ -299,7 +301,7 @@ core events being truthful and fresh.
 - [x] `Core` Archive entry preview.
 - [x] `Core` Metadata extractors for image, audio, video, document, archive, and
   code categories.
-- [ ] `Reliability` Add stale preview request ids and selection guards.
+- [x] `Reliability` Add stale preview request ids and selection guards.
 - [ ] `Core` Move remaining local-path preview assumptions toward provider or
   provider-backed cache access.
 - [ ] `Core` Decide which `FileNode` fields are synchronous guarantees and
@@ -369,7 +371,7 @@ core events being truthful and fresh.
 - [ ] `Protocol` Add serde support for public command, event, node, session,
   metadata, preview, operation, and pipeline types.
 - [ ] `Protocol` Add a versioned envelope for command and event transport.
-- [ ] `Protocol` Add request/response correlation ids where events respond to a
+- [x] `Protocol` Add request/response correlation ids where events respond to a
   specific command.
 - [ ] `Protocol` Add forward-compatible unknown-field behavior tests.
 - [ ] `Protocol` Add `filer-server` as a thin transport crate that depends on

@@ -147,6 +147,7 @@ mod session_manager_tests {
             message: "for session 1 only".into(),
             recoverable: true,
             session: id1,
+            request: None,
         };
         mgr.send_to(id1, event).unwrap();
 
@@ -179,6 +180,7 @@ mod session_manager_tests {
             message: "broadcast".into(),
             recoverable: false,
             session: SessionId::DEFAULT, // broadcast, so session field is illustrative
+            request: None,
         };
         mgr.broadcast(event);
 
@@ -201,6 +203,7 @@ mod session_manager_tests {
             message: "nobody home".into(),
             recoverable: true,
             session: SessionId::DEFAULT,
+            request: None,
         };
         mgr.broadcast(event);
     }
@@ -217,6 +220,7 @@ mod session_manager_tests {
             message: "hello".into(),
             recoverable: true,
             session: id,
+            request: None,
         };
         let result = mgr.send_to(id, event);
         assert!(result.is_ok());
@@ -237,6 +241,7 @@ mod session_manager_tests {
             message: "lost".into(),
             recoverable: false,
             session: bogus,
+            request: None,
         };
         let result = mgr.send_to(bogus, event);
         assert!(result.is_err());
@@ -260,6 +265,7 @@ mod session_manager_tests {
             message: "orphan".into(),
             recoverable: false,
             session: id,
+            request: None,
         };
         let result = mgr.send_to(id, event);
         assert!(result.is_err());
@@ -406,6 +412,7 @@ mod session_manager_tests {
             message: "still here".into(),
             recoverable: true,
             session: SessionId::DEFAULT,
+            request: None,
         };
         mgr.broadcast(event);
 
@@ -429,6 +436,7 @@ mod session_manager_tests {
                 message: format!("msg-{}", i),
                 recoverable: true,
                 session: id,
+                request: None,
             };
             mgr.send_to(id, event).unwrap();
         }

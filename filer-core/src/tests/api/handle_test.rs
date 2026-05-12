@@ -91,8 +91,12 @@ mod handle_tests {
         };
 
         // Now send a Navigate command using the valid session
-        core.send(Command::Navigate(PathBuf::from("/tmp"), session_id))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/tmp"),
+            session: session_id,
+            request: crate::model::request::RequestId::new(),
+        })
+        .unwrap();
 
         // The command should be accepted and routed (no Error event for invalid session)
         // We may receive DirectoryLoaded or another event, but NOT an "Unknown session" error
@@ -117,8 +121,12 @@ mod handle_tests {
 
         // Send a command with a completely bogus session (no Handshake first)
         let bogus = SessionId::new();
-        core.send(Command::Navigate(PathBuf::from("/tmp"), bogus))
-            .unwrap();
+        core.send(Command::Navigate {
+            path: PathBuf::from("/tmp"),
+            session: bogus,
+            request: crate::model::request::RequestId::new(),
+        })
+        .unwrap();
 
         // Should receive an Error event about unknown session
         let event = timeout(TEST_TIMEOUT, rx.recv_async()).await;
@@ -202,7 +210,11 @@ mod handle_tests {
         }
 
         // Session 2 should still be valid — commands with session2 should NOT error
-        core.send(Command::NavigateUp(session2)).unwrap();
+        core.send(Command::NavigateUp {
+            session: session2,
+            request: crate::model::request::RequestId::new(),
+        })
+        .unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         while let Ok(event) = rx.try_recv() {
@@ -284,7 +296,11 @@ mod handle_tests {
         let _ = timeout(TEST_TIMEOUT, rx.recv_async()).await;
 
         // Now send a command with the destroyed session
-        core.send(Command::NavigateUp(session_id)).unwrap();
+        core.send(Command::NavigateUp {
+            session: session_id,
+            request: crate::model::request::RequestId::new(),
+        })
+        .unwrap();
 
         let event = timeout(TEST_TIMEOUT, rx.recv_async()).await;
         match event {

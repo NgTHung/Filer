@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::errors::CoreError;
 use crate::model::node::{NodeId, NodeMeta};
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavState;
 use crate::pipeline::GroupedNodes;
@@ -23,6 +24,7 @@ pub enum Event {
         path: PathBuf, // Keep path for display in breadcrumb
         groups: GroupedNodes,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Scan progress update
@@ -30,6 +32,7 @@ pub enum Event {
         scanned: usize,
         current: NodeId,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Batch of files (streaming results)
@@ -40,6 +43,7 @@ pub enum Event {
         matches: Vec<FileNode>,
         complete: bool,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Filesystem change detected
@@ -70,6 +74,7 @@ pub enum Event {
         message: String,
         recoverable: bool,
         session: SessionId,
+        request: Option<RequestId>,
     },
 
     /// Basic metadata loaded (owner/group populated after load_owner_info)
@@ -77,6 +82,7 @@ pub enum Event {
         node: NodeId,
         meta: NodeMeta,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Extended metadata loaded
@@ -84,6 +90,7 @@ pub enum Event {
         node: NodeId,
         extended: ExtendedMetadata,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Preview ready
@@ -91,6 +98,7 @@ pub enum Event {
         node: NodeId,
         preview: PreviewData,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Preview generation failed
@@ -98,6 +106,7 @@ pub enum Event {
         node: NodeId,
         reason: String,
         session: SessionId,
+        request: RequestId,
     },
 
     SessionCreated(SessionId),
@@ -129,6 +138,7 @@ impl Event {
             message: err.to_string(),
             recoverable,
             session,
+            request: None,
         }
     }
 }

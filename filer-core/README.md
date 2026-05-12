@@ -37,7 +37,6 @@ panel entry.
 The next core milestone is contract stabilization. Before a major app rewrite or
 full extension runtime, core should settle:
 
-- request ids and stale-event guards for scan, search, preview, and refresh
 - operation ids for progress and completion events
 - structured recoverable errors
 - provider addressing beyond raw local paths
@@ -46,6 +45,10 @@ full extension runtime, core should settle:
 - extension output envelopes and file decoration payloads
 - the boundary between app-local config, core session snapshots, provider
   profiles, extension profile state, and future sync
+
+Completed contract work:
+
+- request ids and stale-event guards for scan, search, preview, and refresh
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -58,27 +61,65 @@ capabilities. This keeps local, archive, remote, virtual, and extension-backed
 files addressable through the same core model.
 
 Core stabilization is complete only when large directory loading is bounded,
-stale scan/search/preview events are rejected, operation progress is correlated,
-recoverable errors are structured, archive traversal is modeled as provider
-navigation, and the trusted git-decoration prototype proves extension output can
-arrive after directory data without blocking it.
+operation progress is correlated, recoverable errors are structured, archive
+traversal is modeled as provider navigation, and the trusted git-decoration
+prototype proves extension output can arrive after directory data without
+blocking it.
+
+## Request IDs
+
+Async command flows that can produce stale results now carry a `RequestId`.
+Callers create one request id per user intent and include it on commands for
+navigation-driven scans, refresh, search, preview, metadata, and extended
+metadata. The same id is echoed on matching events, including
+`DirectoryLoaded`, `ScanProgress`, `SearchResults`, `PreviewReady`,
+`PreviewFailed`, `MetadataLoaded`, and `ExtendedMetadataLoaded`.
+
+`RequestId::new()` creates runtime-local monotonic ids. `FilerCore` also exposes
+`next_request_id()` for callers that prefer to allocate ids through the handle.
+`RequestId::DEFAULT` is reserved for compatibility placeholders and should not
+be used for new client-originated work.
+
+Scan, search, and preview actors remember the latest request per session. If an
+older task finishes after a newer one, its result events are dropped before they
+reach clients. Request-scoped errors use `Event::Error { request: Some(id), .. }`;
+non-request errors and operation errors currently use `request: None`.
 
 ## Usage
 
 ```rust
-use filer_core::{FilerCore, Command, Event};
+use std::path::PathBuf;
+
+use filer_core::{Command, Event, FilerCore, RequestId};
 
 #[tokio::main]
 async fn main() {
     let core = FilerCore::new().await.unwrap();
-    
+
+    core.send(Command::Handshake).unwrap();
+    let session = match core.event_receiver().recv().unwrap() {
+        Event::SessionCreated(session) => session,
+        other => panic!("expected SessionCreated, got {other:?}"),
+    };
+
+    let request = RequestId::new();
+
     // Send command
-    core.send(Command::Navigate("/home".into())).unwrap();
-    
+    core.send(Command::Navigate {
+        path: PathBuf::from("/home"),
+        session,
+        request,
+    })
+    .unwrap();
+
     // Receive events
     while let Ok(event) = core.event_receiver().recv() {
         match event {
-            Event::DirectoryLoaded { groups, .. } => {
+            Event::DirectoryLoaded {
+                groups,
+                request: loaded_request,
+                ..
+            } if loaded_request == request => {
                 println!("Loaded {} files", groups.total_count);
             }
             _ => {}

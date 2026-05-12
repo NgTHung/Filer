@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::PreviewOptions;
 use crate::model::node::NodeId;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
 
@@ -12,34 +13,56 @@ use crate::pipeline::PipelineConfig;
 #[derive(Clone)]
 pub enum Command {
     /// Navigate to path (initial navigation uses PathBuf)
-    Navigate(PathBuf, SessionId),
+    Navigate {
+        path: PathBuf,
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Navigate to a node by ID (after initial load)
-    NavigateToNode(NodeId, SessionId),
+    NavigateToNode {
+        node: NodeId,
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Go up one directory
-    NavigateUp(SessionId),
+    NavigateUp {
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Go back in history
-    NavigateBack(SessionId),
+    NavigateBack {
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Go forward in history
-    NavigateForward(SessionId),
+    NavigateForward {
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Refresh current directory
-    Refresh(SessionId),
+    Refresh {
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Search for files
     Search {
         query: String,
         root: NodeId,
         session: SessionId,
+        request: RequestId,
     },
 
     SearchPath {
         query: String,
         root: PathBuf,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Cancel current operation
@@ -50,6 +73,7 @@ pub enum Command {
         id: NodeId,
         options: Option<PreviewOptions>,
         session: SessionId,
+        request: RequestId,
     },
 
     /// Cancel preview generation
@@ -98,16 +122,25 @@ pub enum Command {
     },
 
     /// Load basic metadata
-    LoadMetadata(NodeId, SessionId),
+    LoadMetadata {
+        node: NodeId,
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Load extended metadata (EXIF, ID3, etc.)
-    LoadExtendedMetadata(NodeId, SessionId),
+    LoadExtendedMetadata {
+        node: NodeId,
+        session: SessionId,
+        request: RequestId,
+    },
 
     /// Scan a directory by path (initial scan, returns batched results)
     Scan {
         path: PathBuf,
         session: SessionId,
         pipeline: PipelineConfig,
+        request: RequestId,
     },
 
     /// Scan a directory by NodeId (re-scan after navigation)
@@ -115,6 +148,7 @@ pub enum Command {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
+        request: RequestId,
     },
 
     /// Update the current navigation pipeline for future refreshes.
@@ -183,19 +217,17 @@ impl Command {
             Command::DestroySession(_) => None,
             Command::Unwatch(_) => None,
 
-            Command::Navigate(_, s)
-            | Command::NavigateToNode(_, s)
-            | Command::NavigateUp(s)
-            | Command::Refresh(s)
+            Command::Navigate { session: s, .. }
+            | Command::NavigateToNode { session: s, .. }
+            | Command::NavigateUp { session: s, .. }
+            | Command::Refresh { session: s, .. }
             | Command::Cancel(s)
             | Command::CancelPreview(s)
             | Command::CancelScan(s)
-            | Command::LoadMetadata(_, s)
-            | Command::LoadExtendedMetadata(_, s)
             | Command::Watch(_, s)
             | Command::UnwatchSession(s)
-            | Command::NavigateBack(s)
-            | Command::NavigateForward(s) => Some(*s),
+            | Command::NavigateBack { session: s, .. }
+            | Command::NavigateForward { session: s, .. } => Some(*s),
 
             Command::Search { session, .. }
             | Command::SearchPath { session, .. }
@@ -203,6 +235,8 @@ impl Command {
             | Command::ScanNode { session, .. }
             | Command::SetPipeline { session, .. }
             | Command::LoadPreview { session, .. }
+            | Command::LoadMetadata { session, .. }
+            | Command::LoadExtendedMetadata { session, .. }
             | Command::Copy { session, .. }
             | Command::Move { session, .. }
             | Command::Delete { session, .. }
@@ -220,19 +254,19 @@ impl Command {
     /// returns the user-provided key.
     pub fn key(&self) -> &str {
         match self {
-            Command::Navigate(..) => "navigate",
-            Command::NavigateToNode(..) => "navigate.node",
-            Command::NavigateUp(..) => "navigate.up",
-            Command::NavigateBack(..) => "navigate.back",
-            Command::NavigateForward(..) => "navigate.forward",
-            Command::Refresh(..) => "navigate.refresh",
+            Command::Navigate { .. } => "navigate",
+            Command::NavigateToNode { .. } => "navigate.node",
+            Command::NavigateUp { .. } => "navigate.up",
+            Command::NavigateBack { .. } => "navigate.back",
+            Command::NavigateForward { .. } => "navigate.forward",
+            Command::Refresh { .. } => "navigate.refresh",
             Command::Search { .. } => "search",
             Command::SearchPath { .. } => "search.path",
             Command::Cancel(..) => "search.cancel",
             Command::LoadPreview { .. } => "preview.load",
             Command::CancelPreview(..) => "preview.cancel",
-            Command::LoadMetadata(..) => "metadata.load",
-            Command::LoadExtendedMetadata(..) => "metadata.extended",
+            Command::LoadMetadata { .. } => "metadata.load",
+            Command::LoadExtendedMetadata { .. } => "metadata.extended",
             Command::Copy { .. } => "ops.copy",
             Command::Move { .. } => "ops.move",
             Command::Delete { .. } => "ops.delete",
