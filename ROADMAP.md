@@ -26,10 +26,10 @@ desktop-only UI code.
 The current priority is **Core Contract Stabilization**. "Core" means the stable
 contracts that prevent churn across the app, future web clients, and extensions:
 request identity, cancellation, stale-event rejection, operation identity,
-structured recoverable errors, provider addressing, large-directory loading
-contracts, extension output envelopes, and local-profile boundaries. It does not
-mean building every planned extension surface, web transport, marketplace, or
-app rewrite immediately.
+structured error categories, provider addressing, large-directory loading
+contracts, extension output envelopes, and local-profile boundaries. It does
+not mean building every planned extension surface, web transport, marketplace,
+or app rewrite immediately.
 
 The proof target for this phase is practical: Filer should load a very large
 local directory, such as `C:\Windows\System32`, without blocking the client, and
@@ -150,6 +150,8 @@ near-term product boundary.
   refresh flows.
 - [x] `Core` Operation ids for copy, move, delete, rename, create file, and
   create folder progress, completion, and operation-scoped errors.
+- [x] `Core` Structured `ErrorKind` categories on app-facing `Event::Error`
+  events, with recoverability derived from the kind.
 - [x] `Ecosystem` Trusted in-process command seam through `Command::Extension`.
 - [x] `Ecosystem` Shared extension manifest, package, registry, and profile
   operation contracts live in `filer-ecosystem`.
@@ -166,9 +168,9 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   stale events can be rejected consistently.
 - [x] `Core` Add operation ids for copy, move, delete, rename, create file, and
   create folder progress/completion events.
-- [ ] `Core` Standardize structured recoverable errors for permission denied,
-  collision, not found, unsupported provider capability, cancelled, and stale
-  request cases.
+- [x] `Core` Add structured error kinds for current app-facing error events.
+- [ ] `Core` Add richer structured error context for collision, unsupported
+  provider capability, stale request, and location-targeted cases.
 - [ ] `Core` Define a structured provider `Location` model for local, archive,
   remote, virtual, and extension-backed locations. It should include scheme,
   provider/profile id, internal path, optional archive/member path, display
@@ -192,8 +194,10 @@ Exit criteria:
 
 - [x] Stale scan/search/preview results are ignored by request identity.
 - [x] Operations emit correlated progress/completion by operation id.
-- [ ] Recoverable errors are structured enough for app and web clients to render
-  clear feedback.
+- [x] Error events carry a structured `ErrorKind` so app and web clients can
+  branch without parsing message strings.
+- [ ] Error events carry enough target/context for app and web clients to render
+  clear location-aware feedback.
 - [ ] The provider `Location` model is documented and tested.
 - [ ] Large-directory loading is bounded and testable.
 - [ ] Archive traversal is modeled as provider navigation, not only preview.
@@ -216,8 +220,9 @@ core events being truthful and fresh.
   affected parent directories.
 - [x] `Reliability` Add stale-event guards for preview and search results by
   session and request identity.
-- [ ] `Reliability` Standardize recoverable errors so app UI can display clear
-  permission, collision, not-found, and unsupported-provider states.
+- [ ] `Reliability` Add error targets and provider-specific context so app UI
+  can display clear permission, collision, not-found, and unsupported-provider
+  states.
 - [ ] `Reliability` Keep structured tracing for all app-facing command and event
   paths.
 - [ ] `Reliability` Add stress tests for rapid create/delete/rename watcher

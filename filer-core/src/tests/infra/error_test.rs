@@ -1,6 +1,8 @@
 //! Tests for error types
 
-use crate::errors::CoreError;
+use crate::api::events::Event;
+use crate::errors::{CoreError, ErrorKind};
+use crate::model::session::SessionId;
 use std::path::PathBuf;
 
 #[test]
@@ -183,6 +185,132 @@ fn test_error_is_error_trait() {
     let error = CoreError::Cancelled;
     // This ensures CoreError implements std::error::Error
     let _: &dyn std::error::Error = &error;
+}
+
+#[test]
+fn test_error_kind_for_all_core_error_variants() {
+    let path = PathBuf::from("/tmp/file.txt");
+    let cases = vec![
+        (
+            CoreError::Io {
+                path: path.clone(),
+                message: "io".to_string(),
+            },
+            ErrorKind::Io,
+        ),
+        (CoreError::NotFound(path.clone()), ErrorKind::NotFound),
+        (
+            CoreError::PermissionDenied(path.clone()),
+            ErrorKind::PermissionDenied,
+        ),
+        (
+            CoreError::InvalidPath("bad path".to_string()),
+            ErrorKind::InvalidPath,
+        ),
+        (
+            CoreError::ChannelClosed("closed".to_string()),
+            ErrorKind::ChannelClosed,
+        ),
+        (CoreError::Cancelled, ErrorKind::Cancelled),
+        (
+            CoreError::ActorError {
+                actor: "test",
+                message: "failed".to_string(),
+            },
+            ErrorKind::Actor,
+        ),
+        (
+            CoreError::NetworkError("offline".to_string()),
+            ErrorKind::Network,
+        ),
+        (
+            CoreError::InvalidData("corrupt".to_string()),
+            ErrorKind::InvalidData,
+        ),
+        (
+            CoreError::InvalidInput("bad input".to_string()),
+            ErrorKind::InvalidInput,
+        ),
+        (
+            CoreError::Other(std::io::Error::other("unexpected")),
+            ErrorKind::Unknown,
+        ),
+    ];
+
+    for (error, expected) in cases {
+        assert_eq!(error.kind(), expected);
+    }
+}
+
+#[test]
+fn test_error_kind_recoverability() {
+    for kind in [
+        ErrorKind::NotFound,
+        ErrorKind::PermissionDenied,
+        ErrorKind::InvalidPath,
+        ErrorKind::Cancelled,
+        ErrorKind::Network,
+    ] {
+        assert!(kind.is_recoverable(), "{kind:?} should be recoverable");
+    }
+
+    for kind in [
+        ErrorKind::Io,
+        ErrorKind::ChannelClosed,
+        ErrorKind::Actor,
+        ErrorKind::InvalidData,
+        ErrorKind::InvalidInput,
+        ErrorKind::Unknown,
+    ] {
+        assert!(!kind.is_recoverable(), "{kind:?} should not be recoverable");
+    }
+}
+
+#[test]
+fn test_event_from_error_includes_kind_and_recoverability() {
+    let session = SessionId::new();
+    let path = PathBuf::from("/tmp/missing");
+
+    let event = Event::from_error(CoreError::NotFound(path), session);
+    match event {
+        Event::Error {
+            kind,
+            recoverable,
+            session: event_session,
+            request,
+            operation,
+            ..
+        } => {
+            assert_eq!(kind, ErrorKind::NotFound);
+            assert!(recoverable);
+            assert_eq!(event_session, session);
+            assert_eq!(request, None);
+            assert_eq!(operation, None);
+        }
+        other => panic!("expected Error event, got {other:?}"),
+    }
+
+    let event = Event::from_error(CoreError::InvalidInput("bad input".to_string()), session);
+    match event {
+        Event::Error {
+            kind, recoverable, ..
+        } => {
+            assert_eq!(kind, ErrorKind::InvalidInput);
+            assert!(!recoverable);
+        }
+        other => panic!("expected Error event, got {other:?}"),
+    }
+
+    let event = Event::from_error(CoreError::Other(std::io::Error::other("unknown")), session);
+    match event {
+        Event::Error {
+            kind, recoverable, ..
+        } => {
+            assert_eq!(kind, ErrorKind::Unknown);
+            assert!(!recoverable);
+        }
+        other => panic!("expected Error event, got {other:?}"),
+    }
 }
 
 // Conversion tests - from std::io::Error

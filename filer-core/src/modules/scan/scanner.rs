@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
+use crate::errors::ErrorKind;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -282,6 +283,7 @@ impl Actor for Scanner {
                         send_or_warn(
                             &self.events_sender,
                             Event::Error {
+                                kind: ErrorKind::InvalidInput,
                                 message: format!("Unable to resolve ID: {node:?}"),
                                 recoverable: false,
                                 session,
@@ -304,6 +306,7 @@ impl Actor for Scanner {
                         send_or_warn(
                             &self.events_sender,
                             Event::Error {
+                                kind: ErrorKind::InvalidInput,
                                 message: format!("Unable to resolve ID: {node:?}"),
                                 recoverable: false,
                                 session,

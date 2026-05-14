@@ -3,6 +3,34 @@ use std::path::PathBuf;
 
 use flume::SendError;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    Io,
+    NotFound,
+    PermissionDenied,
+    InvalidPath,
+    ChannelClosed,
+    Cancelled,
+    Actor,
+    Network,
+    InvalidData,
+    InvalidInput,
+    Unknown,
+}
+
+impl ErrorKind {
+    pub fn is_recoverable(self) -> bool {
+        matches!(
+            self,
+            ErrorKind::NotFound
+                | ErrorKind::PermissionDenied
+                | ErrorKind::InvalidPath
+                | ErrorKind::Cancelled
+                | ErrorKind::Network
+        )
+    }
+}
+
 #[derive(Debug)]
 pub enum CoreError {
     /// IO error with path context
@@ -102,6 +130,22 @@ impl<T: std::fmt::Debug> From<SendError<T>> for CoreError {
 // ── Contextual conversion ────────────────────────────────────────────
 
 impl CoreError {
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            CoreError::Io { .. } => ErrorKind::Io,
+            CoreError::NotFound(_) => ErrorKind::NotFound,
+            CoreError::PermissionDenied(_) => ErrorKind::PermissionDenied,
+            CoreError::InvalidPath(_) => ErrorKind::InvalidPath,
+            CoreError::ChannelClosed(_) => ErrorKind::ChannelClosed,
+            CoreError::Cancelled => ErrorKind::Cancelled,
+            CoreError::ActorError { .. } => ErrorKind::Actor,
+            CoreError::NetworkError(_) => ErrorKind::Network,
+            CoreError::InvalidData(_) => ErrorKind::InvalidData,
+            CoreError::InvalidInput(_) => ErrorKind::InvalidInput,
+            CoreError::Other(_) => ErrorKind::Unknown,
+        }
+    }
+
     /// Convert an `io::Error` into a `CoreError` with path context.
     ///
     /// Maps well-known `ErrorKind` variants to specific `CoreError`

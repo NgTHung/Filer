@@ -37,8 +37,8 @@ panel entry.
 The next core milestone is contract stabilization. Before a major app rewrite or
 full extension runtime, core should settle:
 
-- structured recoverable errors
 - provider addressing beyond raw local paths
+- richer error targets and provider-specific error cases
 - cancellation and timeout semantics
 - large-directory loading behavior
 - extension output envelopes and file decoration payloads
@@ -50,6 +50,8 @@ Completed contract work:
 - request ids and stale-event guards for scan, search, preview, and refresh
 - operation ids for copy, move, delete, rename, create file, and create folder
   progress, completion, and operation-scoped errors
+- structured error kinds through `ErrorKind`, `CoreError::kind()`, and
+  `Event::Error { kind, message, recoverable, session, request, operation }`
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -62,9 +64,10 @@ capabilities. This keeps local, archive, remote, virtual, and extension-backed
 files addressable through the same core model.
 
 Core stabilization is complete only when large directory loading is bounded,
-recoverable errors are structured, archive traversal is modeled as provider
-navigation, and the trusted git-decoration prototype proves extension output can
-arrive after directory data without blocking it.
+errors carry enough structured target/context for app and web clients, archive
+traversal is modeled as provider navigation, and the trusted git-decoration
+prototype proves extension output can arrive after directory data without
+blocking it.
 
 ## Request IDs
 
@@ -101,6 +104,47 @@ Operation-scoped failures use `Event::Error { operation: Some(id), request:
 None, .. }`. Non-operation errors use `operation: None`. Cancellation remains
 session-scoped for now; operation-id-specific cancellation can be added later
 without changing the correlation contract.
+
+## Error Kinds
+
+App-facing error events now include a machine-readable `ErrorKind`:
+
+```rust
+Event::Error {
+    kind,
+    message,
+    recoverable,
+    session,
+    request,
+    operation,
+}
+```
+
+`message` remains the human-readable display text. `kind` is the stable value
+clients should branch on. `recoverable` is derived from `kind` by
+`ErrorKind::is_recoverable()` so event producers do not maintain a separate
+mapping.
+
+Current kinds are:
+
+- `Io`
+- `NotFound`
+- `PermissionDenied`
+- `InvalidPath`
+- `ChannelClosed`
+- `Cancelled`
+- `Actor`
+- `Network`
+- `InvalidData`
+- `InvalidInput`
+- `Unknown`
+
+`CoreError::kind()` maps every `CoreError` variant to one of those categories,
+and `Event::from_error()` copies that kind into `Event::Error`. Request-scoped
+errors still use `request: Some(id)`, operation-scoped errors still use
+`operation: Some(id)`, and generic session errors keep both fields as `None`.
+Future work can add structured error targets once the provider `Location` model
+exists.
 
 ## Usage
 

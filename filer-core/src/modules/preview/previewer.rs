@@ -15,7 +15,7 @@ use crate::services::mime::MimeDetector;
 use crate::services::preview::PreviewCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::provider::FsProvider;
-use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
+use crate::{ErrorKind, MetadataRegistry, PreviewOptions, PreviewRegistry};
 
 /// Commands for previewer actor
 #[derive(Debug, Clone)]
@@ -112,6 +112,7 @@ impl Previewer {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve node {node:?}"),
                     recoverable: true,
                     session,
@@ -207,6 +208,7 @@ impl Previewer {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve node {node:?}"),
                     recoverable: true,
                     session,
@@ -244,6 +246,7 @@ impl Previewer {
                     send_or_warn_async(
                         &events,
                         Event::Error {
+                            kind: ErrorKind::Io,
                             message: e.to_string(),
                             recoverable: true,
                             session,
@@ -266,6 +269,7 @@ impl Previewer {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve node {node:?}"),
                     recoverable: true,
                     session,
@@ -334,6 +338,7 @@ impl Previewer {
                     send_or_warn_async(
                         &events,
                         Event::Error {
+                            kind: e.kind(),
                             message: e.to_string(),
                             recoverable: true,
                             session,

@@ -12,7 +12,7 @@ mod vfs;
 // Re-exports
 pub use api::module::Module;
 pub use api::{commands::Command, events::Event, handle::FilerCore};
-pub use errors::CoreError;
+pub use errors::{CoreError, ErrorKind};
 pub use model::node::{FileNode, NodeMeta};
 pub use model::operation::OperationId;
 pub use model::request::RequestId;

@@ -37,10 +37,11 @@ UI framework.
 The near-term priority is core contract stabilization, not a full plugin
 platform or app rewrite. Request identity and stale-event guards are now in
 place for scan, search, preview, and refresh flows, and file operations now emit
-correlated operation progress, completion, and error events. The project should
-next settle structured errors, provider addressing,
-large-directory loading contracts, extension output envelopes, and the boundary
-between app-local config and future profile sync.
+correlated operation progress, completion, and error events. App-facing errors
+now include a structured `ErrorKind` alongside the human-readable message and
+recoverability flag. The project should next settle provider addressing,
+large-directory loading contracts, richer error targets, extension output
+envelopes, and the boundary between app-local config and future profile sync.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

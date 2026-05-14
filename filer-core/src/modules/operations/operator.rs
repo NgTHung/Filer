@@ -12,7 +12,7 @@ use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::{CoreError, FsProvider};
+use crate::{CoreError, ErrorKind, FsProvider};
 
 #[derive(Debug, Clone)]
 pub enum OpsCommand {
@@ -126,6 +126,7 @@ impl Operator {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve destination {dest:?}"),
                     recoverable: true,
                     session,
@@ -143,6 +144,7 @@ impl Operator {
                 send_or_warn(
                     &self.events,
                     Event::Error {
+                        kind: ErrorKind::InvalidInput,
                         message: format!("Cannot resolve source {src_id:?}"),
                         recoverable: true,
                         session,
@@ -174,6 +176,7 @@ impl Operator {
                     send_or_warn_async(
                         &events,
                         Event::Error {
+                            kind: ErrorKind::Io,
                             message: format!("Cannot stat {}", src_path.display()),
                             recoverable: true,
                             session,
@@ -260,6 +263,7 @@ impl Operator {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve destination {dest:?}"),
                     recoverable: true,
                     session,
@@ -277,6 +281,7 @@ impl Operator {
                 send_or_warn(
                     &self.events,
                     Event::Error {
+                        kind: ErrorKind::InvalidInput,
                         message: format!("Cannot resolve source {src_id:?}"),
                         recoverable: true,
                         session,
@@ -376,6 +381,7 @@ impl Operator {
                 send_or_warn(
                     &self.events,
                     Event::Error {
+                        kind: ErrorKind::InvalidInput,
                         message: format!("Cannot resolve node {target:?}"),
                         recoverable: true,
                         session,
@@ -473,6 +479,7 @@ impl Operator {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve node {source:?}"),
                     recoverable: true,
                     session,
@@ -488,6 +495,7 @@ impl Operator {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidPath,
                     message: format!("Cannot get parent of {}", src_path.display()),
                     recoverable: true,
                     session,
@@ -510,6 +518,7 @@ impl Operator {
                 send_or_warn_async(
                     &events,
                     Event::Error {
+                        kind: ErrorKind::InvalidPath,
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
@@ -560,6 +569,7 @@ impl Operator {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve node {parent:?}"),
                     recoverable: true,
                     session,
@@ -582,6 +592,7 @@ impl Operator {
                 send_or_warn_async(
                     &events,
                     Event::Error {
+                        kind: ErrorKind::InvalidPath,
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
@@ -630,6 +641,7 @@ impl Operator {
             send_or_warn(
                 &self.events,
                 Event::Error {
+                    kind: ErrorKind::InvalidInput,
                     message: format!("Cannot resolve node {parent:?}"),
                     recoverable: true,
                     session,
@@ -652,6 +664,7 @@ impl Operator {
                 send_or_warn_async(
                     &events,
                     Event::Error {
+                        kind: ErrorKind::InvalidPath,
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
@@ -740,11 +753,13 @@ async fn copy_dir_recursive(
 fn operation_error(err: CoreError, session: SessionId, operation: OperationId) -> Event {
     match Event::from_error(err, session) {
         Event::Error {
+            kind,
             message,
             recoverable,
             session,
             ..
         } => Event::Error {
+            kind,
             message,
             recoverable,
             session,

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::errors::CoreError;
+use crate::errors::{CoreError, ErrorKind};
 use crate::model::node::{NodeId, NodeMeta};
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
@@ -74,6 +74,7 @@ pub enum Event {
 
     /// Error occurred
     Error {
+        kind: ErrorKind,
         message: String,
         recoverable: bool,
         session: SessionId,
@@ -126,21 +127,15 @@ pub enum Event {
 impl Event {
     /// Create an `Event::Error` from a [`CoreError`] and session.
     ///
-    /// Determines `recoverable` based on the error variant:
+    /// Determines `kind` from the error variant and derives `recoverable`:
     /// - Recoverable: NotFound, PermissionDenied, InvalidPath, Cancelled, NetworkError
     /// - Non-recoverable: Io, ChannelClosed, ActorError, InvalidData, InvalidInput, Other
     pub fn from_error(err: CoreError, session: SessionId) -> Self {
-        let recoverable = matches!(
-            err,
-            CoreError::NotFound(_)
-                | CoreError::PermissionDenied(_)
-                | CoreError::InvalidPath(_)
-                | CoreError::Cancelled
-                | CoreError::NetworkError(_)
-        );
+        let kind = err.kind();
         Event::Error {
+            kind,
             message: err.to_string(),
-            recoverable,
+            recoverable: kind.is_recoverable(),
             session,
             request: None,
             operation: None,

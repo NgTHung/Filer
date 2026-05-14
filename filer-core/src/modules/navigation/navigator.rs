@@ -14,7 +14,6 @@ use std::sync::Arc;
 use flume::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
-use crate::Event;
 use crate::actors::Actor;
 use crate::api::events;
 use crate::model::node::NodeId;
@@ -24,6 +23,7 @@ use crate::model::session::SessionId;
 use crate::modules::scan::scanner::ScanCommand;
 use crate::pipeline::{Pipeline, PipelineConfig};
 use crate::utils::channel::send_or_warn;
+use crate::{ErrorKind, Event};
 
 /// Navigation commands
 #[derive(Debug, Clone)]
@@ -349,6 +349,7 @@ impl Navigator {
                             send_or_warn(
                                 &self.events,
                                 Event::Error {
+                                    kind: ErrorKind::InvalidInput,
                                     message: "Can't go back: no history".to_string(),
                                     recoverable: true,
                                     session: session_id,
@@ -379,6 +380,7 @@ impl Navigator {
                             send_or_warn(
                                 &self.events,
                                 Event::Error {
+                                    kind: ErrorKind::InvalidInput,
                                     message: "Can't go forward: no forward history".to_string(),
                                     recoverable: true,
                                     session: session_id,
@@ -411,6 +413,7 @@ impl Navigator {
                             send_or_warn(
                                 &self.events,
                                 Event::Error {
+                                    kind: ErrorKind::InvalidInput,
                                     message: "Can't go up: no parent directory".to_string(),
                                     recoverable: true,
                                     session: session_id,
@@ -440,6 +443,7 @@ impl Navigator {
                             send_or_warn(
                                 &self.events,
                                 Event::Error {
+                                    kind: ErrorKind::InvalidInput,
                                     message: "Can't refresh: no current directory".to_string(),
                                     recoverable: true,
                                     session: session_id,
