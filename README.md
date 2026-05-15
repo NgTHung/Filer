@@ -50,14 +50,16 @@ envelopes, and the boundary between app-local config and future profile sync.
 `LocationRef` now has explicit id-only, descriptor-only, and full modes instead
 of optional fields, and `LocationDescriptor` separates the provider root from
 ordered `LocationSegment` layers. `LocationId` hashes the root plus ordered
-segments, but not display text. This does not yet replace public command/event
-`PathBuf` and `NodeId` surfaces; it strengthens the compatibility layer for
-that migration. The intent is for `Location` to become the bridge across local
-files, remote providers, virtual providers, extension-backed providers, and
-archives. Nested archive addresses can now be modeled as a provider root plus
-archive/member segments instead of forcing every layer into one path string.
-Large-directory loading, richer error targets, archive navigation, and wire-safe
-transport envelopes remain future work.
+segments, but not display text. `LocationRoute` now classifies descriptors as
+direct local paths, segmented locations, or unsupported provider routes, with a
+derived route cache in the registry. This does not yet replace public
+command/event `PathBuf` and `NodeId` surfaces; it strengthens the compatibility
+layer for that migration. The intent is for `Location` to become the bridge
+across local files, remote providers, virtual providers, extension-backed
+providers, and archives. Nested archive addresses can now be modeled as a
+provider root plus archive/member segments instead of forcing every layer into
+one path string. Large-directory loading, richer error targets, archive
+navigation, and wire-safe transport envelopes remain future work.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

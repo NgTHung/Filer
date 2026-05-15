@@ -6,7 +6,7 @@ use rapidhash::fast::RandomState;
 use crate::FileNode;
 use crate::errors::CoreError;
 
-use super::location::{Location, LocationDescriptor, LocationId, LocationRef};
+use super::location::{Location, LocationDescriptor, LocationId, LocationRef, LocationRoute};
 use super::node::NodeId;
 
 /// Registry that maps node and location IDs to filesystem identity.
@@ -15,6 +15,7 @@ use super::node::NodeId;
 pub struct NodeRegistry {
     id_to_path: Arc<scc::HashMap<NodeId, PathBuf, RandomState>>,
     id_to_location: Arc<scc::HashMap<LocationId, LocationDescriptor, RandomState>>,
+    id_to_location_route: Arc<scc::HashMap<LocationId, LocationRoute, RandomState>>,
 }
 
 impl NodeRegistry {
@@ -22,6 +23,7 @@ impl NodeRegistry {
         Self {
             id_to_path: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             id_to_location: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            id_to_location_route: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
 
@@ -84,6 +86,7 @@ impl NodeRegistry {
     pub fn clear(&self) {
         self.id_to_path.clear_sync();
         self.id_to_location.clear_sync();
+        self.id_to_location_route.clear_sync();
     }
 
     /// Number of registered paths
@@ -118,6 +121,23 @@ impl NodeRegistry {
 
     pub fn resolve_location(&self, id: LocationId) -> Option<LocationDescriptor> {
         self.id_to_location.read_sync(&id, |_, v| v.clone())
+    }
+
+    pub fn cached_location_route(&self, id: LocationId) -> Option<LocationRoute> {
+        self.id_to_location_route.read_sync(&id, |_, v| v.clone())
+    }
+
+    pub fn resolve_location_route(&self, id: LocationId) -> Result<LocationRoute, CoreError> {
+        if let Some(route) = self.cached_location_route(id) {
+            return Ok(route);
+        }
+
+        let descriptor = self
+            .resolve_location(id)
+            .ok_or_else(|| CoreError::InvalidLocation(format!("unresolved location id {id}")))?;
+        let route = descriptor.route();
+        let _ = self.id_to_location_route.insert_sync(id, route.clone());
+        Ok(route)
     }
 
     pub fn resolve_location_ref(&self, location_ref: &LocationRef) -> Result<Location, CoreError> {

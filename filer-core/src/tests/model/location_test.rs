@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use crate::errors::{CoreError, ErrorKind};
 use crate::model::location::{
-    Location, LocationDescriptor, LocationId, LocationRef, LocationSegment, ProviderRef,
+    Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
+    ProviderRef,
 };
 use crate::model::registry::NodeRegistry;
 
@@ -148,6 +149,40 @@ fn non_local_provider_descriptor_has_no_local_path() {
 }
 
 #[test]
+fn unsegmented_local_descriptor_routes_to_direct_path() {
+    let descriptor = LocationDescriptor::local("/tmp/project");
+    let route = descriptor.route();
+
+    assert_eq!(
+        route,
+        LocationRoute::DirectPath {
+            path: PathBuf::from("/tmp/project")
+        }
+    );
+    assert_eq!(
+        route.as_direct_path(),
+        Some(PathBuf::from("/tmp/project").as_path())
+    );
+    assert!(!route.is_segmented());
+    assert_eq!(
+        route.require_direct_path().unwrap(),
+        PathBuf::from("/tmp/project").as_path()
+    );
+}
+
+#[test]
+fn location_routes_through_its_descriptor() {
+    let location = Location::local("/tmp/project");
+
+    assert_eq!(
+        location.route(),
+        LocationRoute::DirectPath {
+            path: PathBuf::from("/tmp/project")
+        }
+    );
+}
+
+#[test]
 fn archive_member_segments_are_ordered_layers_after_root() {
     let descriptor = LocationDescriptor::provider_profile("sftp", "work", "/home/me/bundle.zip")
         .archive_member("vendor.tar")
@@ -217,6 +252,79 @@ fn segmented_local_descriptor_has_no_direct_local_path() {
 }
 
 #[test]
+fn segmented_local_descriptor_routes_to_segmented_target() {
+    let descriptor = LocationDescriptor::local("/tmp/bundle.zip")
+        .archive_member("vendor.tar")
+        .archive_member("src/main.rs");
+    let route = descriptor.route();
+
+    assert_eq!(
+        route,
+        LocationRoute::Segmented {
+            root: PathBuf::from("/tmp/bundle.zip"),
+            segments: vec![
+                LocationSegment::ArchiveMember {
+                    path: PathBuf::from("vendor.tar")
+                },
+                LocationSegment::ArchiveMember {
+                    path: PathBuf::from("src/main.rs")
+                }
+            ]
+        }
+    );
+    assert_eq!(route.as_direct_path(), None);
+    assert!(route.is_segmented());
+}
+
+#[test]
+fn require_direct_path_rejects_segmented_locations() {
+    let route = LocationDescriptor::local("/tmp/bundle.zip")
+        .archive_member("inside.txt")
+        .route();
+    let err = route.require_direct_path().unwrap_err();
+
+    assert!(matches!(err, CoreError::InvalidLocation(_)));
+    assert_eq!(err.kind(), ErrorKind::InvalidLocation);
+}
+
+#[test]
+fn profile_provider_routes_to_unsupported_provider() {
+    let descriptor = LocationDescriptor::provider_profile("sftp", "work", "/home/me/project");
+
+    assert_eq!(
+        descriptor.route(),
+        LocationRoute::UnsupportedProvider {
+            scheme: "sftp".to_string(),
+            provider: ProviderRef::Profile("work".to_string()),
+            root: PathBuf::from("/home/me/project")
+        }
+    );
+}
+
+#[test]
+fn ephemeral_provider_routes_to_unsupported_provider() {
+    let descriptor = LocationDescriptor::ephemeral("archive-cache", "session-archive", "/member");
+
+    assert_eq!(
+        descriptor.route(),
+        LocationRoute::UnsupportedProvider {
+            scheme: "archive-cache".to_string(),
+            provider: ProviderRef::Ephemeral("session-archive".to_string()),
+            root: PathBuf::from("/member")
+        }
+    );
+}
+
+#[test]
+fn unsupported_provider_route_ignores_display_path() {
+    let plain = LocationDescriptor::provider_profile("s3", "assets", "bucket/prefix");
+    let display = LocationDescriptor::provider_profile("s3", "assets", "bucket/prefix")
+        .with_display_path("Assets");
+
+    assert_eq!(plain.route(), display.route());
+}
+
+#[test]
 fn display_path_does_not_affect_location_id() {
     let plain = Location::new(LocationDescriptor::local("/tmp/display.txt"));
     let display = Location::new(
@@ -280,6 +388,43 @@ fn registry_preserves_segmented_descriptor_ref() {
         registry.resolve_location(resolved.id()).unwrap(),
         descriptor
     );
+}
+
+#[test]
+fn registry_resolves_and_caches_location_route() {
+    let registry = NodeRegistry::new();
+    let location = Location::local("/tmp/project");
+    let id = location.id();
+
+    registry.register_location(location);
+
+    assert_eq!(registry.cached_location_route(id), None);
+    assert_eq!(
+        registry.resolve_location_route(id).unwrap(),
+        LocationRoute::DirectPath {
+            path: PathBuf::from("/tmp/project")
+        }
+    );
+    assert_eq!(
+        registry.cached_location_route(id).unwrap(),
+        LocationRoute::DirectPath {
+            path: PathBuf::from("/tmp/project")
+        }
+    );
+}
+
+#[test]
+fn registry_clears_cached_location_routes() {
+    let registry = NodeRegistry::new();
+    let location = Location::local("/tmp/project");
+    let id = location.id();
+
+    registry.register_location(location);
+    registry.resolve_location_route(id).unwrap();
+    registry.clear();
+
+    assert_eq!(registry.resolve_location(id), None);
+    assert_eq!(registry.cached_location_route(id), None);
 }
 
 #[test]

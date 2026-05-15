@@ -57,8 +57,8 @@ Completed contract work:
 - structured error kinds through `ErrorKind`, `CoreError::kind()`, and
   `Event::Error { kind, message, recoverable, session, request, operation }`
 - additive provider-aware `Location` primitives through `LocationId`,
-  `LocationDescriptor`, `LocationRef`, `LocationSegment`, and `ProviderRef`,
-  with registry recovery from descriptors when id lookup fails
+  `LocationDescriptor`, `LocationRef`, `LocationRoute`, `LocationSegment`, and
+  `ProviderRef`, with registry recovery from descriptors when id lookup fails
 - hardened `LocationRef` transport modes and `LocationId` hashing that ignores
   display-only text
 
@@ -68,11 +68,13 @@ id-only, descriptor-only, and full references, so an empty reference cannot be
 constructed. `LocationId` hashes identity fields only and ignores
 `display_path`. `LocationDescriptor` now separates the provider root from
 ordered segment layers so nested archive/member and virtual layers are modeled
-without compressing everything into one path string. This still does not change
-the existing public command, event, `FileNode`, or `FsProvider` path surfaces.
-Large-directory loading, richer error context, cancellation/timeout semantics,
-full `Location` migration, archive navigation, and extension output envelopes
-remain open contract work.
+without compressing everything into one path string. `LocationRoute` now
+classifies descriptors as direct local paths, segmented locations, or
+unsupported provider routes, and `NodeRegistry` caches those derived routes by
+`LocationId`. This still does not change the existing public command, event,
+`FileNode`, or `FsProvider` path surfaces. Large-directory loading, richer error
+context, cancellation/timeout semantics, full `Location` migration, archive
+navigation, and extension output envelopes remain open contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -85,8 +87,12 @@ transport-friendly shape: it can carry only a `LocationId` for compact
 in-process messages, only a `LocationDescriptor` for reconstruction, or both
 for cross-process recovery. The intent is for `Location` to become the bridge
 across local files, remote providers, virtual providers, extension-backed
-providers, and archives. Archive navigation, capability context, and full
-command/event migration are still future work.
+providers, and archives. `LocationRoute` is the first internal routing seam:
+direct local paths can be handed to current path-based modules, segmented
+locations are recognized but not executed, and profile/ephemeral providers are
+reported as unsupported until provider connection routing exists. Archive
+navigation, capability context, and full command/event migration are still
+future work.
 
 Core stabilization is complete only when large directory loading is bounded,
 errors carry enough structured target/context for app and web clients, archive
@@ -137,6 +143,8 @@ The core types are:
 - `Location`: internal complete form containing both id and descriptor.
 - `LocationRef`: wire/transport-friendly enum with `Id`, `Descriptor`, and
   `Full { id, descriptor }` variants.
+- `LocationRoute`: internal routing classification for direct local paths,
+  segmented locations, and unsupported provider routes.
 
 `LocationId` hashes the scheme, provider reference, provider-internal root path,
 and ordered segments. It does not hash `display_path`, so presentation-only
@@ -148,6 +156,14 @@ Resolution follows a hybrid rule. `LocationRef::Id` uses the registry fast path
 or returns `CoreError::InvalidLocation`. `LocationRef::Descriptor` reconstructs
 and registers the location. `LocationRef::Full` uses the id when present in the
 registry and falls back to descriptor recovery when the id is missing.
+
+Routing is derived from descriptors. Unsegmented `file` + `Local` descriptors
+route to `LocationRoute::DirectPath`; segmented local descriptors route to
+`LocationRoute::Segmented`; profile and ephemeral providers route to
+`LocationRoute::UnsupportedProvider` until provider profile routing exists.
+`LocationRoute::require_direct_path()` returns `InvalidLocation` for segmented
+or unsupported routes. The registry caches derived routes by `LocationId` and
+clears that cache with the rest of the registry state.
 
 Commands or persisted state that may cross a process or machine boundary should
 carry descriptors, not ids alone. Large batches can still avoid repeating full

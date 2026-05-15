@@ -51,6 +51,22 @@ pub enum LocationRef {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LocationRoute {
+    DirectPath {
+        path: PathBuf,
+    },
+    Segmented {
+        root: PathBuf,
+        segments: Vec<LocationSegment>,
+    },
+    UnsupportedProvider {
+        scheme: String,
+        provider: ProviderRef,
+        root: PathBuf,
+    },
+}
+
 impl LocationDescriptor {
     pub fn local(path: impl Into<PathBuf>) -> Self {
         Self {
@@ -136,6 +152,23 @@ impl LocationDescriptor {
         }
     }
 
+    pub fn route(&self) -> LocationRoute {
+        match (&self.scheme[..], &self.provider, self.segments.is_empty()) {
+            ("file", ProviderRef::Local, true) => LocationRoute::DirectPath {
+                path: self.root.clone(),
+            },
+            ("file", ProviderRef::Local, false) => LocationRoute::Segmented {
+                root: self.root.clone(),
+                segments: self.segments.clone(),
+            },
+            _ => LocationRoute::UnsupportedProvider {
+                scheme: self.scheme.clone(),
+                provider: self.provider.clone(),
+                root: self.root.clone(),
+            },
+        }
+    }
+
     pub fn display_path(&self) -> String {
         self.display().into_owned()
     }
@@ -172,6 +205,40 @@ impl LocationSegment {
     }
 }
 
+impl LocationRoute {
+    pub fn as_direct_path(&self) -> Option<&Path> {
+        match self {
+            LocationRoute::DirectPath { path } => Some(path),
+            LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => None,
+        }
+    }
+
+    pub fn is_segmented(&self) -> bool {
+        matches!(self, LocationRoute::Segmented { .. })
+    }
+
+    pub fn require_direct_path(&self) -> Result<&Path, crate::CoreError> {
+        match self {
+            LocationRoute::DirectPath { path } => Ok(path),
+            LocationRoute::Segmented { root, segments } => {
+                Err(crate::CoreError::InvalidLocation(format!(
+                    "segmented locations are not routable yet: {} with {} segment(s)",
+                    root.display(),
+                    segments.len()
+                )))
+            }
+            LocationRoute::UnsupportedProvider {
+                scheme,
+                provider,
+                root,
+            } => Err(crate::CoreError::InvalidLocation(format!(
+                "unsupported provider route: {scheme} {provider:?} {}",
+                root.display()
+            ))),
+        }
+    }
+}
+
 impl Location {
     pub fn new(descriptor: LocationDescriptor) -> Self {
         let id = LocationId::from_descriptor(&descriptor);
@@ -196,6 +263,10 @@ impl Location {
 
     pub fn as_local_path(&self) -> Option<&Path> {
         self.descriptor.as_local_path()
+    }
+
+    pub fn route(&self) -> LocationRoute {
+        self.descriptor.route()
     }
 }
 

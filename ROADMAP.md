@@ -43,11 +43,13 @@ blocking directory loading.
 variants so empty references cannot be constructed, and `LocationDescriptor`
 separates the provider root from ordered `LocationSegment` layers.
 `LocationId` hashes canonical identity fields, including ordered segments, but
-not display-only text. Public commands, events, `FileNode`, and `FsProvider`
-still use their existing path/node surfaces until a later migration. The intent
-is for `Location` to become the bridge across local files, remote providers,
-virtual providers, extension-backed providers, and archives. The remaining core
-stabilization work is still tracked below.
+not display-only text. `LocationRoute` now classifies descriptors as direct
+local paths, segmented locations, or unsupported provider routes, with registry
+caching for the derived route. Public commands, events, `FileNode`, and
+`FsProvider` still use their existing path/node surfaces until a later
+migration. The intent is for `Location` to become the bridge across local files,
+remote providers, virtual providers, extension-backed providers, and archives.
+The remaining core stabilization work is still tracked below.
 
 Milestone labels:
 
@@ -173,6 +175,8 @@ near-term product boundary.
   `display_path` out of `LocationId` identity hashing.
 - [x] `Core` Add ordered `LocationSegment` layers and split
   `LocationDescriptor` identity into provider root plus segment stack.
+- [x] `Core` Add internal `LocationRoute` classification and registry caching
+  for derived route results.
 - [x] `Ecosystem` Trusted in-process command seam through `Command::Extension`.
 - [x] `Ecosystem` Shared extension manifest, package, registry, and profile
   operation contracts live in `filer-ecosystem`.
@@ -201,6 +205,8 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 - [x] `Core` Document that `Ephemeral` provider references are session-local.
 - [x] `Core` Extend `Location` with ordered archive/member and virtual segments
   while keeping public path/node command surfaces unchanged.
+- [x] `Core` Add internal route classification for direct local paths,
+  segmented locations, and unsupported provider references.
 - [ ] `Core` Add richer structured error context for collision, unsupported
   provider capability, stale request, and location-targeted cases.
 - [ ] `Core` Migrate public commands, events, `FileNode`, and provider routing
@@ -237,6 +243,8 @@ Exit criteria:
   reconstruction failure across processes or machines.
 - [x] Nested archive locations can be represented as provider root plus ordered
   archive/member segments.
+- [x] Location descriptors can be classified into direct local, segmented, or
+  unsupported provider routes without changing public commands.
 - [ ] Large-directory loading is bounded and testable.
 - [ ] Archive traversal is modeled as provider navigation, not only preview.
 - [ ] Undo and conflict-resolution data contracts are drafted, even if full UI
