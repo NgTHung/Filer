@@ -4,7 +4,7 @@ This roadmap tracks the core engine and shared project architecture. The desktop
 app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
 roadmap lives in `filer-ecosystem/ROADMAP.md`.
 
-Current milestone: `0.2.0`.
+Current milestone: `0.2.1`.
 
 ## Product Direction
 
@@ -38,9 +38,12 @@ local directory, such as `C:\Windows\System32`, without blocking the client, and
 then apply git-style decorations asynchronously in a large repository without
 blocking directory loading.
 
-`0.2.0` is the completed correlation and error-category milestone: request IDs,
-operation IDs, operation-scoped events, and structured `ErrorKind` categories.
-The remaining core stabilization work is still tracked below.
+`0.2.1` is a reliability patch over the completed `0.2.0` correlation and
+error-category milestone. The public contract remains request IDs, operation
+IDs, operation-scoped events, and structured `ErrorKind` categories; the patch
+adds explicit stale scan/search/preview regression coverage and confirms those
+tests work under parallel execution. The remaining core stabilization work is
+still tracked below.
 
 Milestone labels:
 
@@ -154,6 +157,8 @@ near-term product boundary.
 - [x] `Core` Directory cache service with explicit refresh bypass support.
 - [x] `Core` Request ids and stale-event guards for scan, search, preview, and
   refresh flows.
+- [x] `Reliability` Regression tests proving stale scan, search, and preview
+  result events are suppressed when superseded by a newer request.
 - [x] `Core` Operation ids for copy, move, delete, rename, create file, and
   create folder progress, completion, and operation-scoped errors.
 - [x] `Core` Structured `ErrorKind` categories on app-facing `Event::Error`
@@ -175,6 +180,8 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 - [x] `Core` Add operation ids for copy, move, delete, rename, create file, and
   create folder progress/completion events.
 - [x] `Core` Add structured error kinds for current app-facing error events.
+- [x] `Reliability` Add focused regression coverage for stale scan, search, and
+  preview suppression, including parallel test execution.
 - [ ] `Core` Add richer structured error context for collision, unsupported
   provider capability, stale request, and location-targeted cases.
 - [ ] `Core` Define a structured provider `Location` model for local, archive,

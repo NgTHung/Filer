@@ -2,7 +2,7 @@
 
 Core library for the Filer file explorer.
 
-Current milestone: `0.2.0`.
+Current milestone: `0.2.1`.
 
 ## Modules
 
@@ -50,15 +50,20 @@ full extension runtime, core should settle:
 Completed contract work:
 
 - request ids and stale-event guards for scan, search, preview, and refresh
+- focused stale-event regression tests for scan, search, and preview, including
+  parallel test validation
 - operation ids for copy, move, delete, rename, create file, and create folder
   progress, completion, and operation-scoped errors
 - structured error kinds through `ErrorKind`, `CoreError::kind()`, and
   `Event::Error { kind, message, recoverable, session, request, operation }`
 
-`0.2.0` covers those correlation and error-category contracts. It is not the
-end of core stabilization; provider `Location`, large-directory loading, richer
-error context, cancellation/timeout semantics, and extension output envelopes
-remain open contract work.
+`0.2.1` is a reliability patch over the `0.2.0` correlation and error-category
+contracts. It does not change those contracts; it adds explicit regression
+coverage for stale scan/search/preview suppression so future actor changes do
+not accidentally re-emit superseded results. It is not the end of core
+stabilization; provider `Location`, large-directory loading, richer error
+context, cancellation/timeout semantics, and extension output envelopes remain
+open contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -94,6 +99,10 @@ Scan, search, and preview actors remember the latest request per session. If an
 older task finishes after a newer one, its result events are dropped before they
 reach clients. Request-scoped errors use `Event::Error { request: Some(id), .. }`;
 non-request errors and operation errors currently use `request: None`.
+
+The `0.2.1` test coverage now checks that superseded scan, search, and preview
+requests do not emit stale client-visible result events, including under
+parallel test execution.
 
 ## Operation IDs
 
