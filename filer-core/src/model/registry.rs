@@ -121,24 +121,26 @@ impl NodeRegistry {
     }
 
     pub fn resolve_location_ref(&self, location_ref: &LocationRef) -> Result<Location, CoreError> {
-        if let Some(id) = location_ref.id()
-            && let Some(descriptor) = self.resolve_location(id)
-        {
-            return Ok(Location::new(descriptor));
+        match location_ref {
+            LocationRef::Id(id) => self
+                .resolve_location(*id)
+                .map(Location::new)
+                .ok_or_else(|| CoreError::InvalidLocation(format!("unresolved location id {id}"))),
+            LocationRef::Descriptor(descriptor) => {
+                let location = Location::new(descriptor.clone());
+                self.register_location(location.clone());
+                Ok(location)
+            }
+            LocationRef::Full { id, descriptor } => {
+                if let Some(registered) = self.resolve_location(*id) {
+                    Ok(Location::new(registered))
+                } else {
+                    let location = Location::new(descriptor.clone());
+                    self.register_location(location.clone());
+                    Ok(location)
+                }
+            }
         }
-
-        if let Some(descriptor) = location_ref.descriptor() {
-            let location = Location::new(descriptor.clone());
-            self.register_location(location.clone());
-            return Ok(location);
-        }
-
-        Err(CoreError::InvalidLocation(
-            location_ref
-                .id()
-                .map(|id| format!("unresolved location id {id}"))
-                .unwrap_or_else(|| "missing location id and descriptor".to_string()),
-        ))
     }
 
     pub fn location_for_path(&self, path: PathBuf) -> Location {
