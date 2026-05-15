@@ -316,6 +316,7 @@ impl App {
                                 sources: cb.nodes,
                                 destination: dest,
                                 session: self.session,
+                                request: RequestId::new(),
                                 operation: OperationId::new(),
                             });
                             self.state.clipboard = None;
@@ -324,6 +325,7 @@ impl App {
                                 sources: cb.nodes,
                                 destination: dest,
                                 session: self.session,
+                                request: RequestId::new(),
                                 operation: OperationId::new(),
                             });
                         }
@@ -339,6 +341,7 @@ impl App {
                         nodes: ids,
                         trash,
                         session: self.session,
+                        request: RequestId::new(),
                         operation: OperationId::new(),
                     });
                 }
@@ -369,6 +372,7 @@ impl App {
                         node: r.node,
                         new_name: r.current_name,
                         session: self.session,
+                        request: RequestId::new(),
                         operation: OperationId::new(),
                     });
                 }
@@ -400,6 +404,7 @@ impl App {
                                 parent: parent_id,
                                 name: c.name,
                                 session: self.session,
+                                request: RequestId::new(),
                                 operation: OperationId::new(),
                             });
                         }
@@ -433,6 +438,7 @@ impl App {
                                 parent: parent_id,
                                 name: c.name,
                                 session: self.session,
+                                request: RequestId::new(),
                                 operation: OperationId::new(),
                             });
                         }

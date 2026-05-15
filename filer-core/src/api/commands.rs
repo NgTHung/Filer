@@ -85,6 +85,7 @@ pub enum Command {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
 
@@ -93,6 +94,7 @@ pub enum Command {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
 
@@ -101,6 +103,7 @@ pub enum Command {
         nodes: Vec<NodeId>,
         trash: bool,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
 
@@ -109,6 +112,7 @@ pub enum Command {
         node: NodeId,
         new_name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
 
@@ -117,6 +121,7 @@ pub enum Command {
         parent: NodeId,
         name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
 
@@ -125,6 +130,7 @@ pub enum Command {
         parent: NodeId,
         name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
 
@@ -251,6 +257,55 @@ impl Command {
             | Command::CreateFolder { session, .. }
             | Command::CreateFile { session, .. }
             | Command::Extension { session, .. } => Some(*session),
+        }
+    }
+
+    /// Extract the request ID for commands that are tied to a UI/API request.
+    pub fn request_id(&self) -> Option<RequestId> {
+        match self {
+            Command::Navigate { request, .. }
+            | Command::NavigateToNode { request, .. }
+            | Command::NavigateUp { request, .. }
+            | Command::NavigateBack { request, .. }
+            | Command::NavigateForward { request, .. }
+            | Command::Refresh { request, .. }
+            | Command::Search { request, .. }
+            | Command::SearchPath { request, .. }
+            | Command::LoadPreview { request, .. }
+            | Command::LoadMetadata { request, .. }
+            | Command::LoadExtendedMetadata { request, .. }
+            | Command::Scan { request, .. }
+            | Command::ScanNode { request, .. }
+            | Command::Copy { request, .. }
+            | Command::Move { request, .. }
+            | Command::Delete { request, .. }
+            | Command::Rename { request, .. }
+            | Command::CreateFolder { request, .. }
+            | Command::CreateFile { request, .. } => Some(*request),
+
+            Command::Cancel(_)
+            | Command::CancelPreview(_)
+            | Command::SetPipeline { .. }
+            | Command::CancelScan(_)
+            | Command::Watch(_, _)
+            | Command::Unwatch(_)
+            | Command::UnwatchSession(_)
+            | Command::Handshake
+            | Command::DestroySession(_)
+            | Command::Extension { .. } => None,
+        }
+    }
+
+    /// Extract the operation ID for write-operation commands.
+    pub fn operation_id(&self) -> Option<OperationId> {
+        match self {
+            Command::Copy { operation, .. }
+            | Command::Move { operation, .. }
+            | Command::Delete { operation, .. }
+            | Command::Rename { operation, .. }
+            | Command::CreateFolder { operation, .. }
+            | Command::CreateFile { operation, .. } => Some(*operation),
+            _ => None,
         }
     }
 

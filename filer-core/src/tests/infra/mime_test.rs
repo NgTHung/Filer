@@ -150,8 +150,6 @@ mod detect_from_path_tests {
 
 #[cfg(test)]
 mod detect_from_bytes_tests {
-    use std::f32::consts::E;
-
     use super::*;
 
     #[test]

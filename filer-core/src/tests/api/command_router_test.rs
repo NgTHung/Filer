@@ -287,6 +287,7 @@ mod command_router_tests {
                         sources,
                         destination,
                         session,
+                        request,
                         operation,
                     } = cmd
                     {
@@ -294,6 +295,7 @@ mod command_router_tests {
                             sources,
                             destination,
                             session,
+                            request,
                             operation,
                         });
                     }
@@ -306,6 +308,7 @@ mod command_router_tests {
                         sources,
                         destination,
                         session,
+                        request,
                         operation,
                     } = cmd
                     {
@@ -313,6 +316,7 @@ mod command_router_tests {
                             sources,
                             destination,
                             session,
+                            request,
                             operation,
                         });
                     }
@@ -325,6 +329,7 @@ mod command_router_tests {
                         nodes,
                         trash,
                         session,
+                        request,
                         operation,
                     } = cmd
                     {
@@ -332,6 +337,7 @@ mod command_router_tests {
                             targets: nodes,
                             trash,
                             session,
+                            request,
                             operation,
                         });
                     }
@@ -344,6 +350,7 @@ mod command_router_tests {
                         node,
                         new_name,
                         session,
+                        request,
                         operation,
                     } = cmd
                     {
@@ -351,6 +358,7 @@ mod command_router_tests {
                             source: node,
                             new_name,
                             session,
+                            request,
                             operation,
                         });
                     }
@@ -363,6 +371,7 @@ mod command_router_tests {
                         parent,
                         name,
                         session,
+                        request,
                         operation,
                     } = cmd
                     {
@@ -370,6 +379,7 @@ mod command_router_tests {
                             parent,
                             name,
                             session,
+                            request,
                             operation,
                         });
                     }
@@ -382,6 +392,7 @@ mod command_router_tests {
                         parent,
                         name,
                         session,
+                        request,
                         operation,
                     } = cmd
                     {
@@ -389,6 +400,7 @@ mod command_router_tests {
                             parent,
                             name,
                             session,
+                            request,
                             operation,
                         });
                     }
@@ -843,6 +855,7 @@ mod command_router_tests {
             .clone()
             .register(PathBuf::from("/a/file.txt"));
         let dst = harness.registry.clone().register(PathBuf::from("/b"));
+        let request = RequestId::new();
         let operation = OperationId::new();
 
         harness
@@ -850,6 +863,7 @@ mod command_router_tests {
                 sources: vec![src],
                 destination: dst,
                 session,
+                request,
                 operation,
             })
             .await;
@@ -864,11 +878,13 @@ mod command_router_tests {
                 sources,
                 destination,
                 session: s,
+                request: r,
                 operation: op,
             } => {
                 assert_eq!(sources, vec![src]);
                 assert_eq!(destination, dst);
                 assert_eq!(s, session);
+                assert_eq!(r, request);
                 assert_eq!(op, operation);
             }
             other => panic!("Expected OpsCommand::Copy, got {:?}", other),
@@ -883,6 +899,7 @@ mod command_router_tests {
             .registry
             .clone()
             .register(PathBuf::from("/home/user"));
+        let request = RequestId::new();
         let operation = OperationId::new();
 
         harness
@@ -890,6 +907,7 @@ mod command_router_tests {
                 parent,
                 name: "notes.txt".to_string(),
                 session,
+                request,
                 operation,
             })
             .await;
@@ -904,11 +922,13 @@ mod command_router_tests {
                 parent: p,
                 name,
                 session: s,
+                request: r,
                 operation: op,
             } => {
                 assert_eq!(p, parent);
                 assert_eq!(name, "notes.txt");
                 assert_eq!(s, session);
+                assert_eq!(r, request);
                 assert_eq!(op, operation);
             }
             other => panic!("Expected OpsCommand::CreateFile, got {:?}", other),
@@ -1321,13 +1341,16 @@ mod command_router_tests {
         let harness = RouterTestHarness::new();
         let unknown = SessionId::new();
         let parent = harness.registry.clone().register(PathBuf::from("/home"));
+        let request = RequestId::new();
+        let operation = OperationId::new();
 
         harness
             .send(Command::CreateFolder {
                 parent,
                 name: "new_dir".to_string(),
                 session: unknown,
-                operation: OperationId::new(),
+                request,
+                operation,
             })
             .await;
 
@@ -1337,8 +1360,15 @@ mod command_router_tests {
             .expect("Event channel closed");
 
         match event {
-            Event::Error { session, .. } => {
+            Event::Error {
+                session,
+                request: err_request,
+                operation: err_operation,
+                ..
+            } => {
                 assert_eq!(session, unknown);
+                assert_eq!(err_request, Some(request));
+                assert_eq!(err_operation, Some(operation));
             }
             other => panic!("Expected Event::Error for unknown session, got {:?}", other),
         }

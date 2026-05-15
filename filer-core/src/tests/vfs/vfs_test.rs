@@ -31,10 +31,10 @@ async fn test_local_fs_capabilities() {
     let fs = LocalFs::new(reg);
     let caps = fs.capabilities();
 
-    assert_eq!(caps.read, true);
-    assert_eq!(caps.write, true);
-    assert_eq!(caps.watch, true);
-    assert_eq!(caps.search, false);
+    assert!(caps.read);
+    assert!(caps.write);
+    assert!(caps.watch);
+    assert!(!caps.search);
 }
 
 #[tokio::test]
@@ -48,7 +48,7 @@ async fn test_local_fs_list() {
     assert!(result.is_ok());
 
     let files = result.unwrap();
-    assert!(files.len() > 0);
+    assert!(!files.is_empty());
 
     // Should contain lib.rs
     assert!(files.iter().any(|f| f.name == "lib.rs"));
@@ -168,11 +168,11 @@ async fn test_local_fs_exists() {
     let temp_file = dir.path().join("filer_test_exists.txt");
     std::fs::write(&temp_file, b"test").unwrap();
 
-    assert_eq!(fs.exists(&temp_file).await.unwrap(), true);
+    assert!(fs.exists(&temp_file).await.unwrap());
 
     // Cleanup and test non-existing file
     std::fs::remove_file(&temp_file).unwrap();
-    assert_eq!(fs.exists(&temp_file).await.unwrap(), false);
+    assert!(!fs.exists(&temp_file).await.unwrap());
 }
 
 #[tokio::test]
@@ -182,10 +182,10 @@ async fn test_local_fs_exists_directory() {
     let temp_dir = dir.path().join("filer_test_exists_dir");
     std::fs::create_dir(&temp_dir).unwrap();
 
-    assert_eq!(fs.exists(&temp_dir).await.unwrap(), true);
+    assert!(fs.exists(&temp_dir).await.unwrap());
 
     std::fs::remove_dir(&temp_dir).unwrap();
-    assert_eq!(fs.exists(&temp_dir).await.unwrap(), false);
+    assert!(!fs.exists(&temp_dir).await.unwrap());
 }
 
 #[tokio::test]
@@ -281,19 +281,20 @@ impl FsProvider for MockFs {
 
         let mut nodes = Vec::new();
 
-        for (file_path, _content) in &self.files {
-            if let Some(parent) = file_path.parent() {
-                if parent == path {
-                    nodes.push(FileNode::from_path(file_path.clone(), None)?);
-                }
+        for file_path in self.files.keys() {
+            if let Some(parent) = file_path.parent()
+                && parent == path
+            {
+                nodes.push(FileNode::from_path(file_path.clone(), None)?);
             }
         }
 
         for dir_path in &self.directories {
-            if let Some(parent) = dir_path.parent() {
-                if parent == path && dir_path != &path.to_path_buf() {
-                    nodes.push(FileNode::from_path(dir_path.clone(), None)?);
-                }
+            if let Some(parent) = dir_path.parent()
+                && parent == path
+                && dir_path != &path.to_path_buf()
+            {
+                nodes.push(FileNode::from_path(dir_path.clone(), None)?);
             }
         }
 
@@ -345,10 +346,10 @@ async fn test_mock_fs_capabilities() {
     let fs = MockFs::new();
     let caps = fs.capabilities();
 
-    assert_eq!(caps.read, true);
-    assert_eq!(caps.write, true);
-    assert_eq!(caps.watch, false);
-    assert_eq!(caps.search, true);
+    assert!(caps.read);
+    assert!(caps.write);
+    assert!(!caps.watch);
+    assert!(caps.search);
 }
 
 #[tokio::test]
@@ -394,10 +395,10 @@ async fn test_mock_fs_exists() {
     let mut fs = MockFs::new();
     let path = PathBuf::from("/test/file.txt");
 
-    assert_eq!(fs.exists(&path).await.unwrap(), false);
+    assert!(!fs.exists(&path).await.unwrap());
 
     fs.add_file(path.clone(), b"test".to_vec());
-    assert_eq!(fs.exists(&path).await.unwrap(), true);
+    assert!(fs.exists(&path).await.unwrap());
 }
 
 #[tokio::test]

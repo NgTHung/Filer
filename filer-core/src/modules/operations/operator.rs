@@ -9,10 +9,13 @@ use crate::api::events::{Event, OperationKind};
 use crate::model::node::NodeId;
 use crate::model::operation::OperationId;
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::{CoreError, ErrorKind, FsProvider};
+
+type TrashFn = Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>;
 
 #[derive(Debug, Clone)]
 pub enum OpsCommand {
@@ -20,36 +23,42 @@ pub enum OpsCommand {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
     Move {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
     Delete {
         targets: Vec<NodeId>,
         trash: bool,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
     Rename {
         source: NodeId,
         new_name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
     CreateFolder {
         parent: NodeId,
         name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
     CreateFile {
         parent: NodeId,
         name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     },
     Cancel(SessionId),
@@ -61,7 +70,7 @@ pub struct Operator {
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active_ops: CancelMap,
-    trash_fn: Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>,
+    trash_fn: TrashFn,
     cache: Option<SharedDirCache>,
 }
 
@@ -91,7 +100,7 @@ impl Operator {
         events: Sender<Event>,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
-        trash_fn: Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>,
+        trash_fn: TrashFn,
     ) -> Self {
         Self {
             commands,
@@ -121,7 +130,14 @@ impl Operator {
         invalidate_parent_cache(&self.cache, path);
     }
 
-    fn copy(&self, sources: Vec<NodeId>, dest: NodeId, session: SessionId, operation: OperationId) {
+    fn copy(
+        &self,
+        sources: Vec<NodeId>,
+        dest: NodeId,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    ) {
         let Some(dst_path) = self.registry.resolve(dest) else {
             send_or_warn(
                 &self.events,
@@ -130,7 +146,7 @@ impl Operator {
                     message: format!("Cannot resolve destination {dest:?}"),
                     recoverable: true,
                     session,
-                    request: None,
+                    request: Some(request),
                     operation: Some(operation),
                 },
                 "operator: copy resolve dest",
@@ -148,7 +164,7 @@ impl Operator {
                         message: format!("Cannot resolve source {src_id:?}"),
                         recoverable: true,
                         session,
-                        request: None,
+                        request: Some(request),
                         operation: Some(operation),
                     },
                     "operator: copy resolve src",
@@ -180,7 +196,7 @@ impl Operator {
                             message: format!("Cannot stat {}", src_path.display()),
                             recoverable: true,
                             session,
-                            request: None,
+                            request: Some(request),
                             operation: Some(operation),
                         },
                         "operator: copy stat",
@@ -212,7 +228,7 @@ impl Operator {
                         Err(e) => {
                             send_or_warn_async(
                                 &events,
-                                operation_error(e, session, operation),
+                                operation_error(e, session, request, operation),
                                 "operator: copy dir",
                             )
                             .await;
@@ -226,7 +242,7 @@ impl Operator {
                     if let Err(e) = fs.copy(&src_path, &dst_file).await {
                         send_or_warn_async(
                             &events,
-                            operation_error(e, session, operation),
+                            operation_error(e, session, request, operation),
                             "operator: copy file",
                         )
                         .await;
@@ -257,6 +273,7 @@ impl Operator {
         sources: Vec<NodeId>,
         dest: NodeId,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     ) {
         let Some(dst_path) = self.registry.resolve(dest) else {
@@ -267,7 +284,7 @@ impl Operator {
                     message: format!("Cannot resolve destination {dest:?}"),
                     recoverable: true,
                     session,
-                    request: None,
+                    request: Some(request),
                     operation: Some(operation),
                 },
                 "operator: move resolve dest",
@@ -285,7 +302,7 @@ impl Operator {
                         message: format!("Cannot resolve source {src_id:?}"),
                         recoverable: true,
                         session,
-                        request: None,
+                        request: Some(request),
                         operation: Some(operation),
                     },
                     "operator: move resolve src",
@@ -322,7 +339,7 @@ impl Operator {
                         if let Err(e) = fs.copy(&src_path, &dst_file).await {
                             send_or_warn_async(
                                 &events,
-                                operation_error(e, session, operation),
+                                operation_error(e, session, request, operation),
                                 "operator: move copy",
                             )
                             .await;
@@ -331,7 +348,7 @@ impl Operator {
                         if let Err(e) = fs.delete(&src_path).await {
                             send_or_warn_async(
                                 &events,
-                                operation_error(e, session, operation),
+                                operation_error(e, session, request, operation),
                                 "operator: move delete",
                             )
                             .await;
@@ -344,7 +361,7 @@ impl Operator {
                     Err(e) => {
                         send_or_warn_async(
                             &events,
-                            operation_error(e, session, operation),
+                            operation_error(e, session, request, operation),
                             "operator: move rename",
                         )
                         .await;
@@ -373,6 +390,7 @@ impl Operator {
         targets: Vec<NodeId>,
         trash: bool,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     ) {
         let mut paths: Vec<(NodeId, PathBuf)> = Vec::new();
@@ -385,7 +403,7 @@ impl Operator {
                         message: format!("Cannot resolve node {target:?}"),
                         recoverable: true,
                         session,
-                        request: None,
+                        request: Some(request),
                         operation: Some(operation),
                     },
                     "operator: delete resolve",
@@ -450,7 +468,7 @@ impl Operator {
                     Err(e) => {
                         send_or_warn_async(
                             &events,
-                            operation_error(e, session, operation),
+                            operation_error(e, session, request, operation),
                             "operator: delete error",
                         )
                         .await;
@@ -474,7 +492,14 @@ impl Operator {
         });
     }
 
-    fn rename(&self, source: NodeId, new_name: String, session: SessionId, operation: OperationId) {
+    fn rename(
+        &self,
+        source: NodeId,
+        new_name: String,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    ) {
         let Some(src_path) = self.registry.resolve(source) else {
             send_or_warn(
                 &self.events,
@@ -483,7 +508,7 @@ impl Operator {
                     message: format!("Cannot resolve node {source:?}"),
                     recoverable: true,
                     session,
-                    request: None,
+                    request: Some(request),
                     operation: Some(operation),
                 },
                 "operator: rename resolve",
@@ -499,7 +524,7 @@ impl Operator {
                     message: format!("Cannot get parent of {}", src_path.display()),
                     recoverable: true,
                     session,
-                    request: None,
+                    request: Some(request),
                     operation: Some(operation),
                 },
                 "operator: rename parent",
@@ -522,7 +547,7 @@ impl Operator {
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
-                        request: None,
+                        request: Some(request),
                         operation: Some(operation),
                     },
                     "operator: rename collision",
@@ -534,7 +559,7 @@ impl Operator {
             if let Err(e) = fs.rename(&src_path, &new_path).await {
                 send_or_warn_async(
                     &events,
-                    operation_error(e, session, operation),
+                    operation_error(e, session, request, operation),
                     "operator: rename",
                 )
                 .await;
@@ -563,6 +588,7 @@ impl Operator {
         parent: NodeId,
         name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     ) {
         let Some(path) = self.registry.resolve(parent) else {
@@ -573,7 +599,7 @@ impl Operator {
                     message: format!("Cannot resolve node {parent:?}"),
                     recoverable: true,
                     session,
-                    request: None,
+                    request: Some(request),
                     operation: Some(operation),
                 },
                 "operator: create_file resolve",
@@ -596,7 +622,7 @@ impl Operator {
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
-                        request: None,
+                        request: Some(request),
                         operation: Some(operation),
                     },
                     "operator: create_file exists",
@@ -607,7 +633,7 @@ impl Operator {
             if let Err(e) = fs.write(&full_path, &[]).await {
                 send_or_warn_async(
                     &events,
-                    operation_error(e, session, operation),
+                    operation_error(e, session, request, operation),
                     "operator: create_file write",
                 )
                 .await;
@@ -635,6 +661,7 @@ impl Operator {
         parent: NodeId,
         name: String,
         session: SessionId,
+        request: RequestId,
         operation: OperationId,
     ) {
         let Some(path) = self.registry.resolve(parent) else {
@@ -645,7 +672,7 @@ impl Operator {
                     message: format!("Cannot resolve node {parent:?}"),
                     recoverable: true,
                     session,
-                    request: None,
+                    request: Some(request),
                     operation: Some(operation),
                 },
                 "operator: create_folder resolve",
@@ -668,7 +695,7 @@ impl Operator {
                         message: "File/Folder already exists".to_string(),
                         recoverable: true,
                         session,
-                        request: None,
+                        request: Some(request),
                         operation: Some(operation),
                     },
                     "operator: create_folder exists",
@@ -679,7 +706,7 @@ impl Operator {
             if let Err(e) = fs.mkdir(&full_path).await {
                 send_or_warn_async(
                     &events,
-                    operation_error(e, session, operation),
+                    operation_error(e, session, request, operation),
                     "operator: create_folder mkdir",
                 )
                 .await;
@@ -750,7 +777,12 @@ async fn copy_dir_recursive(
     Ok(())
 }
 
-fn operation_error(err: CoreError, session: SessionId, operation: OperationId) -> Event {
+fn operation_error(
+    err: CoreError,
+    session: SessionId,
+    request: RequestId,
+    operation: OperationId,
+) -> Event {
     match Event::from_error(err, session) {
         Event::Error {
             kind,
@@ -763,7 +795,7 @@ fn operation_error(err: CoreError, session: SessionId, operation: OperationId) -
             message,
             recoverable,
             session,
-            request: None,
+            request: Some(request),
             operation: Some(operation),
         },
         event => event,
@@ -798,38 +830,44 @@ impl Actor for Operator {
                     sources,
                     destination,
                     session,
+                    request,
                     operation,
-                }) => self.copy(sources, destination, session, operation),
+                }) => self.copy(sources, destination, session, request, operation),
                 Ok(OpsCommand::Move {
                     sources,
                     destination,
                     session,
+                    request,
                     operation,
-                }) => self.moves(sources, destination, session, operation),
+                }) => self.moves(sources, destination, session, request, operation),
                 Ok(OpsCommand::Delete {
                     targets,
                     trash,
                     session,
+                    request,
                     operation,
-                }) => self.delete(targets, trash, session, operation),
+                }) => self.delete(targets, trash, session, request, operation),
                 Ok(OpsCommand::Rename {
                     source,
                     new_name,
                     session,
+                    request,
                     operation,
-                }) => self.rename(source, new_name, session, operation),
+                }) => self.rename(source, new_name, session, request, operation),
                 Ok(OpsCommand::CreateFile {
                     parent,
                     name,
                     session,
+                    request,
                     operation,
-                }) => self.create_file(parent, name, session, operation),
+                }) => self.create_file(parent, name, session, request, operation),
                 Ok(OpsCommand::CreateFolder {
                     parent,
                     name,
                     session,
+                    request,
                     operation,
-                }) => self.create_folder(parent, name, session, operation),
+                }) => self.create_folder(parent, name, session, request, operation),
             }
         }
     }

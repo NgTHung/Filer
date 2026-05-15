@@ -686,8 +686,8 @@ mod tests {
         };
 
         let mut state = ProfileState::default();
-        assert_eq!(state.apply(op.clone()).unwrap(), true);
-        assert_eq!(state.apply(op).unwrap(), false);
+        assert!(state.apply(op.clone()).unwrap());
+        assert!(!state.apply(op).unwrap());
         assert!(state.installed.contains("git-tools"));
     }
 }

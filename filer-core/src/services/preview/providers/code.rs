@@ -14,6 +14,7 @@ impl CodeProvider {
         Self
     }
 
+    #[cfg(feature = "preview-code")]
     fn detect_language(path: &Path) -> Option<&'static str> {
         match path.extension()?.to_str()? {
             "rs" => Some("Rust"),

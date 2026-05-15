@@ -3,7 +3,6 @@ use crate::model::node::NodeId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::{NavCommand, NavState, Navigator, NavigatorState};
 use crate::pipeline::PipelineConfig;
-use flume;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -188,19 +187,19 @@ mod navigator_state_tests {
         let mut state = NavigatorState::new(reg);
 
         // No history yet
-        assert_eq!(state.can_back(), false);
+        assert!(!state.can_back());
 
         // Navigate once
         state.navigate(node(1));
-        assert_eq!(state.can_back(), false); // Still at first position
+        assert!(!state.can_back()); // Still at first position
 
         // Navigate again
         state.navigate(node(2));
-        assert_eq!(state.can_back(), true); // Now can go back
+        assert!(state.can_back()); // Now can go back
 
         // Go back to start
         state.back(1);
-        assert_eq!(state.can_back(), false); // At start again
+        assert!(!state.can_back()); // At start again
     }
 
     #[test]
@@ -209,20 +208,20 @@ mod navigator_state_tests {
         let mut state = NavigatorState::new(reg);
 
         // No history
-        assert_eq!(state.can_forward(), false);
+        assert!(!state.can_forward());
 
         // Navigate
         state.navigate(node(1));
         state.navigate(node(2));
-        assert_eq!(state.can_forward(), false); // At the end
+        assert!(!state.can_forward()); // At the end
 
         // Go back
         state.back(1);
-        assert_eq!(state.can_forward(), true); // Can go forward now
+        assert!(state.can_forward()); // Can go forward now
 
         // Go forward to end
         state.forward();
-        assert_eq!(state.can_forward(), false); // At end again
+        assert!(!state.can_forward()); // At end again
     }
 
     #[test]
@@ -233,8 +232,8 @@ mod navigator_state_tests {
         // Initial snapshot
         let snap = state.snapshot();
         assert_eq!(snap.current, None);
-        assert_eq!(snap.can_back, false);
-        assert_eq!(snap.can_forward, false);
+        assert!(!snap.can_back);
+        assert!(!snap.can_forward);
         assert_eq!(snap.selected.len(), 0);
 
         // After navigation
@@ -242,15 +241,15 @@ mod navigator_state_tests {
         state.navigate(node(2));
         let snap = state.snapshot();
         assert_eq!(snap.current, Some(node(2)));
-        assert_eq!(snap.can_back, true);
-        assert_eq!(snap.can_forward, false);
+        assert!(snap.can_back);
+        assert!(!snap.can_forward);
 
         // After going back
         state.back(1);
         let snap = state.snapshot();
         assert_eq!(snap.current, Some(node(1)));
-        assert_eq!(snap.can_back, false);
-        assert_eq!(snap.can_forward, true);
+        assert!(!snap.can_back);
+        assert!(snap.can_forward);
     }
 
     #[test]
@@ -279,11 +278,6 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let state = NavigatorState::new(reg);
         let _pipeline = state.build_pipeline();
-
-        // Should create a valid pipeline
-        // The exact behavior depends on Pipeline implementation
-        // This test ensures the method can be called without panic
-        assert!(true);
     }
 
     #[test]
@@ -313,7 +307,7 @@ mod navigator_state_tests {
         state.forward(); // -> 3
         state.forward(); // -> 4
         assert_eq!(state.current, Some(node(4)));
-        assert_eq!(state.can_forward(), false);
+        assert!(!state.can_forward());
     }
 
     #[test]
@@ -357,9 +351,9 @@ mod nav_state_serialization_tests {
         let state = NavState::default();
 
         assert_eq!(state.current, None);
-        assert_eq!(state.can_back, false);
-        assert_eq!(state.can_forward, false);
-        assert_eq!(state.can_up, false);
+        assert!(!state.can_back);
+        assert!(!state.can_forward);
+        assert!(!state.can_up);
         assert_eq!(state.selected.len(), 0);
     }
 
@@ -387,7 +381,7 @@ mod nav_state_serialization_tests {
 
         let restored = deserialized.unwrap();
         assert_eq!(restored.current, Some(NodeId(42)));
-        assert_eq!(restored.can_back, true);
+        assert!(restored.can_back);
         assert_eq!(restored.selected.len(), 2);
     }
 }

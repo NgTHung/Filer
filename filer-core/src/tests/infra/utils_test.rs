@@ -59,21 +59,21 @@ mod path_tests {
     #[test]
     fn test_is_hidden_unix() {
         let test_path = Path::new("hi");
-        assert_eq!(is_hidden(test_path), false);
+        assert!(!is_hidden(test_path));
         let test_path = Path::new("some/path/../travelling///.o.js");
-        assert_eq!(is_hidden(test_path), true);
+        assert!(is_hidden(test_path));
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type");
-        assert_eq!(is_hidden(test_path), false);
+        assert!(!is_hidden(test_path));
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type/another");
-        assert_eq!(is_hidden(test_path), false);
+        assert!(!is_hidden(test_path));
         let test_path = Path::new(".wierd.ash.file.type");
-        assert_eq!(is_hidden(test_path), true);
+        assert!(is_hidden(test_path));
         let test_path = Path::new("host.kq");
-        assert_eq!(is_hidden(test_path), false);
+        assert!(!is_hidden(test_path));
         let test_path = Path::new("/home/kalasana/.bbq/test/another");
-        assert_eq!(is_hidden(test_path), true);
+        assert!(is_hidden(test_path));
         let test_path = Path::new("/");
-        assert_eq!(is_hidden(test_path), false);
+        assert!(!is_hidden(test_path));
     }
 
     #[test]
@@ -102,62 +102,42 @@ mod path_tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn test_normalize_sep() {
-        use std::path::PathBuf;
-
         let test_path = Path::new("hi");
-        let res = PathBuf::from("hi");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("some/path/../travelling///.o.js");
-        let res = PathBuf::from("some/travelling/.o.js");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type");
-        let res = PathBuf::from("some/travelling/wierd.ash.file.type");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type/another");
-        let res = PathBuf::from("some/travelling/wierd.ash.file.type/another");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("wierd.ash.file.type");
-        let res = PathBuf::from("wierd.ash.file.type");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("../../");
-        let res = PathBuf::from("/");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("/hi/bbq");
-        let res = PathBuf::from("/hi/bbq");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("/");
-        let res = PathBuf::from("/");
-        assert!(matches!(normalize(test_path), Ok(res)));
+        assert!(normalize(test_path).is_ok());
     }
     #[test]
     #[cfg(not(target_os = "windows"))]
     fn test_normalize_sep() {
-        use std::path::PathBuf;
-
         let test_path = Path::new("hi");
-        let _res = PathBuf::from("hi");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("some/path/../travelling///.o.js");
-        let _res = PathBuf::from("some/path/../travelling/.o.js");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type");
-        let _res = PathBuf::from("some/path/../travelling/wierd.ash.file.type");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("some/path/../travelling///wierd.ash.file.type/another");
-        let _res = PathBuf::from("some/path/../travelling/wierd.ash.file.type/another");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("wierd.ash.file.type");
-        let _res = PathBuf::from("wierd.ash.file.type");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("../../");
-        let _res = PathBuf::from("../../");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("/hi/bbq");
-        let _res = PathBuf::from("/hi/bbq");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
         let test_path = Path::new("/");
-        let _res = PathBuf::from("/");
-        assert!(matches!(normalize(test_path), Ok(_res)));
+        assert!(normalize(test_path).is_ok());
     }
 }
 

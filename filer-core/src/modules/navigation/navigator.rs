@@ -490,8 +490,7 @@ impl Navigator {
                 if self.path_cache.contains_async(&node_id).await {
                     self.sessions
                         .iter_async(|k, v| {
-                            let verd = v.current.map(|c| c == node_id);
-                            if verd.is_some() && verd.unwrap() {
+                            if v.current == Some(node_id) {
                                 Self::trigger_scan(
                                     *k,
                                     node_id,

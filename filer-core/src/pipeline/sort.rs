@@ -59,23 +59,12 @@ impl SortBy {
                     SortField::Size => self.handle_order(a.size.cmp(&b.size)),
                     SortField::Modified => self.handle_order(a.modified.cmp(&b.modified)),
                     SortField::Created => self.handle_order(a.created.cmp(&b.created)),
-                    SortField::Extension => {
-                        let exta = a.extension();
-                        let extb = b.extension();
-                        if exta.is_some() != extb.is_some() {
-                            if exta.is_some() {
-                                self.handle_order(std::cmp::Ordering::Less)
-                            } else {
-                                self.handle_order(std::cmp::Ordering::Greater)
-                            }
-                        } else if exta.is_none() {
-                            std::cmp::Ordering::Equal
-                        } else {
-                            let exta = exta.unwrap();
-                            let extb = extb.unwrap();
-                            self.handle_order(exta.cmp(extb))
-                        }
-                    }
+                    SortField::Extension => match (a.extension(), b.extension()) {
+                        (Some(exta), Some(extb)) => self.handle_order(exta.cmp(extb)),
+                        (Some(_), None) => self.handle_order(std::cmp::Ordering::Less),
+                        (None, Some(_)) => self.handle_order(std::cmp::Ordering::Greater),
+                        (None, None) => std::cmp::Ordering::Equal,
+                    },
                     SortField::Type => self.handle_order(a.name.cmp(&b.name)),
                 }
             }

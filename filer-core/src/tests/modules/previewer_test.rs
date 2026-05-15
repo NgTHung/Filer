@@ -9,7 +9,6 @@ use tokio::time::timeout;
 use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::errors::CoreError;
-use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::modules::preview::previewer::{PreviewCommand, Previewer};

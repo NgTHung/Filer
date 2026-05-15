@@ -63,6 +63,8 @@ impl CommandRouter {
     /// handles directly. Everything else is delegated to the registry.
     fn route(&self, command: Command) {
         // ── Session validation ───────────────────────────────────────
+        let request = command.request_id();
+        let operation = command.operation_id();
         if let Some(session) = command.session_id()
             && !self.ctx.sessions.exists(session)
         {
@@ -73,8 +75,8 @@ impl CommandRouter {
                     message: format!("Unknown session: {}", session),
                     recoverable: true,
                     session,
-                    request: None,
-                    operation: None,
+                    request,
+                    operation,
                 },
                 "unknown session error",
             );

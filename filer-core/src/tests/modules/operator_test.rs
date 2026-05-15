@@ -27,6 +27,7 @@ use crate::errors::CoreError;
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::operation::OperationId;
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::operations::operator::{Operator, OpsCommand};
 use crate::vfs::provider::{Capabilities, FsProvider};
@@ -374,6 +375,27 @@ async fn collect_events_for(evt_rx: &Receiver<Event>, duration: Duration) -> Vec
     events
 }
 
+fn assert_error_correlation(
+    event: &Event,
+    expected_session: SessionId,
+    expected_request: RequestId,
+    expected_operation: OperationId,
+) {
+    match event {
+        Event::Error {
+            session,
+            request,
+            operation,
+            ..
+        } => {
+            assert_eq!(*session, expected_session);
+            assert_eq!(*request, Some(expected_request));
+            assert_eq!(*operation, Some(expected_operation));
+        }
+        other => panic!("Expected Error event, got: {other:?}"),
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Lifecycle Tests
 // ══════════════════════════════════════════════════════════════════════════════
@@ -453,6 +475,7 @@ mod copy_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                request: RequestId::new(),
                 operation: operation_id,
             })
             .unwrap();
@@ -512,6 +535,7 @@ mod copy_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                request: RequestId::new(),
                 operation: operation_id,
             })
             .unwrap();
@@ -601,6 +625,7 @@ mod copy_tests {
                 sources: vec![src1_id, src2_id],
                 destination: dst_id,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -640,13 +665,16 @@ mod copy_tests {
         provider.add_fail_path(&src_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
+        let request_id = RequestId::new();
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::Copy {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
-                operation: OperationId::new(),
+                request: request_id,
+                operation: operation_id,
             })
             .unwrap();
 
@@ -656,9 +684,13 @@ mod copy_tests {
             Event::Error {
                 recoverable,
                 session: s,
+                request,
+                operation,
                 ..
             } => {
                 assert_eq!(s, session);
+                assert_eq!(request, Some(request_id));
+                assert_eq!(operation, Some(operation_id));
                 assert!(recoverable, "PermissionDenied should be recoverable");
             }
             other => panic!("Expected Error event, got: {other:?}"),
@@ -676,22 +708,21 @@ mod copy_tests {
         let dst_id = register(&registry, &dst_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
+        let request_id = RequestId::new();
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::Copy {
                 sources: vec![fake_src],
                 destination: dst_id,
                 session,
-                operation: OperationId::new(),
+                request: request_id,
+                operation: operation_id,
             })
             .unwrap();
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
-
-        assert!(
-            matches!(final_event, Event::Error { .. }),
-            "Should emit error for unresolvable source NodeId"
-        );
+        assert_error_correlation(&final_event, session, request_id, operation_id);
     }
 }
 
@@ -727,6 +758,7 @@ mod move_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -790,6 +822,7 @@ mod move_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -818,6 +851,37 @@ mod move_tests {
         );
         assert_eq!(deletes[0], src_path);
     }
+
+    #[tokio::test]
+    async fn test_move_error_emits_correlated_error() {
+        let provider = MockOpsProvider::new();
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+
+        let src_path = PathBuf::from("/home/user/locked.txt");
+        let dst_path = PathBuf::from("/home/user/archive");
+
+        let src_id = register(&registry, &src_path);
+        let dst_id = register(&registry, &dst_path);
+        provider.add_fail_path(&src_path);
+
+        let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
+        let request_id = RequestId::new();
+        let operation_id = OperationId::new();
+
+        cmd_tx
+            .send(OpsCommand::Move {
+                sources: vec![src_id],
+                destination: dst_id,
+                session,
+                request: request_id,
+                operation: operation_id,
+            })
+            .unwrap();
+
+        let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
+        assert_error_correlation(&final_event, session, request_id, operation_id);
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -844,6 +908,7 @@ mod delete_tests {
                 targets: vec![node_id],
                 trash: false,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -888,6 +953,7 @@ mod delete_tests {
                 targets: vec![node_id],
                 trash: true,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -936,6 +1002,7 @@ mod delete_tests {
                 targets: vec![id1, id2, id3],
                 trash: false,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -967,22 +1034,21 @@ mod delete_tests {
         provider.add_fail_path(&path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
+        let request_id = RequestId::new();
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::Delete {
                 targets: vec![node_id],
                 trash: false,
                 session,
-                operation: OperationId::new(),
+                request: request_id,
+                operation: operation_id,
             })
             .unwrap();
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
-
-        assert!(
-            matches!(final_event, Event::Error { .. }),
-            "Delete failure should emit Error event"
-        );
+        assert_error_correlation(&final_event, session, request_id, operation_id);
     }
 }
 
@@ -1010,6 +1076,7 @@ mod rename_tests {
                 source: src_id,
                 new_name: "new_name.txt".to_string(),
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -1052,6 +1119,7 @@ mod rename_tests {
                 source: src_id,
                 new_name: "new_dir".to_string(),
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -1085,24 +1153,21 @@ mod rename_tests {
         provider.add_existing(&collision_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let request_id = RequestId::new();
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::Rename {
                 source: src_id,
                 new_name: "file_b.txt".to_string(),
                 session,
-                operation: OperationId::new(),
+                request: request_id,
+                operation: operation_id,
             })
             .unwrap();
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
-
-        match final_event {
-            Event::Error { session: s, .. } => {
-                assert_eq!(s, session);
-            }
-            other => panic!("Expected Error for rename collision, got: {other:?}"),
-        }
+        assert_error_correlation(&final_event, session, request_id, operation_id);
 
         assert!(
             provider.get_rename_calls().is_empty(),
@@ -1135,6 +1200,7 @@ mod create_folder_tests {
                 parent: parent_id,
                 name: "new_folder".to_string(),
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -1174,24 +1240,21 @@ mod create_folder_tests {
         provider.add_existing(PathBuf::from("/home/user/existing_dir"));
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let request_id = RequestId::new();
+        let operation_id = OperationId::new();
 
         cmd_tx
             .send(OpsCommand::CreateFolder {
                 parent: parent_id,
                 name: "existing_dir".to_string(),
                 session,
-                operation: OperationId::new(),
+                request: request_id,
+                operation: operation_id,
             })
             .unwrap();
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
-
-        match final_event {
-            Event::Error { session: s, .. } => {
-                assert_eq!(s, session);
-            }
-            other => panic!("Expected Error for folder collision, got: {other:?}"),
-        }
+        assert_error_correlation(&final_event, session, request_id, operation_id);
 
         assert!(
             provider.get_mkdir_calls().is_empty(),
@@ -1224,6 +1287,7 @@ mod create_file_tests {
                 parent: parent_id,
                 name: "new_file.txt".to_string(),
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -1264,6 +1328,7 @@ mod create_file_tests {
         provider.add_existing(PathBuf::from("/home/user/exists.txt"));
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let request_id = RequestId::new();
         let operation_id = OperationId::new();
 
         cmd_tx
@@ -1271,6 +1336,7 @@ mod create_file_tests {
                 parent: parent_id,
                 name: "exists.txt".to_string(),
                 session,
+                request: request_id,
                 operation: operation_id,
             })
             .unwrap();
@@ -1280,10 +1346,12 @@ mod create_file_tests {
         match final_event {
             Event::Error {
                 session: s,
+                request,
                 operation,
                 ..
             } => {
                 assert_eq!(s, session);
+                assert_eq!(request, Some(request_id));
                 assert_eq!(operation, Some(operation_id));
             }
             other => panic!("Expected Error for file collision, got: {other:?}"),
@@ -1338,6 +1406,7 @@ mod cancel_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();
@@ -1408,6 +1477,7 @@ mod cancel_tests {
                 sources: vec![src_id],
                 destination: dst_id,
                 session,
+                request: RequestId::new(),
                 operation: OperationId::new(),
             })
             .unwrap();

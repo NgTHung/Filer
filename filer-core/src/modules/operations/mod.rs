@@ -59,6 +59,7 @@ impl Module for OperationsModule {
                 sources,
                 destination,
                 session,
+                request,
                 operation,
             } = cmd
             {
@@ -66,6 +67,7 @@ impl Module for OperationsModule {
                     sources,
                     destination,
                     session,
+                    request,
                     operation,
                 });
             }
@@ -78,6 +80,7 @@ impl Module for OperationsModule {
                 sources,
                 destination,
                 session,
+                request,
                 operation,
             } = cmd
             {
@@ -85,6 +88,7 @@ impl Module for OperationsModule {
                     sources,
                     destination,
                     session,
+                    request,
                     operation,
                 });
             }
@@ -97,6 +101,7 @@ impl Module for OperationsModule {
                 nodes,
                 trash,
                 session,
+                request,
                 operation,
             } = cmd
             {
@@ -104,6 +109,7 @@ impl Module for OperationsModule {
                     targets: nodes,
                     trash,
                     session,
+                    request,
                     operation,
                 });
             }
@@ -116,6 +122,7 @@ impl Module for OperationsModule {
                 node,
                 new_name,
                 session,
+                request,
                 operation,
             } = cmd
             {
@@ -123,6 +130,7 @@ impl Module for OperationsModule {
                     source: node,
                     new_name,
                     session,
+                    request,
                     operation,
                 });
             }
@@ -135,6 +143,7 @@ impl Module for OperationsModule {
                 parent,
                 name,
                 session,
+                request,
                 operation,
             } = cmd
             {
@@ -142,6 +151,7 @@ impl Module for OperationsModule {
                     parent,
                     name,
                     session,
+                    request,
                     operation,
                 });
             }
@@ -154,6 +164,7 @@ impl Module for OperationsModule {
                 parent,
                 name,
                 session,
+                request,
                 operation,
             } = cmd
             {
@@ -161,6 +172,7 @@ impl Module for OperationsModule {
                     parent,
                     name,
                     session,
+                    request,
                     operation,
                 });
             }

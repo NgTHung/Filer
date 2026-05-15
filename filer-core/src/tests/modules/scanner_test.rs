@@ -151,9 +151,6 @@ mod scanner_cache_tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use flume::Receiver;
-    use tokio::time::timeout;
-
     use super::*;
     use crate::actors::Actor;
     use crate::api::events::Event;
@@ -162,6 +159,7 @@ mod scanner_cache_tests {
     use crate::modules::scan::scanner::{ScanCommand, Scanner};
     use crate::pipeline::PipelineConfig;
     use crate::services::dir_cache::DirCache;
+    use flume::Receiver;
 
     const SCAN_TIMEOUT: Duration = Duration::from_millis(2000);
 

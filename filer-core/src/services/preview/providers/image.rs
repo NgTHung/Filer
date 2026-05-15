@@ -61,13 +61,19 @@ impl PreviewProvider for ImageProvider {
         options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
         #[cfg(feature = "preview-image")]
-        return Self::generate_thumbnail(path, options.max_width, options.max_height).await;
+        {
+            let _ = mime;
+            Self::generate_thumbnail(path, options.max_width, options.max_height).await
+        }
 
-        let _ = (path, options);
-        Ok(PreviewData::Unsupported {
-            mime_type: mime.mime_type.clone(),
-            reason: "Image preview feature not enabled".to_string(),
-        })
+        #[cfg(not(feature = "preview-image"))]
+        {
+            let _ = (path, options);
+            Ok(PreviewData::Unsupported {
+                mime_type: mime.mime_type.clone(),
+                reason: "Image preview feature not enabled".to_string(),
+            })
+        }
     }
 
     fn name(&self) -> &'static str {

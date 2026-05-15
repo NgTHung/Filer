@@ -6,13 +6,22 @@ use crate::model::node::FileNode;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
 /// Archive filesystem provider (ZIP, TAR, etc.)
+#[allow(dead_code)]
 pub struct ArchiveFs {
     archive_path: std::path::PathBuf,
 }
 
+#[allow(dead_code)]
 impl ArchiveFs {
     pub fn new(archive_path: std::path::PathBuf) -> Self {
         Self { archive_path }
+    }
+
+    fn unsupported(&self) -> CoreError {
+        CoreError::InvalidInput(format!(
+            "archive filesystem navigation is not implemented for {}",
+            self.archive_path.display()
+        ))
     }
 }
 
@@ -32,22 +41,22 @@ impl FsProvider for ArchiveFs {
     }
 
     async fn list(&self, _path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        todo!()
+        Err(self.unsupported())
     }
 
     async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
-        todo!()
+        Err(self.unsupported())
     }
 
     async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
-        todo!()
+        Err(self.unsupported())
     }
 
     async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
-        todo!()
+        Err(self.unsupported())
     }
 
     async fn metadata(&self, _path: &Path) -> Result<FileNode, CoreError> {
-        todo!()
+        Err(self.unsupported())
     }
 }
