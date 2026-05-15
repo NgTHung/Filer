@@ -28,6 +28,7 @@ use crate::errors::CoreError;
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::search::searcher::{SearchCommand, Searcher};
 use crate::utils;
@@ -46,6 +47,7 @@ struct MockProvider {
     files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<FileNode>)>>>,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
     fail_paths: Arc<Mutex<Vec<PathBuf>>>,
+    delay_ms: Arc<Mutex<u64>>,
 }
 
 impl MockProvider {
@@ -54,6 +56,7 @@ impl MockProvider {
             files_by_path: Arc::new(Mutex::new(Vec::new())),
             list_calls: Arc::new(Mutex::new(Vec::new())),
             fail_paths: Arc::new(Mutex::new(Vec::new())),
+            delay_ms: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -70,6 +73,10 @@ impl MockProvider {
 
     fn list_calls(&self) -> Vec<PathBuf> {
         self.list_calls.lock().unwrap().clone()
+    }
+
+    fn set_delay_ms(&self, delay_ms: u64) {
+        *self.delay_ms.lock().unwrap() = delay_ms;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -153,6 +160,11 @@ impl FsProvider for MockProvider {
         // Check if this path should fail
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::NotFound(path.to_path_buf()));
+        }
+
+        let delay_ms = *self.delay_ms.lock().unwrap();
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
         }
 
         // Yield to the scheduler between directory listings so that
@@ -1326,6 +1338,66 @@ mod searcher_cancellation_tests {
             matches.len(),
             1,
             "cancelling session1 should not affect session2"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stale_search_results_are_suppressed() {
+        let provider = MockProvider::new();
+        provider.set_delay_ms(50);
+        provider.add_dir(
+            "/root",
+            vec![MockProvider::make_file("target.txt", "/root", 100)],
+        );
+
+        let registry = NodeRegistry::new();
+        let root_id = registry.clone().register(PathBuf::from("/root"));
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+
+        let session = SessionId::new();
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+
+        cmd_tx
+            .send(SearchCommand::Search {
+                query: SearchQuery::parse("target").unwrap(),
+                root: root_id,
+                session,
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(SearchCommand::Search {
+                query: SearchQuery::parse("target").unwrap(),
+                root: root_id,
+                session,
+                request: fresh_request,
+            })
+            .unwrap();
+
+        let mut result_requests = Vec::new();
+        let deadline = tokio::time::Instant::now() + TIMEOUT;
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            if let Event::SearchResults {
+                session: s,
+                request,
+                complete,
+                ..
+            } = event
+                && s == session
+            {
+                result_requests.push(request);
+                if request == fresh_request && complete {
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(result_requests, vec![fresh_request]);
+        assert!(
+            !result_requests.contains(&stale_request),
+            "stale search request should not emit SearchResults"
         );
     }
 }

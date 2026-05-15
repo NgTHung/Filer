@@ -81,6 +81,7 @@ struct MockProvider {
     files: Arc<Mutex<Vec<FileNode>>>,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
     should_fail: Arc<Mutex<bool>>,
+    delay_ms: Arc<Mutex<u64>>,
 }
 
 impl MockProvider {
@@ -89,6 +90,7 @@ impl MockProvider {
             files: Arc::new(Mutex::new(Vec::new())),
             list_calls: Arc::new(Mutex::new(Vec::new())),
             should_fail: Arc::new(Mutex::new(false)),
+            delay_ms: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -102,6 +104,10 @@ impl MockProvider {
 
     fn set_should_fail(&self, should_fail: bool) {
         *self.should_fail.lock().unwrap() = should_fail;
+    }
+
+    fn set_delay_ms(&self, delay_ms: u64) {
+        *self.delay_ms.lock().unwrap() = delay_ms;
     }
 }
 
@@ -123,6 +129,11 @@ impl FsProvider for MockProvider {
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::NotFound(path.to_path_buf()));
+        }
+
+        let delay_ms = *self.delay_ms.lock().unwrap();
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
         }
 
         self.list_calls.lock().unwrap().push(path.to_path_buf());
@@ -155,6 +166,7 @@ mod scanner_cache_tests {
     use crate::actors::Actor;
     use crate::api::events::Event;
     use crate::model::registry::NodeRegistry;
+    use crate::model::request::RequestId;
     use crate::model::session::SessionId;
     use crate::modules::scan::scanner::{ScanCommand, Scanner};
     use crate::pipeline::PipelineConfig;
@@ -341,6 +353,66 @@ mod scanner_cache_tests {
         assert_eq!(
             groups.total_count, 2,
             "RefreshNode should emit the fresh provider listing"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stale_scan_result_is_suppressed() {
+        let provider = MockProvider::new();
+        provider.set_delay_ms(50);
+        provider.add_file(make_file("fresh.txt", "/tmp/stale", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+        let path = PathBuf::from("/tmp/stale");
+
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session,
+                pipeline: default_pipeline(),
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path,
+                session,
+                pipeline: default_pipeline(),
+                request: fresh_request,
+            })
+            .unwrap();
+
+        let mut loaded_requests = Vec::new();
+        let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            if let Event::DirectoryLoaded {
+                session: s,
+                request,
+                ..
+            } = event
+                && s == session
+            {
+                loaded_requests.push(request);
+                if request == fresh_request {
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(loaded_requests, vec![fresh_request]);
+        assert!(
+            !loaded_requests.contains(&stale_request),
+            "stale scan request should not emit DirectoryLoaded"
         );
     }
 }
