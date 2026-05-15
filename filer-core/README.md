@@ -2,6 +2,8 @@
 
 Core library for the Filer file explorer.
 
+Current milestone: `0.2.0`.
+
 ## Modules
 
 | Module | Purpose |
@@ -52,6 +54,11 @@ Completed contract work:
   progress, completion, and operation-scoped errors
 - structured error kinds through `ErrorKind`, `CoreError::kind()`, and
   `Event::Error { kind, message, recoverable, session, request, operation }`
+
+`0.2.0` covers those correlation and error-category contracts. It is not the
+end of core stabilization; provider `Location`, large-directory loading, richer
+error context, cancellation/timeout semantics, and extension output envelopes
+remain open contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,

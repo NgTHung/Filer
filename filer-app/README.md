@@ -4,6 +4,8 @@
 manager that consumes `filer-core` for navigation, search, preview generation,
 file operations, and filesystem events.
 
+Current milestone: `0.2.0`.
+
 The app target is simple: make local file management feel clean, fast, and
 predictable before expanding into more advanced workflows. The visual direction
 is inspired by Windows Explorer and Files Community: quiet surfaces, clear
@@ -40,6 +42,10 @@ stabilization. Bugs that reveal contract problems, such as stale search results,
 duplicate directory loads, preview races, or large-directory limits, should feed
 back into core first. Pure UI issues, such as context-menu placement or visual
 polish, can wait for the app refactor.
+
+For `0.2.0`, the app consumes the new core request IDs, operation IDs, and
+structured error categories. The broader app refactor remains deferred until the
+remaining core contracts are clearer.
 
 The next useful visible proof is not a full app rewrite. It is a large folder
 that appears quickly and remains responsive, followed by asynchronous semantic

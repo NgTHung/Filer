@@ -4,6 +4,8 @@ This roadmap tracks the Iced desktop app. The root `ROADMAP.md` remains the
 engineering roadmap for `filer-core` and broader crate milestones; this document
 tracks the final product shape of the user-facing app.
 
+Current milestone: `0.2.0`.
+
 ## Product Target
 
 Filer should be a fast Explorer replacement with programmer support. It should
@@ -20,9 +22,10 @@ The app roadmap is intentionally downstream of core contract stabilization. A
 large app refactor should wait until structured errors, provider addressing,
 extension output envelopes, and large-directory loading contracts are settled.
 Request ids, stale-event guards, and operation ids are already available in core
-for app-facing async work. App bugs that expose remaining
-contracts should be treated as core feedback; pure visual and interaction bugs
-can be fixed during the app refactor.
+for app-facing async work, and `0.2.0` adds structured error categories through
+`ErrorKind`. App bugs that expose remaining contracts should be treated as core
+feedback; pure visual and interaction bugs can be fixed during the app
+refactor.
 
 The next visible proof should be narrow: a large folder renders without blocking
 and extension decorations can appear afterward. The app must not wait for

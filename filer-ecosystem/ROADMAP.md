@@ -5,6 +5,8 @@ sync, and app/core/web integration points. It carries the same product message
 as the app roadmap: Filer should be a fast Explorer replacement with useful
 programmer support, not a bloated IDE.
 
+Current milestone: `0.2.0`.
+
 The ecosystem has two contracts:
 
 - The declaration plane: manifests, registries, permissions, packages, and

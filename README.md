@@ -2,6 +2,8 @@
 
 A fast, modern file explorer built in Rust.
 
+Current milestone: `0.2.0`.
+
 ## Architecture
 
 ```
@@ -42,6 +44,10 @@ now include a structured `ErrorKind` alongside the human-readable message and
 recoverability flag. The project should next settle provider addressing,
 large-directory loading contracts, richer error targets, extension output
 envelopes, and the boundary between app-local config and future profile sync.
+
+`0.2.0` is the core correlation and error-category milestone. It should not be
+read as full core stabilization; provider `Location`, large-directory loading,
+richer error context, and wire-safe transport envelopes remain future work.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

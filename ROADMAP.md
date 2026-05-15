@@ -4,6 +4,8 @@ This roadmap tracks the core engine and shared project architecture. The desktop
 app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
 roadmap lives in `filer-ecosystem/ROADMAP.md`.
 
+Current milestone: `0.2.0`.
+
 ## Product Direction
 
 Filer should be a fast Explorer replacement with useful programmer support. It
@@ -35,6 +37,10 @@ The proof target for this phase is practical: Filer should load a very large
 local directory, such as `C:\Windows\System32`, without blocking the client, and
 then apply git-style decorations asynchronously in a large repository without
 blocking directory loading.
+
+`0.2.0` is the completed correlation and error-category milestone: request IDs,
+operation IDs, operation-scoped events, and structured `ErrorKind` categories.
+The remaining core stabilization work is still tracked below.
 
 Milestone labels:
 

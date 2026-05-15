@@ -3,6 +3,8 @@
 `filer-ecosystem` defines the shared data contracts for Filer extensions,
 packages, and profile synchronization.
 
+Current milestone: `0.2.0`.
+
 The crate is runtime-free by design. It does not execute WASM, load native
 plugins, render UI, or perform file operations. Instead, it provides the
 wire-safe types that `filer-core`, `filer-app`, future web clients, and package
@@ -24,6 +26,10 @@ The first runtime-facing slice should be git file decorations, not a complete
 marketplace or broad plugin host. That slice proves the model end to end:
 visible file context from core, semantic decoration output from an extension,
 and client-owned rendering.
+
+The `0.2.0` milestone keeps this crate as a contract layer while `filer-core`
+settles request IDs, operation IDs, and structured error categories. Live
+extension output envelopes and runtime hosting remain future work.
 
 The first host can be trusted and in-process. It should be described as a
 trusted core add-on model until sandboxing, package installation, marketplace
