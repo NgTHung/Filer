@@ -8,8 +8,15 @@ use crate::vfs::provider::{Capabilities, FsProvider};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use tempfile::TempDir;
 
 // ===== LocalFs Tests =====
+
+fn local_fs() -> (LocalFs, TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let fs = LocalFs::new(NodeRegistry::new());
+    (fs, dir)
+}
 
 #[tokio::test]
 async fn test_local_fs_scheme() {
@@ -49,21 +56,13 @@ async fn test_local_fs_list() {
 
 #[tokio::test]
 async fn test_local_fs_list_empty_directory() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
-    // Create a temporary empty directory
-    let temp_dir = std::env::temp_dir().join("filer_test_empty");
-    let _ = std::fs::create_dir(&temp_dir);
-
-    let result = fs.list(&temp_dir).await;
+    let result = fs.list(dir.path()).await;
     assert!(result.is_ok());
 
     let files = result.unwrap();
     assert_eq!(files.len(), 0);
-
-    // Cleanup
-    let _ = std::fs::remove_dir(&temp_dir);
 }
 
 #[tokio::test]
@@ -81,11 +80,10 @@ async fn test_local_fs_list_not_found() {
 
 #[tokio::test]
 async fn test_local_fs_read() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
     // Create a temporary file
-    let temp_file = std::env::temp_dir().join("filer_test_read.txt");
+    let temp_file = dir.path().join("filer_test_read.txt");
     let content = b"Hello, World!";
     std::fs::write(&temp_file, content).unwrap();
 
@@ -94,9 +92,6 @@ async fn test_local_fs_read() {
 
     let data = result.unwrap();
     assert_eq!(data, content);
-
-    // Cleanup
-    let _ = std::fs::remove_file(&temp_file);
 }
 
 #[tokio::test]
@@ -115,11 +110,10 @@ async fn test_local_fs_read_not_found() {
 
 #[tokio::test]
 async fn test_local_fs_read_range() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
     // Create a temporary file
-    let temp_file = std::env::temp_dir().join("filer_test_read_range.txt");
+    let temp_file = dir.path().join("filer_test_read_range.txt");
     let content = b"0123456789ABCDEFGHIJ";
     std::fs::write(&temp_file, content).unwrap();
 
@@ -129,18 +123,14 @@ async fn test_local_fs_read_range() {
 
     let data = result.unwrap();
     assert_eq!(data, b"56789");
-
-    // Cleanup
-    let _ = std::fs::remove_file(&temp_file);
 }
 
 #[tokio::test]
 async fn test_local_fs_read_range_full() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
     // Create a temporary file
-    let temp_file = std::env::temp_dir().join("filer_test_read_range_full.txt");
+    let temp_file = dir.path().join("filer_test_read_range_full.txt");
     let content = b"Hello, World!";
     std::fs::write(&temp_file, content).unwrap();
 
@@ -150,18 +140,14 @@ async fn test_local_fs_read_range_full() {
 
     let data = result.unwrap();
     assert_eq!(data, content);
-
-    // Cleanup
-    let _ = std::fs::remove_file(&temp_file);
 }
 
 #[tokio::test]
 async fn test_local_fs_read_range_beyond_end() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
     // Create a temporary file
-    let temp_file = std::env::temp_dir().join("filer_test_read_range_beyond.txt");
+    let temp_file = dir.path().join("filer_test_read_range_beyond.txt");
     let content = b"Hello";
     std::fs::write(&temp_file, content).unwrap();
 
@@ -172,18 +158,14 @@ async fn test_local_fs_read_range_beyond_end() {
     // Should return only available content
     let data = result.unwrap();
     assert_eq!(data, content);
-
-    // Cleanup
-    let _ = std::fs::remove_file(&temp_file);
 }
 
 #[tokio::test]
 async fn test_local_fs_exists() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
     // Test existing file
-    let temp_file = std::env::temp_dir().join("filer_test_exists.txt");
+    let temp_file = dir.path().join("filer_test_exists.txt");
     std::fs::write(&temp_file, b"test").unwrap();
 
     assert_eq!(fs.exists(&temp_file).await.unwrap(), true);
@@ -195,10 +177,9 @@ async fn test_local_fs_exists() {
 
 #[tokio::test]
 async fn test_local_fs_exists_directory() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
-    let temp_dir = std::env::temp_dir().join("filer_test_exists_dir");
+    let temp_dir = dir.path().join("filer_test_exists_dir");
     std::fs::create_dir(&temp_dir).unwrap();
 
     assert_eq!(fs.exists(&temp_dir).await.unwrap(), true);
@@ -209,11 +190,10 @@ async fn test_local_fs_exists_directory() {
 
 #[tokio::test]
 async fn test_local_fs_metadata() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
     // Create a temporary file
-    let temp_file = std::env::temp_dir().join("filer_test_metadata.txt");
+    let temp_file = dir.path().join("filer_test_metadata.txt");
     let content = b"Hello, World!";
     std::fs::write(&temp_file, content).unwrap();
 
@@ -225,17 +205,13 @@ async fn test_local_fs_metadata() {
     assert_eq!(node.size, content.len() as u64);
     assert!(node.is_file());
     assert_eq!(node.extension(), Some("txt"));
-
-    // Cleanup
-    let _ = std::fs::remove_file(&temp_file);
 }
 
 #[tokio::test]
 async fn test_local_fs_metadata_directory() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let (fs, dir) = local_fs();
 
-    let temp_dir = std::env::temp_dir().join("filer_test_metadata_dir");
+    let temp_dir = dir.path().join("filer_test_metadata_dir");
     std::fs::create_dir(&temp_dir).unwrap();
 
     let result = fs.metadata(&temp_dir).await;
@@ -244,9 +220,6 @@ async fn test_local_fs_metadata_directory() {
     let node = result.unwrap();
     assert_eq!(node.name, "filer_test_metadata_dir");
     assert!(node.is_dir());
-
-    // Cleanup
-    let _ = std::fs::remove_dir(&temp_dir);
 }
 
 #[tokio::test]
@@ -445,12 +418,9 @@ async fn test_mock_fs_trait_usage() {
 
 mod write_tests {
     use super::*;
-    use tempfile::TempDir;
 
     fn fs() -> (LocalFs, TempDir) {
-        let dir = tempfile::tempdir().unwrap();
-        let fs = LocalFs::new(NodeRegistry::new());
-        (fs, dir)
+        local_fs()
     }
 
     // --- write ---
