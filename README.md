@@ -2,7 +2,7 @@
 
 A fast, modern file explorer built in Rust.
 
-Current milestone: `0.2.1`.
+Current milestone: `0.2.2`.
 
 ## Architecture
 
@@ -41,16 +41,22 @@ platform or app rewrite. Request identity and stale-event guards are now in
 place for scan, search, preview, and refresh flows, and file operations now emit
 correlated operation progress, completion, and error events. App-facing errors
 now include a structured `ErrorKind` alongside the human-readable message and
-recoverability flag. The project should next settle provider addressing,
+recoverability flag. The project should next build on the new `Location`
+foundation by migrating provider addressing where it matters, then settle
 large-directory loading contracts, richer error targets, extension output
 envelopes, and the boundary between app-local config and future profile sync.
 
-`0.2.1` is a reliability patch over the `0.2.0` correlation and error-category
-milestone. It keeps the same public contract while adding focused regression
-coverage that proves stale scan, search, and preview completions are suppressed
-when a newer request supersedes them. It should not be read as full core
-stabilization; provider `Location`, large-directory loading, richer error
-context, and wire-safe transport envelopes remain future work.
+`0.2.2` introduces the first additive `Location` contract for provider-aware
+addressing. Core now has `LocationId`, `LocationDescriptor`, `LocationRef`, and
+`ProviderRef` types plus registry resolution that can use an id fast path or
+recover from a descriptor when an id is missing on another process or machine.
+This does not yet replace public command/event `PathBuf` and `NodeId` surfaces;
+it establishes the compatibility layer for that migration. The intent is for
+`Location` to become the bridge across local files, remote providers, virtual
+providers, extension-backed providers, and archives. Nested archives will need
+a future structured segment stack, such as archive/member segments, rather than
+forcing every layer into one path string. Large-directory loading, richer error
+targets, and wire-safe transport envelopes remain future work.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

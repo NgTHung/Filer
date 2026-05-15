@@ -1,4 +1,5 @@
 pub mod fs_change;
+pub mod location;
 pub mod node;
 pub mod operation;
 pub mod query;

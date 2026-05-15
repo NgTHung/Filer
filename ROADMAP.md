@@ -4,7 +4,7 @@ This roadmap tracks the core engine and shared project architecture. The desktop
 app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
 roadmap lives in `filer-ecosystem/ROADMAP.md`.
 
-Current milestone: `0.2.1`.
+Current milestone: `0.2.2`.
 
 ## Product Direction
 
@@ -38,12 +38,17 @@ local directory, such as `C:\Windows\System32`, without blocking the client, and
 then apply git-style decorations asynchronously in a large repository without
 blocking directory loading.
 
-`0.2.1` is a reliability patch over the completed `0.2.0` correlation and
-error-category milestone. The public contract remains request IDs, operation
-IDs, operation-scoped events, and structured `ErrorKind` categories; the patch
-adds explicit stale scan/search/preview regression coverage and confirms those
-tests work under parallel execution. The remaining core stabilization work is
-still tracked below.
+`0.2.2` introduces the first additive provider-aware `Location` layer over the
+completed `0.2.0` correlation and error-category milestone and the `0.2.1`
+stale-event reliability patch. The new contract adds `LocationId`,
+`LocationDescriptor`, `LocationRef`, `ProviderRef`, `InvalidLocation`, and
+registry recovery from descriptors when id lookup fails. Public commands,
+events, `FileNode`, and `FsProvider` still use their existing path/node surfaces
+until a later migration. The intent is for `Location` to become the bridge
+across local files, remote providers, virtual providers, extension-backed
+providers, and archives. Nested archives require a later structured segment
+model rather than treating the whole chain as one path string. The remaining
+core stabilization work is still tracked below.
 
 Milestone labels:
 
@@ -163,6 +168,8 @@ near-term product boundary.
   create folder progress, completion, and operation-scoped errors.
 - [x] `Core` Structured `ErrorKind` categories on app-facing `Event::Error`
   events, with recoverability derived from the kind.
+- [x] `Core` Additive `Location` primitives for provider-aware addressing, with
+  id fast-path lookup and descriptor-based recovery.
 - [x] `Ecosystem` Trusted in-process command seam through `Command::Extension`.
 - [x] `Ecosystem` Shared extension manifest, package, registry, and profile
   operation contracts live in `filer-ecosystem`.
@@ -182,12 +189,17 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 - [x] `Core` Add structured error kinds for current app-facing error events.
 - [x] `Reliability` Add focused regression coverage for stale scan, search, and
   preview suppression, including parallel test execution.
+- [x] `Core` Define the first additive provider `Location` model with
+  `LocationId`, `LocationDescriptor`, `LocationRef`, and `ProviderRef`.
+- [x] `Core` Add `InvalidLocation` for unresolved id-only references.
 - [ ] `Core` Add richer structured error context for collision, unsupported
   provider capability, stale request, and location-targeted cases.
-- [ ] `Core` Define a structured provider `Location` model for local, archive,
-  remote, virtual, and extension-backed locations. It should include scheme,
-  provider/profile id, internal path, optional archive/member path, display
-  path, and capability context instead of relying only on string parsing.
+- [ ] `Core` Migrate public commands, events, `FileNode`, and provider routing
+  from raw path/node addressing toward `Location` where it improves transport
+  and provider behavior.
+- [ ] `Core` Extend `Location` with ordered segments for archive/member paths,
+  nested archive traversal, virtual layers, capability context, and richer
+  display/target metadata.
 - [ ] `Core` Define the large-directory loading contract: paging,
   virtualization hints, incremental loading, or another bounded strategy.
 - [ ] `Core` Decide whether `DirectoryLoaded` remains a full listing event or
@@ -211,7 +223,11 @@ Exit criteria:
   branch without parsing message strings.
 - [ ] Error events carry enough target/context for app and web clients to render
   clear location-aware feedback.
-- [ ] The provider `Location` model is documented and tested.
+- [x] The initial provider `Location` model is documented and tested.
+- [ ] Public command/event transport can use `LocationRef` without id-only
+  reconstruction failure across processes or machines.
+- [ ] Nested archive locations can be represented as provider root plus ordered
+  archive/member segments.
 - [ ] Large-directory loading is bounded and testable.
 - [ ] Archive traversal is modeled as provider navigation, not only preview.
 - [ ] Undo and conflict-resolution data contracts are drafted, even if full UI
@@ -344,10 +360,14 @@ core events being truthful and fresh.
 
 - [x] `Core` Local filesystem provider.
 - [x] `Core` Provider capability model for read, write, watch, and search.
+- [x] `Core` Introduce additive provider `Location` primitives as the
+  compatibility layer for canonical file identity.
 - [ ] `Core` Make provider profile/config types serializable for app and sync.
-- [ ] `Core` Introduce provider `Location` as the canonical file identity across
+- [ ] `Core` Promote `Location` into the canonical public file identity across
   local files, archives, remote providers, virtual providers, and extension
   providers.
+- [ ] `Core` Add structured `Location` segments for nested VFS layers such as
+  archive members inside remote files or archives inside archives.
 - [ ] `Power` Implement archives as navigable folders.
 - [ ] `Power` Implement SFTP/SSH provider.
 - [ ] `Power` Implement WebDAV provider.

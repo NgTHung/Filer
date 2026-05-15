@@ -4,20 +4,24 @@ use std::sync::Arc;
 use rapidhash::fast::RandomState;
 
 use crate::FileNode;
+use crate::errors::CoreError;
 
+use super::location::{Location, LocationDescriptor, LocationId, LocationRef};
 use super::node::NodeId;
 
-/// Registry that maps NodeId to PathBuf
-/// Lives in Core, resolves IDs for VFS operations
+/// Registry that maps node and location IDs to filesystem identity.
+/// Lives in Core, resolves IDs for VFS operations.
 #[derive(Clone, Debug)]
 pub struct NodeRegistry {
     id_to_path: Arc<scc::HashMap<NodeId, PathBuf, RandomState>>,
+    id_to_location: Arc<scc::HashMap<LocationId, LocationDescriptor, RandomState>>,
 }
 
 impl NodeRegistry {
     pub fn new() -> Self {
         Self {
             id_to_path: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            id_to_location: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
     }
 
@@ -79,6 +83,7 @@ impl NodeRegistry {
     /// Clear all entries
     pub fn clear(&self) {
         self.id_to_path.clear_sync();
+        self.id_to_location.clear_sync();
     }
 
     /// Number of registered paths
@@ -101,6 +106,45 @@ impl NodeRegistry {
         } else {
             None
         }
+    }
+
+    pub fn register_location(&self, location: Location) -> LocationId {
+        let id = location.id();
+        let _ = self
+            .id_to_location
+            .insert_sync(id, location.into_descriptor());
+        id
+    }
+
+    pub fn resolve_location(&self, id: LocationId) -> Option<LocationDescriptor> {
+        self.id_to_location.read_sync(&id, |_, v| v.clone())
+    }
+
+    pub fn resolve_location_ref(&self, location_ref: &LocationRef) -> Result<Location, CoreError> {
+        if let Some(id) = location_ref.id()
+            && let Some(descriptor) = self.resolve_location(id)
+        {
+            return Ok(Location::new(descriptor));
+        }
+
+        if let Some(descriptor) = location_ref.descriptor() {
+            let location = Location::new(descriptor.clone());
+            self.register_location(location.clone());
+            return Ok(location);
+        }
+
+        Err(CoreError::InvalidLocation(
+            location_ref
+                .id()
+                .map(|id| format!("unresolved location id {id}"))
+                .unwrap_or_else(|| "missing location id and descriptor".to_string()),
+        ))
+    }
+
+    pub fn location_for_path(&self, path: PathBuf) -> Location {
+        let location = Location::local(path);
+        self.register_location(location.clone());
+        location
     }
 }
 

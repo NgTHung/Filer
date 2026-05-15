@@ -2,7 +2,7 @@
 
 Core library for the Filer file explorer.
 
-Current milestone: `0.2.1`.
+Current milestone: `0.2.2`.
 
 ## Modules
 
@@ -56,24 +56,31 @@ Completed contract work:
   progress, completion, and operation-scoped errors
 - structured error kinds through `ErrorKind`, `CoreError::kind()`, and
   `Event::Error { kind, message, recoverable, session, request, operation }`
+- additive provider-aware `Location` primitives through `LocationId`,
+  `LocationDescriptor`, `LocationRef`, and `ProviderRef`, with registry
+  recovery from descriptors when id lookup fails
 
-`0.2.1` is a reliability patch over the `0.2.0` correlation and error-category
-contracts. It does not change those contracts; it adds explicit regression
-coverage for stale scan/search/preview suppression so future actor changes do
-not accidentally re-emit superseded results. It is not the end of core
-stabilization; provider `Location`, large-directory loading, richer error
-context, cancellation/timeout semantics, and extension output envelopes remain
-open contract work.
+`0.2.2` builds on the `0.2.0` correlation and error-category contracts and the
+`0.2.1` stale-event reliability patch. It adds `Location` as a compatibility
+layer for provider-aware addressing without changing the existing public
+command, event, `FileNode`, or `FsProvider` path surfaces. It is not the end of
+core stabilization; large-directory loading, richer error context,
+cancellation/timeout semantics, full `Location` migration, and extension output
+envelopes remain open contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
 cache, pipeline, and event delivery remain core kernel behavior.
 
-The provider-addressing contract should be structured, not just a custom string
-parser. A future `Location` should be able to represent a scheme, provider or
-profile id, internal path, optional archive/member path, display path, and
-capabilities. This keeps local, archive, remote, virtual, and extension-backed
-files addressable through the same core model.
+The provider-addressing contract is now structured, not just a custom string
+parser. The first `Location` layer represents a scheme, provider reference, and
+provider-internal path. `LocationRef` is the transport-friendly shape: it can
+carry only a `LocationId` for compact in-process messages, only a
+`LocationDescriptor` for reconstruction, or both for cross-process recovery.
+The intent is for `Location` to become the bridge across local files, remote
+providers, virtual providers, extension-backed providers, and archives.
+Archive/member paths, nested archive stacks, capability context, and full
+command/event migration are still future work.
 
 Core stabilization is complete only when large directory loading is bounded,
 errors carry enough structured target/context for app and web clients, archive
@@ -103,6 +110,50 @@ non-request errors and operation errors currently use `request: None`.
 The `0.2.1` test coverage now checks that superseded scan, search, and preview
 requests do not emit stale client-visible result events, including under
 parallel test execution.
+
+## Location
+
+`Location` is the new additive addressing foundation for provider-aware core
+work. It does not replace the current public `PathBuf` and `NodeId` command and
+event surfaces yet.
+
+The core types are:
+
+- `LocationId`: stable id derived from a `LocationDescriptor`.
+- `ProviderRef`: provider identity without credentials, such as `Local` or a
+  named profile.
+- `LocationDescriptor`: reconstructable address data: scheme, provider
+  reference, provider-internal path, and optional display path.
+- `Location`: internal complete form containing both id and descriptor.
+- `LocationRef`: wire/transport-friendly form with optional id and optional
+  descriptor.
+
+Resolution follows a hybrid rule. If a `LocationRef` carries an id and the
+registry has it, core uses that fast path. If lookup fails but the descriptor is
+present, core reconstructs and registers the location. If both lookup and
+descriptor recovery fail, core returns `CoreError::InvalidLocation` with
+`ErrorKind::InvalidLocation`.
+
+Commands or persisted state that may cross a process or machine boundary should
+carry descriptors, not ids alone. Large batches can still avoid repeating full
+descriptors by sending a parent descriptor once and compact child references
+later. Current providers still execute against `PathBuf`; `Location` is the
+compatibility layer that lets core migrate toward provider-aware addressing in
+small steps.
+
+Nested archive support should extend `LocationDescriptor` with structured
+segments instead of encoding the whole chain into one path string. A future
+descriptor should be able to represent a provider root plus ordered segments,
+for example:
+
+```text
+sftp profile "work" -> /home/me/bundle.zip -> archive member vendor.tar -> archive member src/main.rs
+```
+
+That shape preserves each VFS layer: the outer provider, each archive boundary,
+and the final member path. The current `path` field is the provider-internal
+root path for the first layer; archive/member traversal remains a later
+migration target.
 
 ## Operation IDs
 
@@ -147,6 +198,7 @@ Current kinds are:
 - `NotFound`
 - `PermissionDenied`
 - `InvalidPath`
+- `InvalidLocation`
 - `ChannelClosed`
 - `Cancelled`
 - `Actor`
@@ -160,7 +212,7 @@ and `Event::from_error()` copies that kind into `Event::Error`. Request-scoped
 errors still use `request: Some(id)`, operation-scoped errors still use
 `operation: Some(id)`, and generic session errors keep both fields as `None`.
 Future work can add structured error targets once the provider `Location` model
-exists.
+is wired through public commands and events.
 
 ## Usage
 

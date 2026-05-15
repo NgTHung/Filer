@@ -2014,7 +2014,7 @@ dependencies = [
 
 [[package]]
 name = "filer-app"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "dirs",
  "filer-core",
@@ -2030,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "filer-core"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "aws-config",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "filer-ecosystem"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "serde",
  "serde_json",

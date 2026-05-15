@@ -9,6 +9,7 @@ pub enum ErrorKind {
     NotFound,
     PermissionDenied,
     InvalidPath,
+    InvalidLocation,
     ChannelClosed,
     Cancelled,
     Actor,
@@ -25,6 +26,7 @@ impl ErrorKind {
             ErrorKind::NotFound
                 | ErrorKind::PermissionDenied
                 | ErrorKind::InvalidPath
+                | ErrorKind::InvalidLocation
                 | ErrorKind::Cancelled
                 | ErrorKind::Network
         )
@@ -44,6 +46,9 @@ pub enum CoreError {
 
     /// Invalid path (already exists, not a directory, etc.)
     InvalidPath(String),
+
+    /// Invalid or unresolved provider location
+    InvalidLocation(String),
 
     /// Channel closed — the receiving end has been dropped
     ChannelClosed(String),
@@ -84,6 +89,9 @@ impl std::fmt::Display for CoreError {
             }
             CoreError::InvalidPath(detail) => {
                 write!(f, "Invalid path: {}", detail)
+            }
+            CoreError::InvalidLocation(detail) => {
+                write!(f, "Invalid location: {}", detail)
             }
             CoreError::ChannelClosed(detail) => {
                 write!(f, "Channel closed: {}", detail)
@@ -136,6 +144,7 @@ impl CoreError {
             CoreError::NotFound(_) => ErrorKind::NotFound,
             CoreError::PermissionDenied(_) => ErrorKind::PermissionDenied,
             CoreError::InvalidPath(_) => ErrorKind::InvalidPath,
+            CoreError::InvalidLocation(_) => ErrorKind::InvalidLocation,
             CoreError::ChannelClosed(_) => ErrorKind::ChannelClosed,
             CoreError::Cancelled => ErrorKind::Cancelled,
             CoreError::ActorError { .. } => ErrorKind::Actor,
