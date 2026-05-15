@@ -49,6 +49,24 @@ impl Module for PreviewModule {
             }
         });
 
+        let tx = preview_tx.clone();
+        ctx.handlers.on("preview.load.location", move |cmd, _ctx| {
+            if let Command::LoadPreviewLocation {
+                location,
+                options,
+                session,
+                request,
+            } = cmd
+            {
+                let _ = tx.send(PreviewCommand::GenerateLocation {
+                    location,
+                    options,
+                    session,
+                    request,
+                });
+            }
+        });
+
         // ── Cancel preview ───────────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on("preview.cancel", move |cmd, _ctx| {
@@ -70,6 +88,20 @@ impl Module for PreviewModule {
             }
         });
 
+        let tx = preview_tx.clone();
+        ctx.handlers.on("metadata.load.location", move |cmd, _ctx| {
+            if let Command::LoadMetadataLocation {
+                location,
+                session,
+                request,
+            } = cmd
+            {
+                let _ = tx.send(PreviewCommand::LoadMetadataLocation(
+                    location, session, request,
+                ));
+            }
+        });
+
         // ── Load extended metadata ───────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on("metadata.extended", move |cmd, _ctx| {
@@ -82,6 +114,21 @@ impl Module for PreviewModule {
                 let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
             }
         });
+
+        let tx = preview_tx.clone();
+        ctx.handlers
+            .on("metadata.extended.location", move |cmd, _ctx| {
+                if let Command::LoadExtendedMetadataLocation {
+                    location,
+                    session,
+                    request,
+                } = cmd
+                {
+                    let _ = tx.send(PreviewCommand::LoadExtendedMetadataLocation(
+                        location, session, request,
+                    ));
+                }
+            });
 
         // ── Session cleanup hook ─────────────────────────────────────
         let tx = preview_tx.clone();

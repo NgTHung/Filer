@@ -75,6 +75,27 @@ impl Module for NavigationModule {
             }
         });
 
+        // ── Navigate to location ─────────────────────────────────────
+        let tx = nav_tx.clone();
+        ctx.handlers.on("navigate.location", move |cmd, _ctx| {
+            if let Command::NavigateLocation {
+                location,
+                session,
+                request,
+            } = cmd
+            {
+                send_or_warn(
+                    &tx,
+                    NavCommand::NavigateToLocation {
+                        session,
+                        location,
+                        request,
+                    },
+                    "navigate.location",
+                );
+            }
+        });
+
         // ── Navigate to node ─────────────────────────────────────────
         let tx = nav_tx.clone();
         ctx.handlers.on("navigate.node", move |cmd, _ctx| {

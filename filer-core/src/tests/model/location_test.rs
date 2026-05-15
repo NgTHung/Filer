@@ -5,6 +5,7 @@ use crate::model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
     ProviderRef,
 };
+use crate::model::node::{FileNode, NodeEntry, NodeId, NodeKind, NodeMeta};
 use crate::model::registry::NodeRegistry;
 
 #[test]
@@ -425,6 +426,66 @@ fn registry_clears_cached_location_routes() {
 
     assert_eq!(registry.resolve_location(id), None);
     assert_eq!(registry.cached_location_route(id), None);
+}
+
+#[test]
+fn registry_resolves_node_location_for_registered_path() {
+    let registry = NodeRegistry::new();
+    let path = PathBuf::from("/tmp/location-node.txt");
+    let node = registry.clone().register(path.clone());
+    let descriptor = LocationDescriptor::local(path);
+
+    let location_ref = registry.resolve_node_location(node).unwrap();
+
+    assert_eq!(
+        location_ref.id(),
+        Some(LocationId::from_descriptor(&descriptor))
+    );
+    assert_eq!(location_ref.descriptor(), Some(&descriptor));
+}
+
+#[test]
+fn registry_registers_direct_location_as_node() {
+    let registry = NodeRegistry::new();
+    let location = Location::local("/tmp/location-root");
+    let id = registry.register_location_node(location.clone()).unwrap();
+
+    assert_eq!(
+        registry.resolve(id).unwrap(),
+        PathBuf::from("/tmp/location-root")
+    );
+    assert_eq!(
+        registry.resolve_node_location(id).unwrap().id(),
+        Some(location.id())
+    );
+}
+
+#[test]
+fn node_entry_carries_location_without_exposing_path() {
+    let registry = NodeRegistry::new();
+    let path = PathBuf::from("/tmp/entry.txt");
+    let node = FileNode {
+        id: NodeId::from_path(&path),
+        name: "entry.txt".to_string(),
+        path: path.clone(),
+        kind: NodeKind::File {
+            extension: Some("txt".to_string()),
+        },
+        size: 42,
+        modified: None,
+        created: None,
+        accessed: None,
+        meta: NodeMeta::default(),
+    };
+
+    let entry = NodeEntry::from_file_node(node, &registry);
+
+    assert_eq!(entry.name, "entry.txt");
+    assert_eq!(entry.extension(), Some("txt"));
+    assert_eq!(
+        entry.location.descriptor(),
+        Some(&LocationDescriptor::local(path))
+    );
 }
 
 #[test]

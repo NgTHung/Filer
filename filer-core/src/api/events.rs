@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
 use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
-use crate::model::node::{NodeId, NodeMeta};
+use crate::model::location::LocationRef;
+use crate::model::node::{NodeEntry, NodeId, NodeMeta};
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavState;
-use crate::pipeline::GroupedNodes;
+use crate::pipeline::{GroupedEntries, GroupedNodes};
 use crate::{ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
 
 /// Events from Core to UI
@@ -28,6 +29,14 @@ pub enum Event {
         request: RequestId,
     },
 
+    /// Directory contents loaded with provider-aware locations.
+    DirectoryEntriesLoaded {
+        parent: LocationRef,
+        groups: GroupedEntries,
+        session: SessionId,
+        request: RequestId,
+    },
+
     /// Scan progress update
     ScanProgress {
         scanned: usize,
@@ -42,6 +51,13 @@ pub enum Event {
     /// Search results
     SearchResults {
         matches: Vec<FileNode>,
+        complete: bool,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    SearchEntryResults {
+        matches: Vec<NodeEntry>,
         complete: bool,
         session: SessionId,
         request: RequestId,

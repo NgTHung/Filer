@@ -7,6 +7,7 @@ use rapidhash::fast::RandomState;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
+use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::{FileNode, NodeId};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -27,10 +28,18 @@ pub enum PreviewCommand {
         session: SessionId,
         request: RequestId,
     },
+    GenerateLocation {
+        location: LocationRef,
+        options: Option<PreviewOptions>,
+        session: SessionId,
+        request: RequestId,
+    },
     /// Load basic metadata (NodeMeta) for a file
     LoadMetadata(NodeId, SessionId, RequestId),
+    LoadMetadataLocation(LocationRef, SessionId, RequestId),
     /// Load extended metadata (EXIF, ID3, page count…) for a file
     LoadExtendedMetadata(NodeId, SessionId, RequestId),
+    LoadExtendedMetadataLocation(LocationRef, SessionId, RequestId),
     /// Cancel all ongoing work for a session
     Cancel(SessionId),
     /// Drop all cached previews
@@ -195,6 +204,51 @@ impl Previewer {
 
             active.remove(session).await;
         });
+    }
+
+    fn resolve_location_node(
+        &self,
+        location_ref: &LocationRef,
+        session: SessionId,
+        request: RequestId,
+        context: &'static str,
+    ) -> Option<NodeId> {
+        let location = match self.registry.resolve_location_ref(location_ref) {
+            Ok(location) => location,
+            Err(error) => {
+                send_or_warn(
+                    &self.events,
+                    Event::from_request_error(error, session, request),
+                    context,
+                );
+                return None;
+            }
+        };
+        match location.route() {
+            LocationRoute::DirectPath { .. } => {
+                match self.registry.register_location_node(location) {
+                    Ok(node) => Some(node),
+                    Err(error) => {
+                        send_or_warn(
+                            &self.events,
+                            Event::from_request_error(error, session, request),
+                            context,
+                        );
+                        None
+                    }
+                }
+            }
+            route @ (LocationRoute::Segmented { .. }
+            | LocationRoute::UnsupportedProvider { .. }) => {
+                let error = route.require_direct_path().unwrap_err();
+                send_or_warn(
+                    &self.events,
+                    Event::from_request_error(error, session, request),
+                    context,
+                );
+                None
+            }
+        }
     }
 
     // ── Basic metadata ────────────────────────────────────────────────────────
@@ -370,11 +424,46 @@ impl Actor for Previewer {
                 }) => {
                     self.dispatch_preview(path, options, session, request);
                 }
+                Ok(PreviewCommand::GenerateLocation {
+                    location,
+                    options,
+                    session,
+                    request,
+                }) => {
+                    if let Some(node) = self.resolve_location_node(
+                        &location,
+                        session,
+                        request,
+                        "previewer: resolve location",
+                    ) {
+                        self.dispatch_preview(node, options, session, request);
+                    }
+                }
                 Ok(PreviewCommand::LoadMetadata(node, session, request)) => {
                     self.dispatch_metadata(node, session, request);
                 }
+                Ok(PreviewCommand::LoadMetadataLocation(location, session, request)) => {
+                    if let Some(node) = self.resolve_location_node(
+                        &location,
+                        session,
+                        request,
+                        "previewer: resolve metadata location",
+                    ) {
+                        self.dispatch_metadata(node, session, request);
+                    }
+                }
                 Ok(PreviewCommand::LoadExtendedMetadata(node, session, request)) => {
                     self.dispatch_extended_metadata(node, session, request);
+                }
+                Ok(PreviewCommand::LoadExtendedMetadataLocation(location, session, request)) => {
+                    if let Some(node) = self.resolve_location_node(
+                        &location,
+                        session,
+                        request,
+                        "previewer: resolve extended metadata location",
+                    ) {
+                        self.dispatch_extended_metadata(node, session, request);
+                    }
                 }
                 Ok(PreviewCommand::Cancel(session)) => {
                     self.cancel(session);

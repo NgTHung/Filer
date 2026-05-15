@@ -9,6 +9,7 @@ use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::errors::CoreError;
+use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
@@ -25,6 +26,12 @@ pub enum SearchCommand {
     Search {
         query: SearchQuery,
         root: NodeId,
+        session: SessionId,
+        request: RequestId,
+    },
+    SearchLocation {
+        query: SearchQuery,
+        root: LocationRef,
         session: SessionId,
         request: RequestId,
     },
@@ -65,10 +72,22 @@ impl Searcher {
         session: SessionId,
         request: RequestId,
     ) {
+        self.dispatch_search_with_location(query, path, session, request, false);
+    }
+
+    pub fn dispatch_search_with_location(
+        &self,
+        query: SearchQuery,
+        path: PathBuf,
+        session: SessionId,
+        request: RequestId,
+        location_output: bool,
+    ) {
         let provider = self.provider.clone();
         let active_search = self.active_search.clone();
         let event = self.events.clone();
         let latest_searches = self.latest_searches.clone();
+        let registry = self.registry.clone();
         let _ = self.latest_searches.remove_sync(&session);
         let _ = self.latest_searches.insert_sync(session, request);
         let cancel = self.active_search.arm(session);
@@ -83,6 +102,8 @@ impl Searcher {
                 &cancel,
                 &event,
                 &latest_searches,
+                &registry,
+                location_output,
             )
             .await;
             active_search.remove(session).await;
@@ -98,6 +119,8 @@ impl Searcher {
         cancel: &CancellationToken,
         event: &Sender<Event>,
         latest_searches: &scc::HashMap<SessionId, RequestId, RandomState>,
+        registry: &NodeRegistry,
+        location_output: bool,
     ) {
         let mut queue = VecDeque::new();
         let mut batch = vec![];
@@ -129,12 +152,14 @@ impl Searcher {
                         }
                         send_or_warn(
                             event,
-                            Event::SearchResults {
-                                matches: std::mem::take(&mut batch),
-                                complete: false,
+                            search_results_event(
+                                std::mem::take(&mut batch),
+                                false,
                                 session,
                                 request,
-                            },
+                                registry,
+                                location_output,
+                            ),
                             "emit partial search result",
                         );
                     }
@@ -151,12 +176,7 @@ impl Searcher {
         if Self::is_latest(latest_searches, session, request) {
             send_or_warn(
                 event,
-                Event::SearchResults {
-                    matches: batch,
-                    complete: true,
-                    session,
-                    request,
-                },
+                search_results_event(batch, true, session, request, registry, location_output),
                 "emit remaining files after search",
             );
         }
@@ -204,6 +224,39 @@ impl Actor for Searcher {
                     };
                     self.dispatch_search(query, path, session, request);
                 }
+                Ok(SearchCommand::SearchLocation {
+                    query,
+                    root,
+                    session,
+                    request,
+                }) => {
+                    let location = match self.registry.resolve_location_ref(&root) {
+                        Ok(location) => location,
+                        Err(error) => {
+                            send_or_warn(
+                                &self.events,
+                                Event::from_request_error(error, session, request),
+                                "search.location resolve error",
+                            );
+                            continue;
+                        }
+                    };
+                    let route = location.route();
+                    let path = match &route {
+                        LocationRoute::DirectPath { path } => path.clone(),
+                        LocationRoute::Segmented { .. }
+                        | LocationRoute::UnsupportedProvider { .. } => {
+                            let error = route.require_direct_path().unwrap_err();
+                            send_or_warn(
+                                &self.events,
+                                Event::from_request_error(error, session, request),
+                                "search.location route error",
+                            );
+                            continue;
+                        }
+                    };
+                    self.dispatch_search_with_location(query, path, session, request, true);
+                }
                 Err(_) | Ok(SearchCommand::Shutdown) => {
                     self.active_search.cancel_all().await;
                     break;
@@ -214,5 +267,33 @@ impl Actor for Searcher {
 
     fn name(&self) -> &'static str {
         "searcher"
+    }
+}
+
+fn search_results_event(
+    matches: Vec<crate::FileNode>,
+    complete: bool,
+    session: SessionId,
+    request: RequestId,
+    registry: &NodeRegistry,
+    location_output: bool,
+) -> Event {
+    if location_output {
+        Event::SearchEntryResults {
+            matches: matches
+                .into_iter()
+                .map(|node| crate::NodeEntry::from_file_node(node, registry))
+                .collect(),
+            complete,
+            session,
+            request,
+        }
+    } else {
+        Event::SearchResults {
+            matches,
+            complete,
+            session,
+            request,
+        }
     }
 }

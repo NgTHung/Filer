@@ -49,6 +49,25 @@ impl Module for SearchModule {
             }
         });
 
+        let tx = search_tx.clone();
+        ctx.handlers.on("search.location", move |cmd, _ctx| {
+            if let Command::SearchLocation {
+                query,
+                root,
+                session,
+                request,
+            } = cmd
+                && let Ok(query) = SearchQuery::parse(&query)
+            {
+                let _ = tx.send(SearchCommand::SearchLocation {
+                    query,
+                    root,
+                    session,
+                    request,
+                });
+            }
+        });
+
         // ── Cancel search ────────────────────────────────────────────
         let tx = search_tx.clone();
         ctx.handlers.on("search.cancel", move |cmd, _ctx| {

@@ -7,6 +7,7 @@ use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::errors::CoreError;
+use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -21,6 +22,12 @@ use crate::vfs::provider::FsProvider;
 pub enum ScanCommand {
     Scan {
         path: PathBuf,
+        session: SessionId,
+        pipeline: PipelineConfig,
+        request: RequestId,
+    },
+    ScanLocation {
+        location: LocationRef,
         session: SessionId,
         pipeline: PipelineConfig,
         request: RequestId,
@@ -102,6 +109,25 @@ impl Scanner {
         invalidate_cache: bool,
         request: RequestId,
     ) {
+        self.dispatch_scan_with_location(
+            path,
+            session,
+            pipeline_config,
+            invalidate_cache,
+            request,
+            None,
+        );
+    }
+
+    fn dispatch_scan_with_location(
+        &self,
+        path: PathBuf,
+        session: SessionId,
+        pipeline_config: PipelineConfig,
+        invalidate_cache: bool,
+        request: RequestId,
+        parent_location: Option<LocationRef>,
+    ) {
         let provider = self.provider.clone();
         let registry = self.registry.clone();
         let events = self.events_sender.clone();
@@ -125,10 +151,53 @@ impl Scanner {
                 &latest_scans,
                 cache.as_ref(),
                 invalidate_cache,
+                parent_location,
             )
             .await;
             active_scans.remove(session).await;
         });
+    }
+
+    fn dispatch_location_scan(
+        &self,
+        location_ref: LocationRef,
+        session: SessionId,
+        pipeline_config: PipelineConfig,
+        invalidate_cache: bool,
+        request: RequestId,
+    ) {
+        let location = match self.registry.resolve_location_ref(&location_ref) {
+            Ok(location) => location,
+            Err(error) => {
+                send_or_warn(
+                    &self.events_sender,
+                    Event::from_request_error(error, session, request),
+                    "scan.location resolve",
+                );
+                return;
+            }
+        };
+        let route = location.route();
+        let path = match &route {
+            LocationRoute::DirectPath { path } => path.clone(),
+            LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => {
+                let error = route.require_direct_path().unwrap_err();
+                send_or_warn(
+                    &self.events_sender,
+                    Event::from_request_error(error, session, request),
+                    "scan.location route",
+                );
+                return;
+            }
+        };
+        self.dispatch_scan_with_location(
+            path,
+            session,
+            pipeline_config,
+            invalidate_cache,
+            request,
+            Some(LocationRef::from_location(&location)),
+        );
     }
 
     /// Perform a single directory scan: list → register → pipeline → emit.
@@ -148,6 +217,7 @@ impl Scanner {
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
         cache: Option<&SharedDirCache>,
         invalidate_cache: bool,
+        parent_location: Option<LocationRef>,
     ) {
         if invalidate_cache {
             if let Some(cache) = cache {
@@ -169,18 +239,34 @@ impl Scanner {
             if !Self::is_latest(latest_scans, session, request) {
                 return;
             }
-            send_or_warn_async(
-                events,
-                Event::DirectoryLoaded {
-                    parent: parent_id,
-                    path: path.to_path_buf(),
-                    groups,
-                    session,
-                    request,
-                },
-                "scan result (cached)",
-            )
-            .await;
+            if let Some(parent) = parent_location {
+                send_or_warn_async(
+                    events,
+                    Event::DirectoryEntriesLoaded {
+                        parent,
+                        groups: crate::pipeline::GroupedEntries::from_grouped_nodes(
+                            groups, registry,
+                        ),
+                        session,
+                        request,
+                    },
+                    "scan location result (cached)",
+                )
+                .await;
+            } else {
+                send_or_warn_async(
+                    events,
+                    Event::DirectoryLoaded {
+                        parent: parent_id,
+                        path: path.to_path_buf(),
+                        groups,
+                        session,
+                        request,
+                    },
+                    "scan result (cached)",
+                )
+                .await;
+            }
             return;
         }
 
@@ -231,18 +317,32 @@ impl Scanner {
         }
 
         // 6. Send result
-        send_or_warn_async(
-            events,
-            Event::DirectoryLoaded {
-                parent: parent_id,
-                path: path.to_path_buf(),
-                groups,
-                session,
-                request,
-            },
-            "scan result",
-        )
-        .await;
+        if let Some(parent) = parent_location {
+            send_or_warn_async(
+                events,
+                Event::DirectoryEntriesLoaded {
+                    parent,
+                    groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                    session,
+                    request,
+                },
+                "scan location result",
+            )
+            .await;
+        } else {
+            send_or_warn_async(
+                events,
+                Event::DirectoryLoaded {
+                    parent: parent_id,
+                    path: path.to_path_buf(),
+                    groups,
+                    session,
+                    request,
+                },
+                "scan result",
+            )
+            .await;
+        }
     }
 
     fn is_latest(
@@ -271,6 +371,14 @@ impl Actor for Scanner {
                     request,
                 }) => {
                     self.dispatch_scan(path, session, pipeline, false, request);
+                }
+                Ok(ScanCommand::ScanLocation {
+                    location,
+                    session,
+                    pipeline,
+                    request,
+                }) => {
+                    self.dispatch_location_scan(location, session, pipeline, false, request);
                 }
                 Ok(ScanCommand::ScanNode {
                     node,

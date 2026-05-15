@@ -165,6 +165,7 @@ mod scanner_cache_tests {
     use super::*;
     use crate::actors::Actor;
     use crate::api::events::Event;
+    use crate::model::location::{Location, LocationRef};
     use crate::model::registry::NodeRegistry;
     use crate::model::request::RequestId;
     use crate::model::session::SessionId;
@@ -197,6 +198,57 @@ mod scanner_cache_tests {
                 _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
             }
         }
+    }
+
+    async fn wait_for_location_dir_loaded(
+        evt_rx: &Receiver<Event>,
+        session: SessionId,
+    ) -> crate::pipeline::GroupedEntries {
+        let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+        loop {
+            match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+                Ok(Ok(Event::DirectoryEntriesLoaded {
+                    session: s, groups, ..
+                })) if s == session => return groups,
+                Ok(Ok(_)) => {}
+                _ => panic!("timed out or channel closed waiting for DirectoryEntriesLoaded"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_scan_location_emits_directory_entries_loaded() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/location-scan", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        let location = Location::local("/tmp/location-scan");
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session,
+                pipeline: default_pipeline(),
+                request,
+            })
+            .unwrap();
+
+        let groups = wait_for_location_dir_loaded(&evt_rx, session).await;
+        assert_eq!(groups.total_count, 1);
+        assert_eq!(groups.groups[0].nodes[0].name, "a.txt");
+        assert_eq!(
+            groups.groups[0].nodes[0].location.descriptor(),
+            Some(&crate::model::location::LocationDescriptor::local(
+                "/tmp/location-scan/a.txt"
+            ))
+        );
     }
 
     #[tokio::test]

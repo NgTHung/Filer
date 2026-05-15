@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actors::Actor;
 use crate::api::events;
+use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -38,6 +39,11 @@ pub enum NavCommand {
     NavigateToPath {
         session: SessionId,
         path: std::path::PathBuf,
+        request: RequestId,
+    },
+    NavigateToLocation {
+        session: SessionId,
+        location: LocationRef,
         request: RequestId,
     },
     /// Go back in history
@@ -330,6 +336,65 @@ impl Navigator {
                         );
                     })
                     .await;
+                self.emit_snapshot(session);
+            }
+            NavCommand::NavigateToLocation {
+                session,
+                location,
+                request,
+            } => {
+                self.get_or_init(session).await;
+                let location = match self.register.resolve_location_ref(&location) {
+                    Ok(location) => location,
+                    Err(error) => {
+                        send_or_warn(
+                            &self.events,
+                            Event::from_request_error(error, session, request),
+                            "navigate.location resolve",
+                        );
+                        return;
+                    }
+                };
+                let route = location.route();
+                let path = match &route {
+                    LocationRoute::DirectPath { path } => path.clone(),
+                    LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => {
+                        let error = route.require_direct_path().unwrap_err();
+                        send_or_warn(
+                            &self.events,
+                            Event::from_request_error(error, session, request),
+                            "navigate.location route",
+                        );
+                        return;
+                    }
+                };
+                let node = match self.register.register_location_node(location.clone()) {
+                    Ok(node) => node,
+                    Err(error) => {
+                        send_or_warn(
+                            &self.events,
+                            Event::from_request_error(error, session, request),
+                            "navigate.location register",
+                        );
+                        return;
+                    }
+                };
+                self.sessions
+                    .update_async(&session, |_, v| {
+                        v.navigate(node);
+                        send_or_warn(
+                            &self.scanner_tx,
+                            ScanCommand::ScanLocation {
+                                location: LocationRef::from_location(&location),
+                                session,
+                                pipeline: v.pipeline_config.clone(),
+                                request,
+                            },
+                            "trigger location scan",
+                        );
+                    })
+                    .await;
+                self.register.clone().register(path);
                 self.emit_snapshot(session);
             }
             NavCommand::Back(session_id, request) => {

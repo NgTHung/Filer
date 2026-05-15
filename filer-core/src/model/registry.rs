@@ -14,6 +14,7 @@ use super::node::NodeId;
 #[derive(Clone, Debug)]
 pub struct NodeRegistry {
     id_to_path: Arc<scc::HashMap<NodeId, PathBuf, RandomState>>,
+    id_to_node_location: Arc<scc::HashMap<NodeId, LocationDescriptor, RandomState>>,
     id_to_location: Arc<scc::HashMap<LocationId, LocationDescriptor, RandomState>>,
     id_to_location_route: Arc<scc::HashMap<LocationId, LocationRoute, RandomState>>,
 }
@@ -22,6 +23,7 @@ impl NodeRegistry {
     pub fn new() -> Self {
         Self {
             id_to_path: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            id_to_node_location: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             id_to_location: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             id_to_location_route: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
         }
@@ -30,7 +32,12 @@ impl NodeRegistry {
     /// Register a path and get its NodeId
     pub fn register(self, path: PathBuf) -> NodeId {
         let hash = NodeId::from_path(&path);
+        let location = Location::local(path.clone());
         let _ = self.id_to_path.insert_sync(hash, path);
+        self.register_location(location.clone());
+        let _ = self
+            .id_to_node_location
+            .insert_sync(hash, location.into_descriptor());
         hash
     }
 
@@ -40,7 +47,12 @@ impl NodeRegistry {
             .iter()
             .map(|v| {
                 let hash = NodeId::from_path(v);
+                let location = Location::local(v.clone());
                 let _ = self.id_to_path.insert_sync(hash, v.clone());
+                self.register_location(location.clone());
+                let _ = self
+                    .id_to_node_location
+                    .insert_sync(hash, location.into_descriptor());
                 hash
             })
             .collect()
@@ -51,7 +63,12 @@ impl NodeRegistry {
             .iter()
             .map(|v| {
                 let hash = NodeId::from_path(&v.path);
+                let location = Location::local(v.path.clone());
                 let _ = self.id_to_path.insert_sync(hash, v.path.clone());
+                self.register_location(location.clone());
+                let _ = self
+                    .id_to_node_location
+                    .insert_sync(hash, location.into_descriptor());
                 hash
             })
             .collect()
@@ -60,6 +77,20 @@ impl NodeRegistry {
     /// Resolve NodeId to PathBuf
     pub fn resolve(&self, id: NodeId) -> Option<PathBuf> {
         self.id_to_path.read_sync(&id, |_, v| v.clone())
+    }
+
+    pub fn resolve_node_location(&self, id: NodeId) -> Option<LocationRef> {
+        self.id_to_node_location
+            .read_sync(&id, |_, descriptor| {
+                let location = Location::new(descriptor.clone());
+                LocationRef::from_location(&location)
+            })
+            .or_else(|| {
+                self.resolve(id).map(|path| {
+                    let location = self.location_for_path(path);
+                    LocationRef::from_location(&location)
+                })
+            })
     }
 
     /// Resolve multiple NodeIds
@@ -79,12 +110,14 @@ impl NodeRegistry {
 
     /// Remove a path from registry
     pub fn unregister(&self, id: NodeId) -> Option<PathBuf> {
+        let _ = self.id_to_node_location.remove_sync(&id);
         self.id_to_path.remove_sync(&id).map(|(_, v)| v)
     }
 
     /// Clear all entries
     pub fn clear(&self) {
         self.id_to_path.clear_sync();
+        self.id_to_node_location.clear_sync();
         self.id_to_location.clear_sync();
         self.id_to_location_route.clear_sync();
     }
@@ -117,6 +150,17 @@ impl NodeRegistry {
             .id_to_location
             .insert_sync(id, location.into_descriptor());
         id
+    }
+
+    pub fn register_location_node(&self, location: Location) -> Result<NodeId, CoreError> {
+        let route = location.route();
+        let path = route.require_direct_path()?.to_path_buf();
+        let id = NodeId::from_path(&path);
+        let descriptor = location.descriptor().clone();
+        self.register_location(location);
+        let _ = self.id_to_path.insert_sync(id, path);
+        let _ = self.id_to_node_location.insert_sync(id, descriptor);
+        Ok(id)
     }
 
     pub fn resolve_location(&self, id: LocationId) -> Option<LocationDescriptor> {

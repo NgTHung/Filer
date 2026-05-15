@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::PreviewOptions;
+use crate::model::location::LocationRef;
 use crate::model::node::NodeId;
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
@@ -16,6 +17,13 @@ pub enum Command {
     /// Navigate to path (initial navigation uses PathBuf)
     Navigate {
         path: PathBuf,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Navigate to a provider-aware location.
+    NavigateLocation {
+        location: LocationRef,
         session: SessionId,
         request: RequestId,
     },
@@ -66,12 +74,26 @@ pub enum Command {
         request: RequestId,
     },
 
+    SearchLocation {
+        query: String,
+        root: LocationRef,
+        session: SessionId,
+        request: RequestId,
+    },
+
     /// Cancel current operation
     Cancel(SessionId),
 
     /// Load preview for a node
     LoadPreview {
         id: NodeId,
+        options: Option<PreviewOptions>,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    LoadPreviewLocation {
+        location: LocationRef,
         options: Option<PreviewOptions>,
         session: SessionId,
         request: RequestId,
@@ -141,6 +163,12 @@ pub enum Command {
         request: RequestId,
     },
 
+    LoadMetadataLocation {
+        location: LocationRef,
+        session: SessionId,
+        request: RequestId,
+    },
+
     /// Load extended metadata (EXIF, ID3, etc.)
     LoadExtendedMetadata {
         node: NodeId,
@@ -148,9 +176,22 @@ pub enum Command {
         request: RequestId,
     },
 
+    LoadExtendedMetadataLocation {
+        location: LocationRef,
+        session: SessionId,
+        request: RequestId,
+    },
+
     /// Scan a directory by path (initial scan, returns batched results)
     Scan {
         path: PathBuf,
+        session: SessionId,
+        pipeline: PipelineConfig,
+        request: RequestId,
+    },
+
+    ScanLocation {
+        location: LocationRef,
         session: SessionId,
         pipeline: PipelineConfig,
         request: RequestId,
@@ -231,6 +272,7 @@ impl Command {
             Command::Unwatch(_) => None,
 
             Command::Navigate { session: s, .. }
+            | Command::NavigateLocation { session: s, .. }
             | Command::NavigateToNode { session: s, .. }
             | Command::NavigateUp { session: s, .. }
             | Command::Refresh { session: s, .. }
@@ -244,12 +286,17 @@ impl Command {
 
             Command::Search { session, .. }
             | Command::SearchPath { session, .. }
+            | Command::SearchLocation { session, .. }
             | Command::Scan { session, .. }
+            | Command::ScanLocation { session, .. }
             | Command::ScanNode { session, .. }
             | Command::SetPipeline { session, .. }
             | Command::LoadPreview { session, .. }
+            | Command::LoadPreviewLocation { session, .. }
             | Command::LoadMetadata { session, .. }
+            | Command::LoadMetadataLocation { session, .. }
             | Command::LoadExtendedMetadata { session, .. }
+            | Command::LoadExtendedMetadataLocation { session, .. }
             | Command::Copy { session, .. }
             | Command::Move { session, .. }
             | Command::Delete { session, .. }
@@ -264,6 +311,7 @@ impl Command {
     pub fn request_id(&self) -> Option<RequestId> {
         match self {
             Command::Navigate { request, .. }
+            | Command::NavigateLocation { request, .. }
             | Command::NavigateToNode { request, .. }
             | Command::NavigateUp { request, .. }
             | Command::NavigateBack { request, .. }
@@ -271,10 +319,15 @@ impl Command {
             | Command::Refresh { request, .. }
             | Command::Search { request, .. }
             | Command::SearchPath { request, .. }
+            | Command::SearchLocation { request, .. }
             | Command::LoadPreview { request, .. }
+            | Command::LoadPreviewLocation { request, .. }
             | Command::LoadMetadata { request, .. }
+            | Command::LoadMetadataLocation { request, .. }
             | Command::LoadExtendedMetadata { request, .. }
+            | Command::LoadExtendedMetadataLocation { request, .. }
             | Command::Scan { request, .. }
+            | Command::ScanLocation { request, .. }
             | Command::ScanNode { request, .. }
             | Command::Copy { request, .. }
             | Command::Move { request, .. }
@@ -317,6 +370,7 @@ impl Command {
     pub fn key(&self) -> &str {
         match self {
             Command::Navigate { .. } => "navigate",
+            Command::NavigateLocation { .. } => "navigate.location",
             Command::NavigateToNode { .. } => "navigate.node",
             Command::NavigateUp { .. } => "navigate.up",
             Command::NavigateBack { .. } => "navigate.back",
@@ -324,11 +378,15 @@ impl Command {
             Command::Refresh { .. } => "navigate.refresh",
             Command::Search { .. } => "search",
             Command::SearchPath { .. } => "search.path",
+            Command::SearchLocation { .. } => "search.location",
             Command::Cancel(..) => "search.cancel",
             Command::LoadPreview { .. } => "preview.load",
+            Command::LoadPreviewLocation { .. } => "preview.load.location",
             Command::CancelPreview(..) => "preview.cancel",
             Command::LoadMetadata { .. } => "metadata.load",
+            Command::LoadMetadataLocation { .. } => "metadata.load.location",
             Command::LoadExtendedMetadata { .. } => "metadata.extended",
+            Command::LoadExtendedMetadataLocation { .. } => "metadata.extended.location",
             Command::Copy { .. } => "ops.copy",
             Command::Move { .. } => "ops.move",
             Command::Delete { .. } => "ops.delete",
@@ -336,6 +394,7 @@ impl Command {
             Command::CreateFolder { .. } => "ops.create_folder",
             Command::CreateFile { .. } => "ops.create_file",
             Command::Scan { .. } => "scan",
+            Command::ScanLocation { .. } => "scan.location",
             Command::ScanNode { .. } => "scan.node",
             Command::SetPipeline { .. } => "navigate.pipeline",
             Command::CancelScan(..) => "scan.cancel",

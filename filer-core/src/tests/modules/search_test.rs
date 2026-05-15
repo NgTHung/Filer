@@ -230,6 +230,33 @@ async fn wait_for_search_complete(
     }
 }
 
+/// Collect all SearchEntryResults batches until `complete: true`.
+async fn wait_for_search_entries_complete(
+    evt_rx: &Receiver<Event>,
+    expected_session: SessionId,
+) -> Vec<crate::NodeEntry> {
+    let mut matches = Vec::new();
+    let deadline = tokio::time::Instant::now() + TIMEOUT;
+    loop {
+        match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            Ok(Ok(Event::SearchEntryResults {
+                matches: batch,
+                complete,
+                session,
+                ..
+            })) if session == expected_session => {
+                matches.extend(batch);
+                if complete {
+                    return matches;
+                }
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) => panic!("event channel closed while waiting for SearchEntryResults"),
+            Err(_) => panic!("timed out waiting for SearchEntryResults (complete: true)"),
+        }
+    }
+}
+
 /// Collect all events (of any type) for a duration.
 async fn collect_events_for(evt_rx: &Receiver<Event>, duration: Duration) -> Vec<Event> {
     let mut events = Vec::new();
@@ -257,6 +284,45 @@ fn spawn_searcher(
     });
 
     (cmd_tx, evt_rx)
+}
+
+#[cfg(test)]
+mod searcher_location_tests {
+    use super::*;
+    use crate::model::location::{Location, LocationDescriptor, LocationRef};
+
+    #[tokio::test]
+    async fn test_search_location_emits_entry_results() {
+        let provider = MockProvider::new();
+        provider.add_dir(
+            "/root",
+            vec![MockProvider::make_file("found.txt", "/root", 100)],
+        );
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        let location = Location::local("/root");
+        cmd_tx
+            .send(SearchCommand::SearchLocation {
+                query: SearchQuery::parse("found").unwrap(),
+                root: LocationRef::from_location(&location),
+                session,
+                request,
+            })
+            .unwrap();
+
+        let matches = wait_for_search_entries_complete(&evt_rx, session).await;
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].name, "found.txt");
+        assert_eq!(
+            matches[0].location.descriptor(),
+            Some(&LocationDescriptor::local("/root/found.txt"))
+        );
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

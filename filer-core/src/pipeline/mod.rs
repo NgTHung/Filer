@@ -3,7 +3,8 @@ pub mod filter;
 pub mod group;
 pub mod sort;
 
-use crate::model::node::FileNode;
+use crate::model::node::{FileNode, NodeEntry};
+use crate::model::registry::NodeRegistry;
 
 #[allow(unused_imports)]
 pub use config::{FilterConfig, GroupBy, GroupConfig, PipelineConfig, SortConfig};
@@ -18,6 +19,12 @@ pub struct GroupedNodes {
 }
 
 #[derive(Debug, Clone)]
+pub struct GroupedEntries {
+    pub groups: Vec<EntryGroup>,
+    pub total_count: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct FileGroup {
     /// Group label (e.g., "rs", "Today", "1-10 MB")
     pub label: String,
@@ -25,6 +32,36 @@ pub struct FileGroup {
     pub nodes: Vec<FileNode>,
     /// Sort order for display
     pub order: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct EntryGroup {
+    pub label: String,
+    pub nodes: Vec<NodeEntry>,
+    pub order: usize,
+}
+
+impl GroupedEntries {
+    pub fn from_grouped_nodes(grouped: GroupedNodes, registry: &NodeRegistry) -> Self {
+        let total_count = grouped.total_count;
+        let groups = grouped
+            .groups
+            .into_iter()
+            .map(|group| EntryGroup {
+                label: group.label,
+                nodes: group
+                    .nodes
+                    .into_iter()
+                    .map(|node| NodeEntry::from_file_node(node, registry))
+                    .collect(),
+                order: group.order,
+            })
+            .collect();
+        Self {
+            groups,
+            total_count,
+        }
+    }
 }
 
 /// Pipeline data can be either flat or grouped

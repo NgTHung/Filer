@@ -17,7 +17,7 @@ pub use model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
     ProviderRef,
 };
-pub use model::node::{FileNode, NodeMeta};
+pub use model::node::{FileNode, NodeEntry, NodeMeta};
 pub use model::operation::OperationId;
 pub use model::request::RequestId;
 
@@ -34,7 +34,7 @@ pub use vfs::provider::{Capabilities, FsProvider};
 pub use actors::Actor;
 
 // Pipeline types
-pub use pipeline::{PipelineConfig, SortConfig};
+pub use pipeline::{GroupedEntries, PipelineConfig, SortConfig};
 
 #[cfg(feature = "s3")]
 pub use vfs::s3::{S3Config, S3Fs};

@@ -97,6 +97,28 @@ impl Module for ScanModule {
         });
 
         let tx = self.scan_tx.clone();
+        ctx.handlers.on("scan.location", move |cmd, _ctx| {
+            if let Command::ScanLocation {
+                location,
+                session,
+                pipeline,
+                request,
+            } = cmd
+            {
+                send_or_warn(
+                    &tx,
+                    ScanCommand::ScanLocation {
+                        location,
+                        session,
+                        pipeline,
+                        request,
+                    },
+                    "scan.location",
+                );
+            }
+        });
+
+        let tx = self.scan_tx.clone();
         ctx.handlers.on("scan.node", move |cmd, _ctx| {
             if let Command::ScanNode {
                 node,

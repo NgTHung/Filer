@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
+use crate::model::location::{Location, LocationRef};
 use crate::model::registry::NodeRegistry;
 
 /// Unique identifier for a file node
@@ -20,6 +21,20 @@ pub struct FileNode {
     pub id: NodeId,
     pub name: String,
     pub path: PathBuf,
+    pub kind: NodeKind,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+    pub created: Option<SystemTime>,
+    pub accessed: Option<SystemTime>,
+    pub meta: NodeMeta,
+}
+
+/// Location-native node row for public directory/search result APIs.
+#[derive(Debug, Clone)]
+pub struct NodeEntry {
+    pub id: NodeId,
+    pub location: LocationRef,
+    pub name: String,
     pub kind: NodeKind,
     pub size: u64,
     pub modified: Option<SystemTime>,
@@ -332,6 +347,46 @@ impl FileNode {
     #[cfg(not(unix))]
     pub fn load_owner_info(&mut self) -> Result<(), CoreError> {
         Ok(())
+    }
+}
+
+impl NodeEntry {
+    pub fn from_file_node(node: FileNode, reg: &NodeRegistry) -> Self {
+        let location = reg.location_for_path(node.path.clone());
+        Self::from_file_node_with_location(node, LocationRef::from_location(&location))
+    }
+
+    pub fn from_file_node_with_location(node: FileNode, location: LocationRef) -> Self {
+        Self {
+            id: node.id,
+            location,
+            name: node.name,
+            kind: node.kind,
+            size: node.size,
+            modified: node.modified,
+            created: node.created,
+            accessed: node.accessed,
+            meta: node.meta,
+        }
+    }
+
+    pub fn from_location(location: Location, node: FileNode) -> Self {
+        Self::from_file_node_with_location(node, LocationRef::from_location(&location))
+    }
+
+    pub fn is_dir(&self) -> bool {
+        matches!(self.kind, NodeKind::Directory { .. })
+    }
+
+    pub fn is_file(&self) -> bool {
+        matches!(self.kind, NodeKind::File { .. })
+    }
+
+    pub fn extension(&self) -> Option<&str> {
+        match &self.kind {
+            NodeKind::File { extension } => extension.as_deref(),
+            _ => None,
+        }
     }
 }
 
