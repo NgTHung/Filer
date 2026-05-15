@@ -23,14 +23,14 @@ impl ImageProvider {
     ) -> Result<PreviewData, CoreError> {
         let path = path.to_path_buf();
         tokio::task::spawn_blocking(move || {
-            let img = image::open(&path).map_err(|e| CoreError::InvalidData(e.to_string()))?;
+            let img = image::open(&path).map_err(|e| CoreError::invalid_data(e.to_string()))?;
             let (orig_w, orig_h) = (img.width(), img.height());
             let thumb = img.thumbnail(max_width, max_height);
             let (w, h) = (thumb.width(), thumb.height());
             let mut buf = Vec::new();
             thumb
                 .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
-                .map_err(|e| CoreError::InvalidData(e.to_string()))?;
+                .map_err(|e| CoreError::invalid_data(e.to_string()))?;
             Ok(PreviewData::Image {
                 data: buf,
                 format: ImageFormat::Png,
@@ -41,10 +41,7 @@ impl ImageProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError {
-            actor: "image_provider",
-            message: e.to_string(),
-        })?
+        .map_err(|e| CoreError::actor("image_provider", e.to_string()))?
     }
 }
 

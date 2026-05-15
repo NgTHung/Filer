@@ -188,7 +188,7 @@ impl FsProvider for MockOpsProvider {
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
-            return Err(CoreError::NotFound(path.to_path_buf()));
+            return Err(CoreError::not_found(path.to_path_buf()));
         }
         tokio::task::yield_now().await;
         self.list_calls.lock().unwrap().push(path.to_path_buf());
@@ -223,12 +223,12 @@ impl FsProvider for MockOpsProvider {
             .unwrap()
             .get(path)
             .cloned()
-            .ok_or_else(|| CoreError::NotFound(path.to_path_buf()))
+            .ok_or_else(|| CoreError::not_found(path.to_path_buf()))
     }
 
     async fn write(&self, path: &Path, data: &[u8]) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
-            return Err(CoreError::PermissionDenied(path.to_path_buf()));
+            return Err(CoreError::permission_denied(path.to_path_buf()));
         }
         self.write_calls
             .lock()
@@ -239,7 +239,7 @@ impl FsProvider for MockOpsProvider {
 
     async fn copy(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == src) {
-            return Err(CoreError::PermissionDenied(src.to_path_buf()));
+            return Err(CoreError::permission_denied(src.to_path_buf()));
         }
         tokio::task::yield_now().await;
         self.copy_calls
@@ -251,13 +251,13 @@ impl FsProvider for MockOpsProvider {
 
     async fn rename(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
         if *self.fail_rename_cross_device.lock().unwrap() {
-            return Err(CoreError::Io {
-                path: src.to_path_buf(),
-                message: "Invalid cross-device link (os error 18)".to_string(),
-            });
+            return Err(CoreError::io(
+                src.to_path_buf(),
+                "Invalid cross-device link (os error 18)",
+            ));
         }
         if self.fail_paths.lock().unwrap().iter().any(|p| p == src) {
-            return Err(CoreError::PermissionDenied(src.to_path_buf()));
+            return Err(CoreError::permission_denied(src.to_path_buf()));
         }
         self.rename_calls
             .lock()
@@ -268,7 +268,7 @@ impl FsProvider for MockOpsProvider {
 
     async fn delete(&self, path: &Path) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
-            return Err(CoreError::PermissionDenied(path.to_path_buf()));
+            return Err(CoreError::permission_denied(path.to_path_buf()));
         }
         self.delete_calls.lock().unwrap().push(path.to_path_buf());
         Ok(())
@@ -276,7 +276,7 @@ impl FsProvider for MockOpsProvider {
 
     async fn mkdir(&self, path: &Path) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
-            return Err(CoreError::PermissionDenied(path.to_path_buf()));
+            return Err(CoreError::permission_denied(path.to_path_buf()));
         }
         self.mkdir_calls.lock().unwrap().push(path.to_path_buf());
         Ok(())

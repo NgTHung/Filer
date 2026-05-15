@@ -134,7 +134,7 @@ impl NodeRegistry {
 
         let descriptor = self
             .resolve_location(id)
-            .ok_or_else(|| CoreError::InvalidLocation(format!("unresolved location id {id}")))?;
+            .ok_or_else(|| CoreError::location_unresolved(id))?;
         let route = descriptor.route();
         let _ = self.id_to_location_route.insert_sync(id, route.clone());
         Ok(route)
@@ -145,7 +145,7 @@ impl NodeRegistry {
             LocationRef::Id(id) => self
                 .resolve_location(*id)
                 .map(Location::new)
-                .ok_or_else(|| CoreError::InvalidLocation(format!("unresolved location id {id}"))),
+                .ok_or_else(|| CoreError::location_unresolved(*id)),
             LocationRef::Descriptor(descriptor) => {
                 let location = Location::new(descriptor.clone());
                 self.register_location(location.clone());

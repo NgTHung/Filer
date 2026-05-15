@@ -15,7 +15,7 @@ use crate::services::mime::MimeDetector;
 use crate::services::preview::PreviewCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::provider::FsProvider;
-use crate::{ErrorKind, MetadataRegistry, PreviewOptions, PreviewRegistry};
+use crate::{CoreError, MetadataRegistry, PreviewOptions, PreviewRegistry};
 
 /// Commands for previewer actor
 #[derive(Debug, Clone)]
@@ -111,14 +111,11 @@ impl Previewer {
         let Some(path) = self.registry.resolve(node) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve node {node:?}"),
-                    recoverable: true,
+                Event::from_request_error(
+                    CoreError::invalid_input(format!("Cannot resolve node {node:?}")),
                     session,
-                    request: Some(request),
-                    operation: None,
-                },
+                    request,
+                ),
                 "previewer: resolve",
             );
             return;
@@ -207,14 +204,11 @@ impl Previewer {
         let Some(path) = self.registry.resolve(node) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve node {node:?}"),
-                    recoverable: true,
+                Event::from_request_error(
+                    CoreError::invalid_input(format!("Cannot resolve node {node:?}")),
                     session,
-                    request: Some(request),
-                    operation: None,
-                },
+                    request,
+                ),
                 "previewer: resolve",
             );
             return;
@@ -245,14 +239,7 @@ impl Previewer {
                 Err(e) => {
                     send_or_warn_async(
                         &events,
-                        Event::Error {
-                            kind: ErrorKind::Io,
-                            message: e.to_string(),
-                            recoverable: true,
-                            session,
-                            request: Some(request),
-                            operation: None,
-                        },
+                        Event::from_request_error(e, session, request),
                         "metadata error",
                     )
                     .await;
@@ -268,14 +255,11 @@ impl Previewer {
         let Some(path) = self.registry.resolve(node) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve node {node:?}"),
-                    recoverable: true,
+                Event::from_request_error(
+                    CoreError::invalid_input(format!("Cannot resolve node {node:?}")),
                     session,
-                    request: Some(request),
-                    operation: None,
-                },
+                    request,
+                ),
                 "previewer: resolve",
             );
             return;
@@ -337,14 +321,7 @@ impl Previewer {
                 Err(e) => {
                     send_or_warn_async(
                         &events,
-                        Event::Error {
-                            kind: e.kind(),
-                            message: e.to_string(),
-                            recoverable: true,
-                            session,
-                            request: Some(request),
-                            operation: None,
-                        },
+                        Event::from_request_error(e, session, request),
                         "extended metadata error",
                     )
                     .await;

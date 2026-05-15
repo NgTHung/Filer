@@ -66,12 +66,12 @@ impl ArchiveExtractor {
     #[cfg(feature = "metadata-archive")]
     fn parse_zip<R: Read + std::io::Seek>(reader: R) -> Result<Vec<ArchiveEntry>, CoreError> {
         let mut archive = zip::ZipArchive::new(reader)
-            .map_err(|e| CoreError::InvalidData(format!("Cannot open ZIP: {e}")))?;
+            .map_err(|e| CoreError::invalid_data(format!("Cannot open ZIP: {e}")))?;
         let mut entries = Vec::with_capacity(archive.len());
         for i in 0..archive.len() {
             let f = archive
                 .by_index(i)
-                .map_err(|e| CoreError::InvalidData(format!("ZIP entry {i}: {e}")))?;
+                .map_err(|e| CoreError::invalid_data(format!("ZIP entry {i}: {e}")))?;
             entries.push(ArchiveEntry {
                 path: f.name().to_owned(),
                 size: f.size(),
@@ -90,9 +90,9 @@ impl ArchiveExtractor {
         let mut entries = Vec::new();
         for entry in archive
             .entries()
-            .map_err(|e| CoreError::InvalidData(format!("Cannot read TAR: {e}")))?
+            .map_err(|e| CoreError::invalid_data(format!("Cannot read TAR: {e}")))?
         {
-            let e = entry.map_err(|e| CoreError::InvalidData(format!("TAR entry: {e}")))?;
+            let e = entry.map_err(|e| CoreError::invalid_data(format!("TAR entry: {e}")))?;
             let h = e.header();
             entries.push(ArchiveEntry {
                 path: h
@@ -112,7 +112,7 @@ impl ArchiveExtractor {
     fn parse_7z<R: Read + std::io::Seek>(reader: R) -> Result<Vec<ArchiveEntry>, CoreError> {
         use sevenz_rust2::{ArchiveReader, Password};
         let mut reader_7z = ArchiveReader::new(reader, Password::empty())
-            .map_err(|e| CoreError::InvalidData(format!("Cannot open 7z: {e:?}")))?;
+            .map_err(|e| CoreError::invalid_data(format!("Cannot open 7z: {e:?}")))?;
         let mut entries = Vec::new();
         reader_7z
             .for_each_entries(|entry, _| {
@@ -124,7 +124,7 @@ impl ArchiveExtractor {
                 });
                 Ok(true)
             })
-            .map_err(|e| CoreError::InvalidData(format!("7z entry error: {e:?}")))?;
+            .map_err(|e| CoreError::invalid_data(format!("7z entry error: {e:?}")))?;
         Ok(entries)
     }
 
@@ -147,7 +147,7 @@ impl ArchiveExtractor {
         }
         let mut sink = Sink(0);
         std::io::copy(&mut decoder, &mut sink)
-            .map_err(|e| CoreError::InvalidData(format!("Decompression error: {e}")))?;
+            .map_err(|e| CoreError::invalid_data(format!("Decompression error: {e}")))?;
         Ok((sink.0, entry_name))
     }
 }
@@ -274,7 +274,7 @@ impl MetadataExtractor for ArchiveExtractor {
                 "application/zstd" if tarball => {
                     let decoder =
                         zstd::stream::read::Decoder::new(provider.open_reader(path).await?)
-                            .map_err(|e| CoreError::InvalidData(format!("ZSTD: {e}")))?;
+                            .map_err(|e| CoreError::invalid_data(format!("ZSTD: {e}")))?;
                     let entries = Self::parse_tar(decoder)?;
                     Self::build("TAR+ZSTD", entries, 0)
                 }
@@ -283,7 +283,7 @@ impl MetadataExtractor for ArchiveExtractor {
                     let compressed_size = compressed.len() as u64;
                     let decoder =
                         zstd::stream::read::Decoder::new(std::io::Cursor::new(compressed))
-                            .map_err(|e| CoreError::InvalidData(format!("ZSTD: {e}")))?;
+                            .map_err(|e| CoreError::invalid_data(format!("ZSTD: {e}")))?;
                     let (size, name) = Self::count_decompressed(decoder, stem())?;
                     Self::build(
                         "ZSTD",
@@ -308,11 +308,11 @@ impl MetadataExtractor for ArchiveExtractor {
                 "application/vnd.rar" => {
                     let mut archive = unrar::Archive::new(path)
                         .open_for_listing()
-                        .map_err(|e| CoreError::InvalidData(format!("Cannot open RAR: {e}")))?;
+                        .map_err(|e| CoreError::invalid_data(format!("Cannot open RAR: {e}")))?;
                     let mut entries = Vec::new();
                     for header in archive.by_ref() {
                         let h = header
-                            .map_err(|e| CoreError::InvalidData(format!("RAR entry: {e}")))?;
+                            .map_err(|e| CoreError::invalid_data(format!("RAR entry: {e}")))?;
                         entries.push(ArchiveEntry {
                             path: h.filename.to_string_lossy().into_owned(),
                             size: h.unpacked_size,

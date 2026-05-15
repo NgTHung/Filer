@@ -27,10 +27,7 @@ impl MediaProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError {
-            actor: "media_provider",
-            message: e.to_string(),
-        })?
+        .map_err(|e| CoreError::actor("media_provider", e.to_string()))?
     }
 
     #[cfg(feature = "metadata-video")]
@@ -42,7 +39,7 @@ impl MediaProvider {
         tokio::task::spawn_blocking(move || {
             let mut cursor = std::io::Cursor::new(bytes);
             let context = mp4parse::read_mp4(&mut cursor)
-                .map_err(|e| CoreError::InvalidData(format!("{e:?}")))?;
+                .map_err(|e| CoreError::invalid_data(format!("{e:?}")))?;
 
             let duration_secs = context
                 .tracks
@@ -63,10 +60,7 @@ impl MediaProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError {
-            actor: "media_provider",
-            message: e.to_string(),
-        })?
+        .map_err(|e| CoreError::actor("media_provider", e.to_string()))?
     }
 }
 

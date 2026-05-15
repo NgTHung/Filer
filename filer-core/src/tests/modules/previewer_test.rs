@@ -42,16 +42,16 @@ impl FsProvider for NullProvider {
         Ok(vec![])
     }
     async fn read(&self, p: &Path) -> Result<Vec<u8>, CoreError> {
-        Err(CoreError::NotFound(p.to_path_buf()))
+        Err(CoreError::not_found(p.to_path_buf()))
     }
     async fn read_range(&self, p: &Path, _: u64, _: u64) -> Result<Vec<u8>, CoreError> {
-        Err(CoreError::NotFound(p.to_path_buf()))
+        Err(CoreError::not_found(p.to_path_buf()))
     }
     async fn exists(&self, _: &Path) -> Result<bool, CoreError> {
         Ok(false)
     }
     async fn metadata(&self, p: &Path) -> Result<crate::model::node::FileNode, CoreError> {
-        Err(CoreError::NotFound(p.to_path_buf()))
+        Err(CoreError::not_found(p.to_path_buf()))
     }
 }
 

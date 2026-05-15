@@ -102,7 +102,7 @@ impl FsProvider for MockFs {
     }
 
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
-        Err(CoreError::NotFound(path.to_path_buf()))
+        Err(CoreError::not_found(path.to_path_buf()))
     }
 }
 
@@ -214,7 +214,7 @@ impl FsProvider for LazyTreeFs {
         Ok(true)
     }
     async fn metadata(&self, p: &Path) -> Result<FileNode, CoreError> {
-        Err(CoreError::NotFound(p.to_path_buf()))
+        Err(CoreError::not_found(p.to_path_buf()))
     }
 }
 

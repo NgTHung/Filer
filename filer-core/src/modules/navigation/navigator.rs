@@ -23,7 +23,7 @@ use crate::model::session::SessionId;
 use crate::modules::scan::scanner::ScanCommand;
 use crate::pipeline::{Pipeline, PipelineConfig};
 use crate::utils::channel::send_or_warn;
-use crate::{ErrorKind, Event};
+use crate::{CoreError, Event};
 
 /// Navigation commands
 #[derive(Debug, Clone)]
@@ -348,14 +348,11 @@ impl Navigator {
                         } else {
                             send_or_warn(
                                 &self.events,
-                                Event::Error {
-                                    kind: ErrorKind::InvalidInput,
-                                    message: "Can't go back: no history".to_string(),
-                                    recoverable: true,
-                                    session: session_id,
-                                    request: Some(request),
-                                    operation: None,
-                                },
+                                Event::from_request_error(
+                                    CoreError::navigation_unavailable("Can't go back: no history"),
+                                    session_id,
+                                    request,
+                                ),
                                 "emit back error",
                             );
                         }
@@ -379,14 +376,13 @@ impl Navigator {
                         } else {
                             send_or_warn(
                                 &self.events,
-                                Event::Error {
-                                    kind: ErrorKind::InvalidInput,
-                                    message: "Can't go forward: no forward history".to_string(),
-                                    recoverable: true,
-                                    session: session_id,
-                                    request: Some(request),
-                                    operation: None,
-                                },
+                                Event::from_request_error(
+                                    CoreError::navigation_unavailable(
+                                        "Can't go forward: no forward history",
+                                    ),
+                                    session_id,
+                                    request,
+                                ),
                                 "emit forward error",
                             );
                         }
@@ -412,14 +408,13 @@ impl Navigator {
                         } else {
                             send_or_warn(
                                 &self.events,
-                                Event::Error {
-                                    kind: ErrorKind::InvalidInput,
-                                    message: "Can't go up: no parent directory".to_string(),
-                                    recoverable: true,
-                                    session: session_id,
-                                    request: Some(request),
-                                    operation: None,
-                                },
+                                Event::from_request_error(
+                                    CoreError::navigation_unavailable(
+                                        "Can't go up: no parent directory",
+                                    ),
+                                    session_id,
+                                    request,
+                                ),
                                 "emit up error",
                             );
                         }
@@ -442,14 +437,13 @@ impl Navigator {
                         } else {
                             send_or_warn(
                                 &self.events,
-                                Event::Error {
-                                    kind: ErrorKind::InvalidInput,
-                                    message: "Can't refresh: no current directory".to_string(),
-                                    recoverable: true,
-                                    session: session_id,
-                                    request: Some(request),
-                                    operation: None,
-                                },
+                                Event::from_request_error(
+                                    CoreError::navigation_unavailable(
+                                        "Can't refresh: no current directory",
+                                    ),
+                                    session_id,
+                                    request,
+                                ),
                                 "emit refresh error",
                             );
                         }

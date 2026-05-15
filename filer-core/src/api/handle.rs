@@ -200,12 +200,12 @@ impl FilerCore {
 
     /// Send a command into the core.
     ///
-    /// Returns `Err(CoreError::ChannelClosed)` if the system has been
+    /// Returns `Err(CoreError)` with `ErrorCode::ChannelClosed` if the system has been
     /// shut down.
     pub fn send(&self, command: Command) -> Result<(), CoreError> {
         self.command_tx
             .send(command)
-            .map_err(|_| CoreError::ChannelClosed("command channel closed".into()))
+            .map_err(|_| CoreError::channel_closed("command"))
     }
 
     /// Try to receive a pending event without blocking.
@@ -258,7 +258,7 @@ impl FilerCore {
     ///
     /// Aborts every spawned task, which drops their channel endpoints
     /// and cascades shutdown through the system. After shutdown,
-    /// [`send()`](Self::send) will return `Err(CoreError::ChannelClosed)`.
+    /// [`send()`](Self::send) will return a channel-closed [`CoreError`].
     pub fn shutdown(&self) -> Result<(), CoreError> {
         self.actor_system.shutdown();
         Ok(())

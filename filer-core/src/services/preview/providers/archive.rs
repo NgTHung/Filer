@@ -22,13 +22,13 @@ impl ArchiveProvider {
             let file = std::fs::File::open(&path)
                 .map_err(|e| CoreError::from_io_error(e, path.clone()))?;
             let mut archive =
-                zip::ZipArchive::new(file).map_err(|e| CoreError::InvalidData(e.to_string()))?;
+                zip::ZipArchive::new(file).map_err(|e| CoreError::invalid_data(e.to_string()))?;
             let total = archive.len();
             let mut entries = Vec::new();
             for i in 0..total.min(max_entries) {
                 let entry = archive
                     .by_index(i)
-                    .map_err(|e| CoreError::InvalidData(e.to_string()))?;
+                    .map_err(|e| CoreError::invalid_data(e.to_string()))?;
                 entries.push(ArchivePreviewEntry {
                     path: entry.name().to_string(),
                     size: entry.size(),
@@ -42,10 +42,7 @@ impl ArchiveProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError {
-            actor: "archive_provider",
-            message: e.to_string(),
-        })?
+        .map_err(|e| CoreError::actor("archive_provider", e.to_string()))?
     }
 
     #[cfg(feature = "metadata-archive")]
@@ -59,9 +56,9 @@ impl ArchiveProvider {
             let mut total = 0usize;
             for entry in archive
                 .entries()
-                .map_err(|e| CoreError::InvalidData(e.to_string()))?
+                .map_err(|e| CoreError::invalid_data(e.to_string()))?
             {
-                let entry = entry.map_err(|e| CoreError::InvalidData(e.to_string()))?;
+                let entry = entry.map_err(|e| CoreError::invalid_data(e.to_string()))?;
                 total += 1;
                 if entries.len() < max_entries {
                     let name = entry
@@ -85,10 +82,7 @@ impl ArchiveProvider {
             })
         })
         .await
-        .map_err(|e| CoreError::ActorError {
-            actor: "archive_provider",
-            message: e.to_string(),
-        })?
+        .map_err(|e| CoreError::actor("archive_provider", e.to_string()))?
     }
 }
 

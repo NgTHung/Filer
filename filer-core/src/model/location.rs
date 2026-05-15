@@ -220,21 +220,26 @@ impl LocationRoute {
     pub fn require_direct_path(&self) -> Result<&Path, crate::CoreError> {
         match self {
             LocationRoute::DirectPath { path } => Ok(path),
-            LocationRoute::Segmented { root, segments } => {
-                Err(crate::CoreError::InvalidLocation(format!(
+            LocationRoute::Segmented { root, segments } => Err(crate::CoreError::invalid_location(
+                crate::ErrorCode::LocationSegmentedUnsupported,
+                None,
+                format!(
                     "segmented locations are not routable yet: {} with {} segment(s)",
                     root.display(),
                     segments.len()
-                )))
-            }
+                ),
+            )),
             LocationRoute::UnsupportedProvider {
                 scheme,
                 provider,
                 root,
-            } => Err(crate::CoreError::InvalidLocation(format!(
-                "unsupported provider route: {scheme} {provider:?} {}",
-                root.display()
-            ))),
+            } => Err(crate::CoreError::unsupported_provider(
+                format!("{scheme}:{provider:?}"),
+                format!(
+                    "unsupported provider route: {scheme} {provider:?} {}",
+                    root.display()
+                ),
+            )),
         }
     }
 }

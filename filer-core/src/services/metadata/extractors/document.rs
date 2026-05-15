@@ -29,7 +29,7 @@ impl DocumentExtractor {
     ) -> Result<DocumentMetadata, CoreError> {
         let reader = provider.open_reader(path).await?;
         let meta = lopdf::Document::load_metadata_from(reader)
-            .map_err(|e| CoreError::InvalidData(format!("Cannot parse PDF: {e}")))?;
+            .map_err(|e| CoreError::invalid_data(format!("Cannot parse PDF: {e}")))?;
 
         Ok(DocumentMetadata {
             title: meta.title,

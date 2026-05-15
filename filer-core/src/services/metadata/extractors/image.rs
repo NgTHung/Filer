@@ -69,7 +69,7 @@ impl ImageExtractor {
         let mut io = provider.open_reader(path).await?;
         let source = reader
             .read_from_container(&mut io)
-            .map_err(|e| CoreError::InvalidData(format!("Unable to parse data: {}", e)))?;
+            .map_err(|e| CoreError::invalid_data(format!("Unable to parse data: {}", e)))?;
 
         let color_space = source
             .get_field(Tag::ColorSpace, In::PRIMARY)

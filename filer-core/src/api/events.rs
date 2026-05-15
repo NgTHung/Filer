@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::errors::{CoreError, ErrorKind};
+use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
 use crate::model::node::{NodeId, NodeMeta};
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
@@ -75,6 +75,8 @@ pub enum Event {
     /// Error occurred
     Error {
         kind: ErrorKind,
+        code: ErrorCode,
+        target: Option<ErrorTarget>,
         message: String,
         recoverable: bool,
         session: SessionId,
@@ -127,19 +129,39 @@ pub enum Event {
 impl Event {
     /// Create an `Event::Error` from a [`CoreError`] and session.
     ///
-    /// Determines `kind` from the error variant and derives `recoverable`:
-    /// - Recoverable: NotFound, PermissionDenied, InvalidPath, Cancelled, NetworkError
-    /// - Non-recoverable: Io, ChannelClosed, ActorError, InvalidData, InvalidInput, Other
     pub fn from_error(err: CoreError, session: SessionId) -> Self {
-        let kind = err.kind();
+        err.emit_trace();
         Event::Error {
-            kind,
+            kind: err.kind(),
+            code: err.code(),
+            target: err.target().cloned(),
             message: err.to_string(),
-            recoverable: kind.is_recoverable(),
+            recoverable: err.recoverable(),
             session,
             request: None,
             operation: None,
         }
+    }
+
+    pub fn from_request_error(err: CoreError, session: SessionId, request: RequestId) -> Self {
+        let mut event = Self::from_error(err, session);
+        if let Event::Error { request: r, .. } = &mut event {
+            *r = Some(request);
+        }
+        event
+    }
+
+    pub fn from_operation_error(
+        err: CoreError,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    ) -> Self {
+        let mut event = Self::from_request_error(err, session, request);
+        if let Event::Error { operation: op, .. } = &mut event {
+            *op = Some(operation);
+        }
+        event
     }
 }
 

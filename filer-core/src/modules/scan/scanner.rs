@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
-use crate::errors::ErrorKind;
+use crate::errors::CoreError;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -190,11 +190,12 @@ impl Scanner {
             Ok(entries) => entries,
             Err(e) => {
                 if Self::is_latest(latest_scans, session, request) {
-                    let mut event = Event::from_error(e, session);
-                    if let Event::Error { request: r, .. } = &mut event {
-                        *r = Some(request);
-                    }
-                    send_or_warn_async(events, event, "scan error").await;
+                    send_or_warn_async(
+                        events,
+                        Event::from_request_error(e, session, request),
+                        "scan error",
+                    )
+                    .await;
                 }
                 return;
             }
@@ -282,14 +283,11 @@ impl Actor for Scanner {
                     let Some(path) = self.registry.resolve(node) else {
                         send_or_warn(
                             &self.events_sender,
-                            Event::Error {
-                                kind: ErrorKind::InvalidInput,
-                                message: format!("Unable to resolve ID: {node:?}"),
-                                recoverable: false,
+                            Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
                                 session,
-                                request: Some(request),
-                                operation: None,
-                            },
+                                request,
+                            ),
                             "scan resolve error",
                         );
                         continue;
@@ -305,14 +303,11 @@ impl Actor for Scanner {
                     let Some(path) = self.registry.resolve(node) else {
                         send_or_warn(
                             &self.events_sender,
-                            Event::Error {
-                                kind: ErrorKind::InvalidInput,
-                                message: format!("Unable to resolve ID: {node:?}"),
-                                recoverable: false,
+                            Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
                                 session,
-                                request: Some(request),
-                                operation: None,
-                            },
+                                request,
+                            ),
                             "scan refresh resolve error",
                         );
                         continue;

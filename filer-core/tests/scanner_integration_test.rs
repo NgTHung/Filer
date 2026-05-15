@@ -88,7 +88,7 @@ impl FsProvider for MockProvider {
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         if *self.should_fail.lock().unwrap() {
-            return Err(CoreError::NotFound(path.to_path_buf()));
+            return Err(CoreError::not_found(path.to_path_buf()));
         }
         self.list_calls.lock().unwrap().push(path.to_path_buf());
         Ok(self.files.lock().unwrap().clone())
@@ -107,7 +107,7 @@ impl FsProvider for MockProvider {
     }
 
     async fn metadata(&self, _path: &Path) -> Result<FileNode, CoreError> {
-        Err(CoreError::NotFound(PathBuf::from("test")))
+        Err(CoreError::not_found(PathBuf::from("test")))
     }
 }
 

@@ -13,7 +13,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::{CoreError, ErrorKind, FsProvider};
+use crate::{CoreError, ErrorCode, FsProvider};
 
 type TrashFn = Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>;
 
@@ -87,10 +87,7 @@ impl Operator {
             provider,
             registry,
             Arc::new(|path| {
-                trash::delete(path).map_err(|e| CoreError::Io {
-                    path: path.to_path_buf(),
-                    message: e.to_string(),
-                })
+                trash::delete(path).map_err(|e| CoreError::io(path.to_path_buf(), e.to_string()))
             }),
         )
     }
@@ -141,14 +138,12 @@ impl Operator {
         let Some(dst_path) = self.registry.resolve(dest) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve destination {dest:?}"),
-                    recoverable: true,
+                Event::from_operation_error(
+                    CoreError::invalid_input(format!("Cannot resolve destination {dest:?}")),
                     session,
-                    request: Some(request),
-                    operation: Some(operation),
-                },
+                    request,
+                    operation,
+                ),
                 "operator: copy resolve dest",
             );
             return;
@@ -159,14 +154,12 @@ impl Operator {
             let Some(path) = self.registry.resolve(*src_id) else {
                 send_or_warn(
                     &self.events,
-                    Event::Error {
-                        kind: ErrorKind::InvalidInput,
-                        message: format!("Cannot resolve source {src_id:?}"),
-                        recoverable: true,
+                    Event::from_operation_error(
+                        CoreError::invalid_input(format!("Cannot resolve source {src_id:?}")),
                         session,
-                        request: Some(request),
-                        operation: Some(operation),
-                    },
+                        request,
+                        operation,
+                    ),
                     "operator: copy resolve src",
                 );
                 return;
@@ -191,14 +184,15 @@ impl Operator {
                 let Ok(meta) = fs.metadata(&src_path).await else {
                     send_or_warn_async(
                         &events,
-                        Event::Error {
-                            kind: ErrorKind::Io,
-                            message: format!("Cannot stat {}", src_path.display()),
-                            recoverable: true,
+                        Event::from_operation_error(
+                            CoreError::io(
+                                src_path.clone(),
+                                format!("Cannot stat {}", src_path.display()),
+                            ),
                             session,
-                            request: Some(request),
-                            operation: Some(operation),
-                        },
+                            request,
+                            operation,
+                        ),
                         "operator: copy stat",
                     )
                     .await;
@@ -224,7 +218,7 @@ impl Operator {
                     .await
                     {
                         Ok(()) => {}
-                        Err(CoreError::Cancelled) => return,
+                        Err(e) if e.code() == ErrorCode::OperationCancelled => return,
                         Err(e) => {
                             send_or_warn_async(
                                 &events,
@@ -279,14 +273,12 @@ impl Operator {
         let Some(dst_path) = self.registry.resolve(dest) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve destination {dest:?}"),
-                    recoverable: true,
+                Event::from_operation_error(
+                    CoreError::invalid_input(format!("Cannot resolve destination {dest:?}")),
                     session,
-                    request: Some(request),
-                    operation: Some(operation),
-                },
+                    request,
+                    operation,
+                ),
                 "operator: move resolve dest",
             );
             return;
@@ -297,14 +289,12 @@ impl Operator {
             let Some(path) = self.registry.resolve(*src_id) else {
                 send_or_warn(
                     &self.events,
-                    Event::Error {
-                        kind: ErrorKind::InvalidInput,
-                        message: format!("Cannot resolve source {src_id:?}"),
-                        recoverable: true,
+                    Event::from_operation_error(
+                        CoreError::invalid_input(format!("Cannot resolve source {src_id:?}")),
                         session,
-                        request: Some(request),
-                        operation: Some(operation),
-                    },
+                        request,
+                        operation,
+                    ),
                     "operator: move resolve src",
                 );
                 return;
@@ -398,14 +388,12 @@ impl Operator {
             let Some(path) = self.registry.resolve(*target) else {
                 send_or_warn(
                     &self.events,
-                    Event::Error {
-                        kind: ErrorKind::InvalidInput,
-                        message: format!("Cannot resolve node {target:?}"),
-                        recoverable: true,
+                    Event::from_operation_error(
+                        CoreError::invalid_input(format!("Cannot resolve node {target:?}")),
                         session,
-                        request: Some(request),
-                        operation: Some(operation),
-                    },
+                        request,
+                        operation,
+                    ),
                     "operator: delete resolve",
                 );
                 return;
@@ -434,12 +422,7 @@ impl Operator {
                     let p = path.clone();
                     tokio::task::spawn_blocking(move || tf(&p))
                         .await
-                        .unwrap_or_else(|e| {
-                            Err(CoreError::ActorError {
-                                actor: "operator",
-                                message: e.to_string(),
-                            })
-                        })
+                        .unwrap_or_else(|e| Err(CoreError::actor("operator", e.to_string())))
                 } else {
                     fs.delete(&path).await
                 };
@@ -503,14 +486,12 @@ impl Operator {
         let Some(src_path) = self.registry.resolve(source) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve node {source:?}"),
-                    recoverable: true,
+                Event::from_operation_error(
+                    CoreError::invalid_input(format!("Cannot resolve node {source:?}")),
                     session,
-                    request: Some(request),
-                    operation: Some(operation),
-                },
+                    request,
+                    operation,
+                ),
                 "operator: rename resolve",
             );
             return;
@@ -519,14 +500,12 @@ impl Operator {
         let Some(parent) = src_path.parent() else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidPath,
-                    message: format!("Cannot get parent of {}", src_path.display()),
-                    recoverable: true,
+                Event::from_operation_error(
+                    CoreError::invalid_path(format!("Cannot get parent of {}", src_path.display())),
                     session,
-                    request: Some(request),
-                    operation: Some(operation),
-                },
+                    request,
+                    operation,
+                ),
                 "operator: rename parent",
             );
             return;
@@ -542,14 +521,12 @@ impl Operator {
             if fs.exists(&new_path).await.unwrap_or(true) {
                 send_or_warn_async(
                     &events,
-                    Event::Error {
-                        kind: ErrorKind::InvalidPath,
-                        message: "File/Folder already exists".to_string(),
-                        recoverable: true,
+                    Event::from_operation_error(
+                        CoreError::invalid_path("File/Folder already exists"),
                         session,
-                        request: Some(request),
-                        operation: Some(operation),
-                    },
+                        request,
+                        operation,
+                    ),
                     "operator: rename collision",
                 )
                 .await;
@@ -594,14 +571,12 @@ impl Operator {
         let Some(path) = self.registry.resolve(parent) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve node {parent:?}"),
-                    recoverable: true,
+                Event::from_operation_error(
+                    CoreError::invalid_input(format!("Cannot resolve node {parent:?}")),
                     session,
-                    request: Some(request),
-                    operation: Some(operation),
-                },
+                    request,
+                    operation,
+                ),
                 "operator: create_file resolve",
             );
             return;
@@ -617,14 +592,12 @@ impl Operator {
             if fs.exists(&full_path).await.unwrap_or(true) {
                 send_or_warn_async(
                     &events,
-                    Event::Error {
-                        kind: ErrorKind::InvalidPath,
-                        message: "File/Folder already exists".to_string(),
-                        recoverable: true,
+                    Event::from_operation_error(
+                        CoreError::invalid_path("File/Folder already exists"),
                         session,
-                        request: Some(request),
-                        operation: Some(operation),
-                    },
+                        request,
+                        operation,
+                    ),
                     "operator: create_file exists",
                 )
                 .await;
@@ -667,14 +640,12 @@ impl Operator {
         let Some(path) = self.registry.resolve(parent) else {
             send_or_warn(
                 &self.events,
-                Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Cannot resolve node {parent:?}"),
-                    recoverable: true,
+                Event::from_operation_error(
+                    CoreError::invalid_input(format!("Cannot resolve node {parent:?}")),
                     session,
-                    request: Some(request),
-                    operation: Some(operation),
-                },
+                    request,
+                    operation,
+                ),
                 "operator: create_folder resolve",
             );
             return;
@@ -690,14 +661,12 @@ impl Operator {
             if fs.exists(&full_path).await.unwrap_or(true) {
                 send_or_warn_async(
                     &events,
-                    Event::Error {
-                        kind: ErrorKind::InvalidPath,
-                        message: "File/Folder already exists".to_string(),
-                        recoverable: true,
+                    Event::from_operation_error(
+                        CoreError::invalid_path("File/Folder already exists"),
                         session,
-                        request: Some(request),
-                        operation: Some(operation),
-                    },
+                        request,
+                        operation,
+                    ),
                     "operator: create_folder exists",
                 )
                 .await;
@@ -745,7 +714,7 @@ async fn copy_dir_recursive(
     let entries = fs.list(src).await?;
     for entry in entries {
         if cancel.is_cancelled() {
-            return Err(CoreError::Cancelled);
+            return Err(CoreError::cancelled());
         }
         let src_child = src.join(&entry.name);
         let dst_child = dst.join(&entry.name);
@@ -783,30 +752,14 @@ fn operation_error(
     request: RequestId,
     operation: OperationId,
 ) -> Event {
-    match Event::from_error(err, session) {
-        Event::Error {
-            kind,
-            message,
-            recoverable,
-            session,
-            ..
-        } => Event::Error {
-            kind,
-            message,
-            recoverable,
-            session,
-            request: Some(request),
-            operation: Some(operation),
-        },
-        event => event,
-    }
+    Event::from_operation_error(err, session, request, operation)
 }
 
 fn is_cross_device(err: &CoreError) -> bool {
-    matches!(err, CoreError::Io { message, .. }
-        if message.contains("cross-device")
-            || message.contains("os error 18")
-            || message.contains("os error 17"))
+    err.code() == ErrorCode::IoFailed
+        && (err.message.contains("cross-device")
+            || err.message.contains("os error 18")
+            || err.message.contains("os error 17"))
 }
 
 fn invalidate_parent_cache(cache: &Option<SharedDirCache>, path: &Path) {

@@ -159,7 +159,7 @@ impl FsProvider for MockProvider {
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         // Check if this path should fail
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
-            return Err(CoreError::NotFound(path.to_path_buf()));
+            return Err(CoreError::not_found(path.to_path_buf()));
         }
 
         let delay_ms = *self.delay_ms.lock().unwrap();
@@ -197,7 +197,7 @@ impl FsProvider for MockProvider {
     }
 
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
-        Err(CoreError::NotFound(path.to_path_buf()))
+        Err(CoreError::not_found(path.to_path_buf()))
     }
 }
 

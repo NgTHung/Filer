@@ -1,280 +1,127 @@
-//! Tests for error types
+//! Tests for structured error types
 
 use crate::api::events::Event;
-use crate::errors::{CoreError, ErrorKind};
+use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
+use crate::model::operation::OperationId;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use std::path::PathBuf;
 
 #[test]
-fn test_error_io_variant() {
-    let error = CoreError::Io {
-        path: PathBuf::from("/tmp/file.txt"),
-        message: "Failed to read".to_string(),
-    };
+fn test_error_constructor_sets_formal_fields() {
+    let path = PathBuf::from("/tmp/file.txt");
+    let error = CoreError::io(path.clone(), "Failed to read");
 
-    match error {
-        CoreError::Io { path, message } => {
-            assert_eq!(path, PathBuf::from("/tmp/file.txt"));
-            assert_eq!(message, "Failed to read");
-        }
-        _ => panic!("Expected Io variant"),
-    }
+    assert_eq!(error.kind(), ErrorKind::Io);
+    assert_eq!(error.code(), ErrorCode::IoFailed);
+    assert_eq!(error.target(), Some(&ErrorTarget::Path(path)));
+    assert_eq!(error.message, "Failed to read");
+    assert!(!error.recoverable());
 }
 
 #[test]
-fn test_error_not_found_variant() {
-    let error = CoreError::NotFound(PathBuf::from("/nonexistent/path"));
+fn test_path_error_constructors_set_targets() {
+    let missing = PathBuf::from("/missing");
+    let denied = PathBuf::from("/root/secret");
 
-    match error {
-        CoreError::NotFound(path) => {
-            assert_eq!(path, PathBuf::from("/nonexistent/path"));
-        }
-        _ => panic!("Expected NotFound variant"),
-    }
+    let not_found = CoreError::not_found(missing.clone());
+    assert_eq!(not_found.kind(), ErrorKind::NotFound);
+    assert_eq!(not_found.code(), ErrorCode::PathNotFound);
+    assert_eq!(not_found.target(), Some(&ErrorTarget::Path(missing)));
+    assert!(not_found.recoverable());
+
+    let permission = CoreError::permission_denied(denied.clone());
+    assert_eq!(permission.kind(), ErrorKind::PermissionDenied);
+    assert_eq!(permission.code(), ErrorCode::PermissionDenied);
+    assert_eq!(permission.target(), Some(&ErrorTarget::Path(denied)));
+    assert!(permission.recoverable());
 }
 
 #[test]
-fn test_error_permission_denied_variant() {
-    let error = CoreError::PermissionDenied(PathBuf::from("/root/secret"));
-
-    match error {
-        CoreError::PermissionDenied(path) => {
-            assert_eq!(path, PathBuf::from("/root/secret"));
-        }
-        _ => panic!("Expected PermissionDenied variant"),
-    }
-}
-
-#[test]
-fn test_error_invalid_path_variant() {
-    let error = CoreError::InvalidPath("Invalid path format".to_string());
-
-    match error {
-        CoreError::InvalidPath(msg) => {
-            assert_eq!(msg, "Invalid path format");
-        }
-        _ => panic!("Expected InvalidPath variant"),
-    }
-}
-
-#[test]
-fn test_error_channel_closed_variant() {
-    let error = CoreError::ChannelClosed("test channel".into());
-
-    match error {
-        CoreError::ChannelClosed(detail) => {
-            assert_eq!(detail, "test channel");
-        }
-        _ => panic!("Expected ChannelClosed variant"),
-    }
-}
-
-#[test]
-fn test_error_cancelled_variant() {
-    let error = CoreError::Cancelled;
-
-    match error {
-        CoreError::Cancelled => {
-            // Expected variant
-        }
-        _ => panic!("Expected Cancelled variant"),
-    }
-}
-
-#[test]
-fn test_error_actor_error_variant() {
-    let error = CoreError::ActorError {
-        actor: "Navigator",
-        message: "Failed to navigate".to_string(),
-    };
-
-    match error {
-        CoreError::ActorError { actor, message } => {
-            assert_eq!(actor, "Navigator");
-            assert_eq!(message, "Failed to navigate");
-        }
-        _ => panic!("Expected ActorError variant"),
-    }
-}
-
-#[test]
-fn test_error_display_io() {
-    let error = CoreError::Io {
-        path: PathBuf::from("/tmp/file.txt"),
-        message: "Failed to read".to_string(),
-    };
-
-    let display = format!("{}", error);
-    assert!(display.contains("/tmp/file.txt"));
-    assert!(display.contains("Failed to read"));
-}
-
-#[test]
-fn test_error_display_not_found() {
-    let error = CoreError::NotFound(PathBuf::from("/nonexistent/path"));
-
-    let display = format!("{}", error);
-    assert!(display.contains("/nonexistent/path"));
-    assert!(display.contains("not found") || display.contains("Not found"));
-}
-
-#[test]
-fn test_error_display_permission_denied() {
-    let error = CoreError::PermissionDenied(PathBuf::from("/root/secret"));
-
-    let display = format!("{}", error);
-    assert!(display.contains("/root/secret"));
-    assert!(display.contains("permission") || display.contains("Permission"));
-}
-
-#[test]
-fn test_error_display_invalid_path() {
-    let error = CoreError::InvalidPath("Invalid path format".to_string());
-
-    let display = format!("{}", error);
-    assert!(display.contains("Invalid path format"));
-}
-
-#[test]
-fn test_error_display_channel_closed() {
-    let error = CoreError::ChannelClosed("command bus".into());
-
-    let display = format!("{}", error);
-    assert!(
-        display.contains("hannel"),
-        "should mention channel: {}",
-        display
-    );
-    assert!(
-        display.contains("command bus"),
-        "should contain detail: {}",
-        display
-    );
-}
-
-#[test]
-fn test_error_display_cancelled() {
-    let error = CoreError::Cancelled;
-
-    let display = format!("{}", error);
-    assert!(display.contains("cancel") || display.contains("Cancel"));
-}
-
-#[test]
-fn test_error_display_actor_error() {
-    let error = CoreError::ActorError {
-        actor: "Navigator",
-        message: "Failed to navigate".to_string(),
-    };
-
-    let display = format!("{}", error);
-    assert!(display.contains("Navigator"));
-    assert!(display.contains("Failed to navigate"));
-}
-
-#[test]
-fn test_error_debug() {
-    let error = CoreError::NotFound(PathBuf::from("/test"));
-    let debug = format!("{:?}", error);
-    assert!(debug.contains("NotFound"));
-    assert!(debug.contains("/test"));
+fn test_error_display_uses_message() {
+    let error = CoreError::invalid_path("Invalid path format");
+    assert_eq!(format!("{error}"), "Invalid path format");
 }
 
 #[test]
 fn test_error_is_error_trait() {
-    let error = CoreError::Cancelled;
-    // This ensures CoreError implements std::error::Error
+    let error = CoreError::cancelled();
     let _: &dyn std::error::Error = &error;
 }
 
 #[test]
-fn test_error_kind_for_all_core_error_variants() {
-    let path = PathBuf::from("/tmp/file.txt");
-    let cases = vec![
+fn test_error_code_kind_mapping() {
+    let cases = [
+        (ErrorCode::IoFailed, ErrorKind::Io),
+        (ErrorCode::PathNotFound, ErrorKind::NotFound),
+        (ErrorCode::PermissionDenied, ErrorKind::PermissionDenied),
+        (ErrorCode::ReadOnly, ErrorKind::PermissionDenied),
+        (ErrorCode::InvalidPath, ErrorKind::InvalidPath),
+        (ErrorCode::LocationUnresolved, ErrorKind::InvalidLocation),
         (
-            CoreError::Io {
-                path: path.clone(),
-                message: "io".to_string(),
-            },
-            ErrorKind::Io,
+            ErrorCode::LocationSegmentedUnsupported,
+            ErrorKind::InvalidLocation,
         ),
-        (CoreError::NotFound(path.clone()), ErrorKind::NotFound),
-        (
-            CoreError::PermissionDenied(path.clone()),
-            ErrorKind::PermissionDenied,
-        ),
-        (
-            CoreError::InvalidPath("bad path".to_string()),
-            ErrorKind::InvalidPath,
-        ),
-        (
-            CoreError::ChannelClosed("closed".to_string()),
-            ErrorKind::ChannelClosed,
-        ),
-        (CoreError::Cancelled, ErrorKind::Cancelled),
-        (
-            CoreError::ActorError {
-                actor: "test",
-                message: "failed".to_string(),
-            },
-            ErrorKind::Actor,
-        ),
-        (
-            CoreError::NetworkError("offline".to_string()),
-            ErrorKind::Network,
-        ),
-        (
-            CoreError::InvalidData("corrupt".to_string()),
-            ErrorKind::InvalidData,
-        ),
-        (
-            CoreError::InvalidInput("bad input".to_string()),
-            ErrorKind::InvalidInput,
-        ),
-        (
-            CoreError::Other(std::io::Error::other("unexpected")),
-            ErrorKind::Unknown,
-        ),
+        (ErrorCode::UnsupportedProvider, ErrorKind::Unsupported),
+        (ErrorCode::ChannelClosed, ErrorKind::ChannelClosed),
+        (ErrorCode::OperationCancelled, ErrorKind::Cancelled),
+        (ErrorCode::ActorFailed, ErrorKind::Actor),
+        (ErrorCode::NetworkFailed, ErrorKind::Network),
+        (ErrorCode::DataInvalid, ErrorKind::InvalidData),
+        (ErrorCode::InputInvalid, ErrorKind::InvalidInput),
+        (ErrorCode::SessionUnknown, ErrorKind::InvalidInput),
+        (ErrorCode::NavigationUnavailable, ErrorKind::InvalidInput),
+        (ErrorCode::UnsupportedOperation, ErrorKind::Unsupported),
+        (ErrorCode::Unknown, ErrorKind::Unknown),
     ];
 
-    for (error, expected) in cases {
-        assert_eq!(error.kind(), expected);
+    for (code, kind) in cases {
+        assert_eq!(code.kind(), kind);
     }
 }
 
 #[test]
-fn test_error_kind_recoverability() {
-    for kind in [
-        ErrorKind::NotFound,
-        ErrorKind::PermissionDenied,
-        ErrorKind::InvalidPath,
-        ErrorKind::Cancelled,
-        ErrorKind::Network,
+fn test_error_code_recoverability() {
+    for code in [
+        ErrorCode::PathNotFound,
+        ErrorCode::PermissionDenied,
+        ErrorCode::ReadOnly,
+        ErrorCode::InvalidPath,
+        ErrorCode::LocationUnresolved,
+        ErrorCode::LocationSegmentedUnsupported,
+        ErrorCode::UnsupportedProvider,
+        ErrorCode::OperationCancelled,
+        ErrorCode::NetworkFailed,
+        ErrorCode::SessionUnknown,
+        ErrorCode::NavigationUnavailable,
+        ErrorCode::UnsupportedOperation,
     ] {
-        assert!(kind.is_recoverable(), "{kind:?} should be recoverable");
+        assert!(code.is_recoverable(), "{code:?} should be recoverable");
     }
 
-    for kind in [
-        ErrorKind::Io,
-        ErrorKind::ChannelClosed,
-        ErrorKind::Actor,
-        ErrorKind::InvalidData,
-        ErrorKind::InvalidInput,
-        ErrorKind::Unknown,
+    for code in [
+        ErrorCode::IoFailed,
+        ErrorCode::ChannelClosed,
+        ErrorCode::ActorFailed,
+        ErrorCode::DataInvalid,
+        ErrorCode::InputInvalid,
+        ErrorCode::Unknown,
     ] {
-        assert!(!kind.is_recoverable(), "{kind:?} should not be recoverable");
+        assert!(!code.is_recoverable(), "{code:?} should not be recoverable");
     }
 }
 
 #[test]
-fn test_event_from_error_includes_kind_and_recoverability() {
+fn test_event_from_error_includes_formal_error_fields() {
     let session = SessionId::new();
     let path = PathBuf::from("/tmp/missing");
 
-    let event = Event::from_error(CoreError::NotFound(path), session);
+    let event = Event::from_error(CoreError::not_found(path.clone()), session);
     match event {
         Event::Error {
             kind,
+            code,
+            target,
             recoverable,
             session: event_session,
             request,
@@ -282,6 +129,8 @@ fn test_event_from_error_includes_kind_and_recoverability() {
             ..
         } => {
             assert_eq!(kind, ErrorKind::NotFound);
+            assert_eq!(code, ErrorCode::PathNotFound);
+            assert_eq!(target, Some(ErrorTarget::Path(path)));
             assert!(recoverable);
             assert_eq!(event_session, session);
             assert_eq!(request, None);
@@ -289,111 +138,83 @@ fn test_event_from_error_includes_kind_and_recoverability() {
         }
         other => panic!("expected Error event, got {other:?}"),
     }
+}
 
-    let event = Event::from_error(CoreError::InvalidInput("bad input".to_string()), session);
+#[test]
+fn test_request_and_operation_error_helpers_preserve_correlation() {
+    let session = SessionId::new();
+    let request = RequestId::new();
+    let operation = OperationId::new();
+
+    let event = Event::from_operation_error(
+        CoreError::invalid_input("bad input"),
+        session,
+        request,
+        operation,
+    );
+
     match event {
         Event::Error {
-            kind, recoverable, ..
+            kind,
+            code,
+            session: event_session,
+            request: event_request,
+            operation: event_operation,
+            ..
         } => {
             assert_eq!(kind, ErrorKind::InvalidInput);
-            assert!(!recoverable);
-        }
-        other => panic!("expected Error event, got {other:?}"),
-    }
-
-    let event = Event::from_error(CoreError::Other(std::io::Error::other("unknown")), session);
-    match event {
-        Event::Error {
-            kind, recoverable, ..
-        } => {
-            assert_eq!(kind, ErrorKind::Unknown);
-            assert!(!recoverable);
+            assert_eq!(code, ErrorCode::InputInvalid);
+            assert_eq!(event_session, session);
+            assert_eq!(event_request, Some(request));
+            assert_eq!(event_operation, Some(operation));
         }
         other => panic!("expected Error event, got {other:?}"),
     }
 }
 
-// Conversion tests - from std::io::Error
 #[test]
 fn test_conversion_from_io_error() {
-    use std::io::{Error as IoError, ErrorKind};
+    use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 
-    let io_error = IoError::new(ErrorKind::NotFound, "file not found");
     let path = PathBuf::from("/test/file.txt");
-    let core_error = CoreError::from_io_error(io_error, path.clone());
+    let core_error = CoreError::from_io_error(
+        IoError::new(IoErrorKind::NotFound, "file not found"),
+        path.clone(),
+    );
 
-    match core_error {
-        CoreError::NotFound(p) => assert_eq!(p, path),
-        _ => panic!("Expected NotFound variant for NotFound io error"),
-    }
+    assert_eq!(core_error.code(), ErrorCode::PathNotFound);
+    assert_eq!(core_error.target(), Some(&ErrorTarget::Path(path)));
+    assert!(std::error::Error::source(&core_error).is_some());
 }
 
 #[test]
-fn test_conversion_from_io_error_permission_denied() {
-    use std::io::{Error as IoError, ErrorKind};
+fn test_conversion_from_permission_denied() {
+    use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 
-    let io_error = IoError::new(ErrorKind::PermissionDenied, "access denied");
     let path = PathBuf::from("/root/secret");
-    let core_error = CoreError::from_io_error(io_error, path.clone());
+    let core_error = CoreError::from_io_error(
+        IoError::new(IoErrorKind::PermissionDenied, "access denied"),
+        path.clone(),
+    );
 
-    match core_error {
-        CoreError::PermissionDenied(p) => assert_eq!(p, path),
-        _ => panic!("Expected PermissionDenied variant for PermissionDenied io error"),
-    }
+    assert_eq!(core_error.code(), ErrorCode::PermissionDenied);
+    assert_eq!(core_error.target(), Some(&ErrorTarget::Path(path)));
 }
 
 #[test]
-fn test_conversion_from_io_error_other() {
-    use std::io::{Error as IoError, ErrorKind};
+fn test_conversion_from_other_io_error() {
+    use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 
-    let io_error = IoError::new(ErrorKind::TimedOut, "timeout");
     let path = PathBuf::from("/test/file.txt");
-    let core_error = CoreError::from_io_error(io_error, path.clone());
+    let core_error =
+        CoreError::from_io_error(IoError::new(IoErrorKind::TimedOut, "timeout"), path.clone());
 
-    match core_error {
-        CoreError::Io { path: p, message } => {
-            assert_eq!(p, path);
-            assert!(message.contains("timeout"));
-        }
-        _ => panic!("Expected Io variant for other io errors"),
-    }
+    assert_eq!(core_error.code(), ErrorCode::IoFailed);
+    assert_eq!(core_error.target(), Some(&ErrorTarget::Path(path)));
+    assert!(core_error.message.contains("timeout"));
 }
 
 #[test]
-fn test_error_equality_check() {
-    // Test that we can match on error types
-    let error1 = CoreError::ChannelClosed("test".into());
-    let error2 = CoreError::Cancelled;
-
-    assert!(matches!(error1, CoreError::ChannelClosed(_)));
-    assert!(matches!(error2, CoreError::Cancelled));
-    assert!(!matches!(error1, CoreError::Cancelled));
-}
-
-#[test]
-fn test_error_with_empty_strings() {
-    let error = CoreError::InvalidPath(String::new());
-    let display = format!("{}", error);
-    assert!(!display.is_empty());
-}
-
-#[test]
-fn test_error_with_special_characters() {
-    let error = CoreError::InvalidPath("Path with\nnewlines\tand\ttabs".to_string());
-    let display = format!("{}", error);
-    assert!(display.contains("Path with"));
-}
-
-#[test]
-fn test_error_actor_with_various_actors() {
-    let actors = ["Navigator", "Scanner", "Searcher", "Previewer"];
-
-    for actor in actors {
-        let error = CoreError::ActorError {
-            actor,
-            message: "Test error".to_string(),
-        };
-        let display = format!("{}", error);
-        assert!(display.contains(actor));
-    }
+fn test_emit_trace_does_not_require_subscriber() {
+    CoreError::invalid_input("bad input").emit_trace();
 }

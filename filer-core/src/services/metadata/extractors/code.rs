@@ -30,7 +30,7 @@ impl MetadataExtractor for CodeExtractor {
         provider: &dyn FsProvider,
     ) -> Result<ExtendedMetadata, CoreError> {
         if mime.category != MimeCategory::Text {
-            return Err(CoreError::InvalidData(
+            return Err(CoreError::invalid_data(
                 "Invalid type of extractor".to_string(),
             ));
         }

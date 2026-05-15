@@ -31,7 +31,7 @@ use flume::Receiver;
 use crate::actors::Actor;
 use crate::api::commands::Command;
 use crate::api::module::{HandlerContext, HandlerRegistry};
-use crate::errors::ErrorKind;
+use crate::errors::CoreError;
 use crate::utils::channel::send_or_warn;
 
 /// Command Router actor — generic dispatcher backed by [`HandlerRegistry`].
@@ -70,13 +70,19 @@ impl CommandRouter {
         {
             send_or_warn(
                 &self.ctx.events,
-                crate::api::events::Event::Error {
-                    kind: ErrorKind::InvalidInput,
-                    message: format!("Unknown session: {}", session),
-                    recoverable: true,
-                    session,
-                    request,
-                    operation,
+                {
+                    let error = CoreError::unknown_session(session);
+                    let mut event = crate::api::events::Event::from_error(error, session);
+                    if let crate::api::events::Event::Error {
+                        request: event_request,
+                        operation: event_operation,
+                        ..
+                    } = &mut event
+                    {
+                        *event_request = request;
+                        *event_operation = operation;
+                    }
+                    event
                 },
                 "unknown session error",
             );

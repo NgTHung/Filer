@@ -8,7 +8,7 @@ use rapidhash::fast::RandomState;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
-use crate::errors::ErrorKind;
+use crate::errors::CoreError;
 use crate::model::node::NodeId;
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
@@ -193,14 +193,11 @@ impl Actor for Searcher {
                     let Some(path) = self.registry.resolve(root) else {
                         send_or_warn(
                             &self.events,
-                            Event::Error {
-                                kind: ErrorKind::InvalidInput,
-                                message: format!("Unable to resolve ID: {root:?}"),
-                                recoverable: true,
+                            Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {root:?}")),
                                 session,
-                                request: Some(request),
-                                operation: None,
-                            },
+                                request,
+                            ),
                             "search resolve error",
                         );
                         continue;

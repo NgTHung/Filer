@@ -1,6 +1,6 @@
 //! Tests for VFS providers
 
-use crate::errors::CoreError;
+use crate::errors::{CoreError, ErrorCode};
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
 use crate::vfs::local::LocalFs;
@@ -72,10 +72,7 @@ async fn test_local_fs_list_not_found() {
     let result = fs.list(Path::new("/nonexistent/directory/path")).await;
 
     assert!(result.is_err());
-    match result {
-        Err(CoreError::NotFound(_)) => {}
-        _ => panic!("Expected NotFound error"),
-    }
+    assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
 }
 
 #[tokio::test]
@@ -102,10 +99,7 @@ async fn test_local_fs_read_not_found() {
 
     assert!(result.is_err());
     print!("{:?}", result);
-    match result {
-        Err(CoreError::NotFound(_)) => {}
-        _ => panic!("Expected NotFound error"),
-    }
+    assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
 }
 
 #[tokio::test]
@@ -229,10 +223,7 @@ async fn test_local_fs_metadata_not_found() {
     let result = fs.metadata(Path::new("/nonexistent/file.txt")).await;
 
     assert!(result.is_err());
-    match result {
-        Err(CoreError::NotFound(_)) => {}
-        _ => panic!("Expected NotFound error"),
-    }
+    assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
 }
 
 // ===== MockFs Implementation =====
@@ -276,7 +267,7 @@ impl FsProvider for MockFs {
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
         if !self.directories.contains(&path.to_path_buf()) {
-            return Err(CoreError::NotFound(path.to_path_buf()));
+            return Err(CoreError::not_found(path.to_path_buf()));
         }
 
         let mut nodes = Vec::new();
@@ -305,7 +296,7 @@ impl FsProvider for MockFs {
         self.files
             .get(path)
             .cloned()
-            .ok_or_else(|| CoreError::NotFound(path.to_path_buf()))
+            .ok_or_else(|| CoreError::not_found(path.to_path_buf()))
     }
 
     async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
@@ -328,7 +319,7 @@ impl FsProvider for MockFs {
         if self.files.contains_key(path) || self.directories.contains(&path.to_path_buf()) {
             FileNode::from_path(path.to_path_buf(), None)
         } else {
-            Err(CoreError::NotFound(path.to_path_buf()))
+            Err(CoreError::not_found(path.to_path_buf()))
         }
     }
 }
@@ -371,10 +362,7 @@ async fn test_mock_fs_read_not_found() {
     let result = fs.read(Path::new("/nonexistent.txt")).await;
 
     assert!(result.is_err());
-    match result {
-        Err(CoreError::NotFound(_)) => {}
-        _ => panic!("Expected NotFound error"),
-    }
+    assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
 }
 
 #[tokio::test]
@@ -568,7 +556,7 @@ mod write_tests {
         let path = dir.path().join("nonexistent.txt");
 
         let result = fs.delete(&path).await;
-        assert!(matches!(result, Err(CoreError::NotFound(_))));
+        assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
     }
 
     // --- mkdir ---

@@ -18,7 +18,7 @@ impl ArchiveFs {
     }
 
     fn unsupported(&self) -> CoreError {
-        CoreError::InvalidInput(format!(
+        CoreError::unsupported_operation(format!(
             "archive filesystem navigation is not implemented for {}",
             self.archive_path.display()
         ))

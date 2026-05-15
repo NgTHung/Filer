@@ -167,8 +167,9 @@ near-term product boundary.
   result events are suppressed when superseded by a newer request.
 - [x] `Core` Operation ids for copy, move, delete, rename, create file, and
   create folder progress, completion, and operation-scoped errors.
-- [x] `Core` Structured `ErrorKind` categories on app-facing `Event::Error`
-  events, with recoverability derived from the kind.
+- [x] `Core` Structured `CoreError`, `ErrorKind`, `ErrorCode`, and
+  `ErrorTarget` fields on app-facing `Event::Error`, with recoverability
+  derived from the code.
 - [x] `Core` Additive `Location` primitives for provider-aware addressing, with
   id fast-path lookup and descriptor-based recovery.
 - [x] `Core` Harden `LocationRef` into explicit transport variants and keep
@@ -193,7 +194,8 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   stale events can be rejected consistently.
 - [x] `Core` Add operation ids for copy, move, delete, rename, create file, and
   create folder progress/completion events.
-- [x] `Core` Add structured error kinds for current app-facing error events.
+- [x] `Core` Add structured error kinds, codes, targets, and tracing diagnostics
+  for current app-facing error events.
 - [x] `Reliability` Add focused regression coverage for stale scan, search, and
   preview suppression, including parallel test execution.
 - [x] `Core` Define the first additive provider `Location` model with
@@ -207,8 +209,10 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   while keeping public path/node command surfaces unchanged.
 - [x] `Core` Add internal route classification for direct local paths,
   segmented locations, and unsupported provider references.
-- [ ] `Core` Add richer structured error context for collision, unsupported
-  provider capability, stale request, and location-targeted cases.
+- [x] `Core` Add richer structured error context for location-targeted,
+  unsupported-provider, session, navigation-state, path, and operation cases.
+- [ ] `Core` Add more specific structured error context for collision, stale
+  request, and provider capability cases.
 - [ ] `Core` Migrate public commands, events, `FileNode`, and provider routing
   from raw path/node addressing toward `Location` where it improves transport
   and provider behavior.
@@ -234,10 +238,10 @@ Exit criteria:
 
 - [x] Stale scan/search/preview results are ignored by request identity.
 - [x] Operations emit correlated progress/completion by operation id.
-- [x] Error events carry a structured `ErrorKind` so app and web clients can
-  branch without parsing message strings.
-- [ ] Error events carry enough target/context for app and web clients to render
-  clear location-aware feedback.
+- [x] Error events carry structured `ErrorKind`, `ErrorCode`, and optional
+  `ErrorTarget` so app and web clients can branch without parsing message
+  strings.
+- [x] Error event recoverability is derived from the stable error code.
 - [x] The initial provider `Location` model is documented and tested.
 - [ ] Public command/event transport can use `LocationRef` without id-only
   reconstruction failure across processes or machines.
@@ -266,11 +270,13 @@ core events being truthful and fresh.
   affected parent directories.
 - [x] `Reliability` Add stale-event guards for preview and search results by
   session and request identity.
-- [ ] `Reliability` Add error targets and provider-specific context so app UI
-  can display clear permission, collision, not-found, and unsupported-provider
+- [x] `Reliability` Add error targets and provider-specific context so app UI
+  can display clear permission, not-found, location, and unsupported-provider
   states.
-- [ ] `Reliability` Keep structured tracing for all app-facing command and event
-  paths.
+- [x] `Reliability` Emit structured tracing when core errors become app-facing
+  error events.
+- [ ] `Reliability` Extend tracing coverage across all app-facing command
+  paths, not only error conversion.
 - [ ] `Reliability` Add stress tests for rapid create/delete/rename watcher
   bursts.
 - [ ] `Reliability` Add cancellation tests for long operations, search, preview,

@@ -144,7 +144,7 @@ impl FsProvider for MockProvider {
     }
 
     async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
-        Err(CoreError::NotFound(path.to_path_buf()))
+        Err(CoreError::not_found(path.to_path_buf()))
     }
 }
 

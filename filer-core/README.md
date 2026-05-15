@@ -54,8 +54,8 @@ Completed contract work:
   parallel test validation
 - operation ids for copy, move, delete, rename, create file, and create folder
   progress, completion, and operation-scoped errors
-- structured error kinds through `ErrorKind`, `CoreError::kind()`, and
-  `Event::Error { kind, message, recoverable, session, request, operation }`
+- structured errors through `ErrorKind`, stable `ErrorCode`, optional
+  `ErrorTarget`, `CoreError`, and correlation-aware `Event::Error` helpers
 - additive provider-aware `Location` primitives through `LocationId`,
   `LocationDescriptor`, `LocationRef`, `LocationRoute`, `LocationSegment`, and
   `ProviderRef`, with registry recovery from descriptors when id lookup fails
@@ -71,10 +71,12 @@ ordered segment layers so nested archive/member and virtual layers are modeled
 without compressing everything into one path string. `LocationRoute` now
 classifies descriptors as direct local paths, segmented locations, or
 unsupported provider routes, and `NodeRegistry` caches those derived routes by
-`LocationId`. This still does not change the existing public command, event,
-`FileNode`, or `FsProvider` path surfaces. Large-directory loading, richer error
-context, cancellation/timeout semantics, full `Location` migration, archive
-navigation, and extension output envelopes remain open contract work.
+`LocationId`. Error events now carry formal `ErrorCode` and `ErrorTarget`
+fields, and core emits structured `tracing` diagnostics when converting
+`CoreError` into `Event::Error`. This still does not change the existing public
+command, `FileNode`, or `FsProvider` path surfaces. Large-directory loading,
+cancellation/timeout semantics, full `Location` migration, archive navigation,
+and extension output envelopes remain open contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -117,7 +119,8 @@ be used for new client-originated work.
 Scan, search, and preview actors remember the latest request per session. If an
 older task finishes after a newer one, its result events are dropped before they
 reach clients. Request-scoped errors use `Event::Error { request: Some(id), .. }`;
-non-request errors and operation errors currently use `request: None`.
+operation-scoped errors carry both `request: Some(id)` and
+`operation: Some(id)` when the originating command has both identifiers.
 
 The `0.2.1` test coverage now checks that superseded scan, search, and preview
 requests do not emit stale client-visible result events, including under
@@ -153,17 +156,20 @@ filesystem canonicalization; provider-specific canonicalization can be added
 later as an explicit operation.
 
 Resolution follows a hybrid rule. `LocationRef::Id` uses the registry fast path
-or returns `CoreError::InvalidLocation`. `LocationRef::Descriptor` reconstructs
-and registers the location. `LocationRef::Full` uses the id when present in the
-registry and falls back to descriptor recovery when the id is missing.
+or returns a `CoreError` with `ErrorCode::LocationUnresolved`.
+`LocationRef::Descriptor` reconstructs and registers the location.
+`LocationRef::Full` uses the id when present in the registry and falls back to
+descriptor recovery when the id is missing.
 
 Routing is derived from descriptors. Unsegmented `file` + `Local` descriptors
 route to `LocationRoute::DirectPath`; segmented local descriptors route to
 `LocationRoute::Segmented`; profile and ephemeral providers route to
 `LocationRoute::UnsupportedProvider` until provider profile routing exists.
-`LocationRoute::require_direct_path()` returns `InvalidLocation` for segmented
-or unsupported routes. The registry caches derived routes by `LocationId` and
-clears that cache with the rest of the registry state.
+`LocationRoute::require_direct_path()` returns
+`LocationSegmentedUnsupported` for segmented routes and `UnsupportedProvider`
+for provider routes that are not yet connected. The registry caches derived
+routes by `LocationId` and clears that cache with the rest of the registry
+state.
 
 Commands or persisted state that may cross a process or machine boundary should
 carry descriptors, not ids alone. Large batches can still avoid repeating full
@@ -198,17 +204,20 @@ the handle. `OperationId::DEFAULT` is reserved for compatibility placeholders
 and should not be used for new client-originated work.
 
 Operation-scoped failures use `Event::Error { operation: Some(id), request:
-None, .. }`. Non-operation errors use `operation: None`. Cancellation remains
-session-scoped for now; operation-id-specific cancellation can be added later
-without changing the correlation contract.
+Some(request), .. }` through `Event::from_operation_error()`. Non-operation
+errors use `operation: None`. Cancellation remains session-scoped for now;
+operation-id-specific cancellation can be added later without changing the
+correlation contract.
 
-## Error Kinds
+## Errors
 
-App-facing error events now include a machine-readable `ErrorKind`:
+App-facing error events carry formal error fields:
 
 ```rust
 Event::Error {
     kind,
+    code,
+    target,
     message,
     recoverable,
     session,
@@ -217,10 +226,12 @@ Event::Error {
 }
 ```
 
-`message` remains the human-readable display text. `kind` is the stable value
-clients should branch on. `recoverable` is derived from `kind` by
-`ErrorKind::is_recoverable()` so event producers do not maintain a separate
-mapping.
+`message` remains the human-readable display text. `kind` is the broad category
+for coarse UI branching. `code` is the stable machine-readable reason clients
+should prefer for specific behavior. `target` identifies the failed object when
+core can name one, such as a path, location id, provider, session, request,
+operation, actor, or channel. `recoverable` is derived from `ErrorCode`, so
+event producers do not maintain separate boolean mappings.
 
 Current kinds are:
 
@@ -235,14 +246,22 @@ Current kinds are:
 - `Network`
 - `InvalidData`
 - `InvalidInput`
+- `Unsupported`
 - `Unknown`
 
-`CoreError::kind()` maps every `CoreError` variant to one of those categories,
-and `Event::from_error()` copies that kind into `Event::Error`. Request-scoped
-errors still use `request: Some(id)`, operation-scoped errors still use
-`operation: Some(id)`, and generic session errors keep both fields as `None`.
-Future work can add structured error targets once the provider `Location` model
-is wired through public commands and events.
+Current codes include path, location, provider, session, navigation, channel,
+actor, network, data, input, unsupported-operation, and unknown cases.
+`CoreError` is structured data rather than a variant-only enum; construct it
+through helpers such as `CoreError::not_found(path)`,
+`CoreError::permission_denied(path)`, `CoreError::location_unresolved(id)`, and
+`CoreError::from_io_error(err, path)`.
+
+Use `Event::from_error()`, `Event::from_request_error()`, and
+`Event::from_operation_error()` instead of constructing `Event::Error` by hand.
+Those helpers preserve request/operation correlation and emit one structured
+`tracing` event with `error.kind`, `error.code`, `error.target`,
+`error.recoverable`, and `error.message`. `filer-core` does not install a
+global tracing subscriber; applications and tests decide how to collect logs.
 
 ## Usage
 

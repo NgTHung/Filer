@@ -61,9 +61,11 @@ impl LocalWatchProvider {
             NoCache,
             NotifyConfig::default(),
         )
-        .map_err(|e| CoreError::Io {
-            path: PathBuf::new(),
-            message: format!("failed to create notify debouncer: {e}"),
+        .map_err(|e| {
+            CoreError::io(
+                PathBuf::new(),
+                format!("failed to create notify debouncer: {e}"),
+            )
         })?;
 
         *guard = Some(debouncer);
@@ -85,10 +87,7 @@ impl WatchProvider for LocalWatchProvider {
 
         debouncer
             .watch(path, RecursiveMode::Recursive)
-            .map_err(|e| CoreError::Io {
-                path: path.to_path_buf(),
-                message: format!("notify watch failed: {e}"),
-            })?;
+            .map_err(|e| CoreError::io(path.to_path_buf(), format!("notify watch failed: {e}")))?;
 
         Ok(Box::new(LocalWatchHandle))
     }
@@ -96,9 +95,8 @@ impl WatchProvider for LocalWatchProvider {
     async fn unwatch(&self, path: &Path) -> Result<(), CoreError> {
         let mut guard = self.debouncer.lock().unwrap();
         if let Some(debouncer) = guard.as_mut() {
-            debouncer.unwatch(path).map_err(|e| CoreError::Io {
-                path: path.to_path_buf(),
-                message: format!("notify unwatch failed: {e}"),
+            debouncer.unwatch(path).map_err(|e| {
+                CoreError::io(path.to_path_buf(), format!("notify unwatch failed: {e}"))
             })?;
         }
         Ok(())

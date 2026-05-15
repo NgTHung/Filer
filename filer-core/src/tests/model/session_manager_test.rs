@@ -21,7 +21,7 @@ mod session_manager_tests {
 
     use crate::api::events::Event;
     use crate::api::session_manager::{SendError, SessionManager};
-    use crate::errors::ErrorKind;
+    use crate::errors::{ErrorCode, ErrorKind};
     use crate::model::registry::NodeRegistry;
     use crate::model::session::{Operation, RestrictedPolicy, SessionId};
 
@@ -146,6 +146,8 @@ mod session_manager_tests {
         // Send an event only to session 1
         let event = Event::Error {
             kind: ErrorKind::Unknown,
+            code: ErrorCode::Unknown,
+            target: None,
             message: "for session 1 only".into(),
             recoverable: true,
             session: id1,
@@ -181,6 +183,8 @@ mod session_manager_tests {
 
         let event = Event::Error {
             kind: ErrorKind::Unknown,
+            code: ErrorCode::Unknown,
+            target: None,
             message: "broadcast".into(),
             recoverable: false,
             session: SessionId::DEFAULT, // broadcast, so session field is illustrative
@@ -206,6 +210,8 @@ mod session_manager_tests {
         // Should not panic even with zero sessions
         let event = Event::Error {
             kind: ErrorKind::Unknown,
+            code: ErrorCode::Unknown,
+            target: None,
             message: "nobody home".into(),
             recoverable: true,
             session: SessionId::DEFAULT,
@@ -225,6 +231,8 @@ mod session_manager_tests {
 
         let event = Event::Error {
             kind: ErrorKind::Unknown,
+            code: ErrorCode::Unknown,
+            target: None,
             message: "hello".into(),
             recoverable: true,
             session: id,
@@ -248,6 +256,8 @@ mod session_manager_tests {
 
         let event = Event::Error {
             kind: ErrorKind::Unknown,
+            code: ErrorCode::Unknown,
+            target: None,
             message: "lost".into(),
             recoverable: false,
             session: bogus,
@@ -274,6 +284,8 @@ mod session_manager_tests {
 
         let event = Event::Error {
             kind: ErrorKind::Unknown,
+            code: ErrorCode::Unknown,
+            target: None,
             message: "orphan".into(),
             recoverable: false,
             session: id,
@@ -423,6 +435,8 @@ mod session_manager_tests {
 
         let event = Event::Error {
             kind: ErrorKind::Unknown,
+            code: ErrorCode::Unknown,
+            target: None,
             message: "still here".into(),
             recoverable: true,
             session: SessionId::DEFAULT,
@@ -449,6 +463,8 @@ mod session_manager_tests {
         for i in 0..5 {
             let event = Event::Error {
                 kind: ErrorKind::Unknown,
+                code: ErrorCode::Unknown,
+                target: None,
                 message: format!("msg-{}", i),
                 recoverable: true,
                 session: id,

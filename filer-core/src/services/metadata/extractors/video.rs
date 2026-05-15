@@ -59,7 +59,7 @@ impl VideoExtractor {
         let bytes = provider.read(path).await?;
         let mut cursor = std::io::Cursor::new(bytes);
         let context = read_mp4(&mut cursor)
-            .map_err(|e| CoreError::InvalidData(format!("Cannot parse MP4: {e:?}")))?;
+            .map_err(|e| CoreError::invalid_data(format!("Cannot parse MP4: {e:?}")))?;
 
         let video_track = context
             .tracks

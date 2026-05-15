@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::errors::{CoreError, ErrorKind};
+use crate::errors::{ErrorCode, ErrorKind};
 use crate::model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
     ProviderRef,
@@ -137,8 +137,8 @@ fn registry_rejects_unknown_id_without_descriptor() {
         .resolve_location_ref(&LocationRef::id_only(LocationId(999)))
         .unwrap_err();
 
-    assert!(matches!(err, CoreError::InvalidLocation(_)));
     assert_eq!(err.kind(), ErrorKind::InvalidLocation);
+    assert_eq!(err.code(), ErrorCode::LocationUnresolved);
 }
 
 #[test]
@@ -283,8 +283,8 @@ fn require_direct_path_rejects_segmented_locations() {
         .route();
     let err = route.require_direct_path().unwrap_err();
 
-    assert!(matches!(err, CoreError::InvalidLocation(_)));
     assert_eq!(err.kind(), ErrorKind::InvalidLocation);
+    assert_eq!(err.code(), ErrorCode::LocationSegmentedUnsupported);
 }
 
 #[test]
