@@ -22,10 +22,11 @@ use flume::Receiver;
 use tokio::time::timeout;
 
 use crate::actors::Actor;
-use crate::api::events::{Event, OperationKind};
+use crate::api::events::Event;
 use crate::errors::CoreError;
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
-use crate::model::operation::OperationId;
+use crate::model::operation::{OperationId, OperationKind};
+use crate::model::progress::{ProgressKind, ProgressStatus};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -544,10 +545,20 @@ mod copy_tests {
 
         let (progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
-        // Should have OperationProgress events for each file copied
+        // Should have ProgressUpdated events for each file copied.
         let progress_count = progress
             .iter()
-            .filter(|e| matches!(e, Event::OperationProgress { session: s, .. } if *s == session))
+            .filter(|e| {
+                matches!(
+                    e,
+                    Event::ProgressUpdated {
+                        scope,
+                        ..
+                    } if scope.session == session
+                        && scope.operation == Some(operation_id)
+                        && matches!(scope.kind, ProgressKind::Operation(OperationKind::Copy))
+                )
+            })
             .count();
         assert!(
             progress_count >= 3,
@@ -558,12 +569,11 @@ mod copy_tests {
         let items_done_values: Vec<usize> = progress
             .iter()
             .filter_map(|e| match e {
-                Event::OperationProgress {
-                    operation_id: id,
-                    items_done,
-                    session: s,
-                    ..
-                } if *s == session && *id == operation_id => Some(*items_done),
+                Event::ProgressUpdated { scope, snapshot }
+                    if scope.session == session && scope.operation == Some(operation_id) =>
+                {
+                    Some(snapshot.done)
+                }
                 _ => None,
             })
             .collect();
@@ -767,15 +777,25 @@ mod move_tests {
 
         let (progress_events, final_event) = wait_for_completion(&evt_rx, session).await;
 
-        // Same-FS move: no progress events, just completion
+        // Same-FS move emits only completion progress before completion.
         let progress_count = progress_events
             .iter()
-            .filter(|e| matches!(e, Event::OperationProgress { .. }))
+            .filter(|e| matches!(e, Event::ProgressUpdated { .. }))
             .count();
         assert_eq!(
-            progress_count, 0,
-            "Same-filesystem move should not emit progress events"
+            progress_count, 1,
+            "Same-filesystem move should only emit completion progress"
         );
+        assert!(progress_events.iter().any(|e| {
+            matches!(
+                e,
+                Event::ProgressUpdated {
+                    scope,
+                    snapshot
+                } if matches!(scope.kind, ProgressKind::Operation(OperationKind::Move))
+                    && snapshot.status == ProgressStatus::Completed
+            )
+        }));
 
         match final_event {
             Event::OperationComplete {

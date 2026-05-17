@@ -2,6 +2,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OperationKind {
+    Copy,
+    Move,
+    Delete,
+    Rename,
+    CreateFolder,
+    CreateFile,
+}
+
 /// Unique identifier for a file operation flow.
 ///
 /// Operation IDs are runtime-local correlation tokens. They are monotonic to

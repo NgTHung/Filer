@@ -27,6 +27,10 @@ impl CancellationToken {
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
     }
+
+    fn same_instance(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.cancelled, &other.cancelled)
+    }
 }
 
 impl Default for CancellationToken {
@@ -94,6 +98,14 @@ impl CancelMap {
     /// Remove the entry for `session` once its task has finished.
     pub async fn remove(&self, session: SessionId) {
         let _ = self.inner.remove_async(&session).await;
+    }
+
+    /// Remove the entry only if it still belongs to the finishing task.
+    pub async fn remove_if_current(&self, session: SessionId, token: &CancellationToken) {
+        let _ = self
+            .inner
+            .remove_if_async(&session, |current| current.same_instance(token))
+            .await;
     }
 
     /// Cancel all in-flight tasks — called during actor shutdown.

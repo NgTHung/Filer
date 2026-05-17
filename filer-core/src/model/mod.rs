@@ -3,6 +3,7 @@ pub mod fs_change;
 pub mod location;
 pub mod node;
 pub mod operation;
+pub mod progress;
 pub mod query;
 pub mod registry;
 pub mod request;

@@ -149,7 +149,7 @@ Async command flows that can produce stale results now carry a `RequestId`.
 Callers create one request id per user intent and include it on commands for
 navigation-driven scans, refresh, search, preview, metadata, and extended
 metadata. The same id is echoed on matching events, including
-`DirectoryLoaded`, `ScanProgress`, `SearchResults`, `PreviewReady`,
+`DirectoryLoaded`, `ProgressUpdated`, `SearchResults`, `PreviewReady`,
 `PreviewFailed`, `MetadataLoaded`, and `ExtendedMetadataLoaded`.
 
 `RequestId::new()` creates runtime-local monotonic ids. `FilerCore` also exposes
@@ -166,6 +166,22 @@ operation-scoped errors carry both `request: Some(id)` and
 The test coverage checks that superseded scan, search, and preview requests do
 not emit stale client-visible result events, including Location-based scan,
 search, and preview commands and parallel test execution.
+
+## Progress
+
+Long-running work reports progress through `Event::ProgressUpdated`. The event
+carries a `ProgressScope` for correlation and a `ProgressSnapshot` for the
+current status, phase, unit, counts, and optional target. Scan progress is
+request-scoped. Operation progress is both request- and operation-scoped. The
+older scanner- and operation-specific progress event shapes have been replaced
+by this shared contract.
+
+Scan progress is phase-based. It reports cache lookup, provider loading,
+registration, processing, result emission, completion, cancellation, and failure
+when those phases apply. Provider listing still returns a full vector, so scans
+do not yet stream one progress update per filesystem entry during I/O.
+`DirectoryLoadState` on directory result events remains the source of truth for
+bounded result completeness.
 
 ## Location
 
@@ -253,7 +269,7 @@ full address no longer maps to one filesystem path.
 File operation commands now carry an `OperationId`. Callers create one operation
 id per user intent and include it on `Copy`, `Move`, `Delete`, `Rename`,
 `CreateFolder`, and `CreateFile` commands. The same id is echoed on
-`OperationProgress` and `OperationComplete` events.
+`ProgressUpdated` and `OperationComplete` events.
 
 `OperationId::new()` creates runtime-local monotonic ids. `FilerCore` also
 exposes `next_operation_id()` for callers that prefer to allocate ids through

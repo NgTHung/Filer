@@ -19,7 +19,11 @@ pub use model::location::{
     ProviderRef,
 };
 pub use model::node::{FileNode, NodeEntry, NodeMeta};
-pub use model::operation::OperationId;
+pub use model::operation::{OperationId, OperationKind};
+pub use model::progress::{
+    ProgressKind, ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget,
+    ProgressUnit,
+};
 pub use model::request::RequestId;
 
 // Services

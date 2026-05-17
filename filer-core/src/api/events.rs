@@ -4,7 +4,8 @@ use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
 use crate::model::directory::DirectoryLoadState;
 use crate::model::location::LocationRef;
 use crate::model::node::{NodeEntry, NodeId, NodeMeta};
-use crate::model::operation::OperationId;
+use crate::model::operation::{OperationId, OperationKind};
+use crate::model::progress::{ProgressScope, ProgressSnapshot};
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavState;
@@ -40,12 +41,10 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Scan progress update
-    ScanProgress {
-        scanned: usize,
-        current: NodeId,
-        session: SessionId,
-        request: RequestId,
+    /// Generic progress update for scan, operation, and future long-running tasks.
+    ProgressUpdated {
+        scope: ProgressScope,
+        snapshot: ProgressSnapshot,
     },
 
     /// Batch of files (streaming results)
@@ -79,15 +78,6 @@ pub enum Event {
         operation: OperationKind,
         success: bool,
         affected: Vec<NodeId>,
-        session: SessionId,
-    },
-
-    OperationProgress {
-        operation_id: OperationId,
-        operation: OperationKind,
-        total_items: usize,
-        items_done: usize,
-        current_file: NodeId,
         session: SessionId,
     },
 
@@ -182,14 +172,4 @@ impl Event {
         }
         event
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum OperationKind {
-    Copy,
-    Move,
-    Delete,
-    Rename,
-    CreateFolder,
-    CreateFile,
 }

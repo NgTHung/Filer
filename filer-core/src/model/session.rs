@@ -19,11 +19,13 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use serde::{Deserialize, Serialize};
+
 /// Unique session identifier
 ///
 /// Each client connection gets a unique SessionId. Commands and events
 /// are tagged with SessionId to route to the correct client.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionId(pub u64);
 
 impl SessionId {

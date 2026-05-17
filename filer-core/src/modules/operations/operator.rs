@@ -5,9 +5,12 @@ use flume::{Receiver, Sender};
 
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
-use crate::api::events::{Event, OperationKind};
+use crate::api::events::Event;
 use crate::model::node::NodeId;
-use crate::model::operation::OperationId;
+use crate::model::operation::{OperationId, OperationKind};
+use crate::model::progress::{
+    ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
+};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -168,6 +171,7 @@ impl Operator {
         }
 
         let cancel = self.active_ops.arm(session);
+        let active = self.active_ops.clone();
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
@@ -175,9 +179,26 @@ impl Operator {
 
         tokio::spawn(async move {
             let mut affected = Vec::new();
+            let mut items_done = 0usize;
 
             for src_path in src_paths {
                 if cancel.is_cancelled() {
+                    emit_operation_progress(
+                        &events,
+                        OperationKind::Copy,
+                        session,
+                        request,
+                        operation,
+                        ProgressSnapshot::new(
+                            ProgressStatus::Cancelled,
+                            ProgressPhase::Processing,
+                            ProgressUnit::Item,
+                            affected.len(),
+                            None,
+                            None,
+                        ),
+                    )
+                    .await;
                     return;
                 }
 
@@ -203,7 +224,6 @@ impl Operator {
 
                 if meta.is_dir() {
                     let dst_sub = dst_path.join(file_name);
-                    let mut items_done = 0usize;
                     match copy_dir_recursive(
                         &fs,
                         &src_path,
@@ -213,12 +233,31 @@ impl Operator {
                         &registry,
                         session,
                         operation,
+                        request,
                         &mut items_done,
                     )
                     .await
                     {
                         Ok(()) => {}
-                        Err(e) if e.code() == ErrorCode::OperationCancelled => return,
+                        Err(e) if e.code() == ErrorCode::OperationCancelled => {
+                            emit_operation_progress(
+                                &events,
+                                OperationKind::Copy,
+                                session,
+                                request,
+                                operation,
+                                ProgressSnapshot::new(
+                                    ProgressStatus::Cancelled,
+                                    ProgressPhase::Processing,
+                                    ProgressUnit::Item,
+                                    items_done,
+                                    None,
+                                    None,
+                                ),
+                            )
+                            .await;
+                            return;
+                        }
                         Err(e) => {
                             send_or_warn_async(
                                 &events,
@@ -243,10 +282,27 @@ impl Operator {
                         return;
                     }
                     invalidate_parent_cache(&cache, &dst_file);
+                    items_done += 1;
                     affected.push(registry.clone().register(dst_file));
                 }
             }
 
+            emit_operation_progress(
+                &events,
+                OperationKind::Copy,
+                session,
+                request,
+                operation,
+                ProgressSnapshot::new(
+                    ProgressStatus::Completed,
+                    ProgressPhase::Finalizing,
+                    ProgressUnit::Item,
+                    items_done,
+                    None,
+                    None,
+                ),
+            )
+            .await;
             send_or_warn_async(
                 &events,
                 Event::OperationComplete {
@@ -259,6 +315,7 @@ impl Operator {
                 "operator: copy complete",
             )
             .await;
+            active.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -303,6 +360,7 @@ impl Operator {
         }
 
         let cancel = self.active_ops.arm(session);
+        let active = self.active_ops.clone();
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
@@ -313,6 +371,22 @@ impl Operator {
 
             for src_path in src_paths {
                 if cancel.is_cancelled() {
+                    emit_operation_progress(
+                        &events,
+                        OperationKind::Move,
+                        session,
+                        request,
+                        operation,
+                        ProgressSnapshot::new(
+                            ProgressStatus::Cancelled,
+                            ProgressPhase::Processing,
+                            ProgressUnit::Item,
+                            affected.len(),
+                            None,
+                            None,
+                        ),
+                    )
+                    .await;
                     return;
                 }
 
@@ -360,6 +434,22 @@ impl Operator {
                 }
             }
 
+            emit_operation_progress(
+                &events,
+                OperationKind::Move,
+                session,
+                request,
+                operation,
+                ProgressSnapshot::new(
+                    ProgressStatus::Completed,
+                    ProgressPhase::Finalizing,
+                    ProgressUnit::Item,
+                    affected.len(),
+                    None,
+                    None,
+                ),
+            )
+            .await;
             send_or_warn_async(
                 &events,
                 Event::OperationComplete {
@@ -372,6 +462,7 @@ impl Operator {
                 "operator: move complete",
             )
             .await;
+            active.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -402,6 +493,7 @@ impl Operator {
         }
 
         let cancel = self.active_ops.arm(session);
+        let active = self.active_ops.clone();
         let events = self.events.clone();
         let fs = self.provider.clone();
         let trash_fn = self.trash_fn.clone();
@@ -414,6 +506,22 @@ impl Operator {
 
             for (id, path) in paths {
                 if cancel.is_cancelled() {
+                    emit_operation_progress(
+                        &events,
+                        OperationKind::Delete,
+                        session,
+                        request,
+                        operation,
+                        ProgressSnapshot::new(
+                            ProgressStatus::Cancelled,
+                            ProgressPhase::Processing,
+                            ProgressUnit::Item,
+                            items_done,
+                            Some(total),
+                            None,
+                        ),
+                    )
+                    .await;
                     return;
                 }
 
@@ -435,13 +543,21 @@ impl Operator {
                         if total > 1 {
                             send_or_warn_async(
                                 &events,
-                                Event::OperationProgress {
-                                    operation: OperationKind::Delete,
-                                    operation_id: operation,
-                                    total_items: total,
-                                    items_done,
-                                    current_file: id,
-                                    session,
+                                Event::ProgressUpdated {
+                                    scope: ProgressScope::operation(
+                                        OperationKind::Delete,
+                                        session,
+                                        request,
+                                        operation,
+                                    ),
+                                    snapshot: ProgressSnapshot::new(
+                                        ProgressStatus::Running,
+                                        ProgressPhase::Processing,
+                                        ProgressUnit::Item,
+                                        items_done,
+                                        Some(total),
+                                        Some(ProgressTarget::Node(id)),
+                                    ),
                                 },
                                 "operator: delete progress",
                             )
@@ -460,6 +576,22 @@ impl Operator {
                 }
             }
 
+            emit_operation_progress(
+                &events,
+                OperationKind::Delete,
+                session,
+                request,
+                operation,
+                ProgressSnapshot::new(
+                    ProgressStatus::Completed,
+                    ProgressPhase::Finalizing,
+                    ProgressUnit::Item,
+                    items_done,
+                    Some(total),
+                    None,
+                ),
+            )
+            .await;
             send_or_warn_async(
                 &events,
                 Event::OperationComplete {
@@ -472,6 +604,7 @@ impl Operator {
                 "operator: delete complete",
             )
             .await;
+            active.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -545,6 +678,22 @@ impl Operator {
 
             invalidate_parent_cache(&cache, &src_path);
             let id = registry.register(new_path);
+            emit_operation_progress(
+                &events,
+                OperationKind::Rename,
+                session,
+                request,
+                operation,
+                ProgressSnapshot::new(
+                    ProgressStatus::Completed,
+                    ProgressPhase::Finalizing,
+                    ProgressUnit::Item,
+                    1,
+                    Some(1),
+                    Some(ProgressTarget::Node(id)),
+                ),
+            )
+            .await;
             send_or_warn_async(
                 &events,
                 Event::OperationComplete {
@@ -614,6 +763,22 @@ impl Operator {
             }
             invalidate_parent_cache(&cache, &full_path);
             let id = registry.register(full_path);
+            emit_operation_progress(
+                &events,
+                OperationKind::CreateFile,
+                session,
+                request,
+                operation,
+                ProgressSnapshot::new(
+                    ProgressStatus::Completed,
+                    ProgressPhase::Finalizing,
+                    ProgressUnit::Item,
+                    1,
+                    Some(1),
+                    Some(ProgressTarget::Node(id)),
+                ),
+            )
+            .await;
             send_or_warn_async(
                 &events,
                 Event::OperationComplete {
@@ -683,6 +848,22 @@ impl Operator {
             }
             invalidate_parent_cache(&cache, &full_path);
             let id = registry.register(full_path);
+            emit_operation_progress(
+                &events,
+                OperationKind::CreateFolder,
+                session,
+                request,
+                operation,
+                ProgressSnapshot::new(
+                    ProgressStatus::Completed,
+                    ProgressPhase::Finalizing,
+                    ProgressUnit::Item,
+                    1,
+                    Some(1),
+                    Some(ProgressTarget::Node(id)),
+                ),
+            )
+            .await;
             send_or_warn_async(
                 &events,
                 Event::OperationComplete {
@@ -708,6 +889,7 @@ async fn copy_dir_recursive(
     registry: &NodeRegistry,
     session: SessionId,
     operation: OperationId,
+    request: RequestId,
     items_done: &mut usize,
 ) -> Result<(), CoreError> {
     fs.mkdir(dst).await?;
@@ -720,7 +902,7 @@ async fn copy_dir_recursive(
         let dst_child = dst.join(&entry.name);
         if entry.is_dir() {
             Box::pin(copy_dir_recursive(
-                fs, &src_child, &dst_child, cancel, events, registry, session, operation,
+                fs, &src_child, &dst_child, cancel, events, registry, session, operation, request,
                 items_done,
             ))
             .await?;
@@ -730,13 +912,21 @@ async fn copy_dir_recursive(
             let id = registry.clone().register(dst_child);
             send_or_warn_async(
                 events,
-                Event::OperationProgress {
-                    operation: OperationKind::Copy,
-                    operation_id: operation,
-                    total_items: 0,
-                    items_done: *items_done,
-                    current_file: id,
-                    session,
+                Event::ProgressUpdated {
+                    scope: ProgressScope::operation(
+                        OperationKind::Copy,
+                        session,
+                        request,
+                        operation,
+                    ),
+                    snapshot: ProgressSnapshot::new(
+                        ProgressStatus::Running,
+                        ProgressPhase::Processing,
+                        ProgressUnit::Item,
+                        *items_done,
+                        None,
+                        Some(ProgressTarget::Node(id)),
+                    ),
                 },
                 "operator: copy dir progress",
             )
@@ -753,6 +943,25 @@ fn operation_error(
     operation: OperationId,
 ) -> Event {
     Event::from_operation_error(err, session, request, operation)
+}
+
+async fn emit_operation_progress(
+    events: &Sender<Event>,
+    kind: OperationKind,
+    session: SessionId,
+    request: RequestId,
+    operation: OperationId,
+    snapshot: ProgressSnapshot,
+) {
+    send_or_warn_async(
+        events,
+        Event::ProgressUpdated {
+            scope: ProgressScope::operation(kind, session, request, operation),
+            snapshot,
+        },
+        "operator: progress",
+    )
+    .await;
 }
 
 fn is_cross_device(err: &CoreError) -> bool {

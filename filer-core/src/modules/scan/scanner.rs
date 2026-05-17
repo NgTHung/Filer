@@ -10,6 +10,9 @@ use crate::errors::CoreError;
 use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
+use crate::model::progress::{
+    ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
+};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -163,7 +166,7 @@ impl Scanner {
                 parent_location,
             )
             .await;
-            active_scans.remove(session).await;
+            active_scans.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -240,7 +243,38 @@ impl Scanner {
             }
         }
 
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Started,
+                ProgressPhase::Loading,
+                ProgressUnit::Step,
+                0,
+                None,
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
+
         // 1. Cache check (before I/O)
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::CacheLookup,
+                ProgressUnit::Step,
+                0,
+                None,
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
         let cached_nodes = cache.and_then(|c| c.lock().ok()?.get(path, load_options.listing));
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
@@ -248,9 +282,39 @@ impl Scanner {
             registry.clone().register_batch_file_node(&cached);
             let pipeline = Pipeline::from_config(&pipeline_config);
             let (groups, load) = pipeline.execute_grouped(cached).limited(load_options.limit);
+            Self::emit_scan_progress(
+                events,
+                latest_scans,
+                session,
+                request,
+                ProgressSnapshot::new(
+                    ProgressStatus::Running,
+                    ProgressPhase::Processing,
+                    ProgressUnit::Entry,
+                    load.loaded_count,
+                    load.total_count,
+                    Self::scan_target(path, parent_location.as_ref()),
+                ),
+            )
+            .await;
             if !Self::is_latest(latest_scans, session, request) {
                 return;
             }
+            Self::emit_scan_progress(
+                events,
+                latest_scans,
+                session,
+                request,
+                ProgressSnapshot::new(
+                    ProgressStatus::Running,
+                    ProgressPhase::Emitting,
+                    ProgressUnit::Entry,
+                    load.loaded_count,
+                    load.total_count,
+                    Self::scan_target(path, parent_location.as_ref()),
+                ),
+            )
+            .await;
             if let Some(parent) = parent_location {
                 send_or_warn_async(
                     events,
@@ -281,15 +345,60 @@ impl Scanner {
                 )
                 .await;
             }
+            Self::emit_scan_progress(
+                events,
+                latest_scans,
+                session,
+                request,
+                ProgressSnapshot::new(
+                    ProgressStatus::Completed,
+                    ProgressPhase::Finalizing,
+                    ProgressUnit::Entry,
+                    load.loaded_count,
+                    load.total_count,
+                    Self::scan_target(path, None),
+                ),
+            )
+            .await;
             return;
         }
 
         // 2. List directory (cache miss)
         tracing::trace!(path = %path.display(), session = %session, "Directory scan cache miss, listing provider");
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::Loading,
+                ProgressUnit::Entry,
+                0,
+                None,
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
         let entries = match provider.list_with_options(path, load_options.listing).await {
             Ok(entries) => entries,
             Err(e) => {
                 if Self::is_latest(latest_scans, session, request) {
+                    Self::emit_scan_progress(
+                        events,
+                        latest_scans,
+                        session,
+                        request,
+                        ProgressSnapshot::new(
+                            ProgressStatus::Failed,
+                            ProgressPhase::Loading,
+                            ProgressUnit::Entry,
+                            0,
+                            None,
+                            Self::scan_target(path, parent_location.as_ref()),
+                        ),
+                    )
+                    .await;
                     send_or_warn_async(
                         events,
                         Event::from_request_error(e, session, request),
@@ -313,10 +422,40 @@ impl Scanner {
 
         // 3. Check cancellation after I/O
         if cancel.is_cancelled() {
+            Self::emit_scan_progress(
+                events,
+                latest_scans,
+                session,
+                request,
+                ProgressSnapshot::new(
+                    ProgressStatus::Cancelled,
+                    ProgressPhase::Loading,
+                    ProgressUnit::Entry,
+                    0,
+                    None,
+                    Self::scan_target(path, parent_location.as_ref()),
+                ),
+            )
+            .await;
             return;
         }
 
         // 4. Register nodes
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::Registering,
+                ProgressUnit::Entry,
+                entries.len(),
+                Some(entries.len()),
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
         let parent_id = registry.clone().register(path.to_path_buf());
         registry.clone().register_batch_file_node(&entries);
 
@@ -325,9 +464,39 @@ impl Scanner {
         let (groups, load) = pipeline
             .execute_grouped(entries)
             .limited(load_options.limit);
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::Processing,
+                ProgressUnit::Entry,
+                load.loaded_count,
+                load.total_count,
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
 
         // 5. Check cancellation after pipeline
         if cancel.is_cancelled() {
+            Self::emit_scan_progress(
+                events,
+                latest_scans,
+                session,
+                request,
+                ProgressSnapshot::new(
+                    ProgressStatus::Cancelled,
+                    ProgressPhase::Processing,
+                    ProgressUnit::Entry,
+                    load.loaded_count,
+                    load.total_count,
+                    Self::scan_target(path, parent_location.as_ref()),
+                ),
+            )
+            .await;
             return;
         }
         if !Self::is_latest(latest_scans, session, request) {
@@ -335,6 +504,21 @@ impl Scanner {
         }
 
         // 6. Send result
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::Emitting,
+                ProgressUnit::Entry,
+                load.loaded_count,
+                load.total_count,
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
         if let Some(parent) = parent_location {
             send_or_warn_async(
                 events,
@@ -363,6 +547,49 @@ impl Scanner {
             )
             .await;
         }
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Completed,
+                ProgressPhase::Finalizing,
+                ProgressUnit::Entry,
+                load.loaded_count,
+                load.total_count,
+                Self::scan_target(path, None),
+            ),
+        )
+        .await;
+    }
+
+    async fn emit_scan_progress(
+        events: &Sender<Event>,
+        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
+        session: SessionId,
+        request: RequestId,
+        snapshot: ProgressSnapshot,
+    ) {
+        if !Self::is_latest(latest_scans, session, request) {
+            return;
+        }
+        send_or_warn_async(
+            events,
+            Event::ProgressUpdated {
+                scope: ProgressScope::scan(session, request),
+                snapshot,
+            },
+            "scan progress",
+        )
+        .await;
+    }
+
+    fn scan_target(path: &Path, location: Option<&LocationRef>) -> Option<ProgressTarget> {
+        location
+            .cloned()
+            .map(ProgressTarget::Location)
+            .or_else(|| Some(ProgressTarget::Path(path.to_path_buf())))
     }
 
     fn is_latest(

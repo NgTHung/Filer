@@ -182,6 +182,7 @@ mod scanner_cache_tests {
     use crate::actors::Actor;
     use crate::api::events::Event;
     use crate::model::location::{Location, LocationRef};
+    use crate::model::progress::{ProgressKind, ProgressPhase, ProgressStatus};
     use crate::model::registry::NodeRegistry;
     use crate::model::request::RequestId;
     use crate::model::session::SessionId;
@@ -252,6 +253,179 @@ mod scanner_cache_tests {
                 _ => panic!("timed out or channel closed waiting for DirectoryEntriesLoaded"),
             }
         }
+    }
+
+    async fn collect_until_dir_loaded(evt_rx: &Receiver<Event>, session: SessionId) -> Vec<Event> {
+        let mut events = Vec::new();
+        let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+        loop {
+            match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+                Ok(Ok(event @ Event::DirectoryLoaded { session: s, .. })) if s == session => {
+                    events.push(event);
+                    events.extend(collect_for_duration(evt_rx, Duration::from_millis(50)).await);
+                    return events;
+                }
+                Ok(Ok(event)) => events.push(event),
+                _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
+            }
+        }
+    }
+
+    async fn collect_for_duration(evt_rx: &Receiver<Event>, duration: Duration) -> Vec<Event> {
+        let mut events = Vec::new();
+        let deadline = tokio::time::Instant::now() + duration;
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            events.push(event);
+        }
+        events
+    }
+
+    #[tokio::test]
+    async fn test_scan_emits_generic_progress_through_completion() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/progress", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/progress"),
+                session,
+                pipeline: default_pipeline(),
+                load: crate::DirectoryLoadOptions::default(),
+                request,
+            })
+            .unwrap();
+
+        let events = collect_until_dir_loaded(&evt_rx, session).await;
+        let progress: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::ProgressUpdated { scope, snapshot }
+                    if scope.session == session
+                        && scope.request == Some(request)
+                        && scope.kind == ProgressKind::Scan =>
+                {
+                    Some(snapshot)
+                }
+                _ => None,
+            })
+            .collect();
+
+        assert!(progress.iter().any(|p| p.status == ProgressStatus::Started));
+        assert!(
+            progress
+                .iter()
+                .any(|p| p.phase == ProgressPhase::CacheLookup)
+        );
+        assert!(progress.iter().any(|p| p.phase == ProgressPhase::Emitting));
+        assert!(
+            progress
+                .iter()
+                .any(|p| p.status == ProgressStatus::Completed)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scan_cancel_emits_cancelled_progress() {
+        let provider = MockProvider::new();
+        provider.set_delay_ms(50);
+        provider.add_file(make_file("a.txt", "/tmp/progress-cancel", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/progress-cancel"),
+                session,
+                pipeline: default_pipeline(),
+                load: crate::DirectoryLoadOptions::default(),
+                request,
+            })
+            .unwrap();
+        cmd_tx.send(ScanCommand::Cancel(session)).unwrap();
+
+        let events = collect_for_duration(&evt_rx, Duration::from_millis(200)).await;
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ProgressUpdated {
+                    scope,
+                    snapshot
+                } if scope.session == session
+                    && scope.request == Some(request)
+                    && snapshot.status == ProgressStatus::Cancelled
+            )
+        }));
+        assert!(!events.iter().any(|event| {
+            matches!(event, Event::DirectoryLoaded { session: s, .. } if *s == session)
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_scan_failure_emits_failed_progress_before_error() {
+        let provider = MockProvider::new();
+        provider.set_should_fail(true);
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/progress-fail"),
+                session,
+                pipeline: default_pipeline(),
+                load: crate::DirectoryLoadOptions::default(),
+                request,
+            })
+            .unwrap();
+
+        let events = collect_for_duration(&evt_rx, Duration::from_millis(200)).await;
+        let failed_index = events.iter().position(|event| {
+            matches!(
+                event,
+                Event::ProgressUpdated {
+                    scope,
+                    snapshot
+                } if scope.session == session
+                    && scope.request == Some(request)
+                    && snapshot.status == ProgressStatus::Failed
+            )
+        });
+        let error_index = events.iter().position(|event| {
+            matches!(
+                event,
+                Event::Error {
+                    session: s,
+                    request: Some(r),
+                    ..
+                } if *s == session && *r == request
+            )
+        });
+
+        assert!(failed_index.is_some());
+        assert!(error_index.is_some());
+        assert!(failed_index < error_index);
     }
 
     #[tokio::test]
