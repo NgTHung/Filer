@@ -673,6 +673,54 @@ mod navigator_actor_tests {
     }
 
     #[tokio::test]
+    async fn test_navigator_invalidate_refreshes_current_directory() {
+        let (cmd_tx, cmd_rx) = flume::unbounded();
+        let (event_tx, _event_rx) = flume::unbounded();
+        let (scanner_tx, scanner_rx) = flume::unbounded();
+        let reg = NodeRegistry::new();
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+
+        tokio::spawn(async move {
+            navigator.run().await;
+        });
+
+        let session = session(1);
+        let current = node(100);
+
+        cmd_tx
+            .send(NavCommand::Navigate {
+                session,
+                node: current,
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+
+        let _ = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("Navigate should trigger initial scan")
+            .expect("scanner channel should remain open");
+
+        cmd_tx.send(NavCommand::Invalidate(current)).unwrap();
+
+        let refresh = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("Invalidate should trigger refresh scan")
+            .expect("scanner channel should remain open");
+
+        assert!(
+            matches!(
+                refresh,
+                ScanCommand::RefreshNode {
+                    node,
+                    session: s,
+                    ..
+                } if node == current && s == session
+            ),
+            "Invalidate should refresh the session currently displaying the node"
+        );
+    }
+
+    #[tokio::test]
     async fn test_navigator_multiple_sessions() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();

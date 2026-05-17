@@ -27,6 +27,7 @@ mod command_router_tests {
     use crate::api::events::Event;
     use crate::api::module::{HandlerContext, HandlerRegistry};
     use crate::api::session_manager::SessionManager;
+    use crate::model::location::{Location, LocationRef};
     use crate::model::node::NodeId;
     use crate::model::operation::OperationId;
     use crate::model::registry::NodeRegistry;
@@ -38,6 +39,7 @@ mod command_router_tests {
     use crate::modules::scan::scanner::ScanCommand;
     use crate::modules::search::searcher::SearchCommand;
     use crate::modules::watch::watcher::WatchCommand;
+    use crate::pipeline::PipelineConfig;
 
     /// Timeout for async operations in tests
     const TEST_TIMEOUT: Duration = Duration::from_millis(500);
@@ -57,7 +59,7 @@ mod command_router_tests {
         /// Receive NavCommands that the router dispatches
         nav_rx: Receiver<NavCommand>,
         /// Receive ScanCommands that the router dispatches
-        _scan_rx: Receiver<ScanCommand>,
+        scan_rx: Receiver<ScanCommand>,
         /// Receive SearchCommands that the router dispatches
         search_rx: Receiver<SearchCommand>,
         /// Receive WatchCommands that the router dispatches
@@ -81,7 +83,7 @@ mod command_router_tests {
             let (command_tx, command_rx) = flume::unbounded::<Command>();
             let (event_tx, event_rx) = flume::unbounded::<Event>();
             let (nav_tx, nav_rx) = flume::unbounded::<NavCommand>();
-            let (_scan_tx, _scan_rx) = flume::unbounded::<ScanCommand>();
+            let (scan_tx, scan_rx) = flume::unbounded::<ScanCommand>();
             let (search_tx, search_rx) = flume::unbounded::<SearchCommand>();
             let (watch_tx, watch_rx) = flume::unbounded::<WatchCommand>();
             let (preview_tx, preview_rx) = flume::unbounded::<PreviewCommand>();
@@ -121,6 +123,23 @@ mod command_router_tests {
                         let _ = tx.send(NavCommand::NavigateToPath {
                             session,
                             path,
+                            request,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = nav_tx.clone();
+                handlers.on("navigate.location", move |cmd, _ctx| {
+                    if let Command::NavigateLocation {
+                        location,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(NavCommand::NavigateToLocation {
+                            session,
+                            location,
                             request,
                         });
                     }
@@ -190,9 +209,49 @@ mod command_router_tests {
             }
             {
                 let tx = search_tx.clone();
+                handlers.on("search.location", move |cmd, _ctx| {
+                    if let Command::SearchLocation {
+                        query,
+                        root,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(SearchCommand::SearchLocation {
+                            query: crate::model::query::SearchQuery::parse(&query).unwrap(),
+                            root,
+                            session,
+                            request,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = search_tx.clone();
                 handlers.on("search.cancel", move |cmd, _ctx| {
                     if let Command::Cancel(session) = cmd {
                         let _ = tx.send(SearchCommand::Cancel(session));
+                    }
+                });
+            }
+
+            // ── Scan handlers ────────────────────────────────────────
+            {
+                let tx = scan_tx.clone();
+                handlers.on("scan.location", move |cmd, _ctx| {
+                    if let Command::ScanLocation {
+                        location,
+                        session,
+                        pipeline,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(ScanCommand::ScanLocation {
+                            location,
+                            session,
+                            pipeline,
+                            request,
+                        });
                     }
                 });
             }
@@ -245,6 +304,25 @@ mod command_router_tests {
             }
             {
                 let tx = preview_tx.clone();
+                handlers.on("preview.load.location", move |cmd, _ctx| {
+                    if let Command::LoadPreviewLocation {
+                        location,
+                        options,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(PreviewCommand::GenerateLocation {
+                            location,
+                            options,
+                            session,
+                            request,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = preview_tx.clone();
                 handlers.on("preview.cancel", move |cmd, _ctx| {
                     if let Command::CancelPreview(session) = cmd {
                         let _ = tx.send(PreviewCommand::Cancel(session));
@@ -266,6 +344,21 @@ mod command_router_tests {
             }
             {
                 let tx = preview_tx.clone();
+                handlers.on("metadata.load.location", move |cmd, _ctx| {
+                    if let Command::LoadMetadataLocation {
+                        location,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(PreviewCommand::LoadMetadataLocation(
+                            location, session, request,
+                        ));
+                    }
+                });
+            }
+            {
+                let tx = preview_tx.clone();
                 handlers.on("metadata.extended", move |cmd, _ctx| {
                     if let Command::LoadExtendedMetadata {
                         node,
@@ -275,6 +368,21 @@ mod command_router_tests {
                     {
                         let _ =
                             tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
+                    }
+                });
+            }
+            {
+                let tx = preview_tx.clone();
+                handlers.on("metadata.extended.location", move |cmd, _ctx| {
+                    if let Command::LoadExtendedMetadataLocation {
+                        location,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(PreviewCommand::LoadExtendedMetadataLocation(
+                            location, session, request,
+                        ));
                     }
                 });
             }
@@ -429,7 +537,7 @@ mod command_router_tests {
                 event_rx,
                 event_tx,
                 nav_rx,
-                _scan_rx,
+                scan_rx,
                 search_rx,
                 watch_rx,
                 preview_rx,
@@ -491,6 +599,41 @@ mod command_router_tests {
                 assert_eq!(r, request, "RequestId must be forwarded correctly");
             }
             other => panic!("Expected NavCommand::NavigateToPath, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_route_navigate_location_to_navigator() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = Location::local("/tmp/location-api-test");
+        let location_ref = LocationRef::from_location(&location);
+        let request = RequestId::new();
+
+        harness
+            .send(Command::NavigateLocation {
+                location: location_ref.clone(),
+                session,
+                request,
+            })
+            .await;
+
+        let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
+            .await
+            .expect("Timed out waiting for NavCommand")
+            .expect("NavCommand channel closed");
+
+        match nav_cmd {
+            NavCommand::NavigateToLocation {
+                session: s,
+                location,
+                request: r,
+            } => {
+                assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert_eq!(r, request, "RequestId must be forwarded");
+            }
+            other => panic!("Expected NavCommand::NavigateToLocation, got {:?}", other),
         }
     }
 
@@ -611,6 +754,83 @@ mod command_router_tests {
                 assert_eq!(s, session, "Session must be the same for both command");
             }
             other => panic!("Expected SearchCommand::Search, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_route_search_location_to_searcher() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = Location::local("/tmp/location-api-test");
+        let location_ref = LocationRef::from_location(&location);
+        let request = RequestId::new();
+
+        harness
+            .send(Command::SearchLocation {
+                query: "report".to_string(),
+                root: location_ref.clone(),
+                session,
+                request,
+            })
+            .await;
+
+        let search_cmd = timeout(TEST_TIMEOUT, harness.search_rx.recv_async())
+            .await
+            .expect("Timed out waiting for SearchCommand")
+            .expect("SearchCommand channel closed");
+
+        match search_cmd {
+            SearchCommand::SearchLocation {
+                query,
+                root,
+                session: s,
+                request: r,
+            } => {
+                assert_eq!(query.text, "report", "Query text must be forwarded");
+                assert_eq!(root, location_ref, "LocationRef must be forwarded");
+                assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(r, request, "RequestId must be forwarded");
+            }
+            other => panic!("Expected SearchCommand::SearchLocation, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_route_scan_location_to_scanner() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = Location::local("/tmp/location-api-test");
+        let location_ref = LocationRef::from_location(&location);
+        let pipeline = PipelineConfig::default();
+        let request = RequestId::new();
+
+        harness
+            .send(Command::ScanLocation {
+                location: location_ref.clone(),
+                session,
+                pipeline: pipeline.clone(),
+                request,
+            })
+            .await;
+
+        let scan_cmd = timeout(TEST_TIMEOUT, harness.scan_rx.recv_async())
+            .await
+            .expect("Timed out waiting for ScanCommand")
+            .expect("ScanCommand channel closed");
+
+        match scan_cmd {
+            ScanCommand::ScanLocation {
+                location,
+                session: s,
+                pipeline: p,
+                request: r,
+            } => {
+                assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(p, pipeline, "PipelineConfig must be forwarded");
+                assert_eq!(r, request, "RequestId must be forwarded");
+            }
+            other => panic!("Expected ScanCommand::ScanLocation, got {:?}", other),
         }
     }
 
@@ -762,6 +982,44 @@ mod command_router_tests {
     }
 
     #[tokio::test]
+    async fn test_route_load_preview_location_to_previewer() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = Location::local("/tmp/location-api-test/preview.txt");
+        let location_ref = LocationRef::from_location(&location);
+        let request = RequestId::new();
+
+        harness
+            .send(Command::LoadPreviewLocation {
+                location: location_ref.clone(),
+                options: None,
+                session,
+                request,
+            })
+            .await;
+
+        let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
+            .await
+            .expect("Timed out waiting for PreviewCommand")
+            .expect("PreviewCommand channel closed");
+
+        match preview_cmd {
+            PreviewCommand::GenerateLocation {
+                location,
+                options,
+                session: s,
+                request: r,
+            } => {
+                assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert!(options.is_none(), "Options must be forwarded as None");
+                assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(r, request, "RequestId must be forwarded");
+            }
+            other => panic!("Expected PreviewCommand::GenerateLocation, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn test_route_cancel_preview_to_previewer() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -811,6 +1069,40 @@ mod command_router_tests {
     }
 
     #[tokio::test]
+    async fn test_route_load_metadata_location_to_previewer() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = Location::local("/tmp/location-api-test/document.pdf");
+        let location_ref = LocationRef::from_location(&location);
+        let request = RequestId::new();
+
+        harness
+            .send(Command::LoadMetadataLocation {
+                location: location_ref.clone(),
+                session,
+                request,
+            })
+            .await;
+
+        let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
+            .await
+            .expect("Timed out waiting for PreviewCommand")
+            .expect("PreviewCommand channel closed");
+
+        match preview_cmd {
+            PreviewCommand::LoadMetadataLocation(location, s, r) => {
+                assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(r, request, "RequestId must be forwarded");
+            }
+            other => panic!(
+                "Expected PreviewCommand::LoadMetadataLocation, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[tokio::test]
     async fn test_route_load_extended_metadata_to_previewer() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -837,6 +1129,40 @@ mod command_router_tests {
             }
             other => panic!(
                 "Expected PreviewCommand::LoadExtendedMetadata, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_route_load_extended_metadata_location_to_previewer() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = Location::local("/tmp/location-api-test/music.mp3");
+        let location_ref = LocationRef::from_location(&location);
+        let request = RequestId::new();
+
+        harness
+            .send(Command::LoadExtendedMetadataLocation {
+                location: location_ref.clone(),
+                session,
+                request,
+            })
+            .await;
+
+        let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
+            .await
+            .expect("Timed out waiting for PreviewCommand")
+            .expect("PreviewCommand channel closed");
+
+        match preview_cmd {
+            PreviewCommand::LoadExtendedMetadataLocation(location, s, r) => {
+                assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(r, request, "RequestId must be forwarded");
+            }
+            other => panic!(
+                "Expected PreviewCommand::LoadExtendedMetadataLocation, got {:?}",
                 other
             ),
         }
@@ -1262,6 +1588,57 @@ mod command_router_tests {
         assert!(
             nav_result.is_err(),
             "Navigator should not receive command for unknown session"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_unknown_session_location_command_emits_error() {
+        let harness = RouterTestHarness::new();
+        let unknown = SessionId::new();
+        let location = Location::local("/tmp/location-api-test");
+        let request = RequestId::new();
+
+        harness
+            .send(Command::NavigateLocation {
+                location: LocationRef::from_location(&location),
+                session: unknown,
+                request,
+            })
+            .await;
+
+        let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
+            .await
+            .expect("Timed out waiting for error event")
+            .expect("Event channel closed");
+
+        match event {
+            Event::Error {
+                session,
+                request: error_request,
+                recoverable,
+                message,
+                ..
+            } => {
+                assert_eq!(session, unknown, "Error must carry the unknown session");
+                assert_eq!(
+                    error_request,
+                    Some(request),
+                    "Error must preserve the request id"
+                );
+                assert!(recoverable, "Unknown session should be recoverable");
+                assert!(
+                    message.contains("Unknown session"),
+                    "Error message should mention unknown session, got: {}",
+                    message
+                );
+            }
+            other => panic!("Expected Event::Error, got {:?}", other),
+        }
+
+        let nav_result = timeout(Duration::from_millis(50), harness.nav_rx.recv_async()).await;
+        assert!(
+            nav_result.is_err(),
+            "Navigator should not receive Location command for unknown session"
         );
     }
 

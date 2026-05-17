@@ -484,12 +484,14 @@ mod copy_tests {
 
         match final_event {
             Event::OperationComplete {
+                operation_id: id,
                 operation,
                 success,
                 affected,
                 session: s,
                 ..
             } => {
+                assert_eq!(id, operation_id);
                 assert!(matches!(operation, OperationKind::Copy));
                 assert!(success);
                 assert!(!affected.is_empty());
@@ -1343,19 +1345,7 @@ mod create_file_tests {
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
-        match final_event {
-            Event::Error {
-                session: s,
-                request,
-                operation,
-                ..
-            } => {
-                assert_eq!(s, session);
-                assert_eq!(request, Some(request_id));
-                assert_eq!(operation, Some(operation_id));
-            }
-            other => panic!("Expected Error for file collision, got: {other:?}"),
-        }
+        assert_error_correlation(&final_event, session, request_id, operation_id);
 
         assert!(
             provider.get_write_calls().is_empty(),

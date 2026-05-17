@@ -310,6 +310,7 @@ impl Navigator {
                 request,
             } => {
                 self.get_or_init(session).await;
+                let _ = self.path_cache.insert_async(node).await;
                 self.sessions
                     .update_async(&session, |_, v| {
                         v.navigate(node);
@@ -324,16 +325,12 @@ impl Navigator {
                 request,
             } => {
                 self.get_or_init(session).await;
+                let node = self.register.clone().register(path.clone());
+                let _ = self.path_cache.insert_async(node).await;
                 self.sessions
                     .update_async(&session, |_, v| {
-                        v.navigate(self.register.clone().register(path.clone()));
-                        Self::trigger_scan(
-                            session,
-                            self.register.clone().register(path),
-                            v,
-                            self.scanner_tx.clone(),
-                            request,
-                        );
+                        v.navigate(node);
+                        Self::trigger_scan(session, node, v, self.scanner_tx.clone(), request);
                     })
                     .await;
                 self.emit_snapshot(session);
@@ -379,6 +376,7 @@ impl Navigator {
                         return;
                     }
                 };
+                let _ = self.path_cache.insert_async(node).await;
                 self.sessions
                     .update_async(&session, |_, v| {
                         v.navigate(node);
@@ -550,7 +548,7 @@ impl Navigator {
                     self.sessions
                         .iter_async(|k, v| {
                             if v.current == Some(node_id) {
-                                Self::trigger_scan(
+                                Self::trigger_refresh_scan(
                                     *k,
                                     node_id,
                                     v,

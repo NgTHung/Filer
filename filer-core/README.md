@@ -51,7 +51,9 @@ Completed contract work:
 
 - request ids and stale-event guards for scan, search, preview, and refresh
 - focused stale-event regression tests for scan, search, and preview, including
-  parallel test validation
+  Location command parity and parallel test validation
+- cache and refresh hardening for direct-path `Location` scans and navigator
+  invalidation-triggered refreshes
 - operation ids for copy, move, delete, rename, create file, and create folder
   progress, completion, and operation-scoped errors
 - structured errors through `ErrorKind`, stable `ErrorCode`, optional
@@ -73,10 +75,13 @@ classifies descriptors as direct local paths, segmented locations, or
 unsupported provider routes, and `NodeRegistry` caches those derived routes by
 `LocationId`. Error events now carry formal `ErrorCode` and `ErrorTarget`
 fields, and core emits structured `tracing` diagnostics when converting
-`CoreError` into `Event::Error`. This still does not change the existing public
-command, `FileNode`, or `FsProvider` path surfaces. Large-directory loading,
-cancellation/timeout semantics, full `Location` migration, archive navigation,
-and extension output envelopes remain open contract work.
+`CoreError` into `Event::Error`. Direct local `Location` commands are now routed
+through navigation, scan, search, preview, metadata, and extended metadata, with
+tests covering cancellation, stale-result suppression, cache reuse, and
+correlation behavior. This still does not remove the existing public command,
+`FileNode`, or `FsProvider` path surfaces. Large-directory loading, timeout
+semantics, full `Location` migration, archive navigation, and extension output
+envelopes remain open contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -122,9 +127,9 @@ reach clients. Request-scoped errors use `Event::Error { request: Some(id), .. }
 operation-scoped errors carry both `request: Some(id)` and
 `operation: Some(id)` when the originating command has both identifiers.
 
-The `0.2.1` test coverage now checks that superseded scan, search, and preview
-requests do not emit stale client-visible result events, including under
-parallel test execution.
+The test coverage checks that superseded scan, search, and preview requests do
+not emit stale client-visible result events, including Location-based scan,
+search, and preview commands and parallel test execution.
 
 ## Location
 
@@ -178,6 +183,22 @@ later. Current providers still execute against `PathBuf`; `Location` is the
 compatibility layer that lets core migrate toward provider-aware addressing in
 small steps.
 
+Direct local `Location` commands currently route through the existing path-based
+execution layer. `NavigateLocation`, `ScanLocation`, `SearchLocation`,
+`LoadPreviewLocation`, `LoadMetadataLocation`, and
+`LoadExtendedMetadataLocation` resolve their `LocationRef`, require a direct
+path route, and preserve the original request id on results or structured
+errors. Segmented and unsupported-provider routes are represented and reported,
+but not executed yet.
+
+Scanner, searcher, and previewer tests now cover Location parity for stale
+result suppression, cancellation, cache hits, and session isolation. A
+`ScanLocation` cache hit emits `DirectoryEntriesLoaded`; `RefreshNode` still
+bypasses cache after a Location scan. Navigator invalidation now records
+navigated nodes and triggers `RefreshNode` for sessions currently displaying the
+invalidated directory, so app- or watcher-driven invalidation refreshes fresh
+directory data instead of serving stale cache entries.
+
 Nested archive addresses are represented as a provider root plus ordered
 segments, for example:
 
@@ -208,6 +229,11 @@ Some(request), .. }` through `Event::from_operation_error()`. Non-operation
 errors use `operation: None`. Cancellation remains session-scoped for now;
 operation-id-specific cancellation can be added later without changing the
 correlation contract.
+
+The operation tests assert that progress, completion, and error paths preserve
+the originating operation id. Collision and provider-failure cases for write
+operations use the same request/operation correlation contract as successful
+operations.
 
 ## Errors
 

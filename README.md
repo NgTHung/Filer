@@ -38,15 +38,16 @@ UI framework.
 
 The near-term priority is core contract stabilization, not a full plugin
 platform or app rewrite. Request identity and stale-event guards are now in
-place for scan, search, preview, and refresh flows, and file operations now emit
-correlated operation progress, completion, and error events. App-facing errors
-now carry `ErrorKind`, stable `ErrorCode`, optional `ErrorTarget`, and a
-recoverability flag derived from the code. Core also emits structured
-`tracing` events when `CoreError` becomes `Event::Error`, leaving subscriber
-setup to the application. The project should next build on the new `Location`
-foundation by migrating provider addressing where it matters, then settle
-large-directory loading contracts, extension output envelopes, and the boundary
-between app-local config and future profile sync.
+place for scan, search, preview, refresh, and their direct-path `Location`
+entrypoints, and file operations now emit correlated operation progress,
+completion, and error events. App-facing errors now carry `ErrorKind`, stable
+`ErrorCode`, optional `ErrorTarget`, and a recoverability flag derived from the
+code. Core also emits structured `tracing` events when `CoreError` becomes
+`Event::Error`, leaving subscriber setup to the application. The project should
+next build on the new `Location` foundation by migrating provider addressing
+where it matters, then settle large-directory loading contracts, extension
+output envelopes, and the boundary between app-local config and future profile
+sync.
 
 `0.2.3` hardens the additive `Location` contract for provider-aware addressing.
 `LocationRef` now has explicit id-only, descriptor-only, and full modes instead
@@ -54,14 +55,17 @@ of optional fields, and `LocationDescriptor` separates the provider root from
 ordered `LocationSegment` layers. `LocationId` hashes the root plus ordered
 segments, but not display text. `LocationRoute` now classifies descriptors as
 direct local paths, segmented locations, or unsupported provider routes, with a
-derived route cache in the registry. This does not yet replace public
-command/event `PathBuf` and `NodeId` surfaces; it strengthens the compatibility
-layer for that migration. The intent is for `Location` to become the bridge
-across local files, remote providers, virtual providers, extension-backed
-providers, and archives. Nested archive addresses can now be modeled as a
-provider root plus archive/member segments instead of forcing every layer into
-one path string. Large-directory loading, archive navigation, and wire-safe
-transport envelopes remain future work.
+derived route cache in the registry. Direct local `Location` commands are wired
+through API routing for navigation, scan, search, preview, metadata, and
+extended metadata, and the actor tests now check cancellation, stale-result
+suppression, cache reuse, and refresh behavior for those paths. This does not
+yet replace public command/event `PathBuf` and `NodeId` surfaces; it
+strengthens the compatibility layer for that migration. The intent is for
+`Location` to become the bridge across local files, remote providers, virtual
+providers, extension-backed providers, and archives. Nested archive addresses
+can now be modeled as a provider root plus archive/member segments instead of
+forcing every layer into one path string. Large-directory loading, archive
+navigation, and wire-safe transport envelopes remain future work.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

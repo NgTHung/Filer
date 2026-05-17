@@ -298,6 +298,53 @@ mod scanner_cache_tests {
     }
 
     #[tokio::test]
+    async fn test_scan_location_cache_hit_emits_directory_entries_loaded() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("cached.txt", "/tmp/location-cache", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let location = Location::local("/tmp/location-cache");
+        let s1 = SessionId::new();
+        let s2 = SessionId::new();
+
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: s1,
+                pipeline: default_pipeline(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_location_dir_loaded(&evt_rx, s1).await;
+
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: s2,
+                pipeline: default_pipeline(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let groups = wait_for_location_dir_loaded(&evt_rx, s2).await;
+
+        assert_eq!(groups.total_count, 1);
+        assert_eq!(groups.groups[0].nodes[0].name, "cached.txt");
+        assert_eq!(
+            provider.get_list_calls().len(),
+            1,
+            "second ScanLocation should hit cache but still emit DirectoryEntriesLoaded"
+        );
+    }
+
+    #[tokio::test]
     async fn test_scanner_bypasses_cache_after_invalidation() {
         let provider = MockProvider::new();
         provider.add_file(make_file("b.txt", "/tmp/dir2", 20, false));
@@ -347,6 +394,60 @@ mod scanner_cache_tests {
             calls.len(),
             2,
             "provider.list() should be called twice after cache invalidation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_node_bypasses_cache_after_location_scan() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("before.txt", "/tmp/location-refresh", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner = Scanner::with_cache(
+            cmd_rx,
+            evt_tx,
+            Arc::new(provider.clone()),
+            registry.clone(),
+            cache,
+        );
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = PathBuf::from("/tmp/location-refresh");
+        let node = registry.clone().register(path.clone());
+        let location = Location::local(path);
+        let s1 = SessionId::new();
+        let s2 = SessionId::new();
+
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: s1,
+                pipeline: default_pipeline(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_location_dir_loaded(&evt_rx, s1).await;
+
+        provider.add_file(make_file("after.txt", "/tmp/location-refresh", 20, false));
+
+        cmd_tx
+            .send(ScanCommand::RefreshNode {
+                node,
+                session: s2,
+                pipeline: default_pipeline(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let groups = wait_for_dir_loaded(&evt_rx, s2).await;
+
+        assert_eq!(provider.get_list_calls().len(), 2);
+        assert_eq!(
+            groups.total_count, 2,
+            "RefreshNode should bypass cache populated by ScanLocation"
         );
     }
 
@@ -405,6 +506,66 @@ mod scanner_cache_tests {
         assert_eq!(
             groups.total_count, 2,
             "RefreshNode should emit the fresh provider listing"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stale_scan_location_result_is_suppressed() {
+        let provider = MockProvider::new();
+        provider.set_delay_ms(50);
+        provider.add_file(make_file("fresh.txt", "/tmp/location-stale", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+        let location = Location::local("/tmp/location-stale");
+
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session,
+                pipeline: default_pipeline(),
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session,
+                pipeline: default_pipeline(),
+                request: fresh_request,
+            })
+            .unwrap();
+
+        let mut loaded_requests = Vec::new();
+        let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            if let Event::DirectoryEntriesLoaded {
+                session: s,
+                request,
+                ..
+            } = event
+                && s == session
+            {
+                loaded_requests.push(request);
+                if request == fresh_request {
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(loaded_requests, vec![fresh_request]);
+        assert!(
+            !loaded_requests.contains(&stale_request),
+            "stale ScanLocation request should not emit DirectoryEntriesLoaded"
         );
     }
 
