@@ -13,6 +13,7 @@ mod vfs;
 pub use api::module::Module;
 pub use api::{commands::Command, events::Event, handle::FilerCore};
 pub use errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
+pub use model::directory::{DirectoryLoadOptions, DirectoryLoadState};
 pub use model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
     ProviderRef,

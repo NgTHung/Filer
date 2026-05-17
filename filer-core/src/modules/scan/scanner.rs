@@ -7,6 +7,7 @@ use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::errors::CoreError;
+use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
@@ -15,7 +16,7 @@ use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::vfs::provider::{FsProvider, ListingOptions};
+use crate::vfs::provider::FsProvider;
 
 /// Commands for scanner actor
 #[derive(Debug, Clone)]
@@ -24,28 +25,28 @@ pub enum ScanCommand {
         path: PathBuf,
         session: SessionId,
         pipeline: PipelineConfig,
-        listing: ListingOptions,
+        load: DirectoryLoadOptions,
         request: RequestId,
     },
     ScanLocation {
         location: LocationRef,
         session: SessionId,
         pipeline: PipelineConfig,
-        listing: ListingOptions,
+        load: DirectoryLoadOptions,
         request: RequestId,
     },
     ScanNode {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
-        listing: ListingOptions,
+        load: DirectoryLoadOptions,
         request: RequestId,
     },
     RefreshNode {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
-        listing: ListingOptions,
+        load: DirectoryLoadOptions,
         request: RequestId,
     },
     Cancel(SessionId),
@@ -110,7 +111,7 @@ impl Scanner {
         path: PathBuf,
         session: SessionId,
         pipeline_config: PipelineConfig,
-        listing_options: ListingOptions,
+        load_options: DirectoryLoadOptions,
         invalidate_cache: bool,
         request: RequestId,
     ) {
@@ -118,7 +119,7 @@ impl Scanner {
             path,
             session,
             pipeline_config,
-            listing_options,
+            load_options,
             invalidate_cache,
             request,
             None,
@@ -130,7 +131,7 @@ impl Scanner {
         path: PathBuf,
         session: SessionId,
         pipeline_config: PipelineConfig,
-        listing_options: ListingOptions,
+        load_options: DirectoryLoadOptions,
         invalidate_cache: bool,
         request: RequestId,
         parent_location: Option<LocationRef>,
@@ -153,7 +154,7 @@ impl Scanner {
                 &path,
                 session,
                 pipeline_config,
-                listing_options,
+                load_options,
                 &cancel,
                 request,
                 &latest_scans,
@@ -171,7 +172,7 @@ impl Scanner {
         location_ref: LocationRef,
         session: SessionId,
         pipeline_config: PipelineConfig,
-        listing_options: ListingOptions,
+        load_options: DirectoryLoadOptions,
         invalidate_cache: bool,
         request: RequestId,
     ) {
@@ -203,7 +204,7 @@ impl Scanner {
             path,
             session,
             pipeline_config,
-            listing_options,
+            load_options,
             invalidate_cache,
             request,
             Some(LocationRef::from_location(&location)),
@@ -222,7 +223,7 @@ impl Scanner {
         path: &Path,
         session: SessionId,
         pipeline_config: PipelineConfig,
-        listing_options: ListingOptions,
+        load_options: DirectoryLoadOptions,
         cancel: &CancellationToken,
         request: RequestId,
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
@@ -240,13 +241,13 @@ impl Scanner {
         }
 
         // 1. Cache check (before I/O)
-        let cached_nodes = cache.and_then(|c| c.lock().ok()?.get(path, listing_options));
+        let cached_nodes = cache.and_then(|c| c.lock().ok()?.get(path, load_options.listing));
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
             let parent_id = registry.clone().register(path.to_path_buf());
             registry.clone().register_batch_file_node(&cached);
             let pipeline = Pipeline::from_config(&pipeline_config);
-            let groups = pipeline.execute_grouped(cached);
+            let (groups, load) = pipeline.execute_grouped(cached).limited(load_options.limit);
             if !Self::is_latest(latest_scans, session, request) {
                 return;
             }
@@ -258,6 +259,7 @@ impl Scanner {
                         groups: crate::pipeline::GroupedEntries::from_grouped_nodes(
                             groups, registry,
                         ),
+                        load,
                         session,
                         request,
                     },
@@ -271,6 +273,7 @@ impl Scanner {
                         parent: parent_id,
                         path: path.to_path_buf(),
                         groups,
+                        load,
                         session,
                         request,
                     },
@@ -283,7 +286,7 @@ impl Scanner {
 
         // 2. List directory (cache miss)
         tracing::trace!(path = %path.display(), session = %session, "Directory scan cache miss, listing provider");
-        let entries = match provider.list_with_options(path, listing_options).await {
+        let entries = match provider.list_with_options(path, load_options.listing).await {
             Ok(entries) => entries,
             Err(e) => {
                 if Self::is_latest(latest_scans, session, request) {
@@ -298,10 +301,12 @@ impl Scanner {
             }
         };
 
-        // Populate cache after successful list
-        if let Some(cache) = cache {
+        // Populate cache after successful unbounded lists.
+        if !load_options.is_bounded()
+            && let Some(cache) = cache
+        {
             if let Ok(mut c) = cache.lock() {
-                c.put(path.to_path_buf(), listing_options, entries.clone());
+                c.put(path.to_path_buf(), load_options.listing, entries.clone());
                 tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
             }
         }
@@ -317,7 +322,9 @@ impl Scanner {
 
         // 5. Execute pipeline (always returns GroupedNodes)
         let pipeline = Pipeline::from_config(&pipeline_config);
-        let groups = pipeline.execute_grouped(entries);
+        let (groups, load) = pipeline
+            .execute_grouped(entries)
+            .limited(load_options.limit);
 
         // 5. Check cancellation after pipeline
         if cancel.is_cancelled() {
@@ -334,6 +341,7 @@ impl Scanner {
                 Event::DirectoryEntriesLoaded {
                     parent,
                     groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                    load,
                     session,
                     request,
                 },
@@ -347,6 +355,7 @@ impl Scanner {
                     parent: parent_id,
                     path: path.to_path_buf(),
                     groups,
+                    load,
                     session,
                     request,
                 },
@@ -379,27 +388,25 @@ impl Actor for Scanner {
                     path,
                     session,
                     pipeline,
-                    listing,
+                    load,
                     request,
                 }) => {
-                    self.dispatch_scan(path, session, pipeline, listing, false, request);
+                    self.dispatch_scan(path, session, pipeline, load, false, request);
                 }
                 Ok(ScanCommand::ScanLocation {
                     location,
                     session,
                     pipeline,
-                    listing,
+                    load,
                     request,
                 }) => {
-                    self.dispatch_location_scan(
-                        location, session, pipeline, listing, false, request,
-                    );
+                    self.dispatch_location_scan(location, session, pipeline, load, false, request);
                 }
                 Ok(ScanCommand::ScanNode {
                     node,
                     session,
                     pipeline,
-                    listing,
+                    load,
                     request,
                 }) => {
                     // Resolve NodeId → PathBuf before spawning.
@@ -416,13 +423,13 @@ impl Actor for Scanner {
                         );
                         continue;
                     };
-                    self.dispatch_scan(path, session, pipeline, listing, false, request);
+                    self.dispatch_scan(path, session, pipeline, load, false, request);
                 }
                 Ok(ScanCommand::RefreshNode {
                     node,
                     session,
                     pipeline,
-                    listing,
+                    load,
                     request,
                 }) => {
                     let Some(path) = self.registry.resolve(node) else {
@@ -437,7 +444,7 @@ impl Actor for Scanner {
                         );
                         continue;
                     };
-                    self.dispatch_scan(path, session, pipeline, listing, true, request);
+                    self.dispatch_scan(path, session, pipeline, load, true, request);
                 }
                 Ok(ScanCommand::Cancel(session)) => {
                     self.cancel_scan(session);

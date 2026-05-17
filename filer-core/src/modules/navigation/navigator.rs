@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actors::Actor;
 use crate::api::events;
+use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
@@ -24,7 +25,6 @@ use crate::model::session::SessionId;
 use crate::modules::scan::scanner::ScanCommand;
 use crate::pipeline::{Pipeline, PipelineConfig};
 use crate::utils::channel::send_or_warn;
-use crate::vfs::provider::ListingOptions;
 use crate::{CoreError, Event};
 
 /// Navigation commands
@@ -387,7 +387,7 @@ impl Navigator {
                                 location: LocationRef::from_location(&location),
                                 session,
                                 pipeline: v.pipeline_config.clone(),
-                                listing: ListingOptions::default(),
+                                load: DirectoryLoadOptions::default(),
                                 request,
                             },
                             "trigger location scan",
@@ -583,7 +583,7 @@ impl Navigator {
                 node,
                 session,
                 pipeline: state.pipeline_config.clone(),
-                listing: ListingOptions::default(),
+                load: DirectoryLoadOptions::default(),
                 request,
             },
             "trigger scan",
@@ -608,7 +608,7 @@ impl Navigator {
                 node,
                 session,
                 pipeline: state.pipeline_config.clone(),
-                listing: ListingOptions::default(),
+                load: DirectoryLoadOptions::default(),
                 request,
             },
             "trigger refresh scan",

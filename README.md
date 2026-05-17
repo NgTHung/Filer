@@ -59,16 +59,17 @@ derived route cache in the registry. Direct local `Location` commands are wired
 through API routing for navigation, scan, search, preview, metadata, and
 extended metadata, and the actor tests now check cancellation, stale-result
 suppression, cache reuse, and refresh behavior for those paths. Local file
-listing now has explicit detail options: scans default to fast rows that avoid
-per-entry stat calls, while metadata listings can be requested when size,
-timestamps, or permissions are needed. This does not yet replace public
-command/event `PathBuf` and `NodeId` surfaces; it strengthens the compatibility
-layer for that migration. The intent is for `Location` to become the bridge
-across local files, remote providers, virtual providers, extension-backed
-providers, and archives. Nested archive addresses can now be modeled as a
-provider root plus archive/member segments instead of forcing every layer into
-one path string. Large-directory paging/streaming, archive navigation, and
-wire-safe transport envelopes remain future work.
+listing now has explicit load options: scans default to fast rows that avoid
+per-entry stat calls, metadata listings can be requested when size, timestamps,
+or permissions are needed, and callers can bound returned rows with load-state
+metadata on directory events. This does not yet replace public command/event
+`PathBuf` and `NodeId` surfaces; it strengthens the compatibility layer for
+that migration. The intent is for `Location` to become the bridge across local
+files, remote providers, virtual providers, extension-backed providers, and
+archives. Nested archive addresses can now be modeled as a provider root plus
+archive/member segments instead of forcing every layer into one path string.
+Provider-level streaming/cursors, archive navigation, and wire-safe transport
+envelopes remain future work.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

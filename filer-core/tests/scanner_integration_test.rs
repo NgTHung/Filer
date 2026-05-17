@@ -159,7 +159,7 @@ async fn test_scanner_processes_scan_command() {
                 filter: None,
                 group: None,
             },
-            listing: filer_core::ListingOptions::default(),
+            load: filer_core::DirectoryLoadOptions::default(),
             session: sess,
             request: filer_core::RequestId::new(),
         })
@@ -210,7 +210,7 @@ async fn test_scanner_handles_cancellation() {
                 filter: None,
                 group: None,
             },
-            listing: filer_core::ListingOptions::default(),
+            load: filer_core::DirectoryLoadOptions::default(),
             session: sess,
             request: filer_core::RequestId::new(),
         })
@@ -244,7 +244,7 @@ async fn test_scanner_handles_multiple_scans() {
                 filter: None,
                 group: None,
             },
-            listing: filer_core::ListingOptions::default(),
+            load: filer_core::DirectoryLoadOptions::default(),
             session: sess,
             request: filer_core::RequestId::new(),
         })
@@ -258,7 +258,7 @@ async fn test_scanner_handles_multiple_scans() {
                 filter: None,
                 group: None,
             },
-            listing: filer_core::ListingOptions::default(),
+            load: filer_core::DirectoryLoadOptions::default(),
             session: sess,
             request: filer_core::RequestId::new(),
         })
@@ -294,7 +294,7 @@ async fn test_scanner_handles_provider_errors() {
                 filter: None,
                 group: None,
             },
-            listing: filer_core::ListingOptions::default(),
+            load: filer_core::DirectoryLoadOptions::default(),
             session: sess,
             request: filer_core::RequestId::new(),
         })
@@ -332,7 +332,7 @@ async fn test_scanner_depth_limiting() {
                 filter: None,
                 group: None,
             },
-            listing: filer_core::ListingOptions::default(),
+            load: filer_core::DirectoryLoadOptions::default(),
             session: sess,
             request: filer_core::RequestId::new(),
         })
@@ -367,7 +367,7 @@ async fn test_scanner_emits_progress_events() {
                 filter: None,
                 group: None,
             },
-            listing: filer_core::ListingOptions::default(),
+            load: filer_core::DirectoryLoadOptions::default(),
             session: sess,
             request: filer_core::RequestId::new(),
         })

@@ -1,3 +1,4 @@
+mod directory_test;
 mod location_test;
 mod model_test;
 mod operation_test;

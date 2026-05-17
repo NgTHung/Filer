@@ -80,7 +80,7 @@ impl Module for ScanModule {
                 path,
                 session,
                 pipeline,
-                listing,
+                load,
                 request,
             } = cmd
             {
@@ -90,7 +90,7 @@ impl Module for ScanModule {
                         path,
                         session,
                         pipeline,
-                        listing,
+                        load,
                         request,
                     },
                     "scan",
@@ -104,7 +104,7 @@ impl Module for ScanModule {
                 location,
                 session,
                 pipeline,
-                listing,
+                load,
                 request,
             } = cmd
             {
@@ -114,7 +114,7 @@ impl Module for ScanModule {
                         location,
                         session,
                         pipeline,
-                        listing,
+                        load,
                         request,
                     },
                     "scan.location",
@@ -128,7 +128,7 @@ impl Module for ScanModule {
                 node,
                 session,
                 pipeline,
-                listing,
+                load,
                 request,
             } = cmd
             {
@@ -138,7 +138,7 @@ impl Module for ScanModule {
                         node,
                         session,
                         pipeline,
-                        listing,
+                        load,
                         request,
                     },
                     "scan.node",

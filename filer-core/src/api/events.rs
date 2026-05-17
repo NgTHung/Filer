@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
+use crate::model::directory::DirectoryLoadState;
 use crate::model::location::LocationRef;
 use crate::model::node::{NodeEntry, NodeId, NodeMeta};
 use crate::model::operation::OperationId;
@@ -25,6 +26,7 @@ pub enum Event {
         parent: NodeId,
         path: PathBuf, // Keep path for display in breadcrumb
         groups: GroupedNodes,
+        load: DirectoryLoadState,
         session: SessionId,
         request: RequestId,
     },
@@ -33,6 +35,7 @@ pub enum Event {
     DirectoryEntriesLoaded {
         parent: LocationRef,
         groups: GroupedEntries,
+        load: DirectoryLoadState,
         session: SessionId,
         request: RequestId,
     },

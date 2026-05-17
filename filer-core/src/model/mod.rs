@@ -1,3 +1,4 @@
+pub mod directory;
 pub mod fs_change;
 pub mod location;
 pub mod node;

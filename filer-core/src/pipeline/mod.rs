@@ -3,6 +3,7 @@ pub mod filter;
 pub mod group;
 pub mod sort;
 
+use crate::model::directory::DirectoryLoadState;
 use crate::model::node::{FileNode, NodeEntry};
 use crate::model::registry::NodeRegistry;
 
@@ -61,6 +62,44 @@ impl GroupedEntries {
             groups,
             total_count,
         }
+    }
+}
+
+impl GroupedNodes {
+    pub fn limited(self, limit: Option<usize>) -> (Self, DirectoryLoadState) {
+        let total_count = self.total_count;
+        let Some(limit) = limit else {
+            return (self, DirectoryLoadState::complete(total_count));
+        };
+
+        let mut remaining = limit;
+        let mut loaded_count = 0;
+        let mut groups = Vec::new();
+
+        for mut group in self.groups {
+            if remaining == 0 {
+                break;
+            }
+
+            if group.nodes.len() > remaining {
+                group.nodes.truncate(remaining);
+            }
+
+            let group_count = group.nodes.len();
+            if group_count > 0 {
+                loaded_count += group_count;
+                remaining -= group_count;
+                groups.push(group);
+            }
+        }
+
+        (
+            Self {
+                groups,
+                total_count: loaded_count,
+            },
+            DirectoryLoadState::from_counts(loaded_count, total_count),
+        )
     }
 }
 

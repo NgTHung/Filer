@@ -204,12 +204,22 @@ mod scanner_cache_tests {
         evt_rx: &Receiver<Event>,
         session: SessionId,
     ) -> crate::pipeline::GroupedNodes {
+        wait_for_dir_loaded_with_state(evt_rx, session).await.0
+    }
+
+    async fn wait_for_dir_loaded_with_state(
+        evt_rx: &Receiver<Event>,
+        session: SessionId,
+    ) -> (crate::pipeline::GroupedNodes, crate::DirectoryLoadState) {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
                 Ok(Ok(Event::DirectoryLoaded {
-                    session: s, groups, ..
-                })) if s == session => return groups,
+                    session: s,
+                    groups,
+                    load,
+                    ..
+                })) if s == session => return (groups, load),
                 Ok(Ok(_)) => {}
                 _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
             }
@@ -220,12 +230,24 @@ mod scanner_cache_tests {
         evt_rx: &Receiver<Event>,
         session: SessionId,
     ) -> crate::pipeline::GroupedEntries {
+        wait_for_location_dir_loaded_with_state(evt_rx, session)
+            .await
+            .0
+    }
+
+    async fn wait_for_location_dir_loaded_with_state(
+        evt_rx: &Receiver<Event>,
+        session: SessionId,
+    ) -> (crate::pipeline::GroupedEntries, crate::DirectoryLoadState) {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
                 Ok(Ok(Event::DirectoryEntriesLoaded {
-                    session: s, groups, ..
-                })) if s == session => return groups,
+                    session: s,
+                    groups,
+                    load,
+                    ..
+                })) if s == session => return (groups, load),
                 Ok(Ok(_)) => {}
                 _ => panic!("timed out or channel closed waiting for DirectoryEntriesLoaded"),
             }
@@ -252,7 +274,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request,
             })
             .unwrap();
@@ -291,7 +313,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s1,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -302,7 +324,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s2,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -334,7 +356,7 @@ mod scanner_cache_tests {
                 path: std::path::PathBuf::from("/tmp/dir"),
                 session,
                 pipeline: default_pipeline(),
-                listing: ListingOptions::metadata(),
+                load: crate::DirectoryLoadOptions::unbounded(ListingOptions::metadata()),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -367,7 +389,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: fast_session,
                 pipeline: default_pipeline(),
-                listing: ListingOptions::fast(),
+                load: crate::DirectoryLoadOptions::unbounded(ListingOptions::fast()),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -379,7 +401,7 @@ mod scanner_cache_tests {
                 path,
                 session: metadata_session,
                 pipeline: default_pipeline(),
-                listing: ListingOptions::metadata(),
+                load: crate::DirectoryLoadOptions::unbounded(ListingOptions::metadata()),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -389,6 +411,155 @@ mod scanner_cache_tests {
             provider.get_list_options(),
             vec![ListingOptions::fast(), ListingOptions::metadata()]
         );
+    }
+
+    #[tokio::test]
+    async fn test_bounded_scan_emits_limited_directory_loaded_state() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/bounded", 10, false));
+        provider.add_file(make_file("b.txt", "/tmp/bounded", 20, false));
+        provider.add_file(make_file("c.txt", "/tmp/bounded", 30, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: std::path::PathBuf::from("/tmp/bounded"),
+                session,
+                pipeline: default_pipeline(),
+                load: crate::DirectoryLoadOptions::bounded(2),
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let (groups, load) = wait_for_dir_loaded_with_state(&evt_rx, session).await;
+        assert_eq!(groups.total_count, 2);
+        assert_eq!(groups.groups[0].nodes.len(), 2);
+        assert_eq!(load.loaded_count, 2);
+        assert_eq!(load.total_count, Some(3));
+        assert!(!load.complete);
+    }
+
+    #[tokio::test]
+    async fn test_bounded_scan_location_emits_limited_directory_entries_loaded_state() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/location-bounded", 10, false));
+        provider.add_file(make_file("b.txt", "/tmp/location-bounded", 20, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let location = Location::local("/tmp/location-bounded");
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session,
+                pipeline: default_pipeline(),
+                load: crate::DirectoryLoadOptions::bounded(1),
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let (groups, load) = wait_for_location_dir_loaded_with_state(&evt_rx, session).await;
+        assert_eq!(groups.total_count, 1);
+        assert_eq!(groups.groups[0].nodes.len(), 1);
+        assert_eq!(load.loaded_count, 1);
+        assert_eq!(load.total_count, Some(2));
+        assert!(!load.complete);
+    }
+
+    #[tokio::test]
+    async fn test_bounded_scan_does_not_populate_complete_cache() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/no-cache", 10, false));
+        provider.add_file(make_file("b.txt", "/tmp/no-cache", 20, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = std::path::PathBuf::from("/tmp/no-cache");
+        for _ in 0..2 {
+            let session = SessionId::new();
+            cmd_tx
+                .send(ScanCommand::Scan {
+                    path: path.clone(),
+                    session,
+                    pipeline: default_pipeline(),
+                    load: crate::DirectoryLoadOptions::bounded(1),
+                    request: RequestId::new(),
+                })
+                .unwrap();
+            wait_for_dir_loaded(&evt_rx, session).await;
+        }
+
+        assert_eq!(
+            provider.get_list_calls().len(),
+            2,
+            "bounded scans must not populate complete directory cache entries"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bounded_scan_can_reuse_complete_cached_listing() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/reuse-cache", 10, false));
+        provider.add_file(make_file("b.txt", "/tmp/reuse-cache", 20, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = std::path::PathBuf::from("/tmp/reuse-cache");
+        let full_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: full_session,
+                pipeline: default_pipeline(),
+                load: crate::DirectoryLoadOptions::default(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_dir_loaded(&evt_rx, full_session).await;
+
+        let bounded_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path,
+                session: bounded_session,
+                pipeline: default_pipeline(),
+                load: crate::DirectoryLoadOptions::bounded(1),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let (groups, load) = wait_for_dir_loaded_with_state(&evt_rx, bounded_session).await;
+
+        assert_eq!(provider.get_list_calls().len(), 1);
+        assert_eq!(groups.total_count, 1);
+        assert_eq!(load.total_count, Some(2));
+        assert!(!load.complete);
     }
 
     #[tokio::test]
@@ -414,7 +585,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session: s1,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -425,7 +596,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session: s2,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -466,7 +637,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s1,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -481,7 +652,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s2,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -525,7 +696,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session: s1,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -538,7 +709,7 @@ mod scanner_cache_tests {
                 node,
                 session: s2,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -580,7 +751,7 @@ mod scanner_cache_tests {
                 node,
                 session: s1,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -593,7 +764,7 @@ mod scanner_cache_tests {
                 node,
                 session: s2,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -634,7 +805,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: stale_request,
             })
             .unwrap();
@@ -644,7 +815,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: fresh_request,
             })
             .unwrap();
@@ -696,7 +867,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: stale_request,
             })
             .unwrap();
@@ -706,7 +877,7 @@ mod scanner_cache_tests {
                 path,
                 session,
                 pipeline: default_pipeline(),
-                listing: crate::ListingOptions::default(),
+                load: crate::DirectoryLoadOptions::default(),
                 request: fresh_request,
             })
             .unwrap();
@@ -754,7 +925,7 @@ mod scanner_command_tests {
                 filter: None,
                 group: None,
             },
-            listing: crate::ListingOptions::default(),
+            load: crate::DirectoryLoadOptions::default(),
             session,
             request: crate::model::request::RequestId::new(),
         };
@@ -796,7 +967,7 @@ mod scanner_command_tests {
                 filter: None,
                 group: None,
             },
-            listing: crate::ListingOptions::default(),
+            load: crate::DirectoryLoadOptions::default(),
             session,
             request: crate::model::request::RequestId::new(),
         };
