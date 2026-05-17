@@ -28,7 +28,7 @@ pub use services::preview::{ArchivePreviewEntry, PreviewData, PreviewOptions, Pr
 
 // VFS providers
 pub use vfs::local::LocalFs;
-pub use vfs::provider::{Capabilities, FsProvider};
+pub use vfs::provider::{Capabilities, FsProvider, ListingDetail, ListingOptions};
 
 // Actor infrastructure
 pub use actors::Actor;

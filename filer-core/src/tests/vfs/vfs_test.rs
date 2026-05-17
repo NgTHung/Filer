@@ -4,7 +4,7 @@ use crate::errors::{CoreError, ErrorCode};
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
 use crate::vfs::local::LocalFs;
-use crate::vfs::provider::{Capabilities, FsProvider};
+use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -63,6 +63,70 @@ async fn test_local_fs_list_empty_directory() {
 
     let files = result.unwrap();
     assert_eq!(files.len(), 0);
+}
+
+#[tokio::test]
+async fn test_local_fs_fast_listing_omits_stat_metadata() {
+    let (fs, dir) = local_fs();
+    let path = dir.path().join("fast.txt");
+    std::fs::write(&path, b"hello").unwrap();
+
+    let nodes = fs
+        .list_with_options(dir.path(), ListingOptions::fast())
+        .await
+        .unwrap();
+    let node = nodes.iter().find(|node| node.name == "fast.txt").unwrap();
+
+    assert_eq!(node.size, 0);
+    assert!(node.modified.is_none());
+    assert!(node.created.is_none());
+    assert!(node.accessed.is_none());
+}
+
+#[tokio::test]
+async fn test_local_fs_metadata_listing_populates_stat_metadata() {
+    let (fs, dir) = local_fs();
+    let path = dir.path().join("metadata.txt");
+    std::fs::write(&path, b"hello").unwrap();
+
+    let nodes = fs
+        .list_with_options(dir.path(), ListingOptions::metadata())
+        .await
+        .unwrap();
+    let node = nodes
+        .iter()
+        .find(|node| node.name == "metadata.txt")
+        .unwrap();
+
+    assert_eq!(node.size, 5);
+    assert!(node.modified.is_some());
+}
+
+#[tokio::test]
+async fn test_local_fs_list_with_meta_matches_metadata_listing() {
+    let (fs, dir) = local_fs();
+    let path = dir.path().join("compat.txt");
+    std::fs::write(&path, b"hello").unwrap();
+
+    let from_options = fs
+        .list_with_options(dir.path(), ListingOptions::metadata())
+        .await
+        .unwrap();
+    let from_compat = fs.list_with_meta(dir.path()).await.unwrap();
+
+    let option_node = from_options
+        .iter()
+        .find(|node| node.name == "compat.txt")
+        .unwrap();
+    let compat_node = from_compat
+        .iter()
+        .find(|node| node.name == "compat.txt")
+        .unwrap();
+    assert_eq!(option_node.size, compat_node.size);
+    assert_eq!(
+        option_node.modified.is_some(),
+        compat_node.modified.is_some()
+    );
 }
 
 #[tokio::test]

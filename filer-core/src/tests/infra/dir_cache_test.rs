@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::services::dir_cache::DirCache;
+use crate::vfs::provider::ListingOptions;
 
 fn make_node(name: &str) -> FileNode {
     FileNode {
@@ -26,18 +27,26 @@ fn one_node() -> Vec<FileNode> {
 mod dir_cache_tests {
     use super::*;
 
+    fn fast() -> ListingOptions {
+        ListingOptions::fast()
+    }
+
+    fn metadata() -> ListingOptions {
+        ListingOptions::metadata()
+    }
+
     #[test]
     fn test_get_returns_none_on_first_access() {
         let mut cache = DirCache::new(1024 * 1024);
-        assert!(cache.get(&PathBuf::from("/some/dir")).is_none());
+        assert!(cache.get(&PathBuf::from("/some/dir"), fast()).is_none());
     }
 
     #[test]
     fn test_get_returns_cached_on_second_access() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), one_node());
-        let result = cache.get(&path);
+        cache.put(path.clone(), fast(), one_node());
+        let result = cache.get(&path, fast());
         assert!(result.is_some());
         assert_eq!(result.unwrap().len(), 1);
     }
@@ -46,12 +55,13 @@ mod dir_cache_tests {
     fn test_put_overwrites_existing_entry() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), vec![make_node("old.txt")]);
+        cache.put(path.clone(), fast(), vec![make_node("old.txt")]);
         cache.put(
             path.clone(),
+            fast(),
             vec![make_node("new1.txt"), make_node("new2.txt")],
         );
-        let result = cache.get(&path).unwrap();
+        let result = cache.get(&path, fast()).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].name, "new1.txt");
     }
@@ -60,9 +70,9 @@ mod dir_cache_tests {
     fn test_invalidate_removes_entry() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), one_node());
+        cache.put(path.clone(), fast(), one_node());
         cache.invalidate(&path);
-        assert!(cache.get(&path).is_none());
+        assert!(cache.get(&path, fast()).is_none());
     }
 
     #[test]
@@ -77,12 +87,12 @@ mod dir_cache_tests {
         let mut cache = DirCache::new(1024 * 1024);
         let p1 = PathBuf::from("/tmp/a");
         let p2 = PathBuf::from("/tmp/b");
-        cache.put(p1.clone(), one_node());
-        cache.put(p2.clone(), one_node());
+        cache.put(p1.clone(), fast(), one_node());
+        cache.put(p2.clone(), fast(), one_node());
         cache.clear();
         assert_eq!(cache.len(), 0);
-        assert!(cache.get(&p1).is_none());
-        assert!(cache.get(&p2).is_none());
+        assert!(cache.get(&p1, fast()).is_none());
+        assert!(cache.get(&p2, fast()).is_none());
     }
 
     #[test]
@@ -99,21 +109,21 @@ mod dir_cache_tests {
         let pb = PathBuf::from("/tmp/b");
         let pc = PathBuf::from("/tmp/c");
 
-        cache.put(pa.clone(), one_node()); // oldest
+        cache.put(pa.clone(), fast(), one_node()); // oldest
         // Small sleep to ensure distinct Instant values
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pb.clone(), one_node());
+        cache.put(pb.clone(), fast(), one_node());
 
         // Verify both present
-        assert!(cache.get(&pa).is_some());
-        assert!(cache.get(&pb).is_some());
+        assert!(cache.get(&pa, fast()).is_some());
+        assert!(cache.get(&pb, fast()).is_some());
 
         // Force capacity overflow — evicts LRU (pa, since we called get on pb after pa)
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pc.clone(), one_node());
+        cache.put(pc.clone(), fast(), one_node());
 
         // pa should have been evicted (it's the oldest accessed), pc should be present
-        assert!(cache.get(&pc).is_some());
+        assert!(cache.get(&pc, fast()).is_some());
         // The cache size is bounded
         assert!(
             cache.current_size_bytes()
@@ -133,16 +143,16 @@ mod dir_cache_tests {
         let pb = PathBuf::from("/tmp/b");
         let pc = PathBuf::from("/tmp/c");
 
-        cache.put(pa.clone(), one_node());
+        cache.put(pa.clone(), fast(), one_node());
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pb.clone(), one_node()); // may evict pa immediately
+        cache.put(pb.clone(), fast(), one_node()); // may evict pa immediately
 
         // After inserting pc, whatever was LRU should go
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pc.clone(), one_node());
+        cache.put(pc.clone(), fast(), one_node());
 
         // Cache has room for exactly 1 entry, so only the newest survives
-        assert!(cache.get(&pc).is_some());
+        assert!(cache.get(&pc, fast()).is_some());
         assert_eq!(cache.len(), 1);
     }
 
@@ -152,7 +162,7 @@ mod dir_cache_tests {
         let mut cache = DirCache::new(max);
         for i in 0..20u32 {
             let path = PathBuf::from(format!("/tmp/dir{i}"));
-            cache.put(path, one_node());
+            cache.put(path, fast(), one_node());
             // After every put the invariant must hold
             assert!(
                 cache.current_size_bytes() <= max + 512,
@@ -168,19 +178,46 @@ mod dir_cache_tests {
         let mut cache = DirCache::new(1024 * 1024);
         let pa = PathBuf::from("/home/user");
         let pb = PathBuf::from("/home/other");
-        cache.put(pa.clone(), one_node());
-        cache.put(pb.clone(), one_node());
+        cache.put(pa.clone(), fast(), one_node());
+        cache.put(pb.clone(), fast(), one_node());
         cache.invalidate(&pa);
-        assert!(cache.get(&pa).is_none());
-        assert!(cache.get(&pb).is_some());
+        assert!(cache.get(&pa, fast()).is_none());
+        assert!(cache.get(&pb, fast()).is_some());
     }
 
     #[test]
     fn test_write_operation_invalidates_parent() {
         let mut cache = DirCache::new(1024 * 1024);
         let parent = PathBuf::from("/home/user");
-        cache.put(parent.clone(), one_node());
+        cache.put(parent.clone(), fast(), one_node());
         cache.invalidate(&parent);
-        assert!(cache.get(&parent).is_none());
+        assert!(cache.get(&parent, fast()).is_none());
+    }
+
+    #[test]
+    fn test_listing_detail_has_separate_cache_entries() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let path = PathBuf::from("/tmp/dir");
+        cache.put(path.clone(), fast(), vec![make_node("fast.txt")]);
+        cache.put(path.clone(), metadata(), vec![make_node("metadata.txt")]);
+
+        assert_eq!(cache.get(&path, fast()).unwrap()[0].name, "fast.txt");
+        assert_eq!(
+            cache.get(&path, metadata()).unwrap()[0].name,
+            "metadata.txt"
+        );
+    }
+
+    #[test]
+    fn test_invalidate_removes_all_listing_detail_entries_for_path() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let path = PathBuf::from("/tmp/dir");
+        cache.put(path.clone(), fast(), one_node());
+        cache.put(path.clone(), metadata(), one_node());
+
+        cache.invalidate(&path);
+
+        assert!(cache.get(&path, fast()).is_none());
+        assert!(cache.get(&path, metadata()).is_none());
     }
 }

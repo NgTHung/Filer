@@ -243,6 +243,7 @@ mod command_router_tests {
                         location,
                         session,
                         pipeline,
+                        listing,
                         request,
                     } = cmd
                     {
@@ -250,6 +251,7 @@ mod command_router_tests {
                             location,
                             session,
                             pipeline,
+                            listing,
                             request,
                         });
                     }
@@ -809,6 +811,7 @@ mod command_router_tests {
                 location: location_ref.clone(),
                 session,
                 pipeline: pipeline.clone(),
+                listing: crate::ListingOptions::metadata(),
                 request,
             })
             .await;
@@ -823,11 +826,17 @@ mod command_router_tests {
                 location,
                 session: s,
                 pipeline: p,
+                listing,
                 request: r,
             } => {
                 assert_eq!(location, location_ref, "LocationRef must be forwarded");
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(p, pipeline, "PipelineConfig must be forwarded");
+                assert_eq!(
+                    listing,
+                    crate::ListingOptions::metadata(),
+                    "ListingOptions must be forwarded"
+                );
                 assert_eq!(r, request, "RequestId must be forwarded");
             }
             other => panic!("Expected ScanCommand::ScanLocation, got {:?}", other),

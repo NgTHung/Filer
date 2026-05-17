@@ -8,6 +8,7 @@ use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
+use crate::vfs::provider::ListingOptions;
 
 /// Commands from UI to Core
 /// Uses NodeId for efficiency (8 bytes vs PathBuf's heap allocation)
@@ -187,6 +188,7 @@ pub enum Command {
         path: PathBuf,
         session: SessionId,
         pipeline: PipelineConfig,
+        listing: ListingOptions,
         request: RequestId,
     },
 
@@ -194,6 +196,7 @@ pub enum Command {
         location: LocationRef,
         session: SessionId,
         pipeline: PipelineConfig,
+        listing: ListingOptions,
         request: RequestId,
     },
 
@@ -202,6 +205,7 @@ pub enum Command {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
+        listing: ListingOptions,
         request: RequestId,
     },
 

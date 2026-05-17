@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
+use serde::{Deserialize, Serialize};
 
 /// A combined `Read + BufRead + Seek` object trait used by extraction crates.
 ///
@@ -23,6 +24,38 @@ pub struct Capabilities {
     pub search: bool,
 }
 
+/// Controls how much metadata a directory listing should populate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ListingDetail {
+    /// Fast listing using directory-entry type data only.
+    #[default]
+    Fast,
+    /// Listing with per-entry metadata such as size, timestamps, and permissions.
+    Metadata,
+}
+
+/// Options for provider directory listings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct ListingOptions {
+    #[serde(default)]
+    pub detail: ListingDetail,
+}
+
+impl ListingOptions {
+    pub const fn fast() -> Self {
+        Self {
+            detail: ListingDetail::Fast,
+        }
+    }
+
+    pub const fn metadata() -> Self {
+        Self {
+            detail: ListingDetail::Metadata,
+        }
+    }
+}
+
 /// Trait for filesystem backends
 #[async_trait]
 pub trait FsProvider: Send + Sync {
@@ -34,6 +67,19 @@ pub trait FsProvider: Send + Sync {
 
     /// List contents of a directory
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError>;
+
+    /// List contents of a directory with explicit detail options.
+    ///
+    /// Providers that do not distinguish listing detail can rely on this
+    /// default implementation. LocalFs overrides it so callers can choose
+    /// cheap rows or stat-backed metadata rows.
+    async fn list_with_options(
+        &self,
+        path: &Path,
+        _options: ListingOptions,
+    ) -> Result<Vec<FileNode>, CoreError> {
+        self.list(path).await
+    }
 
     /// Read file contents
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError>;

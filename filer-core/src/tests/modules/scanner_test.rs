@@ -1,6 +1,6 @@
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
-use crate::vfs::provider::{Capabilities, FsProvider};
+use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 use crate::{
     model::node::{NodeId, NodeKind, NodeMeta},
     utils,
@@ -80,6 +80,7 @@ fn _make_dir(name: &str, full_path: &str, hidden: bool) -> FileNode {
 struct MockProvider {
     files: Arc<Mutex<Vec<FileNode>>>,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
+    list_options: Arc<Mutex<Vec<ListingOptions>>>,
     should_fail: Arc<Mutex<bool>>,
     delay_ms: Arc<Mutex<u64>>,
 }
@@ -89,6 +90,7 @@ impl MockProvider {
         Self {
             files: Arc::new(Mutex::new(Vec::new())),
             list_calls: Arc::new(Mutex::new(Vec::new())),
+            list_options: Arc::new(Mutex::new(Vec::new())),
             should_fail: Arc::new(Mutex::new(false)),
             delay_ms: Arc::new(Mutex::new(0)),
         }
@@ -100,6 +102,10 @@ impl MockProvider {
 
     fn get_list_calls(&self) -> Vec<PathBuf> {
         self.list_calls.lock().unwrap().clone()
+    }
+
+    fn get_list_options(&self) -> Vec<ListingOptions> {
+        self.list_options.lock().unwrap().clone()
     }
 
     fn set_should_fail(&self, should_fail: bool) {
@@ -127,6 +133,15 @@ impl FsProvider for MockProvider {
     }
 
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+        self.list_with_options(path, ListingOptions::default())
+            .await
+    }
+
+    async fn list_with_options(
+        &self,
+        path: &Path,
+        options: ListingOptions,
+    ) -> Result<Vec<FileNode>, CoreError> {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
@@ -137,6 +152,7 @@ impl FsProvider for MockProvider {
         }
 
         self.list_calls.lock().unwrap().push(path.to_path_buf());
+        self.list_options.lock().unwrap().push(options);
         Ok(self.files.lock().unwrap().clone())
     }
 
@@ -236,6 +252,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request,
             })
             .unwrap();
@@ -274,6 +291,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s1,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -284,6 +302,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s2,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -294,6 +313,81 @@ mod scanner_cache_tests {
             calls.len(),
             1,
             "provider.list() should only be called once (second scan hits cache)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scanner_forwards_listing_options_to_provider() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("metadata.txt", "/tmp/dir", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider.clone()), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: std::path::PathBuf::from("/tmp/dir"),
+                session,
+                pipeline: default_pipeline(),
+                listing: ListingOptions::metadata(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_dir_loaded(&evt_rx, session).await;
+
+        assert_eq!(
+            provider.get_list_options(),
+            vec![ListingOptions::metadata()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scanner_cache_separates_listing_options() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.txt", "/tmp/dir", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = std::path::PathBuf::from("/tmp/dir");
+        let fast_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: fast_session,
+                pipeline: default_pipeline(),
+                listing: ListingOptions::fast(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_dir_loaded(&evt_rx, fast_session).await;
+
+        let metadata_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path,
+                session: metadata_session,
+                pipeline: default_pipeline(),
+                listing: ListingOptions::metadata(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_dir_loaded(&evt_rx, metadata_session).await;
+
+        assert_eq!(
+            provider.get_list_options(),
+            vec![ListingOptions::fast(), ListingOptions::metadata()]
         );
     }
 
@@ -320,6 +414,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session: s1,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -330,6 +425,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session: s2,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -370,6 +466,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s1,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -384,6 +481,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session: s2,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -427,6 +525,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session: s1,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -439,6 +538,7 @@ mod scanner_cache_tests {
                 node,
                 session: s2,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: RequestId::new(),
             })
             .unwrap();
@@ -480,6 +580,7 @@ mod scanner_cache_tests {
                 node,
                 session: s1,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -492,6 +593,7 @@ mod scanner_cache_tests {
                 node,
                 session: s2,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -532,6 +634,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: stale_request,
             })
             .unwrap();
@@ -541,6 +644,7 @@ mod scanner_cache_tests {
                 location: LocationRef::from_location(&location),
                 session,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: fresh_request,
             })
             .unwrap();
@@ -592,6 +696,7 @@ mod scanner_cache_tests {
                 path: path.clone(),
                 session,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: stale_request,
             })
             .unwrap();
@@ -601,6 +706,7 @@ mod scanner_cache_tests {
                 path,
                 session,
                 pipeline: default_pipeline(),
+                listing: crate::ListingOptions::default(),
                 request: fresh_request,
             })
             .unwrap();
@@ -648,6 +754,7 @@ mod scanner_command_tests {
                 filter: None,
                 group: None,
             },
+            listing: crate::ListingOptions::default(),
             session,
             request: crate::model::request::RequestId::new(),
         };
@@ -661,12 +768,14 @@ mod scanner_command_tests {
                     pipeline: pl1,
                     session: s1,
                     request: _,
+                    ..
                 },
                 ScanCommand::Scan {
                     path: p2,
                     pipeline: pl2,
                     session: s2,
                     request: _,
+                    ..
                 },
             ) => {
                 assert_eq!(s1, s2);
@@ -687,6 +796,7 @@ mod scanner_command_tests {
                 filter: None,
                 group: None,
             },
+            listing: crate::ListingOptions::default(),
             session,
             request: crate::model::request::RequestId::new(),
         };

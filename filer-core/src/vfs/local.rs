@@ -6,7 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
-use crate::vfs::provider::{Capabilities, FsProvider, ReadSeek};
+use crate::vfs::provider::{Capabilities, FsProvider, ListingDetail, ListingOptions, ReadSeek};
 
 /// Local filesystem provider
 pub struct LocalFs {
@@ -60,6 +60,17 @@ impl FsProvider for LocalFs {
             }
         }
         Ok(res)
+    }
+
+    async fn list_with_options(
+        &self,
+        path: &Path,
+        options: ListingOptions,
+    ) -> Result<Vec<FileNode>, CoreError> {
+        match options.detail {
+            ListingDetail::Fast => self.list(path).await,
+            ListingDetail::Metadata => self.list_with_meta(path).await,
+        }
     }
 
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {

@@ -54,6 +54,8 @@ Completed contract work:
   Location command parity and parallel test validation
 - cache and refresh hardening for direct-path `Location` scans and navigator
   invalidation-triggered refreshes
+- explicit local file listing detail through `ListingOptions`, with fast rows
+  as the default and stat-backed metadata rows available on request
 - operation ids for copy, move, delete, rename, create file, and create folder
   progress, completion, and operation-scoped errors
 - structured errors through `ErrorKind`, stable `ErrorCode`, optional
@@ -78,10 +80,13 @@ fields, and core emits structured `tracing` diagnostics when converting
 `CoreError` into `Event::Error`. Direct local `Location` commands are now routed
 through navigation, scan, search, preview, metadata, and extended metadata, with
 tests covering cancellation, stale-result suppression, cache reuse, and
-correlation behavior. This still does not remove the existing public command,
-`FileNode`, or `FsProvider` path surfaces. Large-directory loading, timeout
-semantics, full `Location` migration, archive navigation, and extension output
-envelopes remain open contract work.
+correlation behavior. Local directory scans now carry explicit listing detail:
+the default fast mode avoids per-entry stat calls, while metadata mode fills
+size, timestamp, and permission fields for views that need them. This still
+does not remove the existing public command, `FileNode`, or `FsProvider` path
+surfaces. Large-directory paging/streaming, timeout semantics, full `Location`
+migration, archive navigation, and extension output envelopes remain open
+contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -102,10 +107,29 @@ navigation, capability context, and full command/event migration are still
 future work.
 
 Core stabilization is complete only when large directory loading is bounded,
-errors carry enough structured target/context for app and web clients, archive
-traversal is modeled as provider navigation, and the trusted git-decoration
-prototype proves extension output can arrive after directory data without
-blocking it.
+listing detail is chosen intentionally by callers, errors carry enough
+structured target/context for app and web clients, archive traversal is modeled
+as provider navigation, and the trusted git-decoration prototype proves
+extension output can arrive after directory data without blocking it.
+
+## File Listing
+
+Directory listing is explicit about cost. `ListingOptions::fast()` is the
+default for scan commands and `LocalFs::list`; it uses directory-entry type data
+and leaves stat-backed fields such as size, timestamps, readonly, and
+permissions at default values. `ListingOptions::metadata()` asks the provider to
+stat each entry and populate those fields.
+
+`FsProvider::list_with_options` is the provider-level contract. Providers that
+do not support multiple detail levels can keep the default implementation, which
+delegates to `list`. `LocalFs` overrides it and keeps `list_with_meta` as a
+compatibility helper for metadata listings.
+
+Scanner cache entries are keyed by both path and listing detail, so fast and
+metadata rows for the same directory do not contaminate each other. Cache
+invalidation removes all listing-detail variants for the path. Pipeline stages
+do not implicitly upgrade listing detail; callers that sort, group, or filter by
+metadata-sensitive fields should request metadata listing explicitly.
 
 ## Request IDs
 

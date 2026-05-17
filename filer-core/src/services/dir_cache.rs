@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::model::node::FileNode;
+use crate::vfs::provider::ListingOptions;
 
 pub type SharedDirCache = Arc<Mutex<DirCache>>;
 
@@ -24,9 +25,15 @@ struct CacheEntry {
 /// Size is estimated as `sizeof(FileNode) + name.capacity() + path bytes` per
 /// node, with a minimum of 64 bytes per entry.
 pub struct DirCache {
-    entries: HashMap<PathBuf, CacheEntry>,
+    entries: HashMap<CacheKey, CacheEntry>,
     current_size_bytes: usize,
     max_size_bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CacheKey {
+    path: PathBuf,
+    listing: ListingOptions,
 }
 
 impl DirCache {
@@ -39,18 +46,23 @@ impl DirCache {
     }
 
     /// Look up a directory listing. Updates `accessed` on hit.
-    pub fn get(&mut self, path: &Path) -> Option<Vec<FileNode>> {
-        let entry = self.entries.get_mut(path)?;
+    pub fn get(&mut self, path: &Path, listing: ListingOptions) -> Option<Vec<FileNode>> {
+        let key = CacheKey {
+            path: path.to_path_buf(),
+            listing,
+        };
+        let entry = self.entries.get_mut(&key)?;
         entry.accessed = Instant::now();
         Some(entry.nodes.clone())
     }
 
     /// Insert or replace a directory listing, evicting LRU entries as needed.
-    pub fn put(&mut self, path: PathBuf, nodes: Vec<FileNode>) {
+    pub fn put(&mut self, path: PathBuf, listing: ListingOptions, nodes: Vec<FileNode>) {
         let new_size = estimate_size(&nodes);
+        let key = CacheKey { path, listing };
 
         // Remove existing entry for this path first (adjust size).
-        if let Some(old) = self.entries.remove(&path) {
+        if let Some(old) = self.entries.remove(&key) {
             self.current_size_bytes -= old.size_bytes;
         }
 
@@ -61,7 +73,7 @@ impl DirCache {
 
         self.current_size_bytes += new_size;
         self.entries.insert(
-            path,
+            key,
             CacheEntry {
                 nodes,
                 size_bytes: new_size,
@@ -72,8 +84,16 @@ impl DirCache {
 
     /// Remove the entry for `path` (no-op if not present).
     pub fn invalidate(&mut self, path: &Path) {
-        if let Some(old) = self.entries.remove(path) {
-            self.current_size_bytes -= old.size_bytes;
+        let keys: Vec<_> = self
+            .entries
+            .keys()
+            .filter(|key| key.path == path)
+            .cloned()
+            .collect();
+        for key in keys {
+            if let Some(old) = self.entries.remove(&key) {
+                self.current_size_bytes -= old.size_bytes;
+            }
         }
     }
 

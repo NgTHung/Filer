@@ -797,6 +797,7 @@ async fn stress_scanner_large_dir() {
                 filter: None,
                 group: None,
             },
+            listing: filer_core::ListingOptions::default(),
             session,
             request: filer_core::RequestId::new(),
         })
