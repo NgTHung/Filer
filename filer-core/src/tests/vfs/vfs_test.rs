@@ -1,6 +1,7 @@
 //! Tests for VFS providers
 
 use crate::errors::{CoreError, ErrorCode};
+use crate::model::directory::{DirectoryCursor, DirectoryPageRequest};
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
 use crate::vfs::local::LocalFs;
@@ -127,6 +128,124 @@ async fn test_local_fs_list_with_meta_matches_metadata_listing() {
         option_node.modified.is_some(),
         compat_node.modified.is_some()
     );
+}
+
+#[tokio::test]
+async fn test_local_fs_list_page_returns_limit_and_cursor() {
+    let (fs, dir) = local_fs();
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        std::fs::write(dir.path().join(name), b"hello").unwrap();
+    }
+
+    let page = fs
+        .list_page(
+            dir.path(),
+            DirectoryPageRequest {
+                listing: ListingOptions::fast(),
+                limit: 2,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(page.entries.len(), 2);
+    assert_eq!(page.state.page_count, 2);
+    assert_eq!(page.state.total_count, None);
+    assert!(page.state.next_cursor.is_some());
+    assert!(!page.state.complete);
+}
+
+#[tokio::test]
+async fn test_local_fs_list_page_cursor_returns_later_entries() {
+    let (fs, dir) = local_fs();
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        std::fs::write(dir.path().join(name), b"hello").unwrap();
+    }
+
+    let first = fs
+        .list_page(
+            dir.path(),
+            DirectoryPageRequest {
+                listing: ListingOptions::fast(),
+                limit: 2,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    let second = fs
+        .list_page(
+            dir.path(),
+            DirectoryPageRequest {
+                listing: ListingOptions::fast(),
+                limit: 2,
+                cursor: first.state.next_cursor,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(second.entries.len(), 1);
+    assert_eq!(second.state.next_cursor, None);
+    assert!(second.state.complete);
+}
+
+#[tokio::test]
+async fn test_local_fs_list_page_metadata_populates_stat_metadata() {
+    let (fs, dir) = local_fs();
+    std::fs::write(dir.path().join("metadata.txt"), b"hello").unwrap();
+
+    let page = fs
+        .list_page(
+            dir.path(),
+            DirectoryPageRequest {
+                listing: ListingOptions::metadata(),
+                limit: 1,
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(page.entries[0].size, 5);
+    assert!(page.entries[0].modified.is_some());
+}
+
+#[tokio::test]
+async fn test_local_fs_list_page_rejects_invalid_cursor() {
+    let (fs, dir) = local_fs();
+
+    let result = fs
+        .list_page(
+            dir.path(),
+            DirectoryPageRequest {
+                listing: ListingOptions::fast(),
+                limit: 1,
+                cursor: Some(DirectoryCursor("not-a-cursor".into())),
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_local_fs_list_page_rejects_zero_limit() {
+    let (fs, dir) = local_fs();
+
+    let result = fs
+        .list_page(
+            dir.path(),
+            DirectoryPageRequest {
+                listing: ListingOptions::fast(),
+                limit: 0,
+                cursor: None,
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
 }
 
 #[tokio::test]

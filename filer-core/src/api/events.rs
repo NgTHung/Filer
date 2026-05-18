@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
-use crate::model::directory::DirectoryLoadState;
+use crate::model::directory::{DirectoryLoadState, DirectoryPageState};
 use crate::model::location::LocationRef;
 use crate::model::node::{NodeEntry, NodeId, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
@@ -37,6 +37,25 @@ pub enum Event {
         parent: LocationRef,
         groups: GroupedEntries,
         load: DirectoryLoadState,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Directory page loaded (bounded provider-level page for simple views).
+    DirectoryPageLoaded {
+        parent: NodeId,
+        path: PathBuf,
+        groups: GroupedNodes,
+        page: DirectoryPageState,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Directory page loaded with provider-aware locations.
+    DirectoryEntryPageLoaded {
+        parent: LocationRef,
+        groups: GroupedEntries,
+        page: DirectoryPageState,
         session: SessionId,
         request: RequestId,
     },

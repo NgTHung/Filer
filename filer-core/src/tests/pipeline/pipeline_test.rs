@@ -153,6 +153,26 @@ fn test_grouped_nodes_bounded_zero_returns_empty_complete_only_for_empty_total()
     assert!(empty_load.complete);
 }
 
+#[test]
+fn test_pipeline_config_default_is_pageable() {
+    assert!(PipelineConfig::default().is_pageable());
+}
+
+#[test]
+fn test_pipeline_config_sort_filter_group_are_not_pageable() {
+    assert!(!PipelineConfig::with_default_sort().is_pageable());
+    assert!(
+        !PipelineConfig::default()
+            .filter(FilterConfig::only_extensions(vec!["rs".into()]))
+            .is_pageable()
+    );
+    assert!(
+        !PipelineConfig::default()
+            .group_by(ConfigGroupBy::Extension)
+            .is_pageable()
+    );
+}
+
 // ===== FilterHidden Tests =====
 
 #[test]

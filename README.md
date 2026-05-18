@@ -45,9 +45,9 @@ completion, and error events. App-facing errors now carry `ErrorKind`, stable
 code. Core also emits structured `tracing` events when `CoreError` becomes
 `Event::Error`, leaving subscriber setup to the application. The project should
 next build on the new `Location` foundation by migrating provider addressing
-where it matters, then settle large-directory paging/streaming contracts,
-extension output envelopes, and the boundary between app-local config and
-future profile sync.
+where it matters, then extend large-directory paging beyond LocalFs, settle
+extension output envelopes, and define the boundary between app-local config
+and future profile sync.
 
 `0.2.3` hardens the additive `Location` contract for provider-aware addressing.
 `LocationRef` now has explicit id-only, descriptor-only, and full modes instead
@@ -59,17 +59,19 @@ derived route cache in the registry. Direct local `Location` commands are wired
 through API routing for navigation, scan, search, preview, metadata, and
 extended metadata, and the actor tests now check cancellation, stale-result
 suppression, cache reuse, and refresh behavior for those paths. Local file
-listing now has explicit load options: scans default to fast rows that avoid
-per-entry stat calls, metadata listings can be requested when size, timestamps,
-or permissions are needed, and callers can bound returned rows with load-state
-metadata on directory events. This does not yet replace public command/event
+listing now has explicit load options: default scans request a fast provider
+page, metadata listings can be requested when size, timestamps, or permissions
+are needed, and snapshot callers can still request full or bounded
+post-pipeline results. Provider-level directory paging is now wired through
+`FsProvider::list_page`, `DirectoryCursor`, `DirectoryPageState`,
+`DirectoryPageLoaded`, and `DirectoryEntryPageLoaded`, with `LocalFs` as the
+first native implementation. This does not yet replace public command/event
 `PathBuf` and `NodeId` surfaces; it strengthens the compatibility layer for
 that migration. The intent is for `Location` to become the bridge across local
 files, remote providers, virtual providers, extension-backed providers, and
 archives. Nested archive addresses can now be modeled as a provider root plus
 archive/member segments instead of forcing every layer into one path string.
-Provider-level streaming/cursors, archive navigation, and wire-safe transport
-envelopes remain future work.
+Archive navigation and wire-safe transport envelopes remain future work.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

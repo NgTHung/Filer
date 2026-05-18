@@ -7,7 +7,10 @@ use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::errors::CoreError;
-use crate::model::directory::DirectoryLoadOptions;
+use crate::model::directory::{
+    DirectoryCursor, DirectoryLoadOptions, DirectoryPageRequest, DirectoryPageResult,
+    DirectoryPageState,
+};
 use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::progress::{
@@ -19,7 +22,7 @@ use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::vfs::provider::FsProvider;
+use crate::vfs::provider::{FsProvider, parse_offset_cursor, validate_page_limit};
 
 /// Commands for scanner actor
 #[derive(Debug, Clone)]
@@ -279,9 +282,45 @@ impl Scanner {
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
             let parent_id = registry.clone().register(path.to_path_buf());
+            if let Some(page_request) = load_options.page_request()
+                && pipeline_config.is_pageable()
+            {
+                let page = match Self::page_from_cached_listing(cached, &page_request) {
+                    Ok(page) => page,
+                    Err(e) => {
+                        if Self::is_latest(latest_scans, session, request) {
+                            send_or_warn_async(
+                                events,
+                                Event::from_request_error(e, session, request),
+                                "scan cached page error",
+                            )
+                            .await;
+                        }
+                        return;
+                    }
+                };
+                registry.clone().register_batch_file_node(&page.entries);
+                Self::emit_page_result(
+                    events,
+                    latest_scans,
+                    registry,
+                    path,
+                    parent_id,
+                    parent_location,
+                    session,
+                    request,
+                    page,
+                    "scan page result (cached)",
+                )
+                .await;
+                return;
+            }
+
             registry.clone().register_batch_file_node(&cached);
             let pipeline = Pipeline::from_config(&pipeline_config);
-            let (groups, load) = pipeline.execute_grouped(cached).limited(load_options.limit);
+            let (groups, load) = pipeline
+                .execute_grouped(cached)
+                .limited(load_options.snapshot_limit());
             Self::emit_scan_progress(
                 events,
                 latest_scans,
@@ -380,6 +419,90 @@ impl Scanner {
             ),
         )
         .await;
+
+        if let Some(page_request) = load_options.page_request()
+            && pipeline_config.is_pageable()
+        {
+            let page = match provider.list_page(path, page_request.clone()).await {
+                Ok(page) => page,
+                Err(e) => {
+                    if Self::is_latest(latest_scans, session, request) {
+                        Self::emit_scan_progress(
+                            events,
+                            latest_scans,
+                            session,
+                            request,
+                            ProgressSnapshot::new(
+                                ProgressStatus::Failed,
+                                ProgressPhase::Loading,
+                                ProgressUnit::Entry,
+                                0,
+                                None,
+                                Self::scan_target(path, parent_location.as_ref()),
+                            ),
+                        )
+                        .await;
+                        send_or_warn_async(
+                            events,
+                            Event::from_request_error(e, session, request),
+                            "scan page error",
+                        )
+                        .await;
+                    }
+                    return;
+                }
+            };
+
+            if page_request.cursor.is_none()
+                && page.state.complete
+                && let Some(cache) = cache
+            {
+                if let Ok(mut c) = cache.lock() {
+                    c.put(
+                        path.to_path_buf(),
+                        load_options.listing,
+                        page.entries.clone(),
+                    );
+                }
+            }
+
+            if cancel.is_cancelled() {
+                Self::emit_scan_progress(
+                    events,
+                    latest_scans,
+                    session,
+                    request,
+                    ProgressSnapshot::new(
+                        ProgressStatus::Cancelled,
+                        ProgressPhase::Loading,
+                        ProgressUnit::Entry,
+                        0,
+                        None,
+                        Self::scan_target(path, parent_location.as_ref()),
+                    ),
+                )
+                .await;
+                return;
+            }
+
+            let parent_id = registry.clone().register(path.to_path_buf());
+            registry.clone().register_batch_file_node(&page.entries);
+            Self::emit_page_result(
+                events,
+                latest_scans,
+                registry,
+                path,
+                parent_id,
+                parent_location,
+                session,
+                request,
+                page,
+                "scan page result",
+            )
+            .await;
+            return;
+        }
+
         let entries = match provider.list_with_options(path, load_options.listing).await {
             Ok(entries) => entries,
             Err(e) => {
@@ -463,7 +586,7 @@ impl Scanner {
         let pipeline = Pipeline::from_config(&pipeline_config);
         let (groups, load) = pipeline
             .execute_grouped(entries)
-            .limited(load_options.limit);
+            .limited(load_options.snapshot_limit());
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -558,6 +681,126 @@ impl Scanner {
                 ProgressUnit::Entry,
                 load.loaded_count,
                 load.total_count,
+                Self::scan_target(path, None),
+            ),
+        )
+        .await;
+    }
+
+    fn page_from_cached_listing(
+        entries: Vec<crate::FileNode>,
+        request: &DirectoryPageRequest,
+    ) -> Result<DirectoryPageResult, CoreError> {
+        validate_page_limit(request.limit)?;
+        let start = parse_offset_cursor(request.cursor.as_ref())?;
+        let end = start.saturating_add(request.limit).min(entries.len());
+        let page_entries = if start < entries.len() {
+            entries[start..end].to_vec()
+        } else {
+            Vec::new()
+        };
+        let state = if end < entries.len() {
+            DirectoryPageState::partial(
+                page_entries.len(),
+                Some(entries.len()),
+                DirectoryCursor(end.to_string()),
+            )
+        } else {
+            DirectoryPageState::complete(page_entries.len(), Some(entries.len()))
+        };
+        Ok(DirectoryPageResult {
+            entries: page_entries,
+            state,
+        })
+    }
+
+    async fn emit_page_result(
+        events: &Sender<Event>,
+        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
+        registry: &NodeRegistry,
+        path: &Path,
+        parent_id: NodeId,
+        parent_location: Option<LocationRef>,
+        session: SessionId,
+        request: RequestId,
+        page: DirectoryPageResult,
+        context: &'static str,
+    ) {
+        let page_state = page.state.clone();
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::Processing,
+                ProgressUnit::Entry,
+                page_state.page_count,
+                page_state.total_count,
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
+        if !Self::is_latest(latest_scans, session, request) {
+            return;
+        }
+
+        let groups = Pipeline::default().execute_grouped(page.entries);
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::Emitting,
+                ProgressUnit::Entry,
+                page_state.page_count,
+                page_state.total_count,
+                Self::scan_target(path, parent_location.as_ref()),
+            ),
+        )
+        .await;
+        if let Some(parent) = parent_location {
+            send_or_warn_async(
+                events,
+                Event::DirectoryEntryPageLoaded {
+                    parent,
+                    groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                    page: page_state.clone(),
+                    session,
+                    request,
+                },
+                context,
+            )
+            .await;
+        } else {
+            send_or_warn_async(
+                events,
+                Event::DirectoryPageLoaded {
+                    parent: parent_id,
+                    path: path.to_path_buf(),
+                    groups,
+                    page: page_state.clone(),
+                    session,
+                    request,
+                },
+                context,
+            )
+            .await;
+        }
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Completed,
+                ProgressPhase::Finalizing,
+                ProgressUnit::Entry,
+                page_state.page_count,
+                page_state.total_count,
                 Self::scan_target(path, None),
             ),
         )

@@ -2,6 +2,9 @@ use async_trait::async_trait;
 use std::path::Path;
 
 use crate::errors::CoreError;
+use crate::model::directory::{
+    DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
+};
 use crate::model::node::FileNode;
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +84,40 @@ pub trait FsProvider: Send + Sync {
         self.list(path).await
     }
 
+    /// List a provider-owned page of directory entries.
+    ///
+    /// The default implementation falls back to a full listing and slices it.
+    /// Providers with native cursors should override this to avoid materializing
+    /// the whole directory.
+    async fn list_page(
+        &self,
+        path: &Path,
+        request: DirectoryPageRequest,
+    ) -> Result<DirectoryPageResult, CoreError> {
+        validate_page_limit(request.limit)?;
+        let entries = self.list_with_options(path, request.listing).await?;
+        let start = parse_offset_cursor(request.cursor.as_ref())?;
+        let end = start.saturating_add(request.limit).min(entries.len());
+        let page_entries = if start < entries.len() {
+            entries[start..end].to_vec()
+        } else {
+            Vec::new()
+        };
+        let state = if end < entries.len() {
+            DirectoryPageState::partial(
+                page_entries.len(),
+                Some(entries.len()),
+                DirectoryCursor(end.to_string()),
+            )
+        } else {
+            DirectoryPageState::complete(page_entries.len(), Some(entries.len()))
+        };
+        Ok(DirectoryPageResult {
+            entries: page_entries,
+            state,
+        })
+    }
+
     /// Read file contents
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError>;
 
@@ -136,4 +173,22 @@ pub trait FsProvider: Send + Sync {
     async fn mkdir(&self, path: &Path) -> Result<(), CoreError> {
         Err(CoreError::permission_denied(path.to_path_buf()))
     }
+}
+
+pub(crate) fn parse_offset_cursor(cursor: Option<&DirectoryCursor>) -> Result<usize, CoreError> {
+    match cursor {
+        None => Ok(0),
+        Some(cursor) => cursor.0.parse::<usize>().map_err(|_| {
+            CoreError::invalid_input(format!("Invalid directory cursor: {}", cursor.0))
+        }),
+    }
+}
+
+pub(crate) fn validate_page_limit(limit: usize) -> Result<(), CoreError> {
+    if limit == 0 {
+        return Err(CoreError::invalid_input(
+            "Directory page limit must be greater than zero",
+        ));
+    }
+    Ok(())
 }

@@ -58,6 +58,9 @@ Completed contract work:
   as the default and stat-backed metadata rows available on request
 - bounded directory scan result contracts through `DirectoryLoadOptions` and
   `DirectoryLoadState`
+- provider-level directory paging through `DirectoryLoadMode::Page`,
+  `DirectoryCursor`, `DirectoryPageState`, `FsProvider::list_page`, and page
+  result events, starting with a native `LocalFs` implementation
 - operation ids for copy, move, delete, rename, create file, and create folder
   progress, completion, and operation-scoped errors
 - structured errors through `ErrorKind`, stable `ErrorCode`, optional
@@ -83,12 +86,13 @@ fields, and core emits structured `tracing` diagnostics when converting
 through navigation, scan, search, preview, metadata, and extended metadata, with
 tests covering cancellation, stale-result suppression, cache reuse, and
 correlation behavior. Local directory scans now carry explicit load options:
-the default fast mode avoids per-entry stat calls, metadata mode fills size,
-timestamp, and permission fields for views that need them, and callers can set a
-result limit for bounded directory responses. This still does not remove the
-existing public command, `FileNode`, or `FsProvider` path surfaces.
-Provider-level streaming/cursors, timeout semantics, full `Location` migration,
-archive navigation, and extension output envelopes remain open contract work.
+the default mode requests a fast first page, metadata mode fills size,
+timestamp, and permission fields for views that need them, snapshot callers can
+request full or bounded post-pipeline responses, and page callers receive
+cursor state through page result events. This still does not remove the
+existing public command, `FileNode`, or path-based `FsProvider` surfaces.
+Timeout semantics, full `Location` migration, archive navigation, provider
+profile routing, and extension output envelopes remain open contract work.
 
 Built-in modules should become extension-aware where useful, but navigation,
 scan, search orchestration, watch, file operations, sessions, provider routing,
@@ -108,40 +112,56 @@ reported as unsupported until provider connection routing exists. Archive
 navigation, capability context, and full command/event migration are still
 future work.
 
-Core stabilization is complete only when large directory loading is bounded,
-listing detail is chosen intentionally by callers, errors carry enough
-structured target/context for app and web clients, archive traversal is modeled
-as provider navigation, and the trusted git-decoration prototype proves
+Core stabilization is complete only when large directory paging works across the
+provider set, listing detail is chosen intentionally by callers, errors carry
+enough structured target/context for app and web clients, archive traversal is
+modeled as provider navigation, and the trusted git-decoration prototype proves
 extension output can arrive after directory data without blocking it.
 
 ## File Listing
 
-Directory listing is explicit about cost. `DirectoryLoadOptions::default()` is
-the default for scan commands: unbounded, using `ListingOptions::fast()`.
-Fast listing uses directory-entry type data and leaves stat-backed fields such
-as size, timestamps, readonly, and permissions at default values.
+Directory listing is explicit about cost and load shape. `ListingOptions::fast()`
+uses directory-entry type data and leaves stat-backed fields such as size,
+timestamps, readonly, and permissions at default values.
 `ListingOptions::metadata()` asks the provider to stat each entry and populate
 those fields.
 
-`FsProvider::list_with_options` is the provider-level contract. Providers that
-do not support multiple detail levels can keep the default implementation, which
-delegates to `list`. `LocalFs` overrides it and keeps `list_with_meta` as a
-compatibility helper for metadata listings.
+`DirectoryLoadOptions::default()` is the default for scan and navigation
+commands. It requests the first fast page with
+`DEFAULT_DIRECTORY_PAGE_SIZE`. Page scans emit `DirectoryPageLoaded`; Location
+page scans emit `DirectoryEntryPageLoaded`. The event carries
+`DirectoryPageState` with the returned row count, optional total count,
+completion flag, and optional `DirectoryCursor` for the next page. Cursors are
+provider-owned and short-lived. They are suitable for continuing the current
+directory load, not for persisted identity.
 
-`DirectoryLoadOptions::bounded(limit)` limits the rows returned in
-`DirectoryLoaded` or `DirectoryEntriesLoaded`. The scanner still performs the
-current full provider listing, runs the pipeline, then trims grouped rows to the
-requested limit. The event carries `DirectoryLoadState` so clients can tell
-whether the result is complete, how many rows were returned, and the full
-post-pipeline count when known.
+`FsProvider::list_page` is the provider-level paging contract. Providers that
+do not implement native paging inherit a compatibility fallback that performs a
+full `list_with_options` call and slices the result. `LocalFs` overrides
+`list_page` and reads only enough directory entries to fill the requested page
+plus one lookahead entry. A page limit of zero is invalid because it cannot
+advance a cursor.
+
+Snapshot callers still have explicit compatibility paths.
+`DirectoryLoadOptions::unbounded(listing)` emits a full `DirectoryLoaded` or
+`DirectoryEntriesLoaded` snapshot. `DirectoryLoadOptions::bounded(limit)` and
+`bounded_with_listing(limit, listing)` emit snapshot events trimmed after the
+pipeline and include `DirectoryLoadState` so clients can tell whether the
+snapshot is complete and what the post-pipeline total is when known.
 
 Scanner cache entries are keyed by both path and listing detail, so fast and
 metadata rows for the same directory do not contaminate each other. Cache
-invalidation removes all listing-detail variants for the path. Bounded scans
-can reuse a complete cached listing, but bounded results are not cached as
-complete directory entries. Pipeline stages do not implicitly upgrade listing
-detail; callers that sort, group, or filter by metadata-sensitive fields should
-request metadata listing explicitly.
+invalidation removes all listing-detail variants for the path. Complete
+snapshots are cached as complete listings. A first page is cached only when the
+provider reports it is complete; partial pages are not cached as complete
+directory listings. Later pages may be served from a complete cached listing
+when one exists.
+
+Pipeline stages are currently snapshot-only unless the pipeline is empty. A page
+request with sorting, filtering, or grouping falls back to a full provider
+listing and emits snapshot events. Pipeline stages do not implicitly upgrade
+listing detail; callers that sort, group, or filter by metadata-sensitive fields
+should request metadata listing explicitly.
 
 ## Request IDs
 
@@ -149,7 +169,8 @@ Async command flows that can produce stale results now carry a `RequestId`.
 Callers create one request id per user intent and include it on commands for
 navigation-driven scans, refresh, search, preview, metadata, and extended
 metadata. The same id is echoed on matching events, including
-`DirectoryLoaded`, `ProgressUpdated`, `SearchResults`, `PreviewReady`,
+`DirectoryLoaded`, `DirectoryPageLoaded`, `DirectoryEntriesLoaded`,
+`DirectoryEntryPageLoaded`, `ProgressUpdated`, `SearchResults`, `PreviewReady`,
 `PreviewFailed`, `MetadataLoaded`, and `ExtendedMetadataLoaded`.
 
 `RequestId::new()` creates runtime-local monotonic ids. `FilerCore` also exposes
@@ -178,10 +199,11 @@ by this shared contract.
 
 Scan progress is phase-based. It reports cache lookup, provider loading,
 registration, processing, result emission, completion, cancellation, and failure
-when those phases apply. Provider listing still returns a full vector, so scans
-do not yet stream one progress update per filesystem entry during I/O.
-`DirectoryLoadState` on directory result events remains the source of truth for
-bounded result completeness.
+when those phases apply. Paged provider loading reports page-level counts when
+the provider returns them; it does not yet stream one progress update per
+filesystem entry during I/O. `DirectoryPageState` is the source of truth for
+page completion, and `DirectoryLoadState` remains the source of truth for
+snapshot completeness.
 
 ## Location
 
@@ -244,12 +266,13 @@ errors. Segmented and unsupported-provider routes are represented and reported,
 but not executed yet.
 
 Scanner, searcher, and previewer tests now cover Location parity for stale
-result suppression, cancellation, cache hits, and session isolation. A
-`ScanLocation` cache hit emits `DirectoryEntriesLoaded`; `RefreshNode` still
-bypasses cache after a Location scan. Navigator invalidation now records
-navigated nodes and triggers `RefreshNode` for sessions currently displaying the
-invalidated directory, so app- or watcher-driven invalidation refreshes fresh
-directory data instead of serving stale cache entries.
+result suppression, cancellation, cache hits, and session isolation. A default
+`ScanLocation` emits `DirectoryEntryPageLoaded`; a snapshot `ScanLocation`
+emits `DirectoryEntriesLoaded`. Cache hits preserve the requested load shape.
+`RefreshNode` still bypasses cache after a Location scan. Navigator invalidation
+now records navigated nodes and triggers `RefreshNode` for sessions currently
+displaying the invalidated directory, so app- or watcher-driven invalidation
+refreshes fresh directory data instead of serving stale cache entries.
 
 Nested archive addresses are represented as a provider root plus ordered
 segments, for example:
@@ -368,15 +391,19 @@ async fn main() {
     })
     .unwrap();
 
-    // Receive events
+    // Receive the default first page
     while let Ok(event) = core.event_receiver().recv() {
         match event {
-            Event::DirectoryLoaded {
+            Event::DirectoryPageLoaded {
                 groups,
+                page,
                 request: loaded_request,
                 ..
             } if loaded_request == request => {
-                println!("Loaded {} files", groups.total_count);
+                println!("Loaded {} files in this page", groups.total_count);
+                if let Some(cursor) = page.next_cursor {
+                    println!("More rows are available after {:?}", cursor);
+                }
             }
             _ => {}
         }

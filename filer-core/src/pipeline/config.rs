@@ -87,6 +87,15 @@ impl PipelineConfig {
         self.group = Some(GroupConfig { by });
         self
     }
+
+    /// Whether provider-level directory paging can be used without changing
+    /// pipeline semantics.
+    ///
+    /// The first paging contract only pages simple/default views. Sort, filter,
+    /// and grouping still require full materialization for correct results.
+    pub fn is_pageable(&self) -> bool {
+        self.sort.is_none() && self.filter.is_none() && self.group.is_none()
+    }
 }
 
 /// Sort configuration

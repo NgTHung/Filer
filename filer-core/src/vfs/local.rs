@@ -4,9 +4,15 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::errors::CoreError;
+use crate::model::directory::{
+    DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
+};
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
-use crate::vfs::provider::{Capabilities, FsProvider, ListingDetail, ListingOptions, ReadSeek};
+use crate::vfs::provider::{
+    Capabilities, FsProvider, ListingDetail, ListingOptions, ReadSeek, parse_offset_cursor,
+    validate_page_limit,
+};
 
 /// Local filesystem provider
 pub struct LocalFs {
@@ -71,6 +77,80 @@ impl FsProvider for LocalFs {
             ListingDetail::Fast => self.list(path).await,
             ListingDetail::Metadata => self.list_with_meta(path).await,
         }
+    }
+
+    async fn list_page(
+        &self,
+        path: &Path,
+        request: DirectoryPageRequest,
+    ) -> Result<DirectoryPageResult, CoreError> {
+        validate_page_limit(request.limit)?;
+        let start = parse_offset_cursor(request.cursor.as_ref())?;
+        let mut dir = tokio::fs::read_dir(path)
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let mut seen = 0usize;
+        let mut entries = Vec::new();
+        let mut has_more = false;
+
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
+        {
+            if seen < start {
+                seen += 1;
+                continue;
+            }
+
+            if entries.len() >= request.limit {
+                has_more = true;
+                break;
+            }
+
+            match request.listing.detail {
+                ListingDetail::Fast => match entry.file_type().await {
+                    Ok(ft) => entries.push(FileNode::from_dir_entry(
+                        entry.path(),
+                        ft,
+                        Some(self.reg.clone()),
+                    )),
+                    Err(e) => {
+                        tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in paged listing");
+                    }
+                },
+                ListingDetail::Metadata => {
+                    let entry_path = entry.path();
+                    match entry.metadata().await {
+                        Ok(meta) => match FileNode::from_metadata(
+                            meta,
+                            entry_path.clone(),
+                            Some(self.reg.clone()),
+                        ) {
+                            Ok(node) => entries.push(node),
+                            Err(e) => {
+                                tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in paged listing");
+                            }
+                        },
+                        Err(e) => {
+                            tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry metadata in paged listing");
+                        }
+                    }
+                }
+            }
+            seen += 1;
+        }
+
+        let state = if has_more {
+            DirectoryPageState::partial(
+                entries.len(),
+                None,
+                DirectoryCursor((start + entries.len()).to_string()),
+            )
+        } else {
+            DirectoryPageState::complete(entries.len(), None)
+        };
+        Ok(DirectoryPageResult { entries, state })
     }
 
     async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {

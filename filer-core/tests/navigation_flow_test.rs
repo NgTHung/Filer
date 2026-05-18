@@ -171,7 +171,7 @@ async fn create_session(core: &FilerCore) -> SessionId {
     }
 }
 
-/// Wait until the event channel yields a `DirectoryLoaded` for any session,
+/// Wait until the event channel yields a directory load event for any session,
 /// or panic on timeout.
 async fn wait_for_directory_loaded(
     core: &FilerCore,
@@ -181,10 +181,21 @@ async fn wait_for_directory_loaded(
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         if tokio::time::Instant::now() > deadline {
-            panic!("timed out waiting for DirectoryLoaded");
+            panic!("timed out waiting for directory load event");
         }
         match timeout(Duration::from_millis(100), rx.recv_async()).await {
             Ok(Ok(Event::DirectoryLoaded {
+                path,
+                groups,
+                session,
+                ..
+            })) => {
+                if session == expected_session {
+                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
+                    return (path, total);
+                }
+            }
+            Ok(Ok(Event::DirectoryPageLoaded {
                 path,
                 groups,
                 session,
@@ -199,7 +210,7 @@ async fn wait_for_directory_loaded(
             Ok(Ok(Event::Error {
                 message, session, ..
             })) if session == expected_session => {
-                panic!("got Error instead of DirectoryLoaded: {}", message);
+                panic!("got Error instead of directory load event: {}", message);
             }
             _ => {}
         }
@@ -292,7 +303,7 @@ mod navigation_flow_tests {
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         loop {
             assert!(tokio::time::Instant::now() <= deadline, "timeout");
-            if let Ok(Ok(Event::DirectoryLoaded {
+            if let Ok(Ok(Event::DirectoryPageLoaded {
                 session: ev_session,
                 ..
             })) = timeout(Duration::from_millis(100), rx.recv_async()).await
@@ -694,7 +705,7 @@ mod navigation_flow_tests {
                 "timeout waiting for back events"
             );
             match timeout(Duration::from_millis(100), rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryLoaded {
+                Ok(Ok(Event::DirectoryPageLoaded {
                     path, session: s, ..
                 })) if s == session => {
                     assert_eq!(path, PathBuf::from("/alpha"), "back should land on /alpha");
@@ -915,7 +926,7 @@ mod navigation_flow_tests {
                         break;
                     }
                 }
-                Ok(Ok(Event::DirectoryLoaded { session: s, .. })) if s == session => {}
+                Ok(Ok(Event::DirectoryPageLoaded { session: s, .. })) if s == session => {}
                 _ => {}
             }
         }
