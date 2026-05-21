@@ -178,7 +178,17 @@ and extension include/exclude filters are applied incrementally over provider
 pages. Sparse filters may return fewer than the requested number of visible rows
 before yielding a next cursor, because scanner caps raw entries read per client
 page to protect latency. Filtered cursors are opaque, short-lived, and tied to
-the listing detail and pipeline that created them.
+the listing detail and pipeline that created them. A filtered page with
+`page_count == 0`, `complete == false`, and `next_cursor.is_some()` is valid:
+it means the scanner advanced through raw provider rows without finding a
+visible match inside the current raw-read budget. Clients should keep the cursor
+and request another page instead of treating that event as an empty directory.
+
+Current provider cursors are best-effort under directory mutation. If files are
+created, deleted, or renamed between page requests, offset-backed providers may
+skip or duplicate rows. Watcher-driven refresh and explicit refresh are the
+current recovery mechanisms; mutation-stable provider cursor sessions remain
+future work.
 
 Sorting, grouping, size filters, and name-pattern filters still require full
 materialization and emit snapshot events. Pipeline stages do not implicitly

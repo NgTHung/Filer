@@ -227,9 +227,13 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 - [x] `Core` Define the first large-directory loading contract: default page
   loads, explicit full/bounded snapshots, provider-owned cursors, and page
   events separate from snapshot events.
+- [x] `Core` Harden incremental filter-aware paging with cancellation,
+  stale-result, Location, empty-partial-page, and mutation-limitation tests.
 - [ ] `Core` Extend directory paging beyond LocalFs, add sorted/grouped
   incremental views, and define UI virtualization hints, stable refresh
   behavior under mutation, and optional provider-native total counts.
+- [ ] `Core` Design mutation-stable provider cursor sessions for large
+  directories so refresh/mutation does not skip or duplicate rows.
 - [ ] `Core` Define cancellation and timeout behavior for provider calls,
   previews, search, operations, and future extension calls.
 - [ ] `Ecosystem` Define the extension output envelope and first file
@@ -260,7 +264,7 @@ Exit criteria:
   tests for model, LocalFs, scanner events, cache behavior, navigation routing,
   and pipeline fallback.
 - [ ] Large-directory paging works across provider types and supports
-  pipeline-aware incremental views.
+  sorted/grouped pipeline-aware incremental views.
 - [ ] Archive traversal is modeled as provider navigation, not only preview.
 - [ ] Undo and conflict-resolution data contracts are drafted, even if full UI
   and behavior come later.

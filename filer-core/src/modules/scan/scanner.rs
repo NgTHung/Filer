@@ -26,6 +26,11 @@ use crate::vfs::provider::{FsProvider, ListingOptions, parse_offset_cursor, vali
 
 const FILTER_CURSOR_PREFIX: &str = "filter:v1:";
 
+enum FilteredPageLoad {
+    Page(DirectoryPageResult),
+    Cancelled,
+}
+
 /// Commands for scanner actor
 #[derive(Debug, Clone)]
 pub enum ScanCommand {
@@ -446,15 +451,17 @@ impl Scanner {
             )
         {
             let page = match pipeline_config.paging_mode() {
-                PipelinePagingMode::ProviderPage => {
-                    provider.list_page(path, page_request.clone()).await
-                }
+                PipelinePagingMode::ProviderPage => provider
+                    .list_page(path, page_request.clone())
+                    .await
+                    .map(FilteredPageLoad::Page),
                 PipelinePagingMode::FilteredPage => {
                     Self::load_filtered_page(
                         provider.as_ref(),
                         path,
                         page_request.clone(),
                         &pipeline_config,
+                        cancel,
                     )
                     .await
                 }
@@ -462,7 +469,25 @@ impl Scanner {
             };
 
             let page = match page {
-                Ok(page) => page,
+                Ok(FilteredPageLoad::Page(page)) => page,
+                Ok(FilteredPageLoad::Cancelled) => {
+                    Self::emit_scan_progress(
+                        events,
+                        latest_scans,
+                        session,
+                        request,
+                        ProgressSnapshot::new(
+                            ProgressStatus::Cancelled,
+                            ProgressPhase::Loading,
+                            ProgressUnit::Entry,
+                            0,
+                            None,
+                            Self::scan_target(path, parent_location.as_ref()),
+                        ),
+                    )
+                    .await;
+                    return;
+                }
                 Err(e) => {
                     if Self::is_latest(latest_scans, session, request) {
                         Self::emit_scan_progress(
@@ -782,7 +807,8 @@ impl Scanner {
         path: &Path,
         request: DirectoryPageRequest,
         pipeline_config: &PipelineConfig,
-    ) -> Result<DirectoryPageResult, CoreError> {
+        cancel: &CancellationToken,
+    ) -> Result<FilteredPageLoad, CoreError> {
         validate_page_limit(request.limit)?;
         let mut provider_cursor =
             Self::decode_filter_cursor(request.cursor.as_ref(), request.listing, pipeline_config)?;
@@ -795,25 +821,29 @@ impl Scanner {
         let pipeline = Pipeline::from_config(pipeline_config);
 
         loop {
+            if cancel.is_cancelled() {
+                return Ok(FilteredPageLoad::Cancelled);
+            }
+
             if filtered_entries.len() >= request.limit {
-                return Ok(Self::filtered_page_result(
+                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
                     filtered_entries,
                     provider_cursor,
                     false,
                     request.listing,
                     pipeline_config,
-                )?);
+                )?));
             }
 
             let remaining_budget = raw_budget.saturating_sub(raw_read);
             if remaining_budget == 0 {
-                return Ok(Self::filtered_page_result(
+                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
                     filtered_entries,
                     provider_cursor,
                     false,
                     request.listing,
                     pipeline_config,
-                )?);
+                )?));
             }
 
             let remaining_output = request.limit - filtered_entries.len();
@@ -829,29 +859,33 @@ impl Scanner {
                 )
                 .await?;
 
+            if cancel.is_cancelled() {
+                return Ok(FilteredPageLoad::Cancelled);
+            }
+
             raw_read = raw_read.saturating_add(raw_page.state.page_count);
             let raw_complete = raw_page.state.complete;
             provider_cursor = raw_page.state.next_cursor.clone();
             filtered_entries.extend(pipeline.execute_flat(raw_page.entries));
 
             if raw_complete {
-                return Ok(Self::filtered_page_result(
+                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
                     filtered_entries,
                     None,
                     true,
                     request.listing,
                     pipeline_config,
-                )?);
+                )?));
             }
 
             if raw_read >= raw_budget || raw_page.state.page_count == 0 {
-                return Ok(Self::filtered_page_result(
+                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
                     filtered_entries,
                     provider_cursor,
                     false,
                     request.listing,
                     pipeline_config,
-                )?);
+                )?));
             }
         }
     }

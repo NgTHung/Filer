@@ -105,6 +105,10 @@ impl MockProvider {
         self.files.lock().unwrap().push(node);
     }
 
+    fn insert_file(&self, index: usize, node: FileNode) {
+        self.files.lock().unwrap().insert(index, node);
+    }
+
     fn get_list_calls(&self) -> Vec<PathBuf> {
         self.list_calls.lock().unwrap().clone()
     }
@@ -1076,6 +1080,182 @@ mod scanner_cache_tests {
     }
 
     #[tokio::test]
+    async fn test_sparse_filter_empty_partial_can_continue_to_match() {
+        let provider = MockProvider::new();
+        for idx in 0..300 {
+            provider.add_file(make_file(
+                &format!("skip-{idx}.txt"),
+                "/tmp/filter-empty-continue",
+                idx,
+                false,
+            ));
+        }
+        provider.add_file(make_file(
+            "late.rs",
+            "/tmp/filter-empty-continue",
+            500,
+            false,
+        ));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let pipeline =
+            PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
+        let first_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/filter-empty-continue"),
+                session: first_session,
+                pipeline: pipeline.clone(),
+                load: crate::DirectoryLoadOptions::page(1),
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let (first_groups, first_page) = wait_for_dir_page_loaded(&evt_rx, first_session).await;
+        assert_eq!(first_groups.total_count, 0);
+        assert_eq!(first_page.page_count, 0);
+        assert!(!first_page.complete);
+        let cursor = first_page
+            .next_cursor
+            .expect("empty partial page should provide a continuation cursor");
+
+        let second_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/filter-empty-continue"),
+                session: second_session,
+                pipeline,
+                load: crate::DirectoryLoadOptions::page_after(1, cursor),
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let (second_groups, second_page) = wait_for_dir_page_loaded(&evt_rx, second_session).await;
+        assert_eq!(second_groups.total_count, 1);
+        assert_eq!(second_groups.groups[0].nodes[0].name, "late.rs");
+        assert!(second_page.complete);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_filtered_page_suppresses_directory_page_loaded() {
+        let provider = MockProvider::new();
+        provider.set_delay_ms(10);
+        for idx in 0..300 {
+            provider.add_file(make_file(
+                &format!("skip-{idx}.txt"),
+                "/tmp/filter-cancel",
+                idx,
+                false,
+            ));
+        }
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider.clone()), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/filter-cancel"),
+                session,
+                pipeline: PipelineConfig::default()
+                    .filter(FilterConfig::only_extensions(vec!["rs".into()])),
+                load: crate::DirectoryLoadOptions::page(1),
+                request,
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        cmd_tx.send(ScanCommand::Cancel(session)).unwrap();
+
+        let events = collect_for_duration(&evt_rx, Duration::from_millis(250)).await;
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ProgressUpdated { scope, snapshot }
+                    if scope.session == session
+                        && scope.request == Some(request)
+                        && snapshot.status == ProgressStatus::Cancelled
+            )
+        }));
+        assert!(!events.iter().any(|event| {
+            matches!(event, Event::DirectoryPageLoaded { session: s, .. } if *s == session)
+        }));
+        assert!(!events.iter().any(|event| {
+            matches!(
+                event,
+                Event::ProgressUpdated { scope, snapshot }
+                    if scope.session == session
+                        && scope.request == Some(request)
+                        && snapshot.status == ProgressStatus::Completed
+            )
+        }));
+        assert!(
+            provider.get_page_calls().len() < crate::DEFAULT_DIRECTORY_PAGE_SIZE,
+            "cancellation should stop the sparse filtered loop before the raw budget is exhausted"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_offset_filtered_cursor_is_best_effort_under_mutation() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.rs", "/tmp/filter-mutation", 10, false));
+        provider.add_file(make_file("b.rs", "/tmp/filter-mutation", 20, false));
+        provider.add_file(make_file("c.rs", "/tmp/filter-mutation", 30, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider.clone()), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let pipeline =
+            PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
+        let first_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/filter-mutation"),
+                session: first_session,
+                pipeline: pipeline.clone(),
+                load: crate::DirectoryLoadOptions::page(1),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let (first_groups, first_page) = wait_for_dir_page_loaded(&evt_rx, first_session).await;
+        assert_eq!(first_groups.groups[0].nodes[0].name, "a.rs");
+        let cursor = first_page.next_cursor.expect("first page should continue");
+
+        provider.insert_file(0, make_file("new.rs", "/tmp/filter-mutation", 5, false));
+
+        let second_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: PathBuf::from("/tmp/filter-mutation"),
+                session: second_session,
+                pipeline,
+                load: crate::DirectoryLoadOptions::page_after(1, cursor),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let (second_groups, _second_page) = wait_for_dir_page_loaded(&evt_rx, second_session).await;
+
+        assert_eq!(
+            second_groups.groups[0].nodes[0].name, "a.rs",
+            "offset-backed cursors are best-effort under mutation and can duplicate rows"
+        );
+    }
+
+    #[tokio::test]
     async fn test_filtered_cursor_rejects_changed_pipeline() {
         let provider = MockProvider::new();
         provider.add_file(make_file("a.rs", "/tmp/filter-mismatch", 10, false));
@@ -1176,6 +1356,173 @@ mod scanner_cache_tests {
         assert!(!page.complete);
         assert_eq!(provider.get_list_calls().len(), 1);
         assert_eq!(provider.get_page_calls().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_scan_location_filter_page_emits_directory_entry_page_loaded() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.rs", "/tmp/location-filter-page", 10, false));
+        provider.add_file(make_file("b.txt", "/tmp/location-filter-page", 20, false));
+        provider.add_file(make_file("c.rs", "/tmp/location-filter-page", 30, false));
+        provider.add_file(make_file("d.txt", "/tmp/location-filter-page", 40, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider.clone()), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let location = Location::local("/tmp/location-filter-page");
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session,
+                pipeline: PipelineConfig::default()
+                    .filter(FilterConfig::only_extensions(vec!["rs".into()])),
+                load: crate::DirectoryLoadOptions::page(2),
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let (groups, page) = wait_for_location_dir_page_loaded(&evt_rx, session).await;
+        assert_eq!(groups.total_count, 2);
+        assert_eq!(groups.groups[0].nodes[0].name, "a.rs");
+        assert_eq!(groups.groups[0].nodes[1].name, "c.rs");
+        assert!(!page.complete);
+        assert!(page.next_cursor.is_some());
+        assert_eq!(provider.get_list_calls().len(), 0);
+        assert!(!provider.get_page_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_scan_location_filter_page_cursor_continues() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("a.rs", "/tmp/location-filter-cursor", 10, false));
+        provider.add_file(make_file("b.txt", "/tmp/location-filter-cursor", 20, false));
+        provider.add_file(make_file("c.rs", "/tmp/location-filter-cursor", 30, false));
+        provider.add_file(make_file("d.rs", "/tmp/location-filter-cursor", 40, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let pipeline =
+            PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
+        let location = Location::local("/tmp/location-filter-cursor");
+        let first_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: first_session,
+                pipeline: pipeline.clone(),
+                load: crate::DirectoryLoadOptions::page(2),
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let (first_groups, first_page) =
+            wait_for_location_dir_page_loaded(&evt_rx, first_session).await;
+        assert_eq!(
+            first_groups.groups[0]
+                .nodes
+                .iter()
+                .map(|node| node.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a.rs", "c.rs"]
+        );
+        let cursor = first_page.next_cursor.expect("first page should continue");
+
+        let second_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: second_session,
+                pipeline,
+                load: crate::DirectoryLoadOptions::page_after(2, cursor),
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let (second_groups, second_page) =
+            wait_for_location_dir_page_loaded(&evt_rx, second_session).await;
+        assert_eq!(second_groups.total_count, 1);
+        assert_eq!(second_groups.groups[0].nodes[0].name, "d.rs");
+        assert!(second_page.complete);
+    }
+
+    #[tokio::test]
+    async fn test_scan_location_filter_cursor_rejects_changed_pipeline() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file(
+            "a.rs",
+            "/tmp/location-filter-mismatch",
+            10,
+            false,
+        ));
+        provider.add_file(make_file(
+            "b.rs",
+            "/tmp/location-filter-mismatch",
+            20,
+            false,
+        ));
+        provider.add_file(make_file(
+            "c.rs",
+            "/tmp/location-filter-mismatch",
+            30,
+            false,
+        ));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let location = Location::local("/tmp/location-filter-mismatch");
+        let first_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: first_session,
+                pipeline: PipelineConfig::default()
+                    .filter(FilterConfig::only_extensions(vec!["rs".into()])),
+                load: crate::DirectoryLoadOptions::page(1),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let (_, first_page) = wait_for_location_dir_page_loaded(&evt_rx, first_session).await;
+        let cursor = first_page.next_cursor.expect("first page should continue");
+
+        let second_session = SessionId::new();
+        let request = RequestId::new();
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: second_session,
+                pipeline: PipelineConfig::default()
+                    .filter(FilterConfig::exclude_extensions(vec!["tmp".into()])),
+                load: crate::DirectoryLoadOptions::page_after(1, cursor),
+                request,
+            })
+            .unwrap();
+
+        let events = collect_for_duration(&evt_rx, Duration::from_millis(200)).await;
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                Event::Error {
+                    session,
+                    request: Some(error_request),
+                    ..
+                } if *session == second_session && *error_request == request
+            )
+        }));
     }
 
     #[tokio::test]
@@ -1893,6 +2240,71 @@ mod scanner_cache_tests {
     }
 
     #[tokio::test]
+    async fn test_stale_filtered_scan_page_result_is_suppressed() {
+        let provider = MockProvider::new();
+        provider.set_delay_ms(50);
+        provider.add_file(make_file("fresh.rs", "/tmp/filter-stale-page", 10, false));
+        provider.add_file(make_file("skip.txt", "/tmp/filter-stale-page", 20, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+        let path = PathBuf::from("/tmp/filter-stale-page");
+        let pipeline =
+            PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
+
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session,
+                pipeline: pipeline.clone(),
+                load: crate::DirectoryLoadOptions::default(),
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path,
+                session,
+                pipeline,
+                load: crate::DirectoryLoadOptions::default(),
+                request: fresh_request,
+            })
+            .unwrap();
+
+        let mut loaded_requests = Vec::new();
+        let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            if let Event::DirectoryPageLoaded {
+                session: s,
+                request,
+                ..
+            } = event
+                && s == session
+            {
+                loaded_requests.push(request);
+                if request == fresh_request {
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(loaded_requests, vec![fresh_request]);
+        assert!(
+            !loaded_requests.contains(&stale_request),
+            "stale filtered scan request should not emit DirectoryPageLoaded"
+        );
+    }
+
+    #[tokio::test]
     async fn test_stale_scan_location_page_result_is_suppressed() {
         let provider = MockProvider::new();
         provider.set_delay_ms(50);
@@ -1956,6 +2368,81 @@ mod scanner_cache_tests {
         assert!(
             !loaded_requests.contains(&stale_request),
             "stale ScanLocation request should not emit DirectoryEntryPageLoaded"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_stale_filtered_scan_location_page_result_is_suppressed() {
+        let provider = MockProvider::new();
+        provider.set_delay_ms(50);
+        provider.add_file(make_file(
+            "fresh.rs",
+            "/tmp/location-filter-stale-page",
+            10,
+            false,
+        ));
+        provider.add_file(make_file(
+            "skip.txt",
+            "/tmp/location-filter-stale-page",
+            20,
+            false,
+        ));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+        let location = Location::local("/tmp/location-filter-stale-page");
+        let pipeline =
+            PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
+
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session,
+                pipeline: pipeline.clone(),
+                load: crate::DirectoryLoadOptions::default(),
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session,
+                pipeline,
+                load: crate::DirectoryLoadOptions::default(),
+                request: fresh_request,
+            })
+            .unwrap();
+
+        let mut loaded_requests = Vec::new();
+        let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            if let Event::DirectoryEntryPageLoaded {
+                session: s,
+                request,
+                ..
+            } = event
+                && s == session
+            {
+                loaded_requests.push(request);
+                if request == fresh_request {
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(loaded_requests, vec![fresh_request]);
+        assert!(
+            !loaded_requests.contains(&stale_request),
+            "stale filtered ScanLocation request should not emit DirectoryEntryPageLoaded"
         );
     }
 }
