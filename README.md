@@ -65,7 +65,12 @@ are needed, and snapshot callers can still request full or bounded
 post-pipeline results. Provider-level directory paging is now wired through
 `FsProvider::list_page`, `DirectoryCursor`, `DirectoryPageState`,
 `DirectoryPageLoaded`, and `DirectoryEntryPageLoaded`, with `LocalFs` as the
-first native implementation. This does not yet replace public command/event
+first native implementation. Filter-only page requests for hidden-file and
+extension include/exclude filters now stay incremental instead of forcing full
+directory materialization. The default core composition now routes watcher
+events for watched roots into navigation invalidation, so current directory
+refreshes bypass stale scanner cache after external file changes. This does not
+yet replace public command/event
 `PathBuf` and `NodeId` surfaces; it strengthens the compatibility layer for
 that migration. The intent is for `Location` to become the bridge across local
 files, remote providers, virtual providers, extension-backed providers, and

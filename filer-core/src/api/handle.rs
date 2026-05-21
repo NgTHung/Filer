@@ -151,9 +151,13 @@ impl FilerCore {
 
         let scan = ScanModule::with_cache(provider.clone(), cache.clone());
         let nav = NavigationModule::new(scan.sender());
+        let nav_tx = nav.sender();
         core.load(scan);
         core.load(nav);
-        core.load(WatchModule::new(Arc::new(LocalWatchProvider::new())));
+        core.load(WatchModule::with_refresh(
+            Arc::new(LocalWatchProvider::new()),
+            nav_tx,
+        ));
         core.load(SearchModule::new(provider.clone()));
         core.load(PreviewModule::new(provider.clone()));
         core.load(OperationsModule::with_cache(provider, cache));

@@ -19,10 +19,12 @@ use crate::model::progress::{
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::pipeline::{Pipeline, PipelineConfig};
+use crate::pipeline::{Pipeline, PipelineConfig, PipelinePagingMode};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::vfs::provider::{FsProvider, parse_offset_cursor, validate_page_limit};
+use crate::vfs::provider::{FsProvider, ListingOptions, parse_offset_cursor, validate_page_limit};
+
+const FILTER_CURSOR_PREFIX: &str = "filter:v1:";
 
 /// Commands for scanner actor
 #[derive(Debug, Clone)]
@@ -282,38 +284,55 @@ impl Scanner {
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
             let parent_id = registry.clone().register(path.to_path_buf());
-            if let Some(page_request) = load_options.page_request()
-                && pipeline_config.is_pageable()
-            {
-                let page = match Self::page_from_cached_listing(cached, &page_request) {
-                    Ok(page) => page,
-                    Err(e) => {
-                        if Self::is_latest(latest_scans, session, request) {
-                            send_or_warn_async(
-                                events,
-                                Event::from_request_error(e, session, request),
-                                "scan cached page error",
-                            )
-                            .await;
+            if let Some(page_request) = load_options.page_request() {
+                match pipeline_config.paging_mode() {
+                    PipelinePagingMode::ProviderPage | PipelinePagingMode::FilteredPage => {
+                        let page = match pipeline_config.paging_mode() {
+                            PipelinePagingMode::ProviderPage => {
+                                Self::page_from_cached_listing(cached, &page_request)
+                            }
+                            PipelinePagingMode::FilteredPage => {
+                                Self::filtered_page_from_cached_listing(
+                                    cached,
+                                    &page_request,
+                                    &pipeline_config,
+                                )
+                            }
+                            PipelinePagingMode::SnapshotOnly => unreachable!(),
+                        };
+
+                        match page {
+                            Ok(page) => {
+                                registry.clone().register_batch_file_node(&page.entries);
+                                Self::emit_page_result(
+                                    events,
+                                    latest_scans,
+                                    registry,
+                                    path,
+                                    parent_id,
+                                    parent_location,
+                                    session,
+                                    request,
+                                    page,
+                                    "scan page result (cached)",
+                                )
+                                .await;
+                            }
+                            Err(e) => {
+                                if Self::is_latest(latest_scans, session, request) {
+                                    send_or_warn_async(
+                                        events,
+                                        Event::from_request_error(e, session, request),
+                                        "scan cached page error",
+                                    )
+                                    .await;
+                                }
+                            }
                         }
                         return;
                     }
-                };
-                registry.clone().register_batch_file_node(&page.entries);
-                Self::emit_page_result(
-                    events,
-                    latest_scans,
-                    registry,
-                    path,
-                    parent_id,
-                    parent_location,
-                    session,
-                    request,
-                    page,
-                    "scan page result (cached)",
-                )
-                .await;
-                return;
+                    PipelinePagingMode::SnapshotOnly => {}
+                }
             }
 
             registry.clone().register_batch_file_node(&cached);
@@ -421,9 +440,28 @@ impl Scanner {
         .await;
 
         if let Some(page_request) = load_options.page_request()
-            && pipeline_config.is_pageable()
+            && !matches!(
+                pipeline_config.paging_mode(),
+                PipelinePagingMode::SnapshotOnly
+            )
         {
-            let page = match provider.list_page(path, page_request.clone()).await {
+            let page = match pipeline_config.paging_mode() {
+                PipelinePagingMode::ProviderPage => {
+                    provider.list_page(path, page_request.clone()).await
+                }
+                PipelinePagingMode::FilteredPage => {
+                    Self::load_filtered_page(
+                        provider.as_ref(),
+                        path,
+                        page_request.clone(),
+                        &pipeline_config,
+                    )
+                    .await
+                }
+                PipelinePagingMode::SnapshotOnly => unreachable!(),
+            };
+
+            let page = match page {
                 Ok(page) => page,
                 Err(e) => {
                     if Self::is_latest(latest_scans, session, request) {
@@ -455,6 +493,10 @@ impl Scanner {
 
             if page_request.cursor.is_none()
                 && page.state.complete
+                && matches!(
+                    pipeline_config.paging_mode(),
+                    PipelinePagingMode::ProviderPage
+                )
                 && let Some(cache) = cache
             {
                 if let Ok(mut c) = cache.lock() {
@@ -712,6 +754,194 @@ impl Scanner {
             entries: page_entries,
             state,
         })
+    }
+
+    fn filtered_page_from_cached_listing(
+        entries: Vec<crate::FileNode>,
+        request: &DirectoryPageRequest,
+        pipeline_config: &PipelineConfig,
+    ) -> Result<DirectoryPageResult, CoreError> {
+        validate_page_limit(request.limit)?;
+        if request
+            .cursor
+            .as_ref()
+            .is_some_and(|cursor| cursor.0.starts_with(FILTER_CURSOR_PREFIX))
+        {
+            return Err(CoreError::invalid_input(
+                "Filtered provider cursors cannot be used with cached listings",
+            ));
+        }
+
+        let pipeline = Pipeline::from_config(pipeline_config);
+        let entries = pipeline.execute_flat(entries);
+        Self::page_from_cached_listing(entries, request)
+    }
+
+    async fn load_filtered_page(
+        provider: &dyn FsProvider,
+        path: &Path,
+        request: DirectoryPageRequest,
+        pipeline_config: &PipelineConfig,
+    ) -> Result<DirectoryPageResult, CoreError> {
+        validate_page_limit(request.limit)?;
+        let mut provider_cursor =
+            Self::decode_filter_cursor(request.cursor.as_ref(), request.listing, pipeline_config)?;
+        let raw_budget = request
+            .limit
+            .saturating_mul(4)
+            .max(crate::DEFAULT_DIRECTORY_PAGE_SIZE);
+        let mut raw_read = 0usize;
+        let mut filtered_entries = Vec::with_capacity(request.limit);
+        let pipeline = Pipeline::from_config(pipeline_config);
+
+        loop {
+            if filtered_entries.len() >= request.limit {
+                return Ok(Self::filtered_page_result(
+                    filtered_entries,
+                    provider_cursor,
+                    false,
+                    request.listing,
+                    pipeline_config,
+                )?);
+            }
+
+            let remaining_budget = raw_budget.saturating_sub(raw_read);
+            if remaining_budget == 0 {
+                return Ok(Self::filtered_page_result(
+                    filtered_entries,
+                    provider_cursor,
+                    false,
+                    request.listing,
+                    pipeline_config,
+                )?);
+            }
+
+            let remaining_output = request.limit - filtered_entries.len();
+            let raw_limit = remaining_budget.min(remaining_output).max(1);
+            let raw_page = provider
+                .list_page(
+                    path,
+                    DirectoryPageRequest {
+                        listing: request.listing,
+                        limit: raw_limit,
+                        cursor: provider_cursor.clone(),
+                    },
+                )
+                .await?;
+
+            raw_read = raw_read.saturating_add(raw_page.state.page_count);
+            let raw_complete = raw_page.state.complete;
+            provider_cursor = raw_page.state.next_cursor.clone();
+            filtered_entries.extend(pipeline.execute_flat(raw_page.entries));
+
+            if raw_complete {
+                return Ok(Self::filtered_page_result(
+                    filtered_entries,
+                    None,
+                    true,
+                    request.listing,
+                    pipeline_config,
+                )?);
+            }
+
+            if raw_read >= raw_budget || raw_page.state.page_count == 0 {
+                return Ok(Self::filtered_page_result(
+                    filtered_entries,
+                    provider_cursor,
+                    false,
+                    request.listing,
+                    pipeline_config,
+                )?);
+            }
+        }
+    }
+
+    fn filtered_page_result(
+        entries: Vec<crate::FileNode>,
+        provider_cursor: Option<DirectoryCursor>,
+        complete: bool,
+        listing: ListingOptions,
+        pipeline_config: &PipelineConfig,
+    ) -> Result<DirectoryPageResult, CoreError> {
+        let state = if complete || provider_cursor.is_none() {
+            DirectoryPageState::complete(entries.len(), None)
+        } else {
+            DirectoryPageState::partial(
+                entries.len(),
+                None,
+                Self::encode_filter_cursor(provider_cursor, listing, pipeline_config)?,
+            )
+        };
+        Ok(DirectoryPageResult { entries, state })
+    }
+
+    fn encode_filter_cursor(
+        provider_cursor: Option<DirectoryCursor>,
+        listing: ListingOptions,
+        pipeline_config: &PipelineConfig,
+    ) -> Result<DirectoryCursor, CoreError> {
+        let listing_json = serde_json::to_string(&listing)
+            .map_err(|e| CoreError::invalid_input(format!("Invalid listing cursor: {e}")))?;
+        let pipeline_json = serde_json::to_string(pipeline_config)
+            .map_err(|e| CoreError::invalid_input(format!("Invalid pipeline cursor: {e}")))?;
+        let provider_cursor = provider_cursor.map(|cursor| cursor.0).unwrap_or_default();
+        Ok(DirectoryCursor(format!(
+            "{FILTER_CURSOR_PREFIX}{}:{}:{}:{}{}{}",
+            listing_json.len(),
+            pipeline_json.len(),
+            provider_cursor.len(),
+            listing_json,
+            pipeline_json,
+            provider_cursor
+        )))
+    }
+
+    fn decode_filter_cursor(
+        cursor: Option<&DirectoryCursor>,
+        listing: ListingOptions,
+        pipeline_config: &PipelineConfig,
+    ) -> Result<Option<DirectoryCursor>, CoreError> {
+        let Some(cursor) = cursor else {
+            return Ok(None);
+        };
+        let Some(payload) = cursor.0.strip_prefix(FILTER_CURSOR_PREFIX) else {
+            return Err(CoreError::invalid_input(
+                "Filtered page requests require a filtered cursor",
+            ));
+        };
+
+        let parts: Vec<&str> = payload.splitn(4, ':').collect();
+        if parts.len() != 4 {
+            return Err(CoreError::invalid_input("Invalid filtered cursor"));
+        }
+        let listing_len = parts[0]
+            .parse::<usize>()
+            .map_err(|_| CoreError::invalid_input("Invalid filtered cursor listing length"))?;
+        let pipeline_len = parts[1]
+            .parse::<usize>()
+            .map_err(|_| CoreError::invalid_input("Invalid filtered cursor pipeline length"))?;
+        let provider_len = parts[2]
+            .parse::<usize>()
+            .map_err(|_| CoreError::invalid_input("Invalid filtered cursor provider length"))?;
+        let data = parts[3];
+        if data.len() != listing_len + pipeline_len + provider_len {
+            return Err(CoreError::invalid_input("Invalid filtered cursor payload"));
+        }
+
+        let listing_json = data[..listing_len].to_string();
+        let pipeline_json = data[listing_len..listing_len + pipeline_len].to_string();
+        let provider_cursor = data[listing_len + pipeline_len..].to_string();
+        let expected_listing_json = serde_json::to_string(&listing)
+            .map_err(|e| CoreError::invalid_input(format!("Invalid listing cursor: {e}")))?;
+        let expected_pipeline_json = serde_json::to_string(pipeline_config)
+            .map_err(|e| CoreError::invalid_input(format!("Invalid pipeline cursor: {e}")))?;
+        if listing_json != expected_listing_json || pipeline_json != expected_pipeline_json {
+            return Err(CoreError::invalid_input(
+                "Filtered cursor does not match requested listing or pipeline",
+            ));
+        }
+
+        Ok((!provider_cursor.is_empty()).then_some(DirectoryCursor(provider_cursor)))
     }
 
     async fn emit_page_result(

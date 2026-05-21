@@ -9,6 +9,7 @@ use crate::api::events::Event;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
+use crate::modules::navigation::navigator::NavCommand;
 use crate::utils::channel::send_or_warn;
 use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 
@@ -39,6 +40,7 @@ pub struct Watcher {
     /// Receives raw changes from the provider; forwarded as Events.
     change_rx: flume::Receiver<FsChange>,
     change_tx: flume::Sender<FsChange>,
+    refresh_tx: Option<Sender<NavCommand>>,
 }
 
 impl Watcher {
@@ -47,6 +49,26 @@ impl Watcher {
         events: Sender<Event>,
         registry: NodeRegistry,
         provider: Arc<dyn WatchProvider>,
+    ) -> Self {
+        Self::new_inner(commands, events, registry, provider, None)
+    }
+
+    pub fn with_refresh(
+        commands: flume::Receiver<WatchCommand>,
+        events: Sender<Event>,
+        registry: NodeRegistry,
+        provider: Arc<dyn WatchProvider>,
+        refresh_tx: Sender<NavCommand>,
+    ) -> Self {
+        Self::new_inner(commands, events, registry, provider, Some(refresh_tx))
+    }
+
+    fn new_inner(
+        commands: flume::Receiver<WatchCommand>,
+        events: Sender<Event>,
+        registry: NodeRegistry,
+        provider: Arc<dyn WatchProvider>,
+        refresh_tx: Option<Sender<NavCommand>>,
     ) -> Self {
         let (change_tx, change_rx) = flume::unbounded();
         Self {
@@ -57,6 +79,7 @@ impl Watcher {
             provider,
             change_rx,
             change_tx,
+            refresh_tx,
         }
     }
 
@@ -172,6 +195,14 @@ impl Watcher {
                         session: *session,
                     };
                     send_or_warn(&self.events, evt, "emit FsChanged");
+                }
+
+                if let Some(refresh_tx) = &self.refresh_tx {
+                    send_or_warn(
+                        refresh_tx,
+                        NavCommand::Invalidate(*node_id),
+                        "watch refresh invalidate",
+                    );
                 }
             }
         }

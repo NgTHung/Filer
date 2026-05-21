@@ -4,13 +4,21 @@
 //! - `watch` — watch a directory for changes
 //! - `watch.remove` — stop watching a directory
 //! - `watch.session_remove` — stop all watches for a session
+//!
+//! `WatchModule::new` emits filesystem change events only. Use
+//! `WatchModule::with_refresh` to also route watched-root changes through
+//! navigation invalidation so current directory views refresh after cache
+//! invalidation.
 
 pub mod watcher;
 
 use std::sync::Arc;
 
+use flume::Sender;
+
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
+use crate::modules::navigation::navigator::NavCommand;
 use crate::vfs::watch::WatchProvider;
 use watcher::WatchCommand;
 
@@ -20,11 +28,22 @@ use watcher::WatchCommand;
 /// can vary per filesystem backend (notify for local, polling for remote, etc.).
 pub struct WatchModule {
     provider: Arc<dyn WatchProvider>,
+    refresh_tx: Option<Sender<NavCommand>>,
 }
 
 impl WatchModule {
     pub fn new(provider: Arc<dyn WatchProvider>) -> Self {
-        Self { provider }
+        Self {
+            provider,
+            refresh_tx: None,
+        }
+    }
+
+    pub fn with_refresh(provider: Arc<dyn WatchProvider>, refresh_tx: Sender<NavCommand>) -> Self {
+        Self {
+            provider,
+            refresh_tx: Some(refresh_tx),
+        }
     }
 }
 
@@ -63,12 +82,21 @@ impl Module for WatchModule {
         });
 
         // ── Spawn Watcher actor ──────────────────────────────────────
-        let watcher = watcher::Watcher::new(
-            watch_rx,
-            ctx.events.clone(),
-            ctx.registry.clone(),
-            self.provider,
-        );
+        let watcher = match self.refresh_tx {
+            Some(refresh_tx) => watcher::Watcher::with_refresh(
+                watch_rx,
+                ctx.events.clone(),
+                ctx.registry.clone(),
+                self.provider,
+                refresh_tx,
+            ),
+            None => watcher::Watcher::new(
+                watch_rx,
+                ctx.events.clone(),
+                ctx.registry.clone(),
+                self.provider,
+            ),
+        };
         ctx.actors.spawn(watcher);
     }
 }

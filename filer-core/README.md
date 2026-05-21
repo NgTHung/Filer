@@ -54,6 +54,8 @@ Completed contract work:
   Location command parity and parallel test validation
 - cache and refresh hardening for direct-path `Location` scans and navigator
   invalidation-triggered refreshes
+- watcher-driven refresh wiring in the default core composition, so watched
+  current directories invalidate scanner cache before refresh
 - explicit local file listing detail through `ListingOptions`, with fast rows
   as the default and stat-backed metadata rows available on request
 - bounded directory scan result contracts through `DirectoryLoadOptions` and
@@ -61,6 +63,8 @@ Completed contract work:
 - provider-level directory paging through `DirectoryLoadMode::Page`,
   `DirectoryCursor`, `DirectoryPageState`, `FsProvider::list_page`, and page
   result events, starting with a native `LocalFs` implementation
+- incremental filter-aware paging for order-preserving filters, with sorted and
+  grouped views still using snapshot materialization
 - operation ids for copy, move, delete, rename, create file, and create folder
   progress, completion, and operation-scoped errors
 - structured errors through `ErrorKind`, stable `ErrorCode`, optional
@@ -89,7 +93,10 @@ correlation behavior. Local directory scans now carry explicit load options:
 the default mode requests a fast first page, metadata mode fills size,
 timestamp, and permission fields for views that need them, snapshot callers can
 request full or bounded post-pipeline responses, and page callers receive
-cursor state through page result events. This still does not remove the
+cursor state through page result events. Filter-only page requests for
+hidden-file and extension include/exclude filters now stay incremental: scanner
+reads provider pages, applies the filter to each raw page, and emits page
+events without full directory materialization. This still does not remove the
 existing public command, `FileNode`, or path-based `FsProvider` surfaces.
 Timeout semantics, full `Location` migration, archive navigation, provider
 profile routing, and extension output envelopes remain open contract work.
@@ -157,11 +164,26 @@ provider reports it is complete; partial pages are not cached as complete
 directory listings. Later pages may be served from a complete cached listing
 when one exists.
 
-Pipeline stages are currently snapshot-only unless the pipeline is empty. A page
-request with sorting, filtering, or grouping falls back to a full provider
-listing and emits snapshot events. Pipeline stages do not implicitly upgrade
-listing detail; callers that sort, group, or filter by metadata-sensitive fields
-should request metadata listing explicitly.
+Watcher-driven refresh follows the same invalidation path as manual navigation
+refresh. `WatchModule::new()` remains event-only for custom compositions. The
+default `FilerCore::with_defaults()` wires the watcher to navigation
+invalidation: a provider change under a watched root emits `FsChanged` for each
+watching session and sends one invalidation for the watched root. Navigator then
+refreshes only sessions currently displaying that root, and scanner refresh
+bypasses cached complete listings before loading fresh data.
+
+Pipeline stages are page-aware only when they preserve provider order. Empty
+pipelines use provider pages directly. Filter-only pipelines using hidden-file
+and extension include/exclude filters are applied incrementally over provider
+pages. Sparse filters may return fewer than the requested number of visible rows
+before yielding a next cursor, because scanner caps raw entries read per client
+page to protect latency. Filtered cursors are opaque, short-lived, and tied to
+the listing detail and pipeline that created them.
+
+Sorting, grouping, size filters, and name-pattern filters still require full
+materialization and emit snapshot events. Pipeline stages do not implicitly
+upgrade listing detail; callers that sort, group, or filter by
+metadata-sensitive fields should request metadata listing explicitly.
 
 ## Request IDs
 
@@ -271,8 +293,10 @@ result suppression, cancellation, cache hits, and session isolation. A default
 emits `DirectoryEntriesLoaded`. Cache hits preserve the requested load shape.
 `RefreshNode` still bypasses cache after a Location scan. Navigator invalidation
 now records navigated nodes and triggers `RefreshNode` for sessions currently
-displaying the invalidated directory, so app- or watcher-driven invalidation
-refreshes fresh directory data instead of serving stale cache entries.
+displaying the invalidated directory. In the default core composition, watcher
+events under a watched root are routed into that invalidation path, so watched
+current directories refresh fresh directory data instead of serving stale cache
+entries.
 
 Nested archive addresses are represented as a provider root plus ordered
 segments, for example:

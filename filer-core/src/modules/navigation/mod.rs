@@ -42,20 +42,34 @@ use navigator::{NavCommand, Navigator};
 /// scans. Get this from `ScanModule::sender()`.
 pub struct NavigationModule {
     scanner_tx: Sender<ScanCommand>,
+    nav_tx: Sender<NavCommand>,
+    nav_rx: Option<flume::Receiver<NavCommand>>,
 }
 
 impl NavigationModule {
     pub fn new(scanner_tx: Sender<ScanCommand>) -> Self {
-        Self { scanner_tx }
+        let (nav_tx, nav_rx) = flume::unbounded();
+        Self {
+            scanner_tx,
+            nav_tx,
+            nav_rx: Some(nav_rx),
+        }
+    }
+
+    pub fn sender(&self) -> Sender<NavCommand> {
+        self.nav_tx.clone()
     }
 }
 
 impl Module for NavigationModule {
-    fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
-        let (nav_tx, nav_rx) = flume::unbounded();
+    fn init(mut self: Box<Self>, ctx: ModuleContext<'_>) {
+        let nav_rx = self
+            .nav_rx
+            .take()
+            .expect("NavigationModule already initialized");
 
         // ── Navigate to path ─────────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate", move |cmd, _ctx| {
             if let Command::Navigate {
                 path,
@@ -76,7 +90,7 @@ impl Module for NavigationModule {
         });
 
         // ── Navigate to location ─────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.location", move |cmd, _ctx| {
             if let Command::NavigateLocation {
                 location,
@@ -97,7 +111,7 @@ impl Module for NavigationModule {
         });
 
         // ── Navigate to node ─────────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.node", move |cmd, _ctx| {
             if let Command::NavigateToNode {
                 node,
@@ -118,7 +132,7 @@ impl Module for NavigationModule {
         });
 
         // ── Navigate up ──────────────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.up", move |cmd, _ctx| {
             if let Command::NavigateUp { session, request } = cmd {
                 send_or_warn(&tx, NavCommand::Up(session, request), "navigate.up");
@@ -126,7 +140,7 @@ impl Module for NavigationModule {
         });
 
         // ── Navigate back ────────────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.back", move |cmd, _ctx| {
             if let Command::NavigateBack { session, request } = cmd {
                 send_or_warn(&tx, NavCommand::Back(session, request), "navigate.back");
@@ -134,7 +148,7 @@ impl Module for NavigationModule {
         });
 
         // ── Navigate forward ─────────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.forward", move |cmd, _ctx| {
             if let Command::NavigateForward { session, request } = cmd {
                 send_or_warn(
@@ -146,7 +160,7 @@ impl Module for NavigationModule {
         });
 
         // ── Refresh ──────────────────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.refresh", move |cmd, _ctx| {
             if let Command::Refresh { session, request } = cmd {
                 send_or_warn(
@@ -158,7 +172,7 @@ impl Module for NavigationModule {
         });
 
         // ── Pipeline state ──────────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.pipeline", move |cmd, _ctx| {
             if let Command::SetPipeline { session, config } = cmd {
                 send_or_warn(
@@ -170,7 +184,7 @@ impl Module for NavigationModule {
         });
 
         // ── Session cleanup hook ─────────────────────────────────────
-        let tx = nav_tx.clone();
+        let tx = self.nav_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
             send_or_warn(
                 &tx,

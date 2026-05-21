@@ -8,6 +8,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::pipeline::sort::{SortField, SortOrder};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipelinePagingMode {
+    /// Provider pages can be emitted directly.
+    ProviderPage,
+    /// Provider pages can be filtered incrementally without changing order.
+    FilteredPage,
+    /// Correct results require full materialization.
+    SnapshotOnly,
+}
+
 /// Pipeline configuration - small, serializable, sent to/from frontend
 ///
 /// # Example
@@ -95,6 +105,24 @@ impl PipelineConfig {
     /// and grouping still require full materialization for correct results.
     pub fn is_pageable(&self) -> bool {
         self.sort.is_none() && self.filter.is_none() && self.group.is_none()
+    }
+
+    pub fn paging_mode(&self) -> PipelinePagingMode {
+        if self.sort.is_some() || self.group.is_some() {
+            return PipelinePagingMode::SnapshotOnly;
+        }
+
+        match &self.filter {
+            None => PipelinePagingMode::ProviderPage,
+            Some(filter)
+                if filter.min_size.is_none()
+                    && filter.max_size.is_none()
+                    && filter.name_pattern.is_none() =>
+            {
+                PipelinePagingMode::FilteredPage
+            }
+            Some(_) => PipelinePagingMode::SnapshotOnly,
+        }
     }
 }
 

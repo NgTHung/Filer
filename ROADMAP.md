@@ -181,6 +181,8 @@ near-term product boundary.
 - [x] `Core` Add provider-level directory paging with first-page defaults,
   page cursors, page result events, LocalFs native paging, cache semantics, and
   snapshot fallback for non-pageable pipelines.
+- [x] `Core` Add incremental filter-aware paging for hidden-file and extension
+  include/exclude filters.
 - [x] `Ecosystem` Trusted in-process command seam through `Command::Extension`.
 - [x] `Ecosystem` Shared extension manifest, package, registry, and profile
   operation contracts live in `filer-ecosystem`.
@@ -225,9 +227,9 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 - [x] `Core` Define the first large-directory loading contract: default page
   loads, explicit full/bounded snapshots, provider-owned cursors, and page
   events separate from snapshot events.
-- [ ] `Core` Extend directory paging beyond LocalFs and define UI
-  virtualization hints, stable refresh behavior under mutation, and optional
-  provider-native total counts.
+- [ ] `Core` Extend directory paging beyond LocalFs, add sorted/grouped
+  incremental views, and define UI virtualization hints, stable refresh
+  behavior under mutation, and optional provider-native total counts.
 - [ ] `Core` Define cancellation and timeout behavior for provider calls,
   previews, search, operations, and future extension calls.
 - [ ] `Ecosystem` Define the extension output envelope and first file
@@ -271,10 +273,10 @@ Exit criteria:
 These items should stay ahead of new feature work because the app depends on
 core events being truthful and fresh.
 
-- [ ] `Reliability` Add focused regression tests for watcher-driven refresh so a
+- [x] `Reliability` Add focused regression tests for watcher-driven refresh so a
   created, renamed, or deleted file appears after the app refreshes.
-- [ ] `Reliability` Add directory cache invalidation tests for write operations,
-  watcher events, manual refresh, and same-folder navigation.
+- [ ] `Reliability` Finish directory cache invalidation tests for write
+  operations, manual refresh, and same-folder navigation.
 - [ ] `Reliability` Ensure every operation that mutates files invalidates the
   affected parent directories.
 - [x] `Reliability` Add stale-event guards for preview and search results by

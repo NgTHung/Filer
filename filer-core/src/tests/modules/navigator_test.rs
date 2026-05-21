@@ -721,6 +721,82 @@ mod navigator_actor_tests {
     }
 
     #[tokio::test]
+    async fn test_navigator_invalidate_refreshes_only_current_sessions_with_current_pipeline() {
+        let (cmd_tx, cmd_rx) = flume::unbounded();
+        let (event_tx, _event_rx) = flume::unbounded();
+        let (scanner_tx, scanner_rx) = flume::unbounded();
+        let reg = NodeRegistry::new();
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+
+        tokio::spawn(async move {
+            navigator.run().await;
+        });
+
+        let current_session = session(1);
+        let other_session = session(2);
+        let current = node(100);
+        let other = node(200);
+        let pipeline = PipelineConfig::new();
+
+        cmd_tx
+            .send(NavCommand::Navigate {
+                session: current_session,
+                node: current,
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+        cmd_tx
+            .send(NavCommand::Navigate {
+                session: other_session,
+                node: other,
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+        cmd_tx
+            .send(NavCommand::SetPipeline {
+                session: current_session,
+                config: pipeline.clone(),
+            })
+            .unwrap();
+
+        let _ = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("current session navigation should scan")
+            .expect("scanner channel should remain open");
+        let _ = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("other session navigation should scan")
+            .expect("scanner channel should remain open");
+        while scanner_rx.try_recv().is_ok() {}
+
+        cmd_tx.send(NavCommand::Invalidate(current)).unwrap();
+
+        let refresh = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("Invalidate should trigger refresh scan")
+            .expect("scanner channel should remain open");
+
+        match refresh {
+            ScanCommand::RefreshNode {
+                node,
+                session,
+                pipeline: refresh_pipeline,
+                ..
+            } => {
+                assert_eq!(node, current);
+                assert_eq!(session, current_session);
+                assert_eq!(refresh_pipeline, pipeline);
+            }
+            other => panic!("expected RefreshNode, got {other:?}"),
+        }
+
+        assert!(
+            scanner_rx.try_recv().is_err(),
+            "sessions not currently viewing the invalidated node should not refresh"
+        );
+    }
+
+    #[tokio::test]
     async fn test_navigator_multiple_sessions() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();

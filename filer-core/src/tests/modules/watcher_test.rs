@@ -5,9 +5,14 @@ use crate::api::events::Event;
 use crate::model::fs_change::FsChangeKind;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
+use crate::modules::navigation::navigator::NavCommand;
 use crate::modules::watch::watcher::{WatchCommand, Watcher};
 use crate::vfs::local_watch::LocalWatchProvider;
+use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
+use async_trait::async_trait;
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::{sleep, timeout};
@@ -48,6 +53,47 @@ fn setup_watcher(
 ) -> Watcher {
     let provider = Arc::new(LocalWatchProvider::new());
     Watcher::new(cmd_rx, evt_tx, registry, provider)
+}
+
+struct TestWatchHandle;
+
+impl WatchHandle for TestWatchHandle {}
+
+#[derive(Default)]
+struct TestWatchProvider {
+    change_tx: Mutex<Option<flume::Sender<FsChange>>>,
+    watched_paths: Mutex<Vec<PathBuf>>,
+}
+
+impl TestWatchProvider {
+    async fn emit(&self, path: PathBuf, kind: FsChangeKind) {
+        let tx = self
+            .change_tx
+            .lock()
+            .unwrap()
+            .as_ref()
+            .expect("watch should be registered before emitting changes")
+            .clone();
+        tx.send_async(FsChange { path, kind }).await.unwrap();
+    }
+}
+
+#[async_trait]
+impl WatchProvider for TestWatchProvider {
+    async fn watch(
+        &self,
+        path: &Path,
+        tx: flume::Sender<FsChange>,
+    ) -> Result<Box<dyn WatchHandle>, crate::errors::CoreError> {
+        *self.change_tx.lock().unwrap() = Some(tx);
+        self.watched_paths.lock().unwrap().push(path.to_path_buf());
+        Ok(Box::new(TestWatchHandle))
+    }
+
+    async fn unwatch(&self, path: &Path) -> Result<(), crate::errors::CoreError> {
+        self.watched_paths.lock().unwrap().retain(|p| p != path);
+        Ok(())
+    }
 }
 
 #[tokio::test]
@@ -485,6 +531,151 @@ async fn test_watch_subdirectories() {
     );
 
     // Cleanup
+    drop(cmd_tx);
+    let _ = timeout(Duration::from_secs(1), handle).await;
+}
+
+#[tokio::test]
+async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
+    let (cmd_tx, cmd_rx) = flume::unbounded();
+    let (evt_tx, evt_rx) = flume::unbounded();
+    let (nav_tx, nav_rx) = flume::unbounded();
+    let registry = NodeRegistry::new();
+    let provider = Arc::new(TestWatchProvider::default());
+    let temp_dir = TempDir::new().unwrap();
+    let test_path = temp_dir.path().to_path_buf();
+    let test_node = registry.clone().register(test_path.clone());
+
+    let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry, provider.clone(), nav_tx);
+    let handle = tokio::spawn(async move {
+        watcher.run().await;
+    });
+
+    cmd_tx
+        .send(WatchCommand::Watch(test_node, SessionId(1)))
+        .unwrap();
+    cmd_tx
+        .send(WatchCommand::Watch(test_node, SessionId(2)))
+        .unwrap();
+    sleep(Duration::from_millis(20)).await;
+
+    provider
+        .emit(test_path.join("changed.txt"), FsChangeKind::Created)
+        .await;
+
+    let events = collect_events(&evt_rx, 2, 100).await;
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, Event::FsChanged { .. }))
+            .count(),
+        2,
+        "both watching sessions should still receive FsChanged"
+    );
+
+    let invalidate = timeout(Duration::from_millis(100), nav_rx.recv_async())
+        .await
+        .expect("watch change should invalidate navigation")
+        .expect("nav channel should remain open");
+    assert!(
+        matches!(invalidate, NavCommand::Invalidate(node) if node == test_node),
+        "watch change should invalidate the watched root node"
+    );
+    assert!(
+        nav_rx.try_recv().is_err(),
+        "multiple sessions on one watched node should only invalidate once"
+    );
+
+    drop(cmd_tx);
+    let _ = timeout(Duration::from_secs(1), handle).await;
+}
+
+#[tokio::test]
+async fn test_watcher_refresh_sink_invalidates_for_delete_and_rename() {
+    let (cmd_tx, cmd_rx) = flume::unbounded();
+    let (evt_tx, _evt_rx) = flume::unbounded();
+    let (nav_tx, nav_rx) = flume::unbounded();
+    let registry = NodeRegistry::new();
+    let provider = Arc::new(TestWatchProvider::default());
+    let temp_dir = TempDir::new().unwrap();
+    let test_path = temp_dir.path().to_path_buf();
+    let test_node = registry.clone().register(test_path.clone());
+
+    let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry, provider.clone(), nav_tx);
+    let handle = tokio::spawn(async move {
+        watcher.run().await;
+    });
+
+    cmd_tx
+        .send(WatchCommand::Watch(test_node, SessionId(1)))
+        .unwrap();
+    sleep(Duration::from_millis(20)).await;
+
+    provider
+        .emit(test_path.join("deleted.txt"), FsChangeKind::Deleted)
+        .await;
+    provider
+        .emit(
+            test_path.join("renamed.txt"),
+            FsChangeKind::Renamed {
+                from: test_path.join("old-name.txt"),
+            },
+        )
+        .await;
+
+    for reason in ["delete", "rename"] {
+        let invalidate = timeout(Duration::from_millis(100), nav_rx.recv_async())
+            .await
+            .unwrap_or_else(|_| panic!("{reason} should invalidate navigation"))
+            .expect("nav channel should remain open");
+        assert!(
+            matches!(invalidate, NavCommand::Invalidate(node) if node == test_node),
+            "{reason} should invalidate the watched root node"
+        );
+    }
+
+    drop(cmd_tx);
+    let _ = timeout(Duration::from_secs(1), handle).await;
+}
+
+#[tokio::test]
+async fn test_watcher_refresh_sink_ignores_unrelated_sibling_paths() {
+    let (cmd_tx, cmd_rx) = flume::unbounded();
+    let (evt_tx, evt_rx) = flume::unbounded();
+    let (nav_tx, nav_rx) = flume::unbounded();
+    let registry = NodeRegistry::new();
+    let provider = Arc::new(TestWatchProvider::default());
+    let temp_dir = TempDir::new().unwrap();
+    let watched_path = temp_dir.path().join("watched");
+    let sibling_path = temp_dir.path().join("watched-sibling");
+    fs::create_dir(&watched_path).unwrap();
+    fs::create_dir(&sibling_path).unwrap();
+    let watched_node = registry.clone().register(watched_path);
+
+    let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry, provider.clone(), nav_tx);
+    let handle = tokio::spawn(async move {
+        watcher.run().await;
+    });
+
+    cmd_tx
+        .send(WatchCommand::Watch(watched_node, SessionId(1)))
+        .unwrap();
+    sleep(Duration::from_millis(20)).await;
+
+    provider
+        .emit(sibling_path.join("changed.txt"), FsChangeKind::Created)
+        .await;
+    sleep(Duration::from_millis(20)).await;
+
+    assert!(
+        collect_available_events(&evt_rx).is_empty(),
+        "sibling paths should not produce FsChanged for the watched node"
+    );
+    assert!(
+        nav_rx.try_recv().is_err(),
+        "sibling paths should not invalidate the watched node"
+    );
+
     drop(cmd_tx);
     let _ = timeout(Duration::from_secs(1), handle).await;
 }

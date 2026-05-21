@@ -8,7 +8,9 @@ use crate::model::node::{FileNode, NodeEntry};
 use crate::model::registry::NodeRegistry;
 
 #[allow(unused_imports)]
-pub use config::{FilterConfig, GroupBy, GroupConfig, PipelineConfig, SortConfig};
+pub use config::{
+    FilterConfig, GroupBy, GroupConfig, PipelineConfig, PipelinePagingMode, SortConfig,
+};
 
 /// Grouped file nodes with metadata
 #[derive(Debug, Clone)]
