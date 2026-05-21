@@ -4,7 +4,7 @@ This roadmap tracks the core engine and shared project architecture. The desktop
 app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
 roadmap lives in `filer-ecosystem/ROADMAP.md`.
 
-Current milestone: `0.2.3`.
+Current milestone: `0.2.4`.
 
 ## Product Direction
 
@@ -50,6 +50,15 @@ caching for the derived route. Public commands, events, `FileNode`, and
 migration. The intent is for `Location` to become the bridge across local files,
 remote providers, virtual providers, extension-backed providers, and archives.
 The remaining core stabilization work is still tracked below.
+
+`0.2.4` should make the Location/NodeId migration contract explicit and start
+the Location-first read/navigation core. The goal is not to remove `NodeId`.
+Instead, `Location` becomes the preferred transport identity for new read-side
+work, while `NodeId` remains a compatibility and cache handle for existing
+local-path flows. Navigation and scan/listing should move together first,
+search should follow after that foundation is stable, and preview, metadata,
+MIME, watcher migration, and write-operation routing should wait for later
+capability-specific milestones unless only compatibility tests are needed.
 
 Milestone labels:
 
@@ -218,11 +227,25 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   unsupported-provider, session, navigation-state, path, and operation cases.
 - [ ] `Core` Add more specific structured error context for collision, stale
   request, and provider capability cases.
-- [ ] `Core` Migrate public commands, events, `FileNode`, and provider routing
-  from raw path/node addressing toward `Location` where it improves transport
-  and provider behavior.
+- [ ] `Core` Document the v0.2.4 Location/NodeId contract: `Location` as the
+  canonical transport identity, `NodeId` as a compatibility/cache handle,
+  `NodeEntry` as the preferred Location-native public row, and `FileNode` as
+  the local-path/provider compatibility row.
+- [ ] `Core` Add Location-aware navigation state while preserving existing
+  NodeId navigation, history, selection, and event compatibility.
+- [ ] `Core` Move navigation refresh and scan/listing cache behavior to prefer
+  Location identity when a session has a current Location.
+- [ ] `Core` Keep `ScanLocation` aligned with navigation refresh and listing
+  behavior; scan should migrate with navigation rather than as a separate late
+  service.
+- [ ] `Core` Bring search into Location-first read behavior after navigation
+  and scan are stable, keeping `Search` by NodeId as compatibility.
+- [ ] `Core` Define a Location-aware cache and invalidation bridge before
+  migrating watcher state.
+- [ ] `Core` Define separate Location capability contracts for watcher and
+  write operations; do not treat v0.2.4 as a full NodeId removal milestone.
 - [ ] `Core` Build provider routing and navigation behavior on top of segmented
-  `Location` descriptors, including archive/member traversal, capability
+  `Location` descriptors later, including archive/member traversal, capability
   context, and richer display/target metadata.
 - [x] `Core` Define the first large-directory loading contract: default page
   loads, explicit full/bounded snapshots, provider-owned cursors, and page
@@ -254,8 +277,12 @@ Exit criteria:
   strings.
 - [x] Error event recoverability is derived from the stable error code.
 - [x] The initial provider `Location` model is documented and tested.
-- [ ] Public command/event transport can use `LocationRef` without id-only
-  reconstruction failure across processes or machines.
+- [ ] Public docs state when to use `LocationRef`, `NodeId`, `NodeEntry`, and
+  `FileNode`.
+- [ ] Public command/event transport can use reconstructable `LocationRef`
+  forms without id-only reconstruction failure across processes or machines.
+- [ ] Remaining NodeId-only command and event surfaces are intentionally labeled
+  compatibility, internal, or future provider-capability work.
 - [x] Nested archive locations can be represented as provider root plus ordered
   archive/member segments.
 - [x] Location descriptors can be classified into direct local, segmented, or

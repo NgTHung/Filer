@@ -243,6 +243,41 @@ snapshot completeness.
 It does not replace the current public `PathBuf` and `NodeId` command and event
 surfaces yet.
 
+The current migration contract is hybrid. `Location` is the canonical transport
+identity for new read-side work, while `NodeId` remains a compatibility and
+cache handle for existing local-path flows. A `LocationDescriptor` is the
+reconstructable source of truth. A `LocationId` is a compact identity derived
+from that descriptor, but an id alone is only a registry fast path and may fail
+after crossing a process, machine, plugin, or long-lived storage boundary.
+`LocationRef::Full { id, descriptor }` is the preferred transport form for
+those boundaries because receivers can use the id when it is known and fall back
+to descriptor recovery when it is not. `LocationRef::Descriptor` is the
+recovery form. `LocationRef::Id` is best kept to in-process/session-local
+messages where `LocationUnresolved` is an expected recoverable failure.
+
+`NodeId` should not be treated as canonical file identity for new provider-aware
+features. It remains valid for legacy commands, direct-local compatibility,
+selection state, cache lookup, and UI handles that already depend on the node
+registry. Direct local locations may bridge to `NodeId`; segmented, archive,
+remote, provider-profile, and ephemeral locations must remain reconstructable
+from their descriptor without requiring a node registry entry.
+
+Location-native read commands should emit Location-native result events where
+those events exist. `NavigateLocation` and `ScanLocation` use
+`DirectoryEntriesLoaded` or `DirectoryEntryPageLoaded`; `SearchLocation` uses
+`SearchEntryResults`. The older `DirectoryLoaded`, `DirectoryPageLoaded`,
+`SearchResults`, and single-node events that carry only `NodeId` remain
+compatibility surface. Watch and write operation commands are intentionally
+still NodeId-first until a separate provider capability and write-routing
+contract is defined.
+
+`NodeEntry` is the preferred public row shape for Location-native listing and
+search results. `FileNode` remains the local-path/provider compatibility row and
+should not accumulate provider-profile, archive-segment, or nested-VFS routing
+semantics. During the migration, modules should convert `FileNode` into
+`NodeEntry` at Location-native API boundaries instead of extending `FileNode`
+into a second Location model.
+
 The core types are:
 
 - `LocationId`: stable id derived from a descriptor's identity fields.
