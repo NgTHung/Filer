@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use crate::model::location::LocationId;
 use crate::model::node::FileNode;
 use crate::vfs::provider::ListingOptions;
 
@@ -26,6 +27,7 @@ struct CacheEntry {
 /// node, with a minimum of 64 bytes per entry.
 pub struct DirCache {
     entries: HashMap<CacheKey, CacheEntry>,
+    location_aliases: HashMap<LocationCacheKey, CacheKey>,
     current_size_bytes: usize,
     max_size_bytes: usize,
 }
@@ -36,10 +38,17 @@ struct CacheKey {
     listing: ListingOptions,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct LocationCacheKey {
+    location: LocationId,
+    listing: ListingOptions,
+}
+
 impl DirCache {
     pub fn new(max_size_bytes: usize) -> Self {
         Self {
             entries: HashMap::new(),
+            location_aliases: HashMap::new(),
             current_size_bytes: 0,
             max_size_bytes,
         }
@@ -51,6 +60,19 @@ impl DirCache {
             path: path.to_path_buf(),
             listing,
         };
+        let entry = self.entries.get_mut(&key)?;
+        entry.accessed = Instant::now();
+        Some(entry.nodes.clone())
+    }
+
+    /// Look up a directory listing by Location alias. Updates `accessed` on hit.
+    pub fn get_location(
+        &mut self,
+        location: LocationId,
+        listing: ListingOptions,
+    ) -> Option<Vec<FileNode>> {
+        let alias = LocationCacheKey { location, listing };
+        let key = self.location_aliases.get(&alias)?.clone();
         let entry = self.entries.get_mut(&key)?;
         entry.accessed = Instant::now();
         Some(entry.nodes.clone())
@@ -82,6 +104,23 @@ impl DirCache {
         );
     }
 
+    /// Insert a direct-path Location alias without duplicating listing storage.
+    pub fn put_location(
+        &mut self,
+        location: LocationId,
+        path: PathBuf,
+        listing: ListingOptions,
+        nodes: Vec<FileNode>,
+    ) {
+        let key = CacheKey {
+            path: path.clone(),
+            listing,
+        };
+        self.put(path, listing, nodes);
+        self.location_aliases
+            .insert(LocationCacheKey { location, listing }, key);
+    }
+
     /// Remove the entry for `path` (no-op if not present).
     pub fn invalidate(&mut self, path: &Path) {
         let keys: Vec<_> = self
@@ -94,18 +133,44 @@ impl DirCache {
             if let Some(old) = self.entries.remove(&key) {
                 self.current_size_bytes -= old.size_bytes;
             }
+            self.remove_aliases_for_key(&key);
+        }
+    }
+
+    /// Remove the entry associated with `location` (no-op if not present).
+    pub fn invalidate_location(&mut self, location: LocationId) {
+        let aliases: Vec<_> = self
+            .location_aliases
+            .keys()
+            .filter(|key| key.location == location)
+            .copied()
+            .collect();
+
+        for alias in aliases {
+            if let Some(key) = self.location_aliases.remove(&alias) {
+                if let Some(old) = self.entries.remove(&key) {
+                    self.current_size_bytes -= old.size_bytes;
+                }
+                self.remove_aliases_for_key(&key);
+            }
         }
     }
 
     /// Remove all entries.
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.location_aliases.clear();
         self.current_size_bytes = 0;
     }
 
     /// Number of cached directories.
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Number of Location aliases.
+    pub fn alias_len(&self) -> usize {
+        self.location_aliases.len()
     }
 
     /// Aggregate size of all cached entries in bytes.
@@ -124,8 +189,14 @@ impl DirCache {
         if let Some(key) = oldest_key {
             if let Some(evicted) = self.entries.remove(&key) {
                 self.current_size_bytes -= evicted.size_bytes;
+                self.remove_aliases_for_key(&key);
             }
         }
+    }
+
+    fn remove_aliases_for_key(&mut self, key: &CacheKey) {
+        self.location_aliases
+            .retain(|_, aliased_key| aliased_key != key);
     }
 }
 

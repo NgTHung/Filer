@@ -11,7 +11,7 @@ use crate::model::directory::{
     DirectoryCursor, DirectoryLoadOptions, DirectoryPageRequest, DirectoryPageResult,
     DirectoryPageState,
 };
-use crate::model::location::{LocationRef, LocationRoute};
+use crate::model::location::{LocationId, LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
@@ -143,6 +143,7 @@ impl Scanner {
             invalidate_cache,
             request,
             None,
+            None,
         );
     }
 
@@ -155,6 +156,7 @@ impl Scanner {
         invalidate_cache: bool,
         request: RequestId,
         parent_location: Option<LocationRef>,
+        parent_location_id: Option<LocationId>,
     ) {
         let provider = self.provider.clone();
         let registry = self.registry.clone();
@@ -181,6 +183,7 @@ impl Scanner {
                 cache.as_ref(),
                 invalidate_cache,
                 parent_location,
+                parent_location_id,
             )
             .await;
             active_scans.remove_if_current(session, &cancel).await;
@@ -228,6 +231,7 @@ impl Scanner {
             invalidate_cache,
             request,
             Some(LocationRef::from_location(&location)),
+            Some(location.id()),
         );
     }
 
@@ -250,11 +254,15 @@ impl Scanner {
         cache: Option<&SharedDirCache>,
         invalidate_cache: bool,
         parent_location: Option<LocationRef>,
+        parent_location_id: Option<LocationId>,
     ) {
         if invalidate_cache {
             if let Some(cache) = cache {
                 if let Ok(mut cache) = cache.lock() {
                     tracing::debug!(path = %path.display(), "Invalidating directory cache before scan");
+                    if let Some(location_id) = parent_location_id {
+                        cache.invalidate_location(location_id);
+                    }
                     cache.invalidate(path);
                 }
             }
@@ -292,7 +300,25 @@ impl Scanner {
             ),
         )
         .await;
-        let cached_nodes = cache.and_then(|c| c.lock().ok()?.get(path, load_options.listing));
+        let cached_nodes = cache.and_then(|c| {
+            let mut cache = c.lock().ok()?;
+            if let Some(location_id) = parent_location_id
+                && let Some(nodes) = cache.get_location(location_id, load_options.listing)
+            {
+                return Some(nodes);
+            }
+
+            let nodes = cache.get(path, load_options.listing)?;
+            if let Some(location_id) = parent_location_id {
+                cache.put_location(
+                    location_id,
+                    path.to_path_buf(),
+                    load_options.listing,
+                    nodes.clone(),
+                );
+            }
+            Some(nodes)
+        });
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
             let parent_id = registry.clone().register(path.to_path_buf());
@@ -532,11 +558,20 @@ impl Scanner {
                 && let Some(cache) = cache
             {
                 if let Ok(mut c) = cache.lock() {
-                    c.put(
-                        path.to_path_buf(),
-                        load_options.listing,
-                        page.entries.clone(),
-                    );
+                    if let Some(location_id) = parent_location_id {
+                        c.put_location(
+                            location_id,
+                            path.to_path_buf(),
+                            load_options.listing,
+                            page.entries.clone(),
+                        );
+                    } else {
+                        c.put(
+                            path.to_path_buf(),
+                            load_options.listing,
+                            page.entries.clone(),
+                        );
+                    }
                 }
             }
 
@@ -612,7 +647,16 @@ impl Scanner {
             && let Some(cache) = cache
         {
             if let Ok(mut c) = cache.lock() {
-                c.put(path.to_path_buf(), load_options.listing, entries.clone());
+                if let Some(location_id) = parent_location_id {
+                    c.put_location(
+                        location_id,
+                        path.to_path_buf(),
+                        load_options.listing,
+                        entries.clone(),
+                    );
+                } else {
+                    c.put(path.to_path_buf(), load_options.listing, entries.clone());
+                }
                 tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
             }
         }

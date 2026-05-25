@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::model::location::{Location, LocationId};
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::services::dir_cache::DirCache;
 use crate::vfs::provider::ListingOptions;
@@ -33,6 +34,10 @@ mod dir_cache_tests {
 
     fn metadata() -> ListingOptions {
         ListingOptions::metadata()
+    }
+
+    fn location_id(path: &str) -> LocationId {
+        Location::local(path).id()
     }
 
     #[test]
@@ -219,5 +224,80 @@ mod dir_cache_tests {
 
         assert!(cache.get(&path, fast()).is_none());
         assert!(cache.get(&path, metadata()).is_none());
+    }
+
+    #[test]
+    fn test_location_alias_lookup_returns_cached_listing() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let path = PathBuf::from("/tmp/location-dir");
+        let id = location_id("/tmp/location-dir");
+
+        cache.put_location(id, path.clone(), fast(), one_node());
+
+        assert!(cache.get(&path, fast()).is_some());
+        assert!(cache.get_location(id, fast()).is_some());
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.alias_len(), 1);
+    }
+
+    #[test]
+    fn test_invalidate_path_removes_location_alias() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let path = PathBuf::from("/tmp/location-dir");
+        let id = location_id("/tmp/location-dir");
+
+        cache.put_location(id, path.clone(), fast(), one_node());
+        cache.invalidate(&path);
+
+        assert!(cache.get(&path, fast()).is_none());
+        assert!(cache.get_location(id, fast()).is_none());
+        assert_eq!(cache.alias_len(), 0);
+    }
+
+    #[test]
+    fn test_invalidate_location_removes_backing_entry() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let path = PathBuf::from("/tmp/location-dir");
+        let id = location_id("/tmp/location-dir");
+
+        cache.put_location(id, path.clone(), fast(), one_node());
+        cache.invalidate_location(id);
+
+        assert!(cache.get(&path, fast()).is_none());
+        assert!(cache.get_location(id, fast()).is_none());
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_location_aliases_keep_listing_detail_separate() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let path = PathBuf::from("/tmp/location-dir");
+        let id = location_id("/tmp/location-dir");
+
+        cache.put_location(id, path.clone(), fast(), vec![make_node("fast.txt")]);
+        cache.put_location(id, path, metadata(), vec![make_node("metadata.txt")]);
+
+        assert_eq!(cache.get_location(id, fast()).unwrap()[0].name, "fast.txt");
+        assert_eq!(
+            cache.get_location(id, metadata()).unwrap()[0].name,
+            "metadata.txt"
+        );
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.alias_len(), 2);
+    }
+
+    #[test]
+    fn test_location_alias_does_not_double_count_cache_size() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let path = PathBuf::from("/tmp/location-dir");
+        let id = location_id("/tmp/location-dir");
+
+        cache.put(path.clone(), fast(), one_node());
+        let size_after_path_put = cache.current_size_bytes();
+        cache.put_location(id, path, fast(), one_node());
+
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.alias_len(), 1);
+        assert_eq!(cache.current_size_bytes(), size_after_path_put);
     }
 }

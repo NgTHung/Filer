@@ -240,11 +240,11 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 - [x] `Core` Keep `ScanLocation` aligned with navigation refresh and listing
   behavior by routing Location-backed back/forward/refresh through
   Location-native scanner commands.
-- [ ] `Core` Move scan/listing cache keys and invalidation toward Location
+- [x] `Core` Move scan/listing cache keys and invalidation toward Location
   identity instead of path/NodeId identity only.
 - [ ] `Core` Bring search into Location-first read behavior after navigation
   and scan are stable, keeping `Search` by NodeId as compatibility.
-- [ ] `Core` Define a Location-aware cache and invalidation bridge before
+- [x] `Core` Define a Location-aware cache and invalidation bridge before
   migrating watcher state.
 - [ ] `Core` Define separate Location capability contracts for watcher and
   write operations; do not treat v0.2.4 as a full NodeId removal milestone.

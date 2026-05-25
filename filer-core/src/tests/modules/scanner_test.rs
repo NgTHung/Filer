@@ -1883,6 +1883,177 @@ mod scanner_cache_tests {
     }
 
     #[tokio::test]
+    async fn test_legacy_scan_reuses_cache_populated_by_scan_location() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file(
+            "cached.txt",
+            "/tmp/location-to-path-cache",
+            10,
+            false,
+        ));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = PathBuf::from("/tmp/location-to-path-cache");
+        let location = Location::local(path.clone());
+
+        let location_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: location_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_location_dir_loaded(&evt_rx, location_session).await;
+
+        let legacy_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path,
+                session: legacy_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let groups = wait_for_dir_loaded(&evt_rx, legacy_session).await;
+
+        assert_eq!(groups.total_count, 1);
+        assert_eq!(provider.get_list_calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_scan_location_reuses_cache_populated_by_legacy_scan() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file(
+            "cached.txt",
+            "/tmp/path-to-location-cache",
+            10,
+            false,
+        ));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = PathBuf::from("/tmp/path-to-location-cache");
+        let legacy_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: legacy_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_dir_loaded(&evt_rx, legacy_session).await;
+
+        let location_session = SessionId::new();
+        let location = Location::local(path);
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: location_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let groups = wait_for_location_dir_loaded(&evt_rx, location_session).await;
+
+        assert_eq!(groups.total_count, 1);
+        assert_eq!(provider.get_list_calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_location_invalidates_location_and_path_cache() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file(
+            "before.txt",
+            "/tmp/location-refresh-cache",
+            10,
+            false,
+        ));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = PathBuf::from("/tmp/location-refresh-cache");
+        let location = Location::local(path.clone());
+
+        let scan_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::from_location(&location),
+                session: scan_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        wait_for_location_dir_loaded(&evt_rx, scan_session).await;
+
+        provider.add_file(make_file(
+            "after.txt",
+            "/tmp/location-refresh-cache",
+            20,
+            false,
+        ));
+
+        let refresh_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::RefreshLocation {
+                location: LocationRef::from_location(&location),
+                session: refresh_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let groups = wait_for_location_dir_loaded(&evt_rx, refresh_session).await;
+
+        assert_eq!(provider.get_list_calls().len(), 2);
+        assert_eq!(groups.total_count, 2);
+
+        let legacy_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path,
+                session: legacy_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let legacy_groups = wait_for_dir_loaded(&evt_rx, legacy_session).await;
+
+        assert_eq!(provider.get_list_calls().len(), 2);
+        assert_eq!(legacy_groups.total_count, 2);
+    }
+
+    #[tokio::test]
     async fn test_scanner_bypasses_cache_after_invalidation() {
         let provider = MockProvider::new();
         provider.add_file(make_file("b.txt", "/tmp/dir2", 20, false));

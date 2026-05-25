@@ -156,13 +156,18 @@ Snapshot callers still have explicit compatibility paths.
 pipeline and include `DirectoryLoadState` so clients can tell whether the
 snapshot is complete and what the post-pipeline total is when known.
 
-Scanner cache entries are keyed by both path and listing detail, so fast and
-metadata rows for the same directory do not contaminate each other. Cache
-invalidation removes all listing-detail variants for the path. Complete
-snapshots are cached as complete listings. A first page is cached only when the
-provider reports it is complete; partial pages are not cached as complete
-directory listings. Later pages may be served from a complete cached listing
-when one exists.
+Scanner cache entries are keyed by both direct path and listing detail, so fast
+and metadata rows for the same directory do not contaminate each other. Direct
+local `Location` scans share that same path-backed storage through
+`LocationId` aliases instead of duplicating listing data. A Location scan checks
+its Location alias first and can fall back to the direct-path entry; if it uses
+that fallback, the cache records the Location alias for later lookups. Path
+invalidation removes all listing-detail variants for the path and any Location
+aliases pointing at that path. Location invalidation removes the aliased backing
+entry as well. Complete snapshots are cached as complete listings. A first page
+is cached only when the provider reports it is complete; partial pages are not
+cached as complete directory listings. Later pages may be served from a complete
+cached listing when one exists.
 
 Watcher-driven refresh follows the same invalidation path as manual navigation
 refresh. `WatchModule::new()` remains event-only for custom compositions. The
@@ -349,12 +354,14 @@ result suppression, cancellation, cache hits, and session isolation. A default
 emits `DirectoryEntriesLoaded`. Cache hits preserve the requested load shape.
 `RefreshNode` still bypasses cache for legacy NodeId refresh. Location-backed
 navigation uses `RefreshLocation`, which routes through the same Location result
-shape while preserving cache-bypass semantics. Navigator invalidation remains
+shape while preserving cache-bypass semantics and invalidating both the
+Location alias and direct-path backing entry. Navigator invalidation remains
 NodeId-triggered for now, but sessions whose current state also has a Location
-refresh through `RefreshLocation`. In the default core composition, watcher
-events under a watched root are routed into that invalidation path, so watched
-current directories refresh fresh directory data instead of serving stale cache
-entries.
+refresh through `RefreshLocation`; because direct local Location scans share
+path-backed cache storage, NodeId/path invalidation also clears Location cache
+aliases for that direct path. In the default core composition, watcher events
+under a watched root are routed into that invalidation path, so watched current
+directories refresh fresh directory data instead of serving stale cache entries.
 
 Nested archive addresses are represented as a provider root plus ordered
 segments, for example:
