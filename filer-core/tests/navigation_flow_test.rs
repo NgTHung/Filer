@@ -13,6 +13,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::time::timeout;
 
+use filer_core::model::location::{LocationRef, LocationRoute};
 use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::modules::navigation::NavigationModule;
@@ -206,6 +207,32 @@ async fn wait_for_directory_loaded(
                     return (path, total);
                 }
             }
+            Ok(Ok(Event::DirectoryEntriesLoaded {
+                parent,
+                groups,
+                session,
+                ..
+            })) => {
+                if session == expected_session {
+                    let path = path_from_location_ref(&parent)
+                        .expect("test Location directory event should use direct path");
+                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
+                    return (path, total);
+                }
+            }
+            Ok(Ok(Event::DirectoryEntryPageLoaded {
+                parent,
+                groups,
+                session,
+                ..
+            })) => {
+                if session == expected_session {
+                    let path = path_from_location_ref(&parent)
+                        .expect("test Location directory page event should use direct path");
+                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
+                    return (path, total);
+                }
+            }
             Ok(Ok(Event::CurrentNavigateState { .. })) => { /* skip nav state snapshot */ }
             Ok(Ok(Event::Error {
                 message, session, ..
@@ -214,6 +241,13 @@ async fn wait_for_directory_loaded(
             }
             _ => {}
         }
+    }
+}
+
+fn path_from_location_ref(location: &LocationRef) -> Option<PathBuf> {
+    match location.descriptor()?.route() {
+        LocationRoute::DirectPath { path } => Some(path),
+        LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => None,
     }
 }
 
@@ -709,6 +743,16 @@ mod navigation_flow_tests {
                     path, session: s, ..
                 })) if s == session => {
                     assert_eq!(path, PathBuf::from("/alpha"), "back should land on /alpha");
+                    dir_loaded = true;
+                }
+                Ok(Ok(Event::DirectoryEntryPageLoaded {
+                    parent, session: s, ..
+                })) if s == session => {
+                    assert_eq!(
+                        path_from_location_ref(&parent),
+                        Some(PathBuf::from("/alpha")),
+                        "back should land on /alpha"
+                    );
                     dir_loaded = true;
                 }
                 Ok(Ok(Event::CurrentNavigateState { state, session: s })) if s == session => {

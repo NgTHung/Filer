@@ -48,6 +48,13 @@ pub enum ScanCommand {
         load: DirectoryLoadOptions,
         request: RequestId,
     },
+    RefreshLocation {
+        location: LocationRef,
+        session: SessionId,
+        pipeline: PipelineConfig,
+        load: DirectoryLoadOptions,
+        request: RequestId,
+    },
     ScanNode {
         node: NodeId,
         session: SessionId,
@@ -1135,6 +1142,15 @@ impl Actor for Scanner {
                     request,
                 }) => {
                     self.dispatch_location_scan(location, session, pipeline, load, false, request);
+                }
+                Ok(ScanCommand::RefreshLocation {
+                    location,
+                    session,
+                    pipeline,
+                    load,
+                    request,
+                }) => {
+                    self.dispatch_location_scan(location, session, pipeline, load, true, request);
                 }
                 Ok(ScanCommand::ScanNode {
                     node,

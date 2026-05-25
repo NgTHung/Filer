@@ -160,7 +160,8 @@ near-term product boundary.
   provider capability flags.
 - [x] `Core` File operations for create, copy, move, rename, delete, and folder
   creation.
-- [x] `Core` Navigation actor with history and default paged directory events.
+- [x] `Core` Navigation actor with history, Location-aware current state, and
+  default paged directory events.
 - [x] `Core` Pipeline support for hidden filtering, extension filtering, sort,
   and group output.
 - [x] `Core` Search query parsing and streamed recursive search.
@@ -227,17 +228,20 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   unsupported-provider, session, navigation-state, path, and operation cases.
 - [ ] `Core` Add more specific structured error context for collision, stale
   request, and provider capability cases.
-- [ ] `Core` Document the v0.2.4 Location/NodeId contract: `Location` as the
+- [x] `Core` Document the v0.2.4 Location/NodeId contract: `Location` as the
   canonical transport identity, `NodeId` as a compatibility/cache handle,
   `NodeEntry` as the preferred Location-native public row, and `FileNode` as
   the local-path/provider compatibility row.
-- [ ] `Core` Add Location-aware navigation state while preserving existing
+- [x] `Core` Add Location-aware navigation state while preserving existing
   NodeId navigation, history, selection, and event compatibility.
-- [ ] `Core` Move navigation refresh and scan/listing cache behavior to prefer
-  Location identity when a session has a current Location.
-- [ ] `Core` Keep `ScanLocation` aligned with navigation refresh and listing
-  behavior; scan should migrate with navigation rather than as a separate late
-  service.
+- [x] `Core` Make navigation refresh prefer Location identity when a session has
+  a current Location, using `RefreshLocation` to preserve cache-bypass
+  semantics.
+- [x] `Core` Keep `ScanLocation` aligned with navigation refresh and listing
+  behavior by routing Location-backed back/forward/refresh through
+  Location-native scanner commands.
+- [ ] `Core` Move scan/listing cache keys and invalidation toward Location
+  identity instead of path/NodeId identity only.
 - [ ] `Core` Bring search into Location-first read behavior after navigation
   and scan are stable, keeping `Search` by NodeId as compatibility.
 - [ ] `Core` Define a Location-aware cache and invalidation bridge before
@@ -277,8 +281,10 @@ Exit criteria:
   strings.
 - [x] Error event recoverability is derived from the stable error code.
 - [x] The initial provider `Location` model is documented and tested.
-- [ ] Public docs state when to use `LocationRef`, `NodeId`, `NodeEntry`, and
+- [x] Public docs state when to use `LocationRef`, `NodeId`, `NodeEntry`, and
   `FileNode`.
+- [x] Navigation snapshots expose both the legacy current `NodeId` and optional
+  current `LocationRef` without breaking old serialized state.
 - [ ] Public command/event transport can use reconstructable `LocationRef`
   forms without id-only reconstruction failure across processes or machines.
 - [ ] Remaining NodeId-only command and event surfaces are intentionally labeled

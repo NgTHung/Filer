@@ -79,6 +79,9 @@ pub enum NavCommand {
 pub struct NavState {
     /// Current directory NodeId
     pub current: Option<NodeId>,
+    /// Current provider-aware location, when known.
+    #[serde(default)]
+    pub current_location: Option<LocationRef>,
     /// Can navigate back
     pub can_back: bool,
     /// Can navigate forward
@@ -95,6 +98,7 @@ impl Default for NavState {
     fn default() -> Self {
         Self {
             current: None,
+            current_location: None,
             can_back: false,
             can_forward: false,
             can_up: false,
@@ -109,8 +113,12 @@ impl Default for NavState {
 pub struct NavigatorState {
     /// Current directory
     pub current: Option<NodeId>,
+    /// Current provider-aware location, when known.
+    pub current_location: Option<LocationRef>,
     /// Navigation history (directories visited)
     pub history: VecDeque<NodeId>,
+    /// Location history aligned with `history`.
+    pub location_history: VecDeque<Option<LocationRef>>,
     /// Current position in history (for back/forward)
     pub history_index: usize,
     /// Maximum history entries
@@ -131,7 +139,9 @@ impl NavigatorState {
             history_limit: 100,
             register: reg,
             current: None,
+            current_location: None,
             history: his,
+            location_history: VecDeque::new(),
             history_index: 0,
             pipeline_config: PipelineConfig {
                 sort: None,
@@ -150,7 +160,9 @@ impl NavigatorState {
             history_limit: limit,
             register: reg,
             current: None,
+            current_location: None,
             history: hs,
+            location_history: VecDeque::new(),
             history_index: 0,
             pipeline_config: PipelineConfig {
                 sort: None,
@@ -168,18 +180,28 @@ impl NavigatorState {
 
     /// Navigate to a new directory
     pub fn navigate(&mut self, node: NodeId) {
+        let location = self.register.resolve_node_location(node);
+        self.navigate_with_location(node, location);
+    }
+
+    /// Navigate to a new directory with a known provider-aware location.
+    pub fn navigate_with_location(&mut self, node: NodeId, location: Option<LocationRef>) {
         debug_assert!(self.history.len() >= self.history_index);
         if self.history_index != 0 {
             while self.history_index != 0 {
                 self.history_index -= 1;
                 self.history.pop_back();
+                self.location_history.pop_back();
             }
         }
         if self.history.len() == self.history_limit {
             self.history.pop_front();
+            self.location_history.pop_front();
         }
         self.history.push_back(node);
+        self.location_history.push_back(location.clone());
         self.current = Some(node);
+        self.current_location = location;
     }
 
     /// Go back in history
@@ -192,6 +214,11 @@ impl NavigatorState {
                 .history
                 .get(self.history.len() - self.history_index - 1)
                 .copied();
+            self.current_location = self
+                .location_history
+                .get(self.history.len() - self.history_index - 1)
+                .cloned()
+                .flatten();
             self.current
         } else {
             None
@@ -206,6 +233,11 @@ impl NavigatorState {
                 .history
                 .get(self.history.len() - self.history_index - 1)
                 .copied();
+            self.current_location = self
+                .location_history
+                .get(self.history.len() - self.history_index - 1)
+                .cloned()
+                .flatten();
             self.current
         } else {
             None
@@ -226,6 +258,7 @@ impl NavigatorState {
     pub fn snapshot(&self) -> NavState {
         NavState {
             current: self.current,
+            current_location: self.current_location.clone(),
             can_back: self.can_back(),
             can_forward: self.can_forward(),
             can_up: self
@@ -380,7 +413,7 @@ impl Navigator {
                 let _ = self.path_cache.insert_async(node).await;
                 self.sessions
                     .update_async(&session, |_, v| {
-                        v.navigate(node);
+                        v.navigate_with_location(node, Some(LocationRef::from_location(&location)));
                         send_or_warn(
                             &self.scanner_tx,
                             ScanCommand::ScanLocation {
@@ -402,10 +435,9 @@ impl Navigator {
                 self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_back() {
-                            let node = v.back(1).unwrap();
-                            Self::trigger_scan(
+                            v.back(1).unwrap();
+                            Self::trigger_current_scan(
                                 session_id,
-                                node,
                                 v,
                                 self.scanner_tx.clone(),
                                 request,
@@ -430,10 +462,9 @@ impl Navigator {
                 self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_forward() {
-                            let node = v.forward().unwrap();
-                            Self::trigger_scan(
+                            v.forward().unwrap();
+                            Self::trigger_current_scan(
                                 session_id,
-                                node,
                                 v,
                                 self.scanner_tx.clone(),
                                 request,
@@ -463,9 +494,8 @@ impl Navigator {
                         {
                             let node = self.register.clone().register(par);
                             v.navigate(node);
-                            Self::trigger_scan(
+                            Self::trigger_current_scan(
                                 session_id,
-                                node,
                                 v,
                                 self.scanner_tx.clone(),
                                 request,
@@ -491,10 +521,9 @@ impl Navigator {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .read_async(&session_id, |_k, v| {
-                        if let Some(cur) = v.current {
-                            Self::trigger_refresh_scan(
+                        if v.current.is_some() || v.current_location.is_some() {
+                            Self::trigger_current_refresh_scan(
                                 session_id,
-                                cur,
                                 v,
                                 self.scanner_tx.clone(),
                                 request,
@@ -550,9 +579,8 @@ impl Navigator {
                     self.sessions
                         .iter_async(|k, v| {
                             if v.current == Some(node_id) {
-                                Self::trigger_refresh_scan(
+                                Self::trigger_current_refresh_scan(
                                     *k,
-                                    node_id,
                                     v,
                                     self.scanner_tx.clone(),
                                     RequestId::new(),
@@ -590,6 +618,31 @@ impl Navigator {
         );
     }
 
+    /// Trigger a scan for the current directory, preferring the Location-native
+    /// route when navigation state has one.
+    fn trigger_current_scan(
+        session: SessionId,
+        state: &NavigatorState,
+        scanner_tx: Sender<ScanCommand>,
+        request: RequestId,
+    ) {
+        if let Some(location) = state.current_location.clone() {
+            send_or_warn(
+                &scanner_tx,
+                ScanCommand::ScanLocation {
+                    location,
+                    session,
+                    pipeline: state.pipeline_config.clone(),
+                    load: DirectoryLoadOptions::default(),
+                    request,
+                },
+                "trigger location scan",
+            );
+        } else if let Some(node) = state.current {
+            Self::trigger_scan(session, node, state, scanner_tx, request);
+        }
+    }
+
     /// Trigger a fresh scan of the current directory.
     ///
     /// Refresh is user- or watcher-driven and must bypass the directory cache;
@@ -613,6 +666,31 @@ impl Navigator {
             },
             "trigger refresh scan",
         );
+    }
+
+    /// Trigger a fresh scan of the current directory, preferring Location-native
+    /// cache-bypass semantics when navigation state has a Location.
+    fn trigger_current_refresh_scan(
+        session: SessionId,
+        state: &NavigatorState,
+        scanner_tx: Sender<ScanCommand>,
+        request: RequestId,
+    ) {
+        if let Some(location) = state.current_location.clone() {
+            send_or_warn(
+                &scanner_tx,
+                ScanCommand::RefreshLocation {
+                    location,
+                    session,
+                    pipeline: state.pipeline_config.clone(),
+                    load: DirectoryLoadOptions::default(),
+                    request,
+                },
+                "trigger location refresh scan",
+            );
+        } else if let Some(node) = state.current {
+            Self::trigger_refresh_scan(session, node, state, scanner_tx, request);
+        }
     }
 }
 

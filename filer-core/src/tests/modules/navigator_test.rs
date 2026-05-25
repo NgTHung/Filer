@@ -1,4 +1,5 @@
 use crate::actors::Actor;
+use crate::model::location::{Location, LocationDescriptor, LocationRef};
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::{NavCommand, NavState, Navigator, NavigatorState};
@@ -232,6 +233,7 @@ mod navigator_state_tests {
         // Initial snapshot
         let snap = state.snapshot();
         assert_eq!(snap.current, None);
+        assert_eq!(snap.current_location, None);
         assert!(!snap.can_back);
         assert!(!snap.can_forward);
         assert_eq!(snap.selected.len(), 0);
@@ -241,6 +243,7 @@ mod navigator_state_tests {
         state.navigate(node(2));
         let snap = state.snapshot();
         assert_eq!(snap.current, Some(node(2)));
+        assert_eq!(snap.current_location, None);
         assert!(snap.can_back);
         assert!(!snap.can_forward);
 
@@ -248,8 +251,75 @@ mod navigator_state_tests {
         state.back(1);
         let snap = state.snapshot();
         assert_eq!(snap.current, Some(node(1)));
+        assert_eq!(snap.current_location, None);
         assert!(!snap.can_back);
         assert!(snap.can_forward);
+    }
+
+    #[test]
+    fn test_navigate_with_location_updates_current_location() {
+        let reg = NodeRegistry::new();
+        let mut state = NavigatorState::new(reg);
+        let location = Location::local("/tmp/location-current");
+        let location_ref = LocationRef::from_location(&location);
+
+        state.navigate_with_location(node(1), Some(location_ref.clone()));
+
+        assert_eq!(state.current, Some(node(1)));
+        assert_eq!(state.current_location, Some(location_ref));
+    }
+
+    #[test]
+    fn test_navigate_node_populates_location_from_registry_when_available() {
+        let reg = NodeRegistry::new();
+        let path = std::path::PathBuf::from("/tmp/location-node");
+        let node = reg.clone().register(path.clone());
+        let mut state = NavigatorState::new(reg);
+
+        state.navigate(node);
+
+        assert_eq!(state.current, Some(node));
+        assert_eq!(
+            state.current_location.as_ref().and_then(|r| r.descriptor()),
+            Some(&LocationDescriptor::local(path))
+        );
+    }
+
+    #[test]
+    fn test_back_and_forward_restore_current_location() {
+        let reg = NodeRegistry::new();
+        let mut state = NavigatorState::new(reg);
+        let first = LocationRef::from_location(&Location::local("/tmp/first"));
+        let second = LocationRef::from_location(&Location::local("/tmp/second"));
+
+        state.navigate_with_location(node(1), Some(first.clone()));
+        state.navigate_with_location(node(2), Some(second.clone()));
+
+        assert_eq!(state.back(1), Some(node(1)));
+        assert_eq!(state.current_location, Some(first));
+
+        assert_eq!(state.forward(), Some(node(2)));
+        assert_eq!(state.current_location, Some(second));
+    }
+
+    #[test]
+    fn test_navigate_after_back_clears_forward_location_history() {
+        let reg = NodeRegistry::new();
+        let mut state = NavigatorState::new(reg);
+        let first = LocationRef::from_location(&Location::local("/tmp/first"));
+        let second = LocationRef::from_location(&Location::local("/tmp/second"));
+        let replacement = LocationRef::from_location(&Location::local("/tmp/replacement"));
+
+        state.navigate_with_location(node(1), Some(first.clone()));
+        state.navigate_with_location(node(2), Some(second));
+        state.back(1);
+        state.navigate_with_location(node(3), Some(replacement.clone()));
+
+        assert_eq!(state.history.len(), 2);
+        assert_eq!(state.location_history.len(), 2);
+        assert_eq!(state.current, Some(node(3)));
+        assert_eq!(state.current_location, Some(replacement));
+        assert_eq!(state.forward(), None);
     }
 
     #[test]
@@ -351,6 +421,7 @@ mod nav_state_serialization_tests {
         let state = NavState::default();
 
         assert_eq!(state.current, None);
+        assert_eq!(state.current_location, None);
         assert!(!state.can_back);
         assert!(!state.can_forward);
         assert!(!state.can_up);
@@ -363,6 +434,9 @@ mod nav_state_serialization_tests {
 
         let state = NavState {
             current: Some(NodeId(42)),
+            current_location: Some(LocationRef::descriptor_only(LocationDescriptor::local(
+                "/tmp/nav-state",
+            ))),
             can_back: true,
             can_forward: false,
             can_up: true,
@@ -381,15 +455,38 @@ mod nav_state_serialization_tests {
 
         let restored = deserialized.unwrap();
         assert_eq!(restored.current, Some(NodeId(42)));
+        assert_eq!(
+            restored
+                .current_location
+                .as_ref()
+                .and_then(|r| r.descriptor()),
+            Some(&LocationDescriptor::local("/tmp/nav-state"))
+        );
         assert!(restored.can_back);
         assert_eq!(restored.selected.len(), 2);
+    }
+
+    #[test]
+    fn test_nav_state_deserializes_without_current_location() {
+        let json = r#"{
+            "current": null,
+            "can_back": false,
+            "can_forward": false,
+            "can_up": false,
+            "pipeline": { "sort": null, "filter": null, "group": null },
+            "selected": []
+        }"#;
+
+        let restored: NavState = serde_json::from_str(json).unwrap();
+        assert_eq!(restored.current, None);
+        assert_eq!(restored.current_location, None);
     }
 }
 
 #[cfg(test)]
 mod navigator_actor_tests {
     use super::*;
-    use crate::{model::registry::NodeRegistry, modules::scan::scanner::ScanCommand};
+    use crate::{Event, model::registry::NodeRegistry, modules::scan::scanner::ScanCommand};
 
     /// Helper to create test NodeIds
     fn node(id: u64) -> NodeId {
@@ -473,6 +570,163 @@ mod navigator_actor_tests {
         // Event might be emitted (depending on implementation)
         // This test validates the command is processed
         assert!(event.is_ok() || event.is_err(), "Command was processed");
+    }
+
+    #[tokio::test]
+    async fn test_navigator_location_navigation_emits_scan_location_and_snapshot() {
+        let (cmd_tx, cmd_rx) = flume::unbounded();
+        let (event_tx, event_rx) = flume::unbounded();
+        let (scanner_tx, scanner_rx) = flume::unbounded();
+        let reg = NodeRegistry::new();
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+
+        tokio::spawn(async move {
+            navigator.run().await;
+        });
+
+        let session = session(1);
+        let location = Location::local("/tmp/location-nav");
+
+        cmd_tx
+            .send(NavCommand::NavigateToLocation {
+                session,
+                location: LocationRef::from_location(&location),
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+
+        let scan_cmd = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("Should receive scan command")
+            .expect("Channel should not be closed");
+
+        assert!(
+            matches!(scan_cmd, ScanCommand::ScanLocation { session: s, .. } if s == session),
+            "location navigation should trigger ScanLocation"
+        );
+
+        let snapshot = timeout(Duration::from_millis(100), event_rx.recv_async())
+            .await
+            .expect("Should receive nav state snapshot")
+            .expect("Channel should not be closed");
+
+        match snapshot {
+            Event::CurrentNavigateState { state, session: s } => {
+                assert_eq!(s, session);
+                assert_eq!(
+                    state.current_location.as_ref().and_then(|r| r.descriptor()),
+                    Some(location.descriptor())
+                );
+                assert!(state.current.is_some());
+            }
+            other => panic!("Expected CurrentNavigateState, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_navigator_refresh_after_location_navigation_uses_refresh_location() {
+        let (cmd_tx, cmd_rx) = flume::unbounded();
+        let (event_tx, _event_rx) = flume::unbounded();
+        let (scanner_tx, scanner_rx) = flume::unbounded();
+        let reg = NodeRegistry::new();
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+
+        tokio::spawn(async move {
+            navigator.run().await;
+        });
+
+        let session = session(1);
+        let location = Location::local("/tmp/location-refresh");
+
+        cmd_tx
+            .send(NavCommand::NavigateToLocation {
+                session,
+                location: LocationRef::from_location(&location),
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+
+        let _ = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("Navigate should trigger scan")
+            .expect("scanner channel should remain open");
+
+        cmd_tx
+            .send(NavCommand::Refresh(
+                session,
+                crate::model::request::RequestId::new(),
+            ))
+            .unwrap();
+
+        let refresh = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("Refresh should trigger scan")
+            .expect("scanner channel should remain open");
+
+        assert!(
+            matches!(refresh, ScanCommand::RefreshLocation { session: s, .. } if s == session),
+            "location-backed refresh should bypass cache through RefreshLocation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_navigator_back_restores_location_and_scans_location() {
+        let (cmd_tx, cmd_rx) = flume::unbounded();
+        let (event_tx, _event_rx) = flume::unbounded();
+        let (scanner_tx, scanner_rx) = flume::unbounded();
+        let reg = NodeRegistry::new();
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+
+        tokio::spawn(async move {
+            navigator.run().await;
+        });
+
+        let session = session(1);
+        let first = Location::local("/tmp/location-back-a");
+        let second = Location::local("/tmp/location-back-b");
+
+        cmd_tx
+            .send(NavCommand::NavigateToLocation {
+                session,
+                location: LocationRef::from_location(&first),
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+        cmd_tx
+            .send(NavCommand::NavigateToLocation {
+                session,
+                location: LocationRef::from_location(&second),
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+
+        let _ = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("first navigation should scan")
+            .expect("scanner channel should remain open");
+        let _ = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("second navigation should scan")
+            .expect("scanner channel should remain open");
+
+        cmd_tx
+            .send(NavCommand::Back(
+                session,
+                crate::model::request::RequestId::new(),
+            ))
+            .unwrap();
+
+        let scan = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("back should trigger scan")
+            .expect("scanner channel should remain open");
+
+        match scan {
+            ScanCommand::ScanLocation { location, .. } => {
+                assert_eq!(location.descriptor(), Some(first.descriptor()));
+            }
+            other => panic!("Expected ScanLocation, got {other:?}"),
+        }
     }
 
     #[tokio::test]

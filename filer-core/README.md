@@ -271,6 +271,17 @@ compatibility surface. Watch and write operation commands are intentionally
 still NodeId-first until a separate provider capability and write-routing
 contract is defined.
 
+Navigation state is now hybrid as well. `CurrentNavigateState` carries the
+legacy `current: Option<NodeId>` and the provider-aware
+`current_location: Option<LocationRef>`. The Location field is optional and
+serde-defaulted so older serialized state without it still deserializes.
+Navigator history stores both identities in lockstep: direct local
+`NavigateLocation` records the Location and its bridged NodeId, while legacy
+path/node navigation records a Location when the registry can derive one.
+Back/forward restore both identities. Refresh and invalidation prefer
+Location-native scanner routing when `current_location` exists and fall back to
+NodeId routing only for legacy-only state.
+
 `NodeEntry` is the preferred public row shape for Location-native listing and
 search results. `FileNode` remains the local-path/provider compatibility row and
 should not accumulate provider-profile, archive-segment, or nested-VFS routing
@@ -336,9 +347,11 @@ Scanner, searcher, and previewer tests now cover Location parity for stale
 result suppression, cancellation, cache hits, and session isolation. A default
 `ScanLocation` emits `DirectoryEntryPageLoaded`; a snapshot `ScanLocation`
 emits `DirectoryEntriesLoaded`. Cache hits preserve the requested load shape.
-`RefreshNode` still bypasses cache after a Location scan. Navigator invalidation
-now records navigated nodes and triggers `RefreshNode` for sessions currently
-displaying the invalidated directory. In the default core composition, watcher
+`RefreshNode` still bypasses cache for legacy NodeId refresh. Location-backed
+navigation uses `RefreshLocation`, which routes through the same Location result
+shape while preserving cache-bypass semantics. Navigator invalidation remains
+NodeId-triggered for now, but sessions whose current state also has a Location
+refresh through `RefreshLocation`. In the default core composition, watcher
 events under a watched root are routed into that invalidation path, so watched
 current directories refresh fresh directory data instead of serving stale cache
 entries.
