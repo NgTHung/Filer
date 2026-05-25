@@ -27,6 +27,7 @@ mod command_router_tests {
     use crate::api::events::Event;
     use crate::api::module::{HandlerContext, HandlerRegistry};
     use crate::api::session_manager::SessionManager;
+    use crate::errors::{CoreError, ErrorCode};
     use crate::model::location::{Location, LocationRef};
     use crate::model::node::NodeId;
     use crate::model::operation::OperationId;
@@ -190,7 +191,7 @@ mod command_router_tests {
             // ── Search handlers ──────────────────────────────────────
             {
                 let tx = search_tx.clone();
-                handlers.on("search", move |cmd, _ctx| {
+                handlers.on("search", move |cmd, ctx| {
                     if let Command::Search {
                         query,
                         root,
@@ -198,18 +199,63 @@ mod command_router_tests {
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(SearchCommand::Search {
-                            query: crate::model::query::SearchQuery::parse(&query).unwrap(),
-                            root,
-                            session,
-                            request,
-                        });
+                        match crate::model::query::SearchQuery::parse(&query) {
+                            Ok(query) => {
+                                let _ = tx.send(SearchCommand::Search {
+                                    query,
+                                    root,
+                                    session,
+                                    request,
+                                });
+                            }
+                            Err(error) => {
+                                let _ = ctx.events.send(Event::from_request_error(
+                                    CoreError::invalid_input(format!(
+                                        "Invalid search query: {error}"
+                                    )),
+                                    session,
+                                    request,
+                                ));
+                            }
+                        }
                     }
                 });
             }
             {
                 let tx = search_tx.clone();
-                handlers.on("search.location", move |cmd, _ctx| {
+                handlers.on("search.path", move |cmd, ctx| {
+                    if let Command::SearchPath {
+                        query,
+                        root,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        match crate::model::query::SearchQuery::parse(&query) {
+                            Ok(query) => {
+                                let _ = tx.send(SearchCommand::SearchPath {
+                                    query,
+                                    root,
+                                    session,
+                                    request,
+                                });
+                            }
+                            Err(error) => {
+                                let _ = ctx.events.send(Event::from_request_error(
+                                    CoreError::invalid_input(format!(
+                                        "Invalid search query: {error}"
+                                    )),
+                                    session,
+                                    request,
+                                ));
+                            }
+                        }
+                    }
+                });
+            }
+            {
+                let tx = search_tx.clone();
+                handlers.on("search.location", move |cmd, ctx| {
                     if let Command::SearchLocation {
                         query,
                         root,
@@ -217,12 +263,25 @@ mod command_router_tests {
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(SearchCommand::SearchLocation {
-                            query: crate::model::query::SearchQuery::parse(&query).unwrap(),
-                            root,
-                            session,
-                            request,
-                        });
+                        match crate::model::query::SearchQuery::parse(&query) {
+                            Ok(query) => {
+                                let _ = tx.send(SearchCommand::SearchLocation {
+                                    query,
+                                    root,
+                                    session,
+                                    request,
+                                });
+                            }
+                            Err(error) => {
+                                let _ = ctx.events.send(Event::from_request_error(
+                                    CoreError::invalid_input(format!(
+                                        "Invalid search query: {error}"
+                                    )),
+                                    session,
+                                    request,
+                                ));
+                            }
+                        }
                     }
                 });
             }
@@ -760,6 +819,43 @@ mod command_router_tests {
     }
 
     #[tokio::test]
+    async fn test_route_search_path_to_searcher() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let request = RequestId::new();
+        let root = PathBuf::from("/home/user/projects");
+
+        harness
+            .send(Command::SearchPath {
+                query: "*.rs".to_string(),
+                root: root.clone(),
+                session,
+                request,
+            })
+            .await;
+
+        let search_cmd = timeout(TEST_TIMEOUT, harness.search_rx.recv_async())
+            .await
+            .expect("Timed out waiting for SearchCommand")
+            .expect("SearchCommand channel closed");
+
+        match search_cmd {
+            SearchCommand::SearchPath {
+                query,
+                root: r,
+                session: s,
+                request: req,
+            } => {
+                assert_eq!(query.text, "*.rs", "Query text must be forwarded");
+                assert_eq!(r, root, "Root path must be forwarded");
+                assert_eq!(s, session, "SessionId must be preserved");
+                assert_eq!(req, request, "RequestId must be forwarded");
+            }
+            other => panic!("Expected SearchCommand::SearchPath, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn test_route_search_location_to_searcher() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -795,6 +891,46 @@ mod command_router_tests {
             }
             other => panic!("Expected SearchCommand::SearchLocation, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_invalid_search_query_emits_request_error() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let request = RequestId::new();
+
+        harness
+            .send(Command::SearchLocation {
+                query: "type:unknown".to_string(),
+                root: LocationRef::from_location(&Location::local("/tmp/search")),
+                session,
+                request,
+            })
+            .await;
+
+        let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
+            .await
+            .expect("Timed out waiting for invalid query error")
+            .expect("Event channel closed");
+
+        match event {
+            Event::Error {
+                code,
+                session: s,
+                request: error_request,
+                ..
+            } => {
+                assert_eq!(code, ErrorCode::InputInvalid);
+                assert_eq!(s, session);
+                assert_eq!(error_request, Some(request));
+            }
+            other => panic!("Expected Event::Error, got {other:?}"),
+        }
+
+        assert!(
+            harness.search_rx.try_recv().is_err(),
+            "invalid query must not be forwarded to Searcher"
+        );
     }
 
     #[tokio::test]

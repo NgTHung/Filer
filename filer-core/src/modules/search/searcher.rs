@@ -29,6 +29,12 @@ pub enum SearchCommand {
         session: SessionId,
         request: RequestId,
     },
+    SearchPath {
+        query: SearchQuery,
+        root: PathBuf,
+        session: SessionId,
+        request: RequestId,
+    },
     SearchLocation {
         query: SearchQuery,
         root: LocationRef,
@@ -223,6 +229,14 @@ impl Actor for Searcher {
                         continue;
                     };
                     self.dispatch_search(query, path, session, request);
+                }
+                Ok(SearchCommand::SearchPath {
+                    query,
+                    root,
+                    session,
+                    request,
+                }) => {
+                    self.dispatch_search(query, root, session, request);
                 }
                 Ok(SearchCommand::SearchLocation {
                     query,

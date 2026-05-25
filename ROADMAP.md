@@ -55,9 +55,9 @@ The remaining core stabilization work is still tracked below.
 the Location-first read/navigation core. The goal is not to remove `NodeId`.
 Instead, `Location` becomes the preferred transport identity for new read-side
 work, while `NodeId` remains a compatibility and cache handle for existing
-local-path flows. Navigation and scan/listing should move together first,
-search should follow after that foundation is stable, and preview, metadata,
-MIME, watcher migration, and write-operation routing should wait for later
+local-path flows. Navigation and scan/listing moved first, and search now
+follows the same direct-local Location contract. Preview, metadata, MIME,
+watcher migration, and write-operation routing should wait for later
 capability-specific milestones unless only compatibility tests are needed.
 
 Milestone labels:
@@ -242,7 +242,7 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   Location-native scanner commands.
 - [x] `Core` Move scan/listing cache keys and invalidation toward Location
   identity instead of path/NodeId identity only.
-- [ ] `Core` Bring search into Location-first read behavior after navigation
+- [x] `Core` Bring search into Location-first read behavior after navigation
   and scan are stable, keeping `Search` by NodeId as compatibility.
 - [x] `Core` Define a Location-aware cache and invalidation bridge before
   migrating watcher state.
@@ -285,8 +285,9 @@ Exit criteria:
   `FileNode`.
 - [x] Navigation snapshots expose both the legacy current `NodeId` and optional
   current `LocationRef` without breaking old serialized state.
-- [ ] Public command/event transport can use reconstructable `LocationRef`
-  forms without id-only reconstruction failure across processes or machines.
+- [x] Public read command/event transport can use reconstructable
+  `LocationRef` forms for navigation, scan, and search without id-only
+  reconstruction failure across processes or machines.
 - [ ] Remaining NodeId-only command and event surfaces are intentionally labeled
   compatibility, internal, or future provider-capability work.
 - [x] Nested archive locations can be represented as provider root plus ordered
@@ -372,6 +373,10 @@ core events being truthful and fresh.
 - [x] `Core` Cancel previous search work per session.
 - [x] `Core` Add search result request ids so stale result batches can be
   discarded safely by all frontends.
+- [x] `Core` Route direct-local `SearchLocation` through reconstructable
+  `LocationRef` inputs and emit `SearchEntryResults`.
+- [x] `Core` Keep `SearchPath` as explicit direct-local compatibility routing
+  and report invalid query syntax as request-scoped input errors.
 - [ ] `Core` Add scoped search roots for selected folders, current folder, and
   workspace/project search.
 - [ ] `Power` Add indexed search service for large projects.

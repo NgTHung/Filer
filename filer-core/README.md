@@ -348,6 +348,18 @@ path route, and preserve the original request id on results or structured
 errors. Segmented and unsupported-provider routes are represented and reported,
 but not executed yet.
 
+`SearchLocation` is the preferred search command for new read-side clients. It
+accepts `LocationRef::Full` or `LocationRef::Descriptor` for reconstructable
+transport and emits `SearchEntryResults` with `NodeEntry` rows. `LocationRef::Id`
+works only when the receiving registry already knows the id; otherwise search
+returns a request-scoped `LocationUnresolved` error. Segmented archive routes
+return `LocationSegmentedUnsupported`, and unsupported profile/ephemeral
+providers return `UnsupportedProvider` until provider search routing exists.
+Legacy `Search` still emits `SearchResults` by `NodeId`, and `SearchPath` is an
+explicit direct-local compatibility route. Invalid query syntax now emits a
+request-scoped `InputInvalid` error instead of being silently dropped by command
+dispatch.
+
 Scanner, searcher, and previewer tests now cover Location parity for stale
 result suppression, cancellation, cache hits, and session isolation. A default
 `ScanLocation` emits `DirectoryEntryPageLoaded`; a snapshot `ScanLocation`

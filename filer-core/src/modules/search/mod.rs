@@ -9,7 +9,9 @@ pub mod searcher;
 use std::sync::Arc;
 
 use crate::api::commands::Command;
+use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
+use crate::errors::CoreError;
 use crate::model::query::SearchQuery;
 use crate::vfs::provider::FsProvider;
 use searcher::SearchCommand;
@@ -31,40 +33,71 @@ impl Module for SearchModule {
 
         // ── Search ───────────────────────────────────────────────────
         let tx = search_tx.clone();
-        ctx.handlers.on("search", move |cmd, _ctx| {
+        ctx.handlers.on("search", move |cmd, ctx| {
             if let Command::Search {
                 query,
                 root,
                 session,
                 request,
             } = cmd
-                && let Ok(query) = SearchQuery::parse(&query)
             {
-                let _ = tx.send(SearchCommand::Search {
-                    query,
-                    root,
-                    session,
-                    request,
-                });
+                match SearchQuery::parse(&query) {
+                    Ok(query) => {
+                        let _ = tx.send(SearchCommand::Search {
+                            query,
+                            root,
+                            session,
+                            request,
+                        });
+                    }
+                    Err(error) => emit_query_error(ctx, session, request, error),
+                }
             }
         });
 
         let tx = search_tx.clone();
-        ctx.handlers.on("search.location", move |cmd, _ctx| {
+        ctx.handlers.on("search.path", move |cmd, ctx| {
+            if let Command::SearchPath {
+                query,
+                root,
+                session,
+                request,
+            } = cmd
+            {
+                match SearchQuery::parse(&query) {
+                    Ok(query) => {
+                        let _ = tx.send(SearchCommand::SearchPath {
+                            query,
+                            root,
+                            session,
+                            request,
+                        });
+                    }
+                    Err(error) => emit_query_error(ctx, session, request, error),
+                }
+            }
+        });
+
+        let tx = search_tx.clone();
+        ctx.handlers.on("search.location", move |cmd, ctx| {
             if let Command::SearchLocation {
                 query,
                 root,
                 session,
                 request,
             } = cmd
-                && let Ok(query) = SearchQuery::parse(&query)
             {
-                let _ = tx.send(SearchCommand::SearchLocation {
-                    query,
-                    root,
-                    session,
-                    request,
-                });
+                match SearchQuery::parse(&query) {
+                    Ok(query) => {
+                        let _ = tx.send(SearchCommand::SearchLocation {
+                            query,
+                            root,
+                            session,
+                            request,
+                        });
+                    }
+                    Err(error) => emit_query_error(ctx, session, request, error),
+                }
             }
         });
 
@@ -90,4 +123,17 @@ impl Module for SearchModule {
         );
         ctx.actors.spawn(searcher);
     }
+}
+
+fn emit_query_error(
+    ctx: &crate::api::module::HandlerContext,
+    session: crate::model::session::SessionId,
+    request: crate::model::request::RequestId,
+    error: crate::model::query::QueryParseError,
+) {
+    let _ = ctx.events.send(Event::from_request_error(
+        CoreError::invalid_input(format!("Invalid search query: {error}")),
+        session,
+        request,
+    ));
 }
