@@ -397,6 +397,7 @@ impl Operator {
                     Ok(()) => {
                         invalidate_parent_cache(&cache, &src_path);
                         invalidate_parent_cache(&cache, &dst_file);
+                        invalidate_subtree_cache(&cache, &src_path);
                         affected.push(registry.clone().register(dst_file));
                     }
                     Err(e) if is_cross_device(&e) => {
@@ -420,6 +421,7 @@ impl Operator {
                         }
                         invalidate_parent_cache(&cache, &src_path);
                         invalidate_parent_cache(&cache, &dst_file);
+                        invalidate_subtree_cache(&cache, &src_path);
                         affected.push(registry.clone().register(dst_file));
                     }
                     Err(e) => {
@@ -538,6 +540,7 @@ impl Operator {
                 match result {
                     Ok(()) => {
                         invalidate_parent_cache(&cache, &path);
+                        invalidate_subtree_cache(&cache, &path);
                         affected.push(id);
                         items_done += 1;
                         if total > 1 {
@@ -677,6 +680,7 @@ impl Operator {
             }
 
             invalidate_parent_cache(&cache, &src_path);
+            invalidate_subtree_cache(&cache, &src_path);
             let id = registry.register(new_path);
             emit_operation_progress(
                 &events,
@@ -975,6 +979,14 @@ fn invalidate_parent_cache(cache: &Option<SharedDirCache>, path: &Path) {
     if let (Some(parent), Some(c)) = (path.parent(), cache) {
         if let Ok(mut guard) = c.lock() {
             guard.invalidate(parent);
+        }
+    }
+}
+
+fn invalidate_subtree_cache(cache: &Option<SharedDirCache>, path: &Path) {
+    if let Some(c) = cache {
+        if let Ok(mut guard) = c.lock() {
+            guard.invalidate_subtree(path);
         }
     }
 }

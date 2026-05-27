@@ -227,6 +227,51 @@ mod dir_cache_tests {
     }
 
     #[test]
+    fn test_invalidate_subtree_removes_exact_path_and_descendants() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let root = PathBuf::from("/tmp/project");
+        let child = PathBuf::from("/tmp/project/src");
+        let grandchild = PathBuf::from("/tmp/project/src/bin");
+        let sibling = PathBuf::from("/tmp/project-other");
+
+        cache.put(root.clone(), fast(), one_node());
+        cache.put(child.clone(), fast(), one_node());
+        cache.put(grandchild.clone(), fast(), one_node());
+        cache.put(sibling.clone(), fast(), one_node());
+
+        cache.invalidate_subtree(&root);
+
+        assert!(cache.get(&root, fast()).is_none());
+        assert!(cache.get(&child, fast()).is_none());
+        assert!(cache.get(&grandchild, fast()).is_none());
+        assert!(cache.get(&sibling, fast()).is_some());
+    }
+
+    #[test]
+    fn test_invalidate_subtree_removes_listing_details_and_location_aliases() {
+        let mut cache = DirCache::new(1024 * 1024);
+        let root = PathBuf::from("/tmp/project");
+        let child = PathBuf::from("/tmp/project/src");
+        let root_id = location_id("/tmp/project");
+        let child_id = location_id("/tmp/project/src");
+
+        cache.put_location(root_id, root.clone(), fast(), one_node());
+        cache.put_location(root_id, root.clone(), metadata(), one_node());
+        cache.put_location(child_id, child.clone(), fast(), one_node());
+
+        cache.invalidate_subtree(&root);
+
+        assert!(cache.get(&root, fast()).is_none());
+        assert!(cache.get(&root, metadata()).is_none());
+        assert!(cache.get(&child, fast()).is_none());
+        assert!(cache.get_location(root_id, fast()).is_none());
+        assert!(cache.get_location(root_id, metadata()).is_none());
+        assert!(cache.get_location(child_id, fast()).is_none());
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.alias_len(), 0);
+    }
+
+    #[test]
     fn test_location_alias_lookup_returns_cached_listing() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/location-dir");

@@ -21,6 +21,7 @@ struct CacheEntry {
 /// - `put` inserts (or replaces) an entry, evicting LRU entries until the
 ///   total size fits within `max_size_bytes`.
 /// - `invalidate` removes a single path entry.
+/// - `invalidate_subtree` removes a path and cached descendants.
 /// - `clear` empties the cache entirely.
 ///
 /// Size is estimated as `sizeof(FileNode) + name.capacity() + path bytes` per
@@ -127,6 +128,22 @@ impl DirCache {
             .entries
             .keys()
             .filter(|key| key.path == path)
+            .cloned()
+            .collect();
+        for key in keys {
+            if let Some(old) = self.entries.remove(&key) {
+                self.current_size_bytes -= old.size_bytes;
+            }
+            self.remove_aliases_for_key(&key);
+        }
+    }
+
+    /// Remove entries for `path` and any cached descendant directories.
+    pub fn invalidate_subtree(&mut self, path: &Path) {
+        let keys: Vec<_> = self
+            .entries
+            .keys()
+            .filter(|key| key.path == path || key.path.starts_with(path))
             .cloned()
             .collect();
         for key in keys {
