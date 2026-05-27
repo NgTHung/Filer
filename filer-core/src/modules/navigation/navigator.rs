@@ -77,7 +77,7 @@ pub enum NavCommand {
 /// This struct is serializable and sent over the wire to frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NavState {
-    /// Current directory NodeId
+    /// Compatibility/cache handle for the current direct-local directory.
     pub current: Option<NodeId>,
     /// Current provider-aware location, when known.
     #[serde(default)]
@@ -90,7 +90,7 @@ pub struct NavState {
     pub can_up: bool,
     /// Current pipeline configuration
     pub pipeline: PipelineConfig,
-    /// Currently selected nodes
+    /// Selection is still represented by compatibility/cache `NodeId` handles.
     pub selected: Vec<NodeId>,
 }
 
@@ -111,11 +111,11 @@ impl Default for NavState {
 /// Per-session navigator state
 #[derive(Debug)]
 pub struct NavigatorState {
-    /// Current directory
+    /// Compatibility/cache handle for the current direct-local directory.
     pub current: Option<NodeId>,
     /// Current provider-aware location, when known.
     pub current_location: Option<LocationRef>,
-    /// Navigation history (directories visited)
+    /// Navigation history stored as compatibility/cache `NodeId` handles.
     pub history: VecDeque<NodeId>,
     /// Location history aligned with `history`.
     pub location_history: VecDeque<Option<LocationRef>>,
@@ -125,7 +125,7 @@ pub struct NavigatorState {
     pub history_limit: usize,
     /// Pipeline configuration (serializable)
     pub pipeline_config: PipelineConfig,
-    /// Selected nodes
+    /// Selection stored as compatibility/cache `NodeId` handles.
     pub selected: RapidHashSet<NodeId>,
 
     pub register: NodeRegistry,

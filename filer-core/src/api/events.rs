@@ -12,12 +12,15 @@ use crate::modules::navigation::navigator::NavState;
 use crate::pipeline::{GroupedEntries, GroupedNodes};
 use crate::{ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
 
-/// Events from Core to UI
-/// FileNode contains full data for batches (UI caches these)
-/// NodeId used for single-file references (UI looks up from cache)
+/// Events from Core to UI.
+///
+/// Location-native read events are preferred for new provider-aware clients.
+/// `FileNode` and `NodeId` events remain supported compatibility surfaces for
+/// direct-local flows, cache handles, and future capability-specific
+/// migrations.
 #[derive(Debug, Clone)]
 pub enum Event {
-    /// Directory contents loaded (full data for UI to cache)
+    /// Compatibility directory contents loaded by `NodeId`.
     ///
     /// Always carries `GroupedNodes`. When no grouping is configured,
     /// contains a single group with an empty label (degenerate flat list).
@@ -32,7 +35,7 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Directory contents loaded with provider-aware locations.
+    /// Location-native directory contents loaded with provider-aware locations.
     DirectoryEntriesLoaded {
         parent: LocationRef,
         groups: GroupedEntries,
@@ -41,7 +44,7 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Directory page loaded (bounded provider-level page for simple views).
+    /// Compatibility directory page loaded by `NodeId`.
     DirectoryPageLoaded {
         parent: NodeId,
         path: PathBuf,
@@ -51,7 +54,7 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Directory page loaded with provider-aware locations.
+    /// Location-native directory page loaded with provider-aware locations.
     DirectoryEntryPageLoaded {
         parent: LocationRef,
         groups: GroupedEntries,
@@ -66,10 +69,10 @@ pub enum Event {
         snapshot: ProgressSnapshot,
     },
 
-    /// Batch of files (streaming results)
+    /// Compatibility batch of `FileNode` rows.
     FilesBatch(Vec<FileNode>, SessionId),
 
-    /// Search results
+    /// Compatibility search results by `FileNode`.
     SearchResults {
         matches: Vec<FileNode>,
         complete: bool,
@@ -77,6 +80,7 @@ pub enum Event {
         request: RequestId,
     },
 
+    /// Location-native search results by `NodeEntry`.
     SearchEntryResults {
         matches: Vec<NodeEntry>,
         complete: bool,
@@ -84,14 +88,14 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Filesystem change detected
+    /// Future provider-capability work: filesystem change by `NodeId`.
     FsChanged {
         node: NodeId,
         kind: FsChangeKind,
         session: SessionId,
     },
 
-    /// File operation completed
+    /// Future provider-capability work: operation affected nodes are `NodeId`s.
     OperationComplete {
         operation_id: OperationId,
         operation: OperationKind,
@@ -112,7 +116,7 @@ pub enum Event {
         operation: Option<OperationId>,
     },
 
-    /// Basic metadata loaded (owner/group populated after load_owner_info)
+    /// Compatibility metadata result by `NodeId`.
     MetadataLoaded {
         node: NodeId,
         meta: NodeMeta,
@@ -120,7 +124,7 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Extended metadata loaded
+    /// Compatibility extended metadata result by `NodeId`.
     ExtendedMetadataLoaded {
         node: NodeId,
         extended: ExtendedMetadata,
@@ -128,7 +132,7 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Preview ready
+    /// Compatibility preview result by `NodeId`.
     PreviewReady {
         node: NodeId,
         preview: PreviewData,
@@ -136,7 +140,7 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Preview generation failed
+    /// Compatibility preview failure by `NodeId`.
     PreviewFailed {
         node: NodeId,
         reason: String,

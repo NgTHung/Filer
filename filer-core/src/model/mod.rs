@@ -1,3 +1,4 @@
+pub mod capability;
 pub mod directory;
 pub mod fs_change;
 pub mod location;

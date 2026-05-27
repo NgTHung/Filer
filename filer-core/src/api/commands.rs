@@ -10,12 +10,15 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
 
-/// Commands from UI to Core
-/// Uses NodeId for efficiency (8 bytes vs PathBuf's heap allocation)
-/// Core resolves NodeId -> PathBuf via NodeRegistry
+/// Commands from UI to Core.
+///
+/// Location-native commands are preferred for new read-side provider-aware
+/// work. `NodeId` commands remain supported compatibility surfaces for
+/// direct-local flows, internal cache handles, selection, and future
+/// capability-specific migrations.
 #[derive(Clone)]
 pub enum Command {
-    /// Navigate to path (initial navigation uses PathBuf)
+    /// Compatibility direct-local navigation by path.
     Navigate {
         path: PathBuf,
         session: SessionId,
@@ -29,7 +32,7 @@ pub enum Command {
         request: RequestId,
     },
 
-    /// Navigate to a node by ID (after initial load)
+    /// Compatibility direct-local navigation by `NodeId`.
     NavigateToNode {
         node: NodeId,
         session: SessionId,
@@ -60,7 +63,7 @@ pub enum Command {
         request: RequestId,
     },
 
-    /// Search for files
+    /// Compatibility direct-local search by `NodeId`.
     Search {
         query: String,
         root: NodeId,
@@ -68,6 +71,7 @@ pub enum Command {
         request: RequestId,
     },
 
+    /// Compatibility direct-local search by path.
     SearchPath {
         query: String,
         root: PathBuf,
@@ -75,6 +79,7 @@ pub enum Command {
         request: RequestId,
     },
 
+    /// Location-native search. Preferred for new provider-aware read clients.
     SearchLocation {
         query: String,
         root: LocationRef,
@@ -85,7 +90,7 @@ pub enum Command {
     /// Cancel current operation
     Cancel(SessionId),
 
-    /// Load preview for a node
+    /// Compatibility preview request by `NodeId`.
     LoadPreview {
         id: NodeId,
         options: Option<PreviewOptions>,
@@ -93,6 +98,10 @@ pub enum Command {
         request: RequestId,
     },
 
+    /// Hybrid preview request by `LocationRef`.
+    ///
+    /// The input is Location-native, but the current preview result events
+    /// still carry `NodeId` until the preview result contract migrates.
     LoadPreviewLocation {
         location: LocationRef,
         options: Option<PreviewOptions>,
@@ -103,7 +112,7 @@ pub enum Command {
     /// Cancel preview generation
     CancelPreview(SessionId),
 
-    /// Copy nodes to destination
+    /// Future provider-capability work: write routing is still `NodeId`-first.
     Copy {
         sources: Vec<NodeId>,
         destination: NodeId,
@@ -112,7 +121,7 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Move nodes to destination
+    /// Future provider-capability work: write routing is still `NodeId`-first.
     Move {
         sources: Vec<NodeId>,
         destination: NodeId,
@@ -121,7 +130,7 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Delete nodes
+    /// Future provider-capability work: write routing is still `NodeId`-first.
     Delete {
         nodes: Vec<NodeId>,
         trash: bool,
@@ -130,7 +139,7 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Rename a node
+    /// Future provider-capability work: write routing is still `NodeId`-first.
     Rename {
         node: NodeId,
         new_name: String,
@@ -139,7 +148,7 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Create folder in parent
+    /// Future provider-capability work: write routing is still `NodeId`-first.
     CreateFolder {
         parent: NodeId,
         name: String,
@@ -148,7 +157,7 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Create file in parent
+    /// Future provider-capability work: write routing is still `NodeId`-first.
     CreateFile {
         parent: NodeId,
         name: String,
@@ -157,33 +166,41 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Load basic metadata
+    /// Compatibility metadata request by `NodeId`.
     LoadMetadata {
         node: NodeId,
         session: SessionId,
         request: RequestId,
     },
 
+    /// Hybrid metadata request by `LocationRef`.
+    ///
+    /// The input is Location-native, but the current metadata result event
+    /// still carries `NodeId` until the metadata result contract migrates.
     LoadMetadataLocation {
         location: LocationRef,
         session: SessionId,
         request: RequestId,
     },
 
-    /// Load extended metadata (EXIF, ID3, etc.)
+    /// Compatibility extended metadata request by `NodeId`.
     LoadExtendedMetadata {
         node: NodeId,
         session: SessionId,
         request: RequestId,
     },
 
+    /// Hybrid extended metadata request by `LocationRef`.
+    ///
+    /// The input is Location-native, but the current extended metadata result
+    /// event still carries `NodeId` until the metadata result contract migrates.
     LoadExtendedMetadataLocation {
         location: LocationRef,
         session: SessionId,
         request: RequestId,
     },
 
-    /// Scan a directory by path (initial scan, returns batched results)
+    /// Compatibility direct-local scan by path.
     Scan {
         path: PathBuf,
         session: SessionId,
@@ -192,6 +209,7 @@ pub enum Command {
         request: RequestId,
     },
 
+    /// Location-native directory scan. Preferred for new provider-aware listing.
     ScanLocation {
         location: LocationRef,
         session: SessionId,
@@ -200,7 +218,7 @@ pub enum Command {
         request: RequestId,
     },
 
-    /// Scan a directory by NodeId (re-scan after navigation)
+    /// Compatibility direct-local scan by `NodeId`.
     ScanNode {
         node: NodeId,
         session: SessionId,
@@ -218,10 +236,10 @@ pub enum Command {
     /// Cancel an active scan for this session
     CancelScan(SessionId),
 
-    /// Watch a directory for changes
+    /// Future provider-capability work: watching is still `NodeId`-first.
     Watch(NodeId, SessionId),
 
-    /// Stop watching a directory
+    /// Future provider-capability work: watching is still `NodeId`-first.
     Unwatch(NodeId),
     UnwatchSession(SessionId),
 

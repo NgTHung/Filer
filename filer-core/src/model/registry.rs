@@ -9,8 +9,12 @@ use crate::errors::CoreError;
 use super::location::{Location, LocationDescriptor, LocationId, LocationRef, LocationRoute};
 use super::node::NodeId;
 
-/// Registry that maps node and location IDs to filesystem identity.
-/// Lives in Core, resolves IDs for VFS operations.
+/// Internal registry that bridges compatibility handles to filesystem identity.
+///
+/// `NodeId` entries are direct-local cache and compatibility handles.
+/// `LocationId` entries cache reconstructable `LocationDescriptor` data and
+/// derived routes. Public provider-aware transport should prefer
+/// `LocationRef::Full` or `LocationRef::Descriptor` over id-only lookup.
 #[derive(Clone, Debug)]
 pub struct NodeRegistry {
     id_to_path: Arc<scc::HashMap<NodeId, PathBuf, RandomState>>,

@@ -13,6 +13,11 @@ mod vfs;
 pub use api::module::Module;
 pub use api::{commands::Command, events::Event, handle::FilerCore};
 pub use errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
+pub use model::capability::{
+    LocationCapabilityError, LocationConflictPolicy, LocationCrossProviderPolicy,
+    LocationOperationCapability, LocationWatchCapability, LocationWatchReliability,
+    operation_capability_for_location, watch_capability_for_location,
+};
 pub use model::directory::{
     DEFAULT_DIRECTORY_PAGE_SIZE, DirectoryCursor, DirectoryLoadMode, DirectoryLoadOptions,
     DirectoryLoadState, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,

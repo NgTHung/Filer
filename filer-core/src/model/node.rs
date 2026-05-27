@@ -8,14 +8,24 @@ use crate::CoreError;
 use crate::model::location::{Location, LocationRef};
 use crate::model::registry::NodeRegistry;
 
-/// Unique identifier for a file node
+/// Direct-local runtime handle for a file node.
 ///
-/// NodeId is a lightweight handle that can be sent across process boundaries.
-/// Use NodeRegistry to resolve NodeId -> PathBuf when needed.
+/// `NodeId` is a lightweight compatibility/cache handle derived from a path.
+/// It is valid for direct-local compatibility APIs, selection state, cache
+/// lookup, and registry bridging. New provider-aware transport should prefer
+/// [`LocationRef`], because id-only `NodeId` values cannot reconstruct
+/// segmented, remote, profile, or archive locations.
+///
+/// Use [`NodeRegistry`] to resolve `NodeId` to `PathBuf` when needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub u64);
 
-/// Represents a file or directory
+/// Direct-local/provider compatibility row.
+///
+/// `FileNode` remains the path-era row shape used by legacy listing and search
+/// events and by providers that still execute against `PathBuf`. Do not extend
+/// it with canonical provider identity semantics; Location-native public
+/// result APIs should convert to [`NodeEntry`].
 #[derive(Debug, Clone)]
 pub struct FileNode {
     pub id: NodeId,
@@ -30,6 +40,10 @@ pub struct FileNode {
 }
 
 /// Location-native node row for public directory/search result APIs.
+///
+/// `NodeEntry` is the preferred public row shape for Location-native listing
+/// and search events. The `id` field is a compatibility handle for direct-local
+/// caches and selection, while `location` is the transport identity.
 #[derive(Debug, Clone)]
 pub struct NodeEntry {
     pub id: NodeId,

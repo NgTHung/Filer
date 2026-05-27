@@ -246,8 +246,14 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   and scan are stable, keeping `Search` by NodeId as compatibility.
 - [x] `Core` Define a Location-aware cache and invalidation bridge before
   migrating watcher state.
-- [ ] `Core` Define separate Location capability contracts for watcher and
+- [x] `Core` Define separate Location capability contracts for watcher and
   write operations; do not treat v0.2.4 as a full NodeId removal milestone.
+- [x] `Core` Use the NodeId surface labels as the boundary for watcher and
+  write Location capability planning.
+- [ ] `Core` Add Location-native watcher commands/events on top of
+  `LocationWatchCapability`, while keeping NodeId watcher compatibility.
+- [ ] `Core` Add Location-native write commands/results on top of
+  `LocationOperationCapability`, while keeping NodeId operation compatibility.
 - [ ] `Core` Build provider routing and navigation behavior on top of segmented
   `Location` descriptors later, including archive/member traversal, capability
   context, and richer display/target metadata.
@@ -288,7 +294,7 @@ Exit criteria:
 - [x] Public read command/event transport can use reconstructable
   `LocationRef` forms for navigation, scan, and search without id-only
   reconstruction failure across processes or machines.
-- [ ] Remaining NodeId-only command and event surfaces are intentionally labeled
+- [x] Remaining NodeId-only command and event surfaces are intentionally labeled
   compatibility, internal, or future provider-capability work.
 - [x] Nested archive locations can be represented as provider root plus ordered
   archive/member segments.

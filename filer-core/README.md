@@ -267,6 +267,44 @@ registry. Direct local locations may bridge to `NodeId`; segmented, archive,
 remote, provider-profile, and ephemeral locations must remain reconstructable
 from their descriptor without requiring a node registry entry.
 
+### NodeId Surface Labels
+
+Remaining `NodeId` surfaces are intentionally classified instead of deprecated:
+
+| Label | Surfaces | Contract |
+|---|---|---|
+| Location-native preferred | `NavigateLocation`, `ScanLocation`, `SearchLocation`, `DirectoryEntriesLoaded`, `DirectoryEntryPageLoaded`, `SearchEntryResults`, `NodeEntry` | Preferred for new read-side provider-aware work. |
+| Compatibility | `Navigate`, `NavigateToNode`, `Search`, `SearchPath`, `Scan`, `ScanNode`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FileNode` | Supported direct-local/path-era API surface. Do not extend with new provider identity semantics. |
+| Hybrid compatibility | `LoadPreviewLocation`, `LoadMetadataLocation`, `LoadExtendedMetadataLocation` | Accepts `LocationRef`, but result events still carry `NodeId` until preview and metadata result contracts migrate. |
+| Internal/cache handle | `NodeRegistry`, `NavState.current`, navigation history, selection, direct-local cache bridge IDs | Runtime handles for local path resolution, app selection, cache lookup, and compatibility bridging. |
+| Future provider capability work | `Watch`, `Unwatch`, write commands, `FsChanged`, `OperationComplete.affected`, preview and metadata result events | Still NodeId-first until separate watcher, write, preview, and metadata capability contracts are defined. |
+
+### Location Watch And Operation Capabilities
+
+Watch and write capability checks are modeled separately because they promise
+different behavior. `LocationWatchCapability` describes whether a resolved
+direct-local `LocationRef` can be watched, whether recursive change observation
+is available, whether future events can be Location-native, and that current
+watch streams are best-effort. `LocationOperationCapability` describes whether
+a resolved direct-local `LocationRef` can be mutated for an `OperationKind`,
+the current fail-if-exists conflict policy, unsupported cross-provider writes,
+and whether affected locations can be reported by future Location-native
+completion events.
+
+The current helper functions are side-effect-free contract checks:
+`watch_capability_for_location` and `operation_capability_for_location` inspect
+a `LocationRef`, `NodeRegistry`, and provider `Capabilities` without starting a
+watch or mutating files. Direct local routes use the existing coarse provider
+booleans: `watch` controls watch support and `write` controls operation
+support. Segmented/archive routes return `LocationSegmentedUnsupported`;
+profile and ephemeral routes return `UnsupportedProvider`; id-only references
+with no registry entry return `LocationUnresolved`.
+
+These helpers do not add `WatchLocation` or Location-native write commands yet.
+They define the boundary for later watcher and operator migrations while the
+existing `Watch`, `Unwatch`, write commands, `FsChanged`, and
+`OperationComplete.affected` remain NodeId-first compatibility surfaces.
+
 Location-native read commands should emit Location-native result events where
 those events exist. `NavigateLocation` and `ScanLocation` use
 `DirectoryEntriesLoaded` or `DirectoryEntryPageLoaded`; `SearchLocation` uses
