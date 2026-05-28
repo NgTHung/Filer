@@ -3,7 +3,9 @@ use std::sync::Arc;
 use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::model::fs_change::FsChangeKind;
+use crate::model::location::{Location, LocationDescriptor, LocationRef, LocationSegment};
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavCommand;
 use crate::modules::watch::watcher::{WatchCommand, Watcher};
@@ -94,6 +96,110 @@ impl WatchProvider for TestWatchProvider {
         self.watched_paths.lock().unwrap().retain(|p| p != path);
         Ok(())
     }
+}
+
+#[tokio::test]
+async fn test_watch_location_emits_location_event_and_refresh_invalidation() {
+    let (cmd_tx, cmd_rx) = flume::unbounded();
+    let (evt_tx, evt_rx) = flume::unbounded();
+    let (nav_tx, nav_rx) = flume::unbounded();
+    let registry = NodeRegistry::new();
+    let provider = Arc::new(TestWatchProvider::default());
+    let temp_dir = TempDir::new().unwrap();
+    let location = Location::local(temp_dir.path().to_path_buf());
+    let location_ref = LocationRef::from_location(&location);
+
+    let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry, provider.clone(), nav_tx);
+    let handle = tokio::spawn(async move {
+        watcher.run().await;
+    });
+
+    cmd_tx
+        .send(WatchCommand::WatchLocation {
+            location: location_ref.clone(),
+            session: SessionId(1),
+            request: RequestId::new(),
+        })
+        .unwrap();
+    sleep(Duration::from_millis(20)).await;
+
+    provider
+        .emit(temp_dir.path().join("changed.txt"), FsChangeKind::Created)
+        .await;
+
+    let events = collect_events(&evt_rx, 1, 100).await;
+    assert!(events.iter().any(|event| {
+        matches!(
+            event,
+            Event::FsChangedLocation {
+                location,
+                kind: FsChangeKind::Created,
+                session: SessionId(1),
+            } if location == &location_ref
+        )
+    }));
+
+    assert!(
+        matches!(
+            timeout(Duration::from_millis(100), nav_rx.recv_async())
+                .await
+                .expect("location watch should invalidate navigation")
+                .expect("nav channel should remain open"),
+            NavCommand::Invalidate(_)
+        ),
+        "direct-local Location watches should bridge to navigation invalidation"
+    );
+
+    drop(cmd_tx);
+    let _ = timeout(Duration::from_secs(1), handle).await;
+}
+
+#[tokio::test]
+async fn test_watch_location_segmented_route_emits_request_error() {
+    let (cmd_tx, cmd_rx) = flume::unbounded();
+    let (evt_tx, evt_rx) = flume::unbounded();
+    let registry = NodeRegistry::new();
+    let provider = Arc::new(TestWatchProvider::default());
+    let request = RequestId::new();
+    let location =
+        LocationRef::Descriptor(LocationDescriptor::local("/tmp/archive.zip").with_segment(
+            LocationSegment::ArchiveMember {
+                path: PathBuf::from("inner.txt"),
+            },
+        ));
+
+    let watcher = Watcher::new(cmd_rx, evt_tx, registry, provider);
+    let handle = tokio::spawn(async move {
+        watcher.run().await;
+    });
+
+    cmd_tx
+        .send(WatchCommand::WatchLocation {
+            location,
+            session: SessionId(1),
+            request,
+        })
+        .unwrap();
+
+    let event = timeout(Duration::from_millis(100), evt_rx.recv_async())
+        .await
+        .expect("segmented watch should emit error")
+        .expect("event channel should remain open");
+
+    match event {
+        Event::Error {
+            request: error_request,
+            session,
+            ..
+        } => {
+            assert_eq!(error_request, Some(request));
+            assert_eq!(session, SessionId(1));
+        }
+        other => panic!("Expected Error event, got {other:?}"),
+    }
+
+    drop(cmd_tx);
+    let _ = timeout(Duration::from_secs(1), handle).await;
 }
 
 #[tokio::test]

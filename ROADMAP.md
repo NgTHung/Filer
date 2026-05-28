@@ -250,9 +250,9 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   write operations; do not treat v0.2.4 as a full NodeId removal milestone.
 - [x] `Core` Use the NodeId surface labels as the boundary for watcher and
   write Location capability planning.
-- [ ] `Core` Add Location-native watcher commands/events on top of
+- [x] `Core` Add Location-native watcher commands/events on top of
   `LocationWatchCapability`, while keeping NodeId watcher compatibility.
-- [ ] `Core` Add Location-native write commands/results on top of
+- [x] `Core` Add Location-native write commands/results on top of
   `LocationOperationCapability`, while keeping NodeId operation compatibility.
 - [ ] `Core` Build provider routing and navigation behavior on top of segmented
   `Location` descriptors later, including archive/member traversal, capability
@@ -319,10 +319,13 @@ core events being truthful and fresh.
 
 - [x] `Reliability` Add focused regression tests for watcher-driven refresh so a
   created, renamed, or deleted file appears after the app refreshes.
-- [ ] `Reliability` Finish directory cache invalidation tests for write
-  operations, manual refresh, and same-folder navigation.
-- [ ] `Reliability` Ensure every operation that mutates files invalidates the
-  affected parent directories.
+- [x] `Reliability` Finish directory cache invalidation tests for write
+  operations, including parent and subtree invalidation coverage.
+- [x] `Reliability` Ensure every operation that mutates files invalidates the
+  affected parent directories, with directory move, delete, and rename clearing
+  stale cached descendants.
+- [ ] `Reliability` Add remaining manual refresh and same-folder navigation
+  cache regression coverage.
 - [x] `Reliability` Add stale-event guards for preview and search results by
   session and request identity.
 - [x] `Reliability` Add error targets and provider-specific context so app UI

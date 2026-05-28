@@ -328,9 +328,34 @@ mod command_router_tests {
             }
             {
                 let tx = watch_tx.clone();
+                handlers.on("watch.location", move |cmd, _ctx| {
+                    if let Command::WatchLocation {
+                        location,
+                        session,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(WatchCommand::WatchLocation {
+                            location,
+                            session,
+                            request,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = watch_tx.clone();
                 handlers.on("watch.remove", move |cmd, _ctx| {
                     if let Command::Unwatch(node) = cmd {
                         let _ = tx.send(WatchCommand::Unwatch(node));
+                    }
+                });
+            }
+            {
+                let tx = watch_tx.clone();
+                handlers.on("watch.location.remove", move |cmd, _ctx| {
+                    if let Command::UnwatchLocation { location, session } = cmd {
+                        let _ = tx.send(WatchCommand::UnwatchLocation { location, session });
                     }
                 });
             }
@@ -472,6 +497,27 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
+                handlers.on("ops.copy.location", move |cmd, _ctx| {
+                    if let Command::CopyLocation {
+                        sources,
+                        destination,
+                        session,
+                        request,
+                        operation,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::CopyLocation {
+                            sources,
+                            destination,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
                 handlers.on("ops.move", move |cmd, _ctx| {
                     if let Command::Move {
                         sources,
@@ -482,6 +528,27 @@ mod command_router_tests {
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::Move {
+                            sources,
+                            destination,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.move.location", move |cmd, _ctx| {
+                    if let Command::MoveLocation {
+                        sources,
+                        destination,
+                        session,
+                        request,
+                        operation,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::MoveLocation {
                             sources,
                             destination,
                             session,
@@ -514,6 +581,27 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
+                handlers.on("ops.delete.location", move |cmd, _ctx| {
+                    if let Command::DeleteLocation {
+                        locations,
+                        trash,
+                        session,
+                        request,
+                        operation,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::DeleteLocation {
+                            targets: locations,
+                            trash,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
                 handlers.on("ops.rename", move |cmd, _ctx| {
                     if let Command::Rename {
                         node,
@@ -525,6 +613,27 @@ mod command_router_tests {
                     {
                         let _ = tx.send(OpsCommand::Rename {
                             source: node,
+                            new_name,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.rename.location", move |cmd, _ctx| {
+                    if let Command::RenameLocation {
+                        location,
+                        new_name,
+                        session,
+                        request,
+                        operation,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::RenameLocation {
+                            source: location,
                             new_name,
                             session,
                             request,
@@ -556,6 +665,27 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
+                handlers.on("ops.create_folder.location", move |cmd, _ctx| {
+                    if let Command::CreateFolderLocation {
+                        parent,
+                        name,
+                        session,
+                        request,
+                        operation,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::CreateFolderLocation {
+                            parent,
+                            name,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
                 handlers.on("ops.create_file", move |cmd, _ctx| {
                     if let Command::CreateFile {
                         parent,
@@ -566,6 +696,27 @@ mod command_router_tests {
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::CreateFile {
+                            parent,
+                            name,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.create_file.location", move |cmd, _ctx| {
+                    if let Command::CreateFileLocation {
+                        parent,
+                        name,
+                        session,
+                        request,
+                        operation,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::CreateFileLocation {
                             parent,
                             name,
                             session,
@@ -1064,6 +1215,70 @@ mod command_router_tests {
     }
 
     #[tokio::test]
+    async fn test_route_watch_location_to_watcher() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = LocationRef::from_location(&Location::local("/home/user/watched"));
+        let request = RequestId::new();
+
+        harness
+            .send(Command::WatchLocation {
+                location: location.clone(),
+                session,
+                request,
+            })
+            .await;
+
+        let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
+            .await
+            .expect("Timed out waiting for WatchCommand")
+            .expect("WatchCommand channel closed");
+
+        match watch_cmd {
+            WatchCommand::WatchLocation {
+                location: routed,
+                session: s,
+                request: r,
+            } => {
+                assert_eq!(routed, location);
+                assert_eq!(s, session);
+                assert_eq!(r, request);
+            }
+            other => panic!("Expected WatchCommand::WatchLocation, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_route_unwatch_location_to_watcher() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let location = LocationRef::from_location(&Location::local("/home/user/watched"));
+
+        harness
+            .send(Command::UnwatchLocation {
+                location: location.clone(),
+                session,
+            })
+            .await;
+
+        let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
+            .await
+            .expect("Timed out waiting for WatchCommand")
+            .expect("WatchCommand channel closed");
+
+        match watch_cmd {
+            WatchCommand::UnwatchLocation {
+                location: routed,
+                session: s,
+            } => {
+                assert_eq!(routed, location);
+                assert_eq!(s, session);
+            }
+            other => panic!("Expected WatchCommand::UnwatchLocation, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn test_route_unwatch_session_to_watcher() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -1404,6 +1619,77 @@ mod command_router_tests {
             }
             other => panic!("Expected OpsCommand::CreateFile, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_route_location_write_commands_to_operator() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let src = LocationRef::from_location(&Location::local("/a/file.txt"));
+        let dst = LocationRef::from_location(&Location::local("/b"));
+        let request = RequestId::new();
+        let operation = OperationId::new();
+
+        harness
+            .send(Command::CopyLocation {
+                sources: vec![src.clone()],
+                destination: dst.clone(),
+                session,
+                request,
+                operation,
+            })
+            .await;
+
+        match timeout(TEST_TIMEOUT, harness.ops_rx.recv_async())
+            .await
+            .expect("Timed out waiting for OpsCommand")
+            .expect("OpsCommand channel closed")
+        {
+            OpsCommand::CopyLocation {
+                sources,
+                destination,
+                session: s,
+                request: r,
+                operation: op,
+            } => {
+                assert_eq!(sources, vec![src]);
+                assert_eq!(destination, dst);
+                assert_eq!(s, session);
+                assert_eq!(r, request);
+                assert_eq!(op, operation);
+            }
+            other => panic!("Expected OpsCommand::CopyLocation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_location_command_metadata() {
+        let session = SessionId::new();
+        let request = RequestId::new();
+        let operation = OperationId::new();
+        let location = LocationRef::from_location(&Location::local("/tmp/file.txt"));
+
+        let copy = Command::CopyLocation {
+            sources: vec![location.clone()],
+            destination: location.clone(),
+            session,
+            request,
+            operation,
+        };
+        assert_eq!(copy.key(), "ops.copy.location");
+        assert_eq!(copy.session_id(), Some(session));
+        assert_eq!(copy.request_id(), Some(request));
+        assert_eq!(copy.operation_id(), Some(operation));
+
+        let watch = Command::WatchLocation {
+            location,
+            session,
+            request,
+        };
+        assert_eq!(watch.key(), "watch.location");
+        assert_eq!(watch.session_id(), Some(session));
+        assert_eq!(watch.request_id(), Some(request));
+        assert_eq!(watch.operation_id(), None);
     }
 
     // ─────────────────────────────────────────────────────────────────────

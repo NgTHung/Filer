@@ -6,8 +6,10 @@ use std::sync::Arc;
 
 use crate::actors::Actor;
 use crate::api::events::Event;
+use crate::model::location::LocationRef;
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
+use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavCommand;
 use crate::utils::channel::send_or_warn;
@@ -17,14 +19,31 @@ use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 #[derive(Debug, Clone)]
 pub enum WatchCommand {
     Watch(NodeId, SessionId),
+    WatchLocation {
+        location: LocationRef,
+        session: SessionId,
+        request: RequestId,
+    },
     Unwatch(NodeId),
+    UnwatchLocation {
+        location: LocationRef,
+        session: SessionId,
+    },
     UnwatchSession(SessionId),
     UnwatchAll,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum WatchKey {
+    Node(NodeId),
+    Location(crate::model::location::LocationId),
 }
 
 /// Tracks which sessions are watching which paths
 struct WatchEntry {
     path: PathBuf,
+    node: Option<NodeId>,
+    location: Option<LocationRef>,
     sessions: Vec<SessionId>,
     #[allow(dead_code)]
     handle: Box<dyn WatchHandle>,
@@ -35,7 +54,7 @@ pub struct Watcher {
     commands: flume::Receiver<WatchCommand>,
     events: Sender<Event>,
     registry: NodeRegistry,
-    watches: RapidHashMap<NodeId, WatchEntry>,
+    watches: RapidHashMap<WatchKey, WatchEntry>,
     provider: Arc<dyn WatchProvider>,
     /// Receives raw changes from the provider; forwarded as Events.
     change_rx: flume::Receiver<FsChange>,
@@ -95,7 +114,7 @@ impl Watcher {
         };
 
         // If already watching, just add the session
-        if let Some(entry) = self.watches.get_mut(&node_id) {
+        if let Some(entry) = self.watches.get_mut(&WatchKey::Node(node_id)) {
             if !entry.sessions.contains(&session_id) {
                 entry.sessions.push(session_id);
                 tracing::debug!(
@@ -113,10 +132,12 @@ impl Watcher {
             Ok(handle) => {
                 let entry = WatchEntry {
                     path: path.clone(),
+                    node: Some(node_id),
+                    location: None,
                     sessions: vec![session_id],
                     handle,
                 };
-                self.watches.insert(node_id, entry);
+                self.watches.insert(WatchKey::Node(node_id), entry);
                 tracing::debug!(
                     node = ?node_id,
                     path = %path.display(),
@@ -130,9 +151,73 @@ impl Watcher {
         }
     }
 
+    async fn handle_watch_location(
+        &mut self,
+        location_ref: LocationRef,
+        session_id: SessionId,
+        request: RequestId,
+    ) {
+        let location = match self.registry.resolve_location_ref(&location_ref) {
+            Ok(location) => location,
+            Err(error) => {
+                send_or_warn(
+                    &self.events,
+                    Event::from_request_error(error, session_id, request),
+                    "watch location resolve error",
+                );
+                return;
+            }
+        };
+
+        let path = match location.route().require_direct_path() {
+            Ok(path) => path.to_path_buf(),
+            Err(error) => {
+                send_or_warn(
+                    &self.events,
+                    Event::from_request_error(error, session_id, request),
+                    "watch location route error",
+                );
+                return;
+            }
+        };
+
+        let key = WatchKey::Location(location.id());
+        let location_ref = LocationRef::from_location(&location);
+        let node = self.registry.register_location_node(location).ok();
+
+        if let Some(entry) = self.watches.get_mut(&key) {
+            if !entry.sessions.contains(&session_id) {
+                entry.sessions.push(session_id);
+            }
+            return;
+        }
+
+        match self.provider.watch(&path, self.change_tx.clone()).await {
+            Ok(handle) => {
+                self.watches.insert(
+                    key,
+                    WatchEntry {
+                        path: path.clone(),
+                        node,
+                        location: Some(location_ref),
+                        sessions: vec![session_id],
+                        handle,
+                    },
+                );
+            }
+            Err(error) => {
+                send_or_warn(
+                    &self.events,
+                    Event::from_request_error(error, session_id, request),
+                    "watch location provider error",
+                );
+            }
+        }
+    }
+
     /// Handle an unwatch command
     async fn handle_unwatch(&mut self, node_id: NodeId) {
-        if let Some(entry) = self.watches.remove(&node_id) {
+        if let Some(entry) = self.watches.remove(&WatchKey::Node(node_id)) {
             if let Err(e) = self.provider.unwatch(&entry.path).await {
                 tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path");
             } else {
@@ -142,19 +227,38 @@ impl Watcher {
         }
     }
 
+    async fn handle_unwatch_location(&mut self, location_ref: LocationRef, session_id: SessionId) {
+        let Ok(location) = self.registry.resolve_location_ref(&location_ref) else {
+            tracing::warn!(session = ?session_id, "Cannot unwatch unresolved location");
+            return;
+        };
+
+        let key = WatchKey::Location(location.id());
+        if let Some(mut entry) = self.watches.remove(&key) {
+            entry.sessions.retain(|s| *s != session_id);
+            if entry.sessions.is_empty() {
+                if let Err(e) = self.provider.unwatch(&entry.path).await {
+                    tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch location");
+                }
+            } else {
+                self.watches.insert(key, entry);
+            }
+        }
+    }
+
     /// Handle unwatch session command
     async fn handle_unwatch_session(&mut self, session_id: SessionId) {
         let mut to_remove = Vec::new();
 
-        for (node_id, entry) in &mut self.watches {
+        for (key, entry) in &mut self.watches {
             entry.sessions.retain(|s| *s != session_id);
             if entry.sessions.is_empty() {
-                to_remove.push(*node_id);
+                to_remove.push(key.clone());
             }
         }
 
-        for node_id in to_remove {
-            if let Some(entry) = self.watches.remove(&node_id)
+        for key in to_remove {
+            if let Some(entry) = self.watches.remove(&key)
                 && let Err(e) = self.provider.unwatch(&entry.path).await
             {
                 tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path for session cleanup");
@@ -179,28 +283,35 @@ impl Watcher {
             kind = ?change.kind,
             "Watcher received provider change"
         );
-        for (node_id, entry) in &self.watches {
+        for (_key, entry) in &self.watches {
             if change.path.starts_with(&entry.path) {
                 for session in &entry.sessions {
                     tracing::debug!(
-                        node = ?node_id,
                         path = %change.path.display(),
                         kind = ?change.kind,
                         session = ?session,
                         "Watcher dispatching FsChanged"
                     );
-                    let evt = Event::FsChanged {
-                        node: *node_id,
-                        kind: change.kind.clone(),
-                        session: *session,
+                    let evt = if let Some(location) = &entry.location {
+                        Event::FsChangedLocation {
+                            location: location.clone(),
+                            kind: change.kind.clone(),
+                            session: *session,
+                        }
+                    } else {
+                        Event::FsChanged {
+                            node: entry.node.expect("legacy watch entry must have node"),
+                            kind: change.kind.clone(),
+                            session: *session,
+                        }
                     };
                     send_or_warn(&self.events, evt, "emit FsChanged");
                 }
 
-                if let Some(refresh_tx) = &self.refresh_tx {
+                if let (Some(refresh_tx), Some(node)) = (&self.refresh_tx, entry.node) {
                     send_or_warn(
                         refresh_tx,
-                        NavCommand::Invalidate(*node_id),
+                        NavCommand::Invalidate(node),
                         "watch refresh invalidate",
                     );
                 }
@@ -220,8 +331,14 @@ impl Actor for Watcher {
                         Ok(WatchCommand::Watch(node, session)) => {
                             self.handle_watch(node, session).await;
                         }
+                        Ok(WatchCommand::WatchLocation { location, session, request }) => {
+                            self.handle_watch_location(location, session, request).await;
+                        }
                         Ok(WatchCommand::Unwatch(node)) => {
                             self.handle_unwatch(node).await;
+                        }
+                        Ok(WatchCommand::UnwatchLocation { location, session }) => {
+                            self.handle_unwatch_location(location, session).await;
                         }
                         Ok(WatchCommand::UnwatchSession(session)) => {
                             self.handle_unwatch_session(session).await;

@@ -95,12 +95,28 @@ pub enum Event {
         session: SessionId,
     },
 
-    /// Future provider-capability work: operation affected nodes are `NodeId`s.
+    /// Location-native filesystem change.
+    FsChangedLocation {
+        location: LocationRef,
+        kind: FsChangeKind,
+        session: SessionId,
+    },
+
+    /// Compatibility operation completion by affected `NodeId`s.
     OperationComplete {
         operation_id: OperationId,
         operation: OperationKind,
         success: bool,
         affected: Vec<NodeId>,
+        session: SessionId,
+    },
+
+    /// Location-native operation completion by affected locations.
+    OperationCompleteLocation {
+        operation_id: OperationId,
+        operation: OperationKind,
+        success: bool,
+        affected: Vec<LocationRef>,
         session: SessionId,
     },
 

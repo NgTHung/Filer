@@ -112,7 +112,7 @@ pub enum Command {
     /// Cancel preview generation
     CancelPreview(SessionId),
 
-    /// Future provider-capability work: write routing is still `NodeId`-first.
+    /// Compatibility write operation by `NodeId`.
     Copy {
         sources: Vec<NodeId>,
         destination: NodeId,
@@ -121,7 +121,16 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Future provider-capability work: write routing is still `NodeId`-first.
+    /// Location-native copy for direct-local locations.
+    CopyLocation {
+        sources: Vec<LocationRef>,
+        destination: LocationRef,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+
+    /// Compatibility write operation by `NodeId`.
     Move {
         sources: Vec<NodeId>,
         destination: NodeId,
@@ -130,7 +139,16 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Future provider-capability work: write routing is still `NodeId`-first.
+    /// Location-native move for direct-local locations.
+    MoveLocation {
+        sources: Vec<LocationRef>,
+        destination: LocationRef,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+
+    /// Compatibility write operation by `NodeId`.
     Delete {
         nodes: Vec<NodeId>,
         trash: bool,
@@ -139,7 +157,16 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Future provider-capability work: write routing is still `NodeId`-first.
+    /// Location-native delete for direct-local locations.
+    DeleteLocation {
+        locations: Vec<LocationRef>,
+        trash: bool,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+
+    /// Compatibility write operation by `NodeId`.
     Rename {
         node: NodeId,
         new_name: String,
@@ -148,7 +175,16 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Future provider-capability work: write routing is still `NodeId`-first.
+    /// Location-native rename for direct-local locations.
+    RenameLocation {
+        location: LocationRef,
+        new_name: String,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+
+    /// Compatibility write operation by `NodeId`.
     CreateFolder {
         parent: NodeId,
         name: String,
@@ -157,9 +193,27 @@ pub enum Command {
         operation: OperationId,
     },
 
-    /// Future provider-capability work: write routing is still `NodeId`-first.
+    /// Location-native folder creation for direct-local parent locations.
+    CreateFolderLocation {
+        parent: LocationRef,
+        name: String,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+
+    /// Compatibility write operation by `NodeId`.
     CreateFile {
         parent: NodeId,
+        name: String,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+
+    /// Location-native file creation for direct-local parent locations.
+    CreateFileLocation {
+        parent: LocationRef,
         name: String,
         session: SessionId,
         request: RequestId,
@@ -236,11 +290,24 @@ pub enum Command {
     /// Cancel an active scan for this session
     CancelScan(SessionId),
 
-    /// Future provider-capability work: watching is still `NodeId`-first.
+    /// Compatibility watch by `NodeId`.
     Watch(NodeId, SessionId),
 
-    /// Future provider-capability work: watching is still `NodeId`-first.
+    /// Location-native watch for direct-local locations.
+    WatchLocation {
+        location: LocationRef,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Compatibility unwatch by `NodeId`.
     Unwatch(NodeId),
+
+    /// Location-native unwatch for a direct-local location.
+    UnwatchLocation {
+        location: LocationRef,
+        session: SessionId,
+    },
     UnwatchSession(SessionId),
 
     Handshake,
@@ -302,6 +369,8 @@ impl Command {
             | Command::CancelPreview(s)
             | Command::CancelScan(s)
             | Command::Watch(_, s)
+            | Command::WatchLocation { session: s, .. }
+            | Command::UnwatchLocation { session: s, .. }
             | Command::UnwatchSession(s)
             | Command::NavigateBack { session: s, .. }
             | Command::NavigateForward { session: s, .. } => Some(*s),
@@ -320,11 +389,17 @@ impl Command {
             | Command::LoadExtendedMetadata { session, .. }
             | Command::LoadExtendedMetadataLocation { session, .. }
             | Command::Copy { session, .. }
+            | Command::CopyLocation { session, .. }
             | Command::Move { session, .. }
+            | Command::MoveLocation { session, .. }
             | Command::Delete { session, .. }
+            | Command::DeleteLocation { session, .. }
             | Command::Rename { session, .. }
+            | Command::RenameLocation { session, .. }
             | Command::CreateFolder { session, .. }
+            | Command::CreateFolderLocation { session, .. }
             | Command::CreateFile { session, .. }
+            | Command::CreateFileLocation { session, .. }
             | Command::Extension { session, .. } => Some(*session),
         }
     }
@@ -352,11 +427,18 @@ impl Command {
             | Command::ScanLocation { request, .. }
             | Command::ScanNode { request, .. }
             | Command::Copy { request, .. }
+            | Command::CopyLocation { request, .. }
             | Command::Move { request, .. }
+            | Command::MoveLocation { request, .. }
             | Command::Delete { request, .. }
+            | Command::DeleteLocation { request, .. }
             | Command::Rename { request, .. }
+            | Command::RenameLocation { request, .. }
             | Command::CreateFolder { request, .. }
-            | Command::CreateFile { request, .. } => Some(*request),
+            | Command::CreateFolderLocation { request, .. }
+            | Command::CreateFile { request, .. }
+            | Command::CreateFileLocation { request, .. }
+            | Command::WatchLocation { request, .. } => Some(*request),
 
             Command::Cancel(_)
             | Command::CancelPreview(_)
@@ -364,6 +446,7 @@ impl Command {
             | Command::CancelScan(_)
             | Command::Watch(_, _)
             | Command::Unwatch(_)
+            | Command::UnwatchLocation { .. }
             | Command::UnwatchSession(_)
             | Command::Handshake
             | Command::DestroySession(_)
@@ -375,11 +458,17 @@ impl Command {
     pub fn operation_id(&self) -> Option<OperationId> {
         match self {
             Command::Copy { operation, .. }
+            | Command::CopyLocation { operation, .. }
             | Command::Move { operation, .. }
+            | Command::MoveLocation { operation, .. }
             | Command::Delete { operation, .. }
+            | Command::DeleteLocation { operation, .. }
             | Command::Rename { operation, .. }
+            | Command::RenameLocation { operation, .. }
             | Command::CreateFolder { operation, .. }
-            | Command::CreateFile { operation, .. } => Some(*operation),
+            | Command::CreateFolderLocation { operation, .. }
+            | Command::CreateFile { operation, .. }
+            | Command::CreateFileLocation { operation, .. } => Some(*operation),
             _ => None,
         }
     }
@@ -410,18 +499,26 @@ impl Command {
             Command::LoadExtendedMetadata { .. } => "metadata.extended",
             Command::LoadExtendedMetadataLocation { .. } => "metadata.extended.location",
             Command::Copy { .. } => "ops.copy",
+            Command::CopyLocation { .. } => "ops.copy.location",
             Command::Move { .. } => "ops.move",
+            Command::MoveLocation { .. } => "ops.move.location",
             Command::Delete { .. } => "ops.delete",
+            Command::DeleteLocation { .. } => "ops.delete.location",
             Command::Rename { .. } => "ops.rename",
+            Command::RenameLocation { .. } => "ops.rename.location",
             Command::CreateFolder { .. } => "ops.create_folder",
+            Command::CreateFolderLocation { .. } => "ops.create_folder.location",
             Command::CreateFile { .. } => "ops.create_file",
+            Command::CreateFileLocation { .. } => "ops.create_file.location",
             Command::Scan { .. } => "scan",
             Command::ScanLocation { .. } => "scan.location",
             Command::ScanNode { .. } => "scan.node",
             Command::SetPipeline { .. } => "navigate.pipeline",
             Command::CancelScan(..) => "scan.cancel",
             Command::Watch(..) => "watch",
+            Command::WatchLocation { .. } => "watch.location",
             Command::Unwatch(..) => "watch.remove",
+            Command::UnwatchLocation { .. } => "watch.location.remove",
             Command::UnwatchSession(..) => "watch.session_remove",
             Command::Handshake => "session.handshake",
             Command::DestroySession(..) => "session.destroy",

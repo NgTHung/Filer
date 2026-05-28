@@ -24,6 +24,7 @@ use tokio::time::timeout;
 use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::errors::CoreError;
+use crate::model::location::{Location, LocationDescriptor, LocationRef, LocationSegment};
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{ProgressKind, ProgressStatus};
@@ -364,6 +365,7 @@ async fn wait_for_completion(
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
             Ok(Ok(event @ Event::OperationComplete { session, .. }))
+            | Ok(Ok(event @ Event::OperationCompleteLocation { session, .. }))
                 if session == expected_session =>
             {
                 return (progress_events, event);
@@ -1387,6 +1389,95 @@ mod create_file_tests {
         assert!(
             provider.get_write_calls().is_empty(),
             "Should not write when file already exists"
+        );
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Location Operation Tests
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod location_operation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create_file_location_emits_location_completion() {
+        let provider = MockOpsProvider::new();
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let parent = LocationRef::from_location(&Location::local("/home/user"));
+        let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let request = RequestId::new();
+        let operation = OperationId::new();
+
+        cmd_tx
+            .send(OpsCommand::CreateFileLocation {
+                parent,
+                name: "new_file.txt".to_string(),
+                session,
+                request,
+                operation,
+            })
+            .unwrap();
+
+        let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
+
+        match final_event {
+            Event::OperationCompleteLocation {
+                operation_id,
+                operation: kind,
+                success,
+                affected,
+                session: s,
+            } => {
+                assert_eq!(operation_id, operation);
+                assert!(matches!(kind, OperationKind::CreateFile));
+                assert!(success);
+                assert_eq!(s, session);
+                assert_eq!(affected.len(), 1);
+                assert!(matches!(affected[0], LocationRef::Full { .. }));
+            }
+            other => panic!("Expected OperationCompleteLocation, got {other:?}"),
+        }
+
+        let writes = provider.get_write_calls();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, PathBuf::from("/home/user/new_file.txt"));
+    }
+
+    #[tokio::test]
+    async fn test_delete_location_segmented_route_emits_operation_error() {
+        let provider = MockOpsProvider::new();
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let request = RequestId::new();
+        let operation = OperationId::new();
+        let segmented = LocationRef::Descriptor(
+            LocationDescriptor::local("/home/user/archive.zip").with_segment(
+                LocationSegment::ArchiveMember {
+                    path: PathBuf::from("inner.txt"),
+                },
+            ),
+        );
+
+        let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+
+        cmd_tx
+            .send(OpsCommand::DeleteLocation {
+                targets: vec![segmented],
+                trash: false,
+                session,
+                request,
+                operation,
+            })
+            .unwrap();
+
+        let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
+        assert_error_correlation(&final_event, session, request, operation);
+        assert!(
+            provider.get_delete_calls().is_empty(),
+            "segmented locations must not reach provider delete"
         );
     }
 }

@@ -6,6 +6,8 @@ use flume::{Receiver, Sender};
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
+use crate::model::capability::operation_capability_for_location;
+use crate::model::location::LocationRef;
 use crate::model::node::NodeId;
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{
@@ -29,6 +31,13 @@ pub enum OpsCommand {
         request: RequestId,
         operation: OperationId,
     },
+    CopyLocation {
+        sources: Vec<LocationRef>,
+        destination: LocationRef,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
     Move {
         sources: Vec<NodeId>,
         destination: NodeId,
@@ -36,8 +45,22 @@ pub enum OpsCommand {
         request: RequestId,
         operation: OperationId,
     },
+    MoveLocation {
+        sources: Vec<LocationRef>,
+        destination: LocationRef,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
     Delete {
         targets: Vec<NodeId>,
+        trash: bool,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+    DeleteLocation {
+        targets: Vec<LocationRef>,
         trash: bool,
         session: SessionId,
         request: RequestId,
@@ -50,8 +73,22 @@ pub enum OpsCommand {
         request: RequestId,
         operation: OperationId,
     },
+    RenameLocation {
+        source: LocationRef,
+        new_name: String,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
     CreateFolder {
         parent: NodeId,
+        name: String,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
+    CreateFolderLocation {
+        parent: LocationRef,
         name: String,
         session: SessionId,
         request: RequestId,
@@ -64,7 +101,20 @@ pub enum OpsCommand {
         request: RequestId,
         operation: OperationId,
     },
+    CreateFileLocation {
+        parent: LocationRef,
+        name: String,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+    },
     Cancel(SessionId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompletionShape {
+    Node,
+    Location,
 }
 
 pub struct Operator {
@@ -137,6 +187,7 @@ impl Operator {
         session: SessionId,
         request: RequestId,
         operation: OperationId,
+        completion: CompletionShape,
     ) {
         let Some(dst_path) = self.registry.resolve(dest) else {
             send_or_warn(
@@ -305,13 +356,14 @@ impl Operator {
             .await;
             send_or_warn_async(
                 &events,
-                Event::OperationComplete {
-                    operation: OperationKind::Copy,
-                    operation_id: operation,
-                    success: true,
+                operation_complete_event(
+                    &registry,
+                    OperationKind::Copy,
+                    operation,
                     affected,
                     session,
-                },
+                    completion,
+                ),
                 "operator: copy complete",
             )
             .await;
@@ -326,6 +378,7 @@ impl Operator {
         session: SessionId,
         request: RequestId,
         operation: OperationId,
+        completion: CompletionShape,
     ) {
         let Some(dst_path) = self.registry.resolve(dest) else {
             send_or_warn(
@@ -454,13 +507,14 @@ impl Operator {
             .await;
             send_or_warn_async(
                 &events,
-                Event::OperationComplete {
-                    operation: OperationKind::Move,
-                    operation_id: operation,
-                    success: true,
+                operation_complete_event(
+                    &registry,
+                    OperationKind::Move,
+                    operation,
                     affected,
                     session,
-                },
+                    completion,
+                ),
                 "operator: move complete",
             )
             .await;
@@ -475,6 +529,7 @@ impl Operator {
         session: SessionId,
         request: RequestId,
         operation: OperationId,
+        completion: CompletionShape,
     ) {
         let mut paths: Vec<(NodeId, PathBuf)> = Vec::new();
         for target in &targets {
@@ -500,6 +555,7 @@ impl Operator {
         let fs = self.provider.clone();
         let trash_fn = self.trash_fn.clone();
         let cache = self.cache.clone();
+        let registry = self.registry.clone();
         let total = paths.len();
 
         tokio::spawn(async move {
@@ -597,13 +653,14 @@ impl Operator {
             .await;
             send_or_warn_async(
                 &events,
-                Event::OperationComplete {
-                    operation: OperationKind::Delete,
-                    operation_id: operation,
-                    success: true,
+                operation_complete_event(
+                    &registry,
+                    OperationKind::Delete,
+                    operation,
                     affected,
                     session,
-                },
+                    completion,
+                ),
                 "operator: delete complete",
             )
             .await;
@@ -618,6 +675,7 @@ impl Operator {
         session: SessionId,
         request: RequestId,
         operation: OperationId,
+        completion: CompletionShape,
     ) {
         let Some(src_path) = self.registry.resolve(source) else {
             send_or_warn(
@@ -681,7 +739,7 @@ impl Operator {
 
             invalidate_parent_cache(&cache, &src_path);
             invalidate_subtree_cache(&cache, &src_path);
-            let id = registry.register(new_path);
+            let id = registry.clone().register(new_path);
             emit_operation_progress(
                 &events,
                 OperationKind::Rename,
@@ -700,13 +758,14 @@ impl Operator {
             .await;
             send_or_warn_async(
                 &events,
-                Event::OperationComplete {
-                    operation: OperationKind::Rename,
-                    operation_id: operation,
-                    success: true,
-                    affected: vec![id],
+                operation_complete_event(
+                    &registry,
+                    OperationKind::Rename,
+                    operation,
+                    vec![id],
                     session,
-                },
+                    completion,
+                ),
                 "operator: rename complete",
             )
             .await;
@@ -720,6 +779,7 @@ impl Operator {
         session: SessionId,
         request: RequestId,
         operation: OperationId,
+        completion: CompletionShape,
     ) {
         let Some(path) = self.registry.resolve(parent) else {
             send_or_warn(
@@ -766,7 +826,7 @@ impl Operator {
                 return;
             }
             invalidate_parent_cache(&cache, &full_path);
-            let id = registry.register(full_path);
+            let id = registry.clone().register(full_path);
             emit_operation_progress(
                 &events,
                 OperationKind::CreateFile,
@@ -785,13 +845,14 @@ impl Operator {
             .await;
             send_or_warn_async(
                 &events,
-                Event::OperationComplete {
-                    operation: OperationKind::CreateFile,
-                    operation_id: operation,
-                    success: true,
-                    affected: vec![id],
+                operation_complete_event(
+                    &registry,
+                    OperationKind::CreateFile,
+                    operation,
+                    vec![id],
                     session,
-                },
+                    completion,
+                ),
                 "operator: create_file complete",
             )
             .await;
@@ -805,6 +866,7 @@ impl Operator {
         session: SessionId,
         request: RequestId,
         operation: OperationId,
+        completion: CompletionShape,
     ) {
         let Some(path) = self.registry.resolve(parent) else {
             send_or_warn(
@@ -851,7 +913,7 @@ impl Operator {
                 return;
             }
             invalidate_parent_cache(&cache, &full_path);
-            let id = registry.register(full_path);
+            let id = registry.clone().register(full_path);
             emit_operation_progress(
                 &events,
                 OperationKind::CreateFolder,
@@ -870,17 +932,49 @@ impl Operator {
             .await;
             send_or_warn_async(
                 &events,
-                Event::OperationComplete {
-                    operation: OperationKind::CreateFolder,
-                    operation_id: operation,
-                    success: true,
-                    affected: vec![id],
+                operation_complete_event(
+                    &registry,
+                    OperationKind::CreateFolder,
+                    operation,
+                    vec![id],
                     session,
-                },
+                    completion,
+                ),
                 "operator: create_folder complete",
             )
             .await;
         });
+    }
+
+    fn resolve_location_node(
+        &self,
+        location: &LocationRef,
+        kind: OperationKind,
+    ) -> Result<NodeId, CoreError> {
+        let capability = operation_capability_for_location(
+            location,
+            kind.clone(),
+            &self.registry,
+            self.provider.capabilities(),
+        )?;
+        if !capability.supported {
+            return Err(CoreError::unsupported_operation(format!(
+                "{kind:?} is not supported by this provider"
+            )));
+        }
+        let location = self.registry.resolve_location_ref(location)?;
+        self.registry.register_location_node(location)
+    }
+
+    fn resolve_location_nodes(
+        &self,
+        locations: &[LocationRef],
+        kind: OperationKind,
+    ) -> Result<Vec<NodeId>, CoreError> {
+        locations
+            .iter()
+            .map(|location| self.resolve_location_node(location, kind.clone()))
+            .collect()
     }
 }
 
@@ -949,6 +1043,35 @@ fn operation_error(
     Event::from_operation_error(err, session, request, operation)
 }
 
+fn operation_complete_event(
+    registry: &NodeRegistry,
+    kind: OperationKind,
+    operation: OperationId,
+    affected: Vec<NodeId>,
+    session: SessionId,
+    completion: CompletionShape,
+) -> Event {
+    match completion {
+        CompletionShape::Node => Event::OperationComplete {
+            operation_id: operation,
+            operation: kind,
+            success: true,
+            affected,
+            session,
+        },
+        CompletionShape::Location => Event::OperationCompleteLocation {
+            operation_id: operation,
+            operation: kind,
+            success: true,
+            affected: affected
+                .into_iter()
+                .filter_map(|node| registry.resolve_node_location(node))
+                .collect(),
+            session,
+        },
+    }
+}
+
 async fn emit_operation_progress(
     events: &Sender<Event>,
     kind: OperationKind,
@@ -1006,42 +1129,226 @@ impl Actor for Operator {
                     session,
                     request,
                     operation,
-                }) => self.copy(sources, destination, session, request, operation),
+                }) => self.copy(
+                    sources,
+                    destination,
+                    session,
+                    request,
+                    operation,
+                    CompletionShape::Node,
+                ),
+                Ok(OpsCommand::CopyLocation {
+                    sources,
+                    destination,
+                    session,
+                    request,
+                    operation,
+                }) => {
+                    let resolved = self
+                        .resolve_location_nodes(&sources, OperationKind::Copy)
+                        .and_then(|sources| {
+                            self.resolve_location_node(&destination, OperationKind::Copy)
+                                .map(|destination| (sources, destination))
+                        });
+                    match resolved {
+                        Ok((sources, destination)) => self.copy(
+                            sources,
+                            destination,
+                            session,
+                            request,
+                            operation,
+                            CompletionShape::Location,
+                        ),
+                        Err(error) => send_or_warn(
+                            &self.events,
+                            operation_error(error, session, request, operation),
+                            "operator: copy location resolve",
+                        ),
+                    }
+                }
                 Ok(OpsCommand::Move {
                     sources,
                     destination,
                     session,
                     request,
                     operation,
-                }) => self.moves(sources, destination, session, request, operation),
+                }) => self.moves(
+                    sources,
+                    destination,
+                    session,
+                    request,
+                    operation,
+                    CompletionShape::Node,
+                ),
+                Ok(OpsCommand::MoveLocation {
+                    sources,
+                    destination,
+                    session,
+                    request,
+                    operation,
+                }) => {
+                    let resolved = self
+                        .resolve_location_nodes(&sources, OperationKind::Move)
+                        .and_then(|sources| {
+                            self.resolve_location_node(&destination, OperationKind::Move)
+                                .map(|destination| (sources, destination))
+                        });
+                    match resolved {
+                        Ok((sources, destination)) => self.moves(
+                            sources,
+                            destination,
+                            session,
+                            request,
+                            operation,
+                            CompletionShape::Location,
+                        ),
+                        Err(error) => send_or_warn(
+                            &self.events,
+                            operation_error(error, session, request, operation),
+                            "operator: move location resolve",
+                        ),
+                    }
+                }
                 Ok(OpsCommand::Delete {
                     targets,
                     trash,
                     session,
                     request,
                     operation,
-                }) => self.delete(targets, trash, session, request, operation),
+                }) => self.delete(
+                    targets,
+                    trash,
+                    session,
+                    request,
+                    operation,
+                    CompletionShape::Node,
+                ),
+                Ok(OpsCommand::DeleteLocation {
+                    targets,
+                    trash,
+                    session,
+                    request,
+                    operation,
+                }) => match self.resolve_location_nodes(&targets, OperationKind::Delete) {
+                    Ok(targets) => self.delete(
+                        targets,
+                        trash,
+                        session,
+                        request,
+                        operation,
+                        CompletionShape::Location,
+                    ),
+                    Err(error) => send_or_warn(
+                        &self.events,
+                        operation_error(error, session, request, operation),
+                        "operator: delete location resolve",
+                    ),
+                },
                 Ok(OpsCommand::Rename {
                     source,
                     new_name,
                     session,
                     request,
                     operation,
-                }) => self.rename(source, new_name, session, request, operation),
+                }) => self.rename(
+                    source,
+                    new_name,
+                    session,
+                    request,
+                    operation,
+                    CompletionShape::Node,
+                ),
+                Ok(OpsCommand::RenameLocation {
+                    source,
+                    new_name,
+                    session,
+                    request,
+                    operation,
+                }) => match self.resolve_location_node(&source, OperationKind::Rename) {
+                    Ok(source) => self.rename(
+                        source,
+                        new_name,
+                        session,
+                        request,
+                        operation,
+                        CompletionShape::Location,
+                    ),
+                    Err(error) => send_or_warn(
+                        &self.events,
+                        operation_error(error, session, request, operation),
+                        "operator: rename location resolve",
+                    ),
+                },
                 Ok(OpsCommand::CreateFile {
                     parent,
                     name,
                     session,
                     request,
                     operation,
-                }) => self.create_file(parent, name, session, request, operation),
+                }) => self.create_file(
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                    CompletionShape::Node,
+                ),
+                Ok(OpsCommand::CreateFileLocation {
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                }) => match self.resolve_location_node(&parent, OperationKind::CreateFile) {
+                    Ok(parent) => self.create_file(
+                        parent,
+                        name,
+                        session,
+                        request,
+                        operation,
+                        CompletionShape::Location,
+                    ),
+                    Err(error) => send_or_warn(
+                        &self.events,
+                        operation_error(error, session, request, operation),
+                        "operator: create file location resolve",
+                    ),
+                },
                 Ok(OpsCommand::CreateFolder {
                     parent,
                     name,
                     session,
                     request,
                     operation,
-                }) => self.create_folder(parent, name, session, request, operation),
+                }) => self.create_folder(
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                    CompletionShape::Node,
+                ),
+                Ok(OpsCommand::CreateFolderLocation {
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                }) => match self.resolve_location_node(&parent, OperationKind::CreateFolder) {
+                    Ok(parent) => self.create_folder(
+                        parent,
+                        name,
+                        session,
+                        request,
+                        operation,
+                        CompletionShape::Location,
+                    ),
+                    Err(error) => send_or_warn(
+                        &self.events,
+                        operation_error(error, session, request, operation),
+                        "operator: create folder location resolve",
+                    ),
+                },
             }
         }
     }

@@ -2,7 +2,9 @@
 //!
 //! This module owns the Watcher actor and registers handlers for:
 //! - `watch` — watch a directory for changes
+//! - `watch.location` — watch a direct-local Location for changes
 //! - `watch.remove` — stop watching a directory
+//! - `watch.location.remove` — stop watching a direct-local Location
 //! - `watch.session_remove` — stop all watches for a session
 //!
 //! `WatchModule::new` emits filesystem change events only. Use
@@ -59,11 +61,36 @@ impl Module for WatchModule {
             }
         });
 
+        // ── Watch location ───────────────────────────────────────────
+        let tx = watch_tx.clone();
+        ctx.handlers.on("watch.location", move |cmd, _ctx| {
+            if let Command::WatchLocation {
+                location,
+                session,
+                request,
+            } = cmd
+            {
+                let _ = tx.send(WatchCommand::WatchLocation {
+                    location,
+                    session,
+                    request,
+                });
+            }
+        });
+
         // ── Unwatch ──────────────────────────────────────────────────
         let tx = watch_tx.clone();
         ctx.handlers.on("watch.remove", move |cmd, _ctx| {
             if let Command::Unwatch(node) = cmd {
                 let _ = tx.send(WatchCommand::Unwatch(node));
+            }
+        });
+
+        // ── Unwatch location ─────────────────────────────────────────
+        let tx = watch_tx.clone();
+        ctx.handlers.on("watch.location.remove", move |cmd, _ctx| {
+            if let Command::UnwatchLocation { location, session } = cmd {
+                let _ = tx.send(WatchCommand::UnwatchLocation { location, session });
             }
         });
 

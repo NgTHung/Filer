@@ -2,11 +2,17 @@
 //!
 //! This module owns the Operator actor and registers handlers for:
 //! - `ops.copy` — copy files/directories
+//! - `ops.copy.location` — copy direct-local Locations
 //! - `ops.move` — move files/directories
+//! - `ops.move.location` — move direct-local Locations
 //! - `ops.delete` — delete (to trash or permanent)
+//! - `ops.delete.location` — delete direct-local Locations
 //! - `ops.rename` — rename a file or directory
+//! - `ops.rename.location` — rename a direct-local Location
 //! - `ops.create_folder` — create a new folder
+//! - `ops.create_folder.location` — create a folder in a direct-local Location
 //! - `ops.create_file` — create a new file
+//! - `ops.create_file.location` — create a file in a direct-local Location
 
 pub mod operator;
 
@@ -73,6 +79,26 @@ impl Module for OperationsModule {
             }
         });
 
+        let tx = self.ops_tx.clone();
+        ctx.handlers.on("ops.copy.location", move |cmd, _ctx| {
+            if let Command::CopyLocation {
+                sources,
+                destination,
+                session,
+                request,
+                operation,
+            } = cmd
+            {
+                let _ = tx.send(OpsCommand::CopyLocation {
+                    sources,
+                    destination,
+                    session,
+                    request,
+                    operation,
+                });
+            }
+        });
+
         // ── Move ─────────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.move", move |cmd, _ctx| {
@@ -85,6 +111,26 @@ impl Module for OperationsModule {
             } = cmd
             {
                 let _ = tx.send(OpsCommand::Move {
+                    sources,
+                    destination,
+                    session,
+                    request,
+                    operation,
+                });
+            }
+        });
+
+        let tx = self.ops_tx.clone();
+        ctx.handlers.on("ops.move.location", move |cmd, _ctx| {
+            if let Command::MoveLocation {
+                sources,
+                destination,
+                session,
+                request,
+                operation,
+            } = cmd
+            {
+                let _ = tx.send(OpsCommand::MoveLocation {
                     sources,
                     destination,
                     session,
@@ -115,6 +161,26 @@ impl Module for OperationsModule {
             }
         });
 
+        let tx = self.ops_tx.clone();
+        ctx.handlers.on("ops.delete.location", move |cmd, _ctx| {
+            if let Command::DeleteLocation {
+                locations,
+                trash,
+                session,
+                request,
+                operation,
+            } = cmd
+            {
+                let _ = tx.send(OpsCommand::DeleteLocation {
+                    targets: locations,
+                    trash,
+                    session,
+                    request,
+                    operation,
+                });
+            }
+        });
+
         // ── Rename ───────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.rename", move |cmd, _ctx| {
@@ -128,6 +194,26 @@ impl Module for OperationsModule {
             {
                 let _ = tx.send(OpsCommand::Rename {
                     source: node,
+                    new_name,
+                    session,
+                    request,
+                    operation,
+                });
+            }
+        });
+
+        let tx = self.ops_tx.clone();
+        ctx.handlers.on("ops.rename.location", move |cmd, _ctx| {
+            if let Command::RenameLocation {
+                location,
+                new_name,
+                session,
+                request,
+                operation,
+            } = cmd
+            {
+                let _ = tx.send(OpsCommand::RenameLocation {
+                    source: location,
                     new_name,
                     session,
                     request,
@@ -157,6 +243,27 @@ impl Module for OperationsModule {
             }
         });
 
+        let tx = self.ops_tx.clone();
+        ctx.handlers
+            .on("ops.create_folder.location", move |cmd, _ctx| {
+                if let Command::CreateFolderLocation {
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                } = cmd
+                {
+                    let _ = tx.send(OpsCommand::CreateFolderLocation {
+                        parent,
+                        name,
+                        session,
+                        request,
+                        operation,
+                    });
+                }
+            });
+
         // ── Create file ──────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.create_file", move |cmd, _ctx| {
@@ -177,6 +284,27 @@ impl Module for OperationsModule {
                 });
             }
         });
+
+        let tx = self.ops_tx.clone();
+        ctx.handlers
+            .on("ops.create_file.location", move |cmd, _ctx| {
+                if let Command::CreateFileLocation {
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                } = cmd
+                {
+                    let _ = tx.send(OpsCommand::CreateFileLocation {
+                        parent,
+                        name,
+                        session,
+                        request,
+                        operation,
+                    });
+                }
+            });
 
         // ── Session cleanup hook ─────────────────────────────────────
         let tx = self.ops_tx.clone();
