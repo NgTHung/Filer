@@ -148,7 +148,7 @@ impl Module for ScanModule {
 
         let tx = self.scan_tx.clone();
         ctx.handlers.on("scan.cancel", move |cmd, _ctx| {
-            if let Command::CancelScan(session) = cmd {
+            if let Command::CancelScan { session } = cmd {
                 send_or_warn(&tx, ScanCommand::Cancel(session), "scan.cancel");
             }
         });

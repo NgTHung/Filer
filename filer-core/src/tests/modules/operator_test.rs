@@ -1876,6 +1876,68 @@ mod cancel_tests {
     }
 
     #[tokio::test]
+    async fn test_cancel_operation_ignores_different_operation_id() {
+        let provider = MockOpsProvider::new();
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let operation = OperationId::new();
+
+        let src_dir = PathBuf::from("/home/user/project");
+        let dst_dir = PathBuf::from("/home/user/backup");
+
+        let src_id = register(&registry, &src_dir);
+        let dst_id = register(&registry, &dst_dir);
+
+        provider.add_metadata(&src_dir, MockOpsProvider::make_dir("project", "/home/user"));
+
+        let files = (0..10)
+            .map(|i| {
+                MockOpsProvider::make_file(&format!("file_{i}.txt"), "/home/user/project", 100)
+            })
+            .collect();
+        provider.add_dir_listing(&src_dir, files);
+
+        let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
+
+        cmd_tx
+            .send(OpsCommand::Copy {
+                sources: vec![src_id],
+                destination: dst_id,
+                session,
+                request: RequestId::new(),
+                operation,
+            })
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(OpsCommand::CancelOperation {
+                session,
+                operation: OperationId::new(),
+            })
+            .unwrap();
+
+        let events = collect_events_for(&evt_rx, Duration::from_millis(500)).await;
+
+        let has_successful_complete = events.iter().any(|e| {
+            matches!(
+                e,
+                Event::OperationComplete {
+                    operation_id,
+                    success: true,
+                    session: s,
+                    ..
+                } if *s == session && *operation_id == operation
+            )
+        });
+
+        assert!(
+            has_successful_complete,
+            "cancel for another operation id must not cancel the active operation"
+        );
+    }
+
+    #[tokio::test]
     async fn test_session_destroy_cancels_operation() {
         let provider = MockOpsProvider::new();
         let registry = NodeRegistry::new();

@@ -87,8 +87,10 @@ pub enum Command {
         request: RequestId,
     },
 
-    /// Cancel current operation
-    Cancel(SessionId),
+    /// Cancel active search work for this session.
+    CancelSearch {
+        session: SessionId,
+    },
 
     /// Compatibility preview request by `NodeId`.
     LoadPreview {
@@ -109,8 +111,10 @@ pub enum Command {
         request: RequestId,
     },
 
-    /// Cancel preview generation
-    CancelPreview(SessionId),
+    /// Cancel active preview work for this session.
+    CancelPreview {
+        session: SessionId,
+    },
 
     /// Compatibility write operation by `NodeId`.
     Copy {
@@ -287,8 +291,16 @@ pub enum Command {
         config: PipelineConfig,
     },
 
-    /// Cancel an active scan for this session
-    CancelScan(SessionId),
+    /// Cancel an active scan for this session.
+    CancelScan {
+        session: SessionId,
+    },
+
+    /// Cancel a specific file operation for this session.
+    CancelOperation {
+        session: SessionId,
+        operation: OperationId,
+    },
 
     /// Compatibility watch by `NodeId`.
     Watch(NodeId, SessionId),
@@ -365,9 +377,10 @@ impl Command {
             | Command::NavigateToNode { session: s, .. }
             | Command::NavigateUp { session: s, .. }
             | Command::Refresh { session: s, .. }
-            | Command::Cancel(s)
-            | Command::CancelPreview(s)
-            | Command::CancelScan(s)
+            | Command::CancelSearch { session: s }
+            | Command::CancelPreview { session: s }
+            | Command::CancelScan { session: s }
+            | Command::CancelOperation { session: s, .. }
             | Command::Watch(_, s)
             | Command::WatchLocation { session: s, .. }
             | Command::UnwatchLocation { session: s, .. }
@@ -440,10 +453,11 @@ impl Command {
             | Command::CreateFileLocation { request, .. }
             | Command::WatchLocation { request, .. } => Some(*request),
 
-            Command::Cancel(_)
-            | Command::CancelPreview(_)
+            Command::CancelSearch { .. }
+            | Command::CancelPreview { .. }
             | Command::SetPipeline { .. }
-            | Command::CancelScan(_)
+            | Command::CancelScan { .. }
+            | Command::CancelOperation { .. }
             | Command::Watch(_, _)
             | Command::Unwatch(_)
             | Command::UnwatchLocation { .. }
@@ -468,7 +482,8 @@ impl Command {
             | Command::CreateFolder { operation, .. }
             | Command::CreateFolderLocation { operation, .. }
             | Command::CreateFile { operation, .. }
-            | Command::CreateFileLocation { operation, .. } => Some(*operation),
+            | Command::CreateFileLocation { operation, .. }
+            | Command::CancelOperation { operation, .. } => Some(*operation),
             _ => None,
         }
     }
@@ -490,10 +505,10 @@ impl Command {
             Command::Search { .. } => "search",
             Command::SearchPath { .. } => "search.path",
             Command::SearchLocation { .. } => "search.location",
-            Command::Cancel(..) => "search.cancel",
+            Command::CancelSearch { .. } => "search.cancel",
             Command::LoadPreview { .. } => "preview.load",
             Command::LoadPreviewLocation { .. } => "preview.load.location",
-            Command::CancelPreview(..) => "preview.cancel",
+            Command::CancelPreview { .. } => "preview.cancel",
             Command::LoadMetadata { .. } => "metadata.load",
             Command::LoadMetadataLocation { .. } => "metadata.load.location",
             Command::LoadExtendedMetadata { .. } => "metadata.extended",
@@ -514,7 +529,8 @@ impl Command {
             Command::ScanLocation { .. } => "scan.location",
             Command::ScanNode { .. } => "scan.node",
             Command::SetPipeline { .. } => "navigate.pipeline",
-            Command::CancelScan(..) => "scan.cancel",
+            Command::CancelScan { .. } => "scan.cancel",
+            Command::CancelOperation { .. } => "ops.cancel",
             Command::Watch(..) => "watch",
             Command::WatchLocation { .. } => "watch.location",
             Command::Unwatch(..) => "watch.remove",

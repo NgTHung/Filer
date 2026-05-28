@@ -2,7 +2,7 @@
 
 Core library for the Filer file explorer.
 
-Current milestone: `0.2.3`.
+Current milestone: `0.3.0`.
 
 ## Scope
 
@@ -45,6 +45,9 @@ Completed:
 - operation ids for copy, move, delete, rename, create file, and create folder
 - structured app-facing errors with stable `ErrorCode`, optional `ErrorTarget`,
   request/operation correlation, and `tracing` emission
+- explicit cancellation commands: `CancelSearch`, `CancelScan`, `CancelPreview`,
+  and operation-id scoped `CancelOperation`
+- `Cancelled` and `TimedOut` error codes for client branching
 - provider-aware `Location` primitives: `LocationId`, `LocationDescriptor`,
   `LocationRef`, `LocationRoute`, `LocationSegment`, and `ProviderRef`
 - Location-aware navigation, scan, search, preview, metadata, cache reuse, and
@@ -63,7 +66,8 @@ Still open:
 - segmented provider/archive execution
 - provider profiles and non-local provider routing
 - mutation-stable cursor sessions for large directories
-- timeout semantics across provider calls and long-running tasks
+- provider-context timeout propagation across provider calls and long-running
+  tasks
 - extension output envelopes and a first git decoration prototype
 - serde/wire protocol envelopes for future server/web transport
 
@@ -135,6 +139,11 @@ one for the same session.
 `OperationId` tracks file operations. Copy, move, delete, rename, create file,
 and create folder echo the operation id on progress, completion, and
 operation-scoped errors.
+
+Cancellation is explicit by task family. `CancelSearch`, `CancelScan`, and
+`CancelPreview` cancel the active task for a session. `CancelOperation` cancels
+only the matching `(session, operation)` pair. `DestroySession` remains the
+session-wide cleanup path.
 
 `RequestId::DEFAULT` and `OperationId::DEFAULT` are compatibility placeholders.
 New client-originated work should allocate ids with `RequestId::new()`,
@@ -239,7 +248,8 @@ should prefer for behavior. `target` identifies the failed object when core can
 name one. `recoverable` is derived from `ErrorCode`.
 
 Create errors through `CoreError` helpers such as `CoreError::not_found(path)`,
-`CoreError::permission_denied(path)`, `CoreError::location_unresolved(id)`, and
+`CoreError::permission_denied(path)`, `CoreError::location_unresolved(id)`,
+`CoreError::cancelled()`, `CoreError::timed_out(message)`, and
 `CoreError::from_io_error(err, path)`.
 
 Use `Event::from_error()`, `Event::from_request_error()`, and

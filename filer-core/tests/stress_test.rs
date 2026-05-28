@@ -599,7 +599,7 @@ async fn stress_rapid_cancel_restart() {
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        core.send(Command::Cancel(session)).unwrap();
+        core.send(Command::CancelSearch { session }).unwrap();
     }
 
     // Drain any partial results from cancelled searches
@@ -864,8 +864,8 @@ async fn stress_session_isolation_under_cancellation() {
         request: filer_core::RequestId::new(),
     })
     .unwrap();
-    core.send(Command::Cancel(sa)).unwrap();
-    core.send(Command::Cancel(sb)).unwrap();
+    core.send(Command::CancelSearch { session: sa }).unwrap();
+    core.send(Command::CancelSearch { session: sb }).unwrap();
 
     // Launch C and D — these must complete despite A/B cancellations
     core.send(Command::Search {

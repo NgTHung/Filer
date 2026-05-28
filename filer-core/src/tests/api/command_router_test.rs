@@ -288,7 +288,7 @@ mod command_router_tests {
             {
                 let tx = search_tx.clone();
                 handlers.on("search.cancel", move |cmd, _ctx| {
-                    if let Command::Cancel(session) = cmd {
+                    if let Command::CancelSearch { session } = cmd {
                         let _ = tx.send(SearchCommand::Cancel(session));
                     }
                 });
@@ -410,7 +410,7 @@ mod command_router_tests {
             {
                 let tx = preview_tx.clone();
                 handlers.on("preview.cancel", move |cmd, _ctx| {
-                    if let Command::CancelPreview(session) = cmd {
+                    if let Command::CancelPreview { session } = cmd {
                         let _ = tx.send(PreviewCommand::Cancel(session));
                     }
                 });
@@ -723,6 +723,14 @@ mod command_router_tests {
                             request,
                             operation,
                         });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.cancel", move |cmd, _ctx| {
+                    if let Command::CancelOperation { session, operation } = cmd {
+                        let _ = tx.send(OpsCommand::CancelOperation { session, operation });
                     }
                 });
             }
@@ -1150,7 +1158,7 @@ mod command_router_tests {
         let _ = timeout(TEST_TIMEOUT, harness.search_rx.recv_async()).await;
 
         // Now cancel
-        harness.send(Command::Cancel(session)).await;
+        harness.send(Command::CancelSearch { session }).await;
 
         let cancel_cmd = timeout(TEST_TIMEOUT, harness.search_rx.recv_async())
             .await
@@ -1384,7 +1392,7 @@ mod command_router_tests {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
 
-        harness.send(Command::CancelPreview(session)).await;
+        harness.send(Command::CancelPreview { session }).await;
 
         let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
             .await
@@ -1622,6 +1630,33 @@ mod command_router_tests {
     }
 
     #[tokio::test]
+    async fn test_route_cancel_operation_to_operator() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let operation = OperationId::new();
+
+        harness
+            .send(Command::CancelOperation { session, operation })
+            .await;
+
+        let ops_cmd = timeout(TEST_TIMEOUT, harness.ops_rx.recv_async())
+            .await
+            .expect("Timed out waiting for OpsCommand")
+            .expect("OpsCommand channel closed");
+
+        match ops_cmd {
+            OpsCommand::CancelOperation {
+                session: s,
+                operation: op,
+            } => {
+                assert_eq!(s, session);
+                assert_eq!(op, operation);
+            }
+            other => panic!("Expected OpsCommand::CancelOperation, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn test_route_location_write_commands_to_operator() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -1690,6 +1725,12 @@ mod command_router_tests {
         assert_eq!(watch.session_id(), Some(session));
         assert_eq!(watch.request_id(), Some(request));
         assert_eq!(watch.operation_id(), None);
+
+        let cancel_operation = Command::CancelOperation { session, operation };
+        assert_eq!(cancel_operation.key(), "ops.cancel");
+        assert_eq!(cancel_operation.session_id(), Some(session));
+        assert_eq!(cancel_operation.request_id(), None);
+        assert_eq!(cancel_operation.operation_id(), Some(operation));
     }
 
     // ─────────────────────────────────────────────────────────────────────

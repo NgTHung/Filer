@@ -13,6 +13,7 @@
 //! - `ops.create_folder.location` — create a folder in a direct-local Location
 //! - `ops.create_file` — create a new file
 //! - `ops.create_file.location` — create a file in a direct-local Location
+//! - `ops.cancel` — cancel a specific active operation
 
 pub mod operator;
 
@@ -305,6 +306,14 @@ impl Module for OperationsModule {
                     });
                 }
             });
+
+        // ── Cancel operation ─────────────────────────────────────────
+        let tx = self.ops_tx.clone();
+        ctx.handlers.on("ops.cancel", move |cmd, _ctx| {
+            if let Command::CancelOperation { session, operation } = cmd {
+                let _ = tx.send(OpsCommand::CancelOperation { session, operation });
+            }
+        });
 
         // ── Session cleanup hook ─────────────────────────────────────
         let tx = self.ops_tx.clone();

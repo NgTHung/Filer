@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use flume::{Receiver, Sender};
+use rapidhash::fast::RandomState;
 
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
@@ -109,6 +110,10 @@ pub enum OpsCommand {
         operation: OperationId,
     },
     Cancel(SessionId),
+    CancelOperation {
+        session: SessionId,
+        operation: OperationId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,6 +128,7 @@ pub struct Operator {
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active_ops: CancelMap,
+    active_operation_ids: Arc<scc::HashMap<SessionId, OperationId, RandomState>>,
     trash_fn: TrashFn,
     cache: Option<SharedDirCache>,
 }
@@ -158,6 +164,7 @@ impl Operator {
             provider,
             registry,
             active_ops: CancelMap::new(),
+            active_operation_ids: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             trash_fn,
             cache: None,
         }
@@ -178,6 +185,28 @@ impl Operator {
     #[allow(dead_code)]
     fn invalidate_parent(&self, path: &Path) {
         invalidate_parent_cache(&self.cache, path);
+    }
+
+    fn arm_operation(&self, session: SessionId, operation: OperationId) -> CancellationToken {
+        let _ = self.active_operation_ids.remove_sync(&session);
+        let _ = self.active_operation_ids.insert_sync(session, operation);
+        self.active_ops.arm(session)
+    }
+
+    fn cancel_operation(&self, session: SessionId, operation: OperationId) {
+        let active = self
+            .active_operation_ids
+            .read_sync(&session, |_, current| *current == operation)
+            .unwrap_or(false);
+        if active {
+            self.active_ops.cancel(session);
+            let _ = self.active_operation_ids.remove_sync(&session);
+        }
+    }
+
+    fn cancel_session(&self, session: SessionId) {
+        self.active_ops.cancel(session);
+        let _ = self.active_operation_ids.remove_sync(&session);
     }
 
     fn copy(
@@ -221,8 +250,9 @@ impl Operator {
             src_paths.push(path);
         }
 
-        let cancel = self.active_ops.arm(session);
+        let cancel = self.arm_operation(session, operation);
         let active = self.active_ops.clone();
+        let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
@@ -290,7 +320,7 @@ impl Operator {
                     .await
                     {
                         Ok(()) => {}
-                        Err(e) if e.code() == ErrorCode::OperationCancelled => {
+                        Err(e) if e.code() == ErrorCode::Cancelled => {
                             emit_operation_progress(
                                 &events,
                                 OperationKind::Copy,
@@ -368,6 +398,7 @@ impl Operator {
             )
             .await;
             active.remove_if_current(session, &cancel).await;
+            remove_operation_if_current(active_operation_ids, session, operation).await;
         });
     }
 
@@ -412,8 +443,9 @@ impl Operator {
             src_paths.push(path);
         }
 
-        let cancel = self.active_ops.arm(session);
+        let cancel = self.arm_operation(session, operation);
         let active = self.active_ops.clone();
+        let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
@@ -519,6 +551,7 @@ impl Operator {
             )
             .await;
             active.remove_if_current(session, &cancel).await;
+            remove_operation_if_current(active_operation_ids, session, operation).await;
         });
     }
 
@@ -549,8 +582,9 @@ impl Operator {
             paths.push((*target, path));
         }
 
-        let cancel = self.active_ops.arm(session);
+        let cancel = self.arm_operation(session, operation);
         let active = self.active_ops.clone();
+        let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
         let fs = self.provider.clone();
         let trash_fn = self.trash_fn.clone();
@@ -665,6 +699,7 @@ impl Operator {
             )
             .await;
             active.remove_if_current(session, &cancel).await;
+            remove_operation_if_current(active_operation_ids, session, operation).await;
         });
     }
 
@@ -1114,6 +1149,16 @@ fn invalidate_subtree_cache(cache: &Option<SharedDirCache>, path: &Path) {
     }
 }
 
+async fn remove_operation_if_current(
+    active_operation_ids: Arc<scc::HashMap<SessionId, OperationId, RandomState>>,
+    session: SessionId,
+    operation: OperationId,
+) {
+    let _ = active_operation_ids
+        .remove_if_async(&session, |current| *current == operation)
+        .await;
+}
+
 impl Actor for Operator {
     async fn run(self) {
         loop {
@@ -1122,7 +1167,10 @@ impl Actor for Operator {
                     self.active_ops.cancel_all().await;
                     break;
                 }
-                Ok(OpsCommand::Cancel(s)) => self.active_ops.cancel(s),
+                Ok(OpsCommand::Cancel(s)) => self.cancel_session(s),
+                Ok(OpsCommand::CancelOperation { session, operation }) => {
+                    self.cancel_operation(session, operation);
+                }
                 Ok(OpsCommand::Copy {
                     sources,
                     destination,

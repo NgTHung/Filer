@@ -70,7 +70,7 @@ impl Module for PreviewModule {
         // ── Cancel preview ───────────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on("preview.cancel", move |cmd, _ctx| {
-            if let Command::CancelPreview(session) = cmd {
+            if let Command::CancelPreview { session } = cmd {
                 let _ = tx.send(PreviewCommand::Cancel(session));
             }
         });

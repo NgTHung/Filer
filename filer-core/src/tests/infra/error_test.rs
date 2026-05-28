@@ -64,7 +64,8 @@ fn test_error_code_kind_mapping() {
         ),
         (ErrorCode::UnsupportedProvider, ErrorKind::Unsupported),
         (ErrorCode::ChannelClosed, ErrorKind::ChannelClosed),
-        (ErrorCode::OperationCancelled, ErrorKind::Cancelled),
+        (ErrorCode::Cancelled, ErrorKind::Cancelled),
+        (ErrorCode::TimedOut, ErrorKind::Timeout),
         (ErrorCode::ActorFailed, ErrorKind::Actor),
         (ErrorCode::NetworkFailed, ErrorKind::Network),
         (ErrorCode::DataInvalid, ErrorKind::InvalidData),
@@ -90,7 +91,8 @@ fn test_error_code_recoverability() {
         ErrorCode::LocationUnresolved,
         ErrorCode::LocationSegmentedUnsupported,
         ErrorCode::UnsupportedProvider,
-        ErrorCode::OperationCancelled,
+        ErrorCode::Cancelled,
+        ErrorCode::TimedOut,
         ErrorCode::NetworkFailed,
         ErrorCode::SessionUnknown,
         ErrorCode::NavigationUnavailable,
@@ -209,9 +211,10 @@ fn test_conversion_from_other_io_error() {
     let core_error =
         CoreError::from_io_error(IoError::new(IoErrorKind::TimedOut, "timeout"), path.clone());
 
-    assert_eq!(core_error.code(), ErrorCode::IoFailed);
-    assert_eq!(core_error.target(), Some(&ErrorTarget::Path(path)));
-    assert!(core_error.message.contains("timeout"));
+    assert_eq!(core_error.code(), ErrorCode::TimedOut);
+    assert_eq!(core_error.kind(), ErrorKind::Timeout);
+    assert_eq!(core_error.target(), None);
+    assert!(core_error.message.contains("Timed out"));
 }
 
 #[test]

@@ -4,7 +4,7 @@ This roadmap tracks the core engine and shared project architecture. The desktop
 app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
 roadmap lives in `filer-ecosystem/ROADMAP.md`.
 
-Current milestone: `0.2.4`.
+Current milestone: `0.3.0`.
 
 ## Product Direction
 
@@ -51,14 +51,18 @@ migration. The intent is for `Location` to become the bridge across local files,
 remote providers, virtual providers, extension-backed providers, and archives.
 The remaining core stabilization work is still tracked below.
 
-`0.2.4` should make the Location/NodeId migration contract explicit and start
-the Location-first read/navigation core. The goal is not to remove `NodeId`.
-Instead, `Location` becomes the preferred transport identity for new read-side
+`0.2.4` made the Location/NodeId migration contract explicit and started the
+Location-first read/navigation core. The goal was not to remove `NodeId`.
+Instead, `Location` became the preferred transport identity for new read-side
 work, while `NodeId` remains a compatibility and cache handle for existing
-local-path flows. Navigation and scan/listing moved first, and search now
-follows the same direct-local Location contract. Preview, metadata, MIME,
-watcher migration, and write-operation routing should wait for later
-capability-specific milestones unless only compatibility tests are needed.
+local-path flows.
+
+`0.3.0` is the public-contract cleanup boundary. The first cleanup pass removes
+the misleading generic public cancel command in favor of explicit
+`CancelSearch`, `CancelScan`, `CancelPreview`, and operation-id scoped
+`CancelOperation`. It also renames cancellation errors to `Cancelled` and adds a
+stable `TimedOut` code. Remaining `0.3.0` work should finish canonical
+Location-first event/result naming and provider-context timeout propagation.
 
 Milestone labels:
 
@@ -267,7 +271,11 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   behavior under mutation, and optional provider-native total counts.
 - [ ] `Core` Design mutation-stable provider cursor sessions for large
   directories so refresh/mutation does not skip or duplicate rows.
-- [ ] `Core` Define cancellation and timeout behavior for provider calls,
+- [x] `Core` Replace ambiguous public cancellation with explicit search, scan,
+  preview, and operation-id scoped cancellation commands.
+- [x] `Core` Rename cancellation errors to `Cancelled` and add a stable
+  `TimedOut` error code for future provider deadline behavior.
+- [ ] `Core` Define provider-context timeout propagation for provider calls,
   previews, search, operations, and future extension calls.
 - [ ] `Ecosystem` Define the extension output envelope and first file
   decoration payload before implementing a broad runtime.
@@ -282,6 +290,8 @@ Exit criteria:
 
 - [x] Stale scan/search/preview results are ignored by request identity.
 - [x] Operations emit correlated progress/completion by operation id.
+- [x] Operations can be cancelled by operation id without using the ambiguous
+  search cancellation command.
 - [x] Error events carry structured `ErrorKind`, `ErrorCode`, and optional
   `ErrorTarget` so app and web clients can branch without parsing message
   strings.

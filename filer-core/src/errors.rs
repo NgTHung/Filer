@@ -19,6 +19,7 @@ pub enum ErrorKind {
     InvalidLocation,
     ChannelClosed,
     Cancelled,
+    Timeout,
     Actor,
     Network,
     InvalidData,
@@ -36,6 +37,7 @@ impl ErrorKind {
                 | ErrorKind::InvalidPath
                 | ErrorKind::InvalidLocation
                 | ErrorKind::Cancelled
+                | ErrorKind::Timeout
                 | ErrorKind::Network
                 | ErrorKind::Unsupported
         )
@@ -53,7 +55,8 @@ pub enum ErrorCode {
     LocationSegmentedUnsupported,
     UnsupportedProvider,
     ChannelClosed,
-    OperationCancelled,
+    Cancelled,
+    TimedOut,
     ActorFailed,
     NetworkFailed,
     DataInvalid,
@@ -78,7 +81,8 @@ impl ErrorCode {
                 ErrorKind::Unsupported
             }
             ErrorCode::ChannelClosed => ErrorKind::ChannelClosed,
-            ErrorCode::OperationCancelled => ErrorKind::Cancelled,
+            ErrorCode::Cancelled => ErrorKind::Cancelled,
+            ErrorCode::TimedOut => ErrorKind::Timeout,
             ErrorCode::ActorFailed => ErrorKind::Actor,
             ErrorCode::NetworkFailed => ErrorKind::Network,
             ErrorCode::DataInvalid => ErrorKind::InvalidData,
@@ -99,7 +103,8 @@ impl ErrorCode {
                 | ErrorCode::LocationUnresolved
                 | ErrorCode::LocationSegmentedUnsupported
                 | ErrorCode::UnsupportedProvider
-                | ErrorCode::OperationCancelled
+                | ErrorCode::Cancelled
+                | ErrorCode::TimedOut
                 | ErrorCode::NetworkFailed
                 | ErrorCode::SessionUnknown
                 | ErrorCode::NavigationUnavailable
@@ -219,7 +224,11 @@ impl CoreError {
     }
 
     pub fn cancelled() -> Self {
-        Self::new(ErrorCode::OperationCancelled, None, "Operation cancelled")
+        Self::new(ErrorCode::Cancelled, None, "Operation cancelled")
+    }
+
+    pub fn timed_out(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::TimedOut, None, message)
     }
 
     pub fn actor(actor: &'static str, message: impl Into<String>) -> Self {
@@ -351,6 +360,9 @@ impl CoreError {
             | std::io::ErrorKind::IsADirectory
             | std::io::ErrorKind::DirectoryNotEmpty => {
                 Self::invalid_path(path.display().to_string()).with_source(err)
+            }
+            std::io::ErrorKind::TimedOut => {
+                Self::timed_out(format!("Timed out: {}", path.display())).with_source(err)
             }
             _ => Self::io(path, err.to_string()).with_source(err),
         }

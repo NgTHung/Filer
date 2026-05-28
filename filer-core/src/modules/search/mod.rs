@@ -104,7 +104,7 @@ impl Module for SearchModule {
         // ── Cancel search ────────────────────────────────────────────
         let tx = search_tx.clone();
         ctx.handlers.on("search.cancel", move |cmd, _ctx| {
-            if let Command::Cancel(session) = cmd {
+            if let Command::CancelSearch { session } = cmd {
                 let _ = tx.send(SearchCommand::Cancel(session));
             }
         });

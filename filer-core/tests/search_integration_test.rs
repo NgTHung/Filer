@@ -269,7 +269,7 @@ async fn test_search_cancel_command() {
     })
     .unwrap();
 
-    core.send(Command::Cancel(session)).unwrap();
+    core.send(Command::CancelSearch { session }).unwrap();
 
     // Should not crash
     tokio::time::sleep(Duration::from_millis(200)).await;
