@@ -9,7 +9,7 @@ Current milestone: `0.3.0`.
 `filer-core` owns the file-manager kernel:
 
 - sessions and command/event routing
-- navigation, scanning, search, watching, preview, and metadata dispatch
+- navigation, scanning, SearchNodeCompat, watching, preview, and metadata dispatch
 - file operations
 - provider access and directory loading
 - pipeline execution for filter, sort, and group
@@ -40,9 +40,9 @@ app rewrite or full extension runtime.
 
 Completed:
 
-- request ids and stale-result guards for scan, search, preview, metadata, and
+- request ids and stale-result guards for ScanPathCompat, SearchNodeCompat, preview, metadata, and
   refresh flows
-- operation ids for copy, move, delete, rename, create file, and create folder
+- operation ids for CopyNodeCompat, MoveNodeCompat, DeleteNodeCompat, RenameNodeCompat, create file, and create folder
 - structured app-facing errors with stable `ErrorCode`, optional `ErrorTarget`,
   request/operation correlation, and `tracing` emission
 - explicit cancellation commands: `CancelSearch`, `CancelScan`, `CancelPreview`,
@@ -50,8 +50,10 @@ Completed:
 - `Cancelled` and `TimedOut` error codes for client branching
 - provider-aware `Location` primitives: `LocationId`, `LocationDescriptor`,
   `LocationRef`, `LocationRoute`, `LocationSegment`, and `ProviderRef`
-- Location-aware navigation, scan, search, preview, metadata, cache reuse, and
+- Location-aware navigation, ScanPathCompat, SearchNodeCompat, preview, metadata, cache reuse, and
   refresh paths for direct local providers
+- Location-native result events for directory listings, pages, SearchNodeCompat results,
+  watcher changes, operation completion, preview results, and metadata results
 - directory load contracts through `ListingOptions`, `DirectoryLoadOptions`,
   `DirectoryLoadState`, provider pages, cursors, and page result events
 - native `LocalFs` paging and incremental paging for order-preserving filters
@@ -59,10 +61,14 @@ Completed:
 - write-operation cache invalidation for affected parents and stale directory
   subtrees
 - Location-native direct-local watcher and write commands/events
-- capability checks for Location-native watch and write routing
+- capability checks for Location-native WatchNodeCompat and write routing
+- explicit `*Compat` event variants for legacy `NodeId` and `FileNode` result
+  surfaces
 
 Still open:
 
+- canonical command naming for Location-native commands versus path/NodeId
+  compatibility commands
 - segmented provider/archive execution
 - provider profiles and non-local provider routing
 - mutation-stable cursor sessions for large directories
@@ -116,9 +122,9 @@ Invalidation rules:
 - subtree invalidation removes the exact path, cached descendants, and their
   Location aliases
 - create file/folder invalidates the parent
-- copy invalidates the destination parent
-- move invalidates source and destination parents
-- directory move, delete, and rename also invalidate the old subtree
+- CopyNodeCompat invalidates the destination parent
+- MoveNodeCompat invalidates source and destination parents
+- directory MoveNodeCompat, DeleteNodeCompat, and RenameNodeCompat also invalidate the old subtree
 
 Only complete snapshots are cached as complete listings. Partial pages are not
 cached as complete directory listings, though later pages may be served from an
@@ -132,11 +138,11 @@ it.
 ## Request And Operation IDs
 
 `RequestId` tracks async user intent for navigation-driven scans, refresh,
-search, preview, metadata, and extended metadata. Matching events echo the id.
+SearchNodeCompat, preview, metadata, and extended metadata. Matching events echo the id.
 Actors suppress stale result events when an older request finishes after a newer
 one for the same session.
 
-`OperationId` tracks file operations. Copy, move, delete, rename, create file,
+`OperationId` tracks file operations. CopyNodeCompat, MoveNodeCompat, DeleteNodeCompat, RenameNodeCompat, create file,
 and create folder echo the operation id on progress, completion, and
 operation-scoped errors.
 
@@ -171,7 +177,7 @@ Important types:
 - `LocationRoute`: routing classification for direct local, segmented, or
   unsupported provider routes
 - `NodeEntry`: preferred public row shape for Location-native listing and
-  search results
+  SearchNodeCompat results
 
 Transport rule:
 
@@ -183,11 +189,18 @@ Transport rule:
   `LocationUnresolved` is recoverable
 
 Direct local Location commands currently route through the existing path-based
-execution layer. `NavigateLocation`, `ScanLocation`, `SearchLocation`,
-`LoadPreviewLocation`, `LoadMetadataLocation`, `LoadExtendedMetadataLocation`,
-`WatchLocation`, `UnwatchLocation`, and the `*Location` write commands resolve
+execution layer. `Navigate`, `Scan`, `Search`,
+`LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`,
+`Watch`, `Unwatch`, and the `*Location` write commands resolve
 a `LocationRef`, require a direct path, and preserve the original request and
 operation ids on results or structured errors.
+
+Location-native result events use the canonical event names:
+`DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`,
+`OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, and
+`ExtendedMetadataLoaded`. Legacy `NodeId` or `FileNode` result events are
+explicit compatibility variants such as `DirectoryLoadedCompat`,
+`SearchResultsCompat`, `FsChangedCompat`, and `OperationCompleteCompat`.
 
 Segmented and unsupported-provider routes are represented and reported, but not
 executed yet. Nested archives are modeled as a provider root plus ordered
@@ -197,12 +210,10 @@ segments, preserving each VFS boundary for later archive/provider traversal.
 
 | Label | Surfaces | Contract |
 |---|---|---|
-| Location-native preferred | `NavigateLocation`, `ScanLocation`, `SearchLocation`, `WatchLocation`, `UnwatchLocation`, `*Location` write commands, `DirectoryEntriesLoaded`, `DirectoryEntryPageLoaded`, `SearchEntryResults`, `FsChangedLocation`, `OperationCompleteLocation`, `NodeEntry` | Preferred for new provider-aware work. |
-| Compatibility | `Navigate`, `NavigateToNode`, `Search`, `SearchPath`, `Scan`, `ScanNode`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FileNode` | Supported direct-local/path-era surface. Do not extend with new provider identity semantics. |
-| Hybrid compatibility | `LoadPreviewLocation`, `LoadMetadataLocation`, `LoadExtendedMetadataLocation` | Accepts `LocationRef`; result events still carry `NodeId` until result contracts migrate. |
+| Location-native preferred | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `*Location` write commands, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | Preferred for new provider-aware work. Event names are canonical; command names still carry `Location` until the command cleanup pass. |
+| Compatibility | `NavigatePathCompat`, `NavigateNodeCompat`, `SearchNodeCompat`, `SearchPathCompat`, `ScanPathCompat`, `ScanNodeCompat`, `DirectoryLoadedCompat`, `DirectoryPageLoadedCompat`, `SearchResultsCompat`, `PreviewReadyCompat`, `PreviewFailedCompat`, `MetadataLoadedCompat`, `ExtendedMetadataLoadedCompat`, `FileNode` | Supported direct-local/path-era surface. Do not extend with new provider identity semantics. |
 | Internal/cache handle | `NodeRegistry`, `NavState.current`, history, selection, direct-local cache bridge ids | Runtime handles for compatibility and cache lookup. |
-| Compatibility watch/write | `Watch`, `Unwatch`, NodeId write commands, `FsChanged`, `OperationComplete.affected` | Supported direct-local compatibility surface. Prefer Location variants for new provider-aware callers. |
-| Future result migration | Preview and metadata result events | Still NodeId-first until preview and metadata result contracts migrate. |
+| Compatibility WatchNodeCompat/write | `WatchNodeCompat`, `UnwatchNodeCompat`, NodeId write commands, `FsChangedCompat`, `OperationCompleteCompat.affected` | Supported direct-local compatibility surface. Prefer Location variants for new provider-aware callers. |
 
 ### Capabilities
 
@@ -211,7 +222,7 @@ checks for Location-native routing. They inspect a `LocationRef`,
 `NodeRegistry`, and provider `Capabilities` without starting watches or
 mutating files.
 
-Direct local routes use provider `watch` and `write` booleans. Segmented routes
+Direct local routes use provider `WatchNodeCompat` and `write` booleans. Segmented routes
 return `LocationSegmentedUnsupported`; unsupported provider references return
 `UnsupportedProvider`; id-only references with no registry entry return
 `LocationUnresolved`.
@@ -221,7 +232,7 @@ return `LocationSegmentedUnsupported`; unsupported provider references return
 Long-running work reports `Event::ProgressUpdated` with a `ProgressScope` and
 `ProgressSnapshot`.
 
-- scan progress is request-scoped
+- ScanPathCompat progress is request-scoped
 - operation progress is request- and operation-scoped
 - page completion is described by `DirectoryPageState`
 - snapshot completeness is described by `DirectoryLoadState`
@@ -275,7 +286,7 @@ async fn main() {
     };
 
     let request = RequestId::new();
-    core.send(Command::Navigate {
+    core.send(Command::NavigatePathCompat {
         path: PathBuf::from("/home"),
         session,
         request,

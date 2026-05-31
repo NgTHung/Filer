@@ -1,7 +1,7 @@
 //! Search Module Integration Tests
 //!
 //! These tests exercise the full command→event pipeline for search:
-//!   FilerCore (Command::Search) → Router → SearchModule → Searcher → Event::SearchResultsCompat
+//!   FilerCore (Command::SearchNodeCompat) → Router → SearchModule → Searcher → Event::SearchResultsCompat
 //!
 //! The module stack used in every test:
 //!   ScanModule::new(MockProvider) + SearchModule::new(MockProvider)
@@ -203,7 +203,7 @@ async fn test_search_command_through_filer_core() {
     let session = create_session(&core).await;
     let root_id = core.registry().register(PathBuf::from("/root"));
 
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "target".to_string(),
         root: root_id,
         session,
@@ -237,7 +237,7 @@ async fn test_session_destroy_cancels_search() {
     let session = create_session(&core).await;
     let root_id = core.registry().register(PathBuf::from("/root"));
 
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "f".to_string(),
         root: root_id,
         session,
@@ -261,7 +261,7 @@ async fn test_search_cancel_command() {
     let session = create_session(&core).await;
     let root_id = core.registry().register(PathBuf::from("/root"));
 
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "file".to_string(),
         root: root_id,
         session,

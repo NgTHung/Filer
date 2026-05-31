@@ -381,7 +381,7 @@ impl Navigator {
                         send_or_warn(
                             &self.events,
                             Event::from_request_error(error, session, request),
-                            "navigate.location resolve",
+                            "navigate resolve",
                         );
                         return;
                     }
@@ -394,7 +394,7 @@ impl Navigator {
                         send_or_warn(
                             &self.events,
                             Event::from_request_error(error, session, request),
-                            "navigate.location route",
+                            "navigate route",
                         );
                         return;
                     }
@@ -405,7 +405,7 @@ impl Navigator {
                         send_or_warn(
                             &self.events,
                             Event::from_request_error(error, session, request),
-                            "navigate.location register",
+                            "navigate register",
                         );
                         return;
                     }

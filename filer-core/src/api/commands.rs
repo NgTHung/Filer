@@ -12,28 +12,28 @@ use crate::pipeline::PipelineConfig;
 
 /// Commands from UI to Core.
 ///
-/// Location-native commands are preferred for new read-side provider-aware
-/// work. `NodeId` commands remain supported compatibility surfaces for
-/// direct-local flows, internal cache handles, selection, and future
+/// Location-native commands are the canonical public command surface.
+/// Path and `NodeId` commands remain supported explicit compatibility surfaces
+/// for direct-local flows, internal cache handles, selection, and future
 /// capability-specific migrations.
 #[derive(Clone)]
 pub enum Command {
     /// Compatibility direct-local navigation by path.
-    Navigate {
+    NavigatePathCompat {
         path: PathBuf,
         session: SessionId,
         request: RequestId,
     },
 
     /// Navigate to a provider-aware location.
-    NavigateLocation {
+    Navigate {
         location: LocationRef,
         session: SessionId,
         request: RequestId,
     },
 
     /// Compatibility direct-local navigation by `NodeId`.
-    NavigateToNode {
+    NavigateNodeCompat {
         node: NodeId,
         session: SessionId,
         request: RequestId,
@@ -64,7 +64,7 @@ pub enum Command {
     },
 
     /// Compatibility direct-local search by `NodeId`.
-    Search {
+    SearchNodeCompat {
         query: String,
         root: NodeId,
         session: SessionId,
@@ -72,7 +72,7 @@ pub enum Command {
     },
 
     /// Compatibility direct-local search by path.
-    SearchPath {
+    SearchPathCompat {
         query: String,
         root: PathBuf,
         session: SessionId,
@@ -80,7 +80,7 @@ pub enum Command {
     },
 
     /// Location-native search. Preferred for new provider-aware read clients.
-    SearchLocation {
+    Search {
         query: String,
         root: LocationRef,
         session: SessionId,
@@ -93,18 +93,15 @@ pub enum Command {
     },
 
     /// Compatibility preview request by `NodeId`.
-    LoadPreview {
+    LoadPreviewNodeCompat {
         id: NodeId,
         options: Option<PreviewOptions>,
         session: SessionId,
         request: RequestId,
     },
 
-    /// Hybrid preview request by `LocationRef`.
-    ///
-    /// The input is Location-native, but the current preview result events
-    /// still carry `NodeId` until the preview result contract migrates.
-    LoadPreviewLocation {
+    /// Location-native preview request by `LocationRef`.
+    LoadPreview {
         location: LocationRef,
         options: Option<PreviewOptions>,
         session: SessionId,
@@ -117,7 +114,7 @@ pub enum Command {
     },
 
     /// Compatibility write operation by `NodeId`.
-    Copy {
+    CopyNodeCompat {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
@@ -126,7 +123,7 @@ pub enum Command {
     },
 
     /// Location-native copy for direct-local locations.
-    CopyLocation {
+    Copy {
         sources: Vec<LocationRef>,
         destination: LocationRef,
         session: SessionId,
@@ -135,7 +132,7 @@ pub enum Command {
     },
 
     /// Compatibility write operation by `NodeId`.
-    Move {
+    MoveNodeCompat {
         sources: Vec<NodeId>,
         destination: NodeId,
         session: SessionId,
@@ -144,7 +141,7 @@ pub enum Command {
     },
 
     /// Location-native move for direct-local locations.
-    MoveLocation {
+    Move {
         sources: Vec<LocationRef>,
         destination: LocationRef,
         session: SessionId,
@@ -153,7 +150,7 @@ pub enum Command {
     },
 
     /// Compatibility write operation by `NodeId`.
-    Delete {
+    DeleteNodeCompat {
         nodes: Vec<NodeId>,
         trash: bool,
         session: SessionId,
@@ -162,7 +159,7 @@ pub enum Command {
     },
 
     /// Location-native delete for direct-local locations.
-    DeleteLocation {
+    Delete {
         locations: Vec<LocationRef>,
         trash: bool,
         session: SessionId,
@@ -171,7 +168,7 @@ pub enum Command {
     },
 
     /// Compatibility write operation by `NodeId`.
-    Rename {
+    RenameNodeCompat {
         node: NodeId,
         new_name: String,
         session: SessionId,
@@ -180,7 +177,7 @@ pub enum Command {
     },
 
     /// Location-native rename for direct-local locations.
-    RenameLocation {
+    Rename {
         location: LocationRef,
         new_name: String,
         session: SessionId,
@@ -189,7 +186,7 @@ pub enum Command {
     },
 
     /// Compatibility write operation by `NodeId`.
-    CreateFolder {
+    CreateFolderNodeCompat {
         parent: NodeId,
         name: String,
         session: SessionId,
@@ -198,7 +195,7 @@ pub enum Command {
     },
 
     /// Location-native folder creation for direct-local parent locations.
-    CreateFolderLocation {
+    CreateFolder {
         parent: LocationRef,
         name: String,
         session: SessionId,
@@ -207,7 +204,7 @@ pub enum Command {
     },
 
     /// Compatibility write operation by `NodeId`.
-    CreateFile {
+    CreateFileNodeCompat {
         parent: NodeId,
         name: String,
         session: SessionId,
@@ -216,7 +213,7 @@ pub enum Command {
     },
 
     /// Location-native file creation for direct-local parent locations.
-    CreateFileLocation {
+    CreateFile {
         parent: LocationRef,
         name: String,
         session: SessionId,
@@ -225,41 +222,35 @@ pub enum Command {
     },
 
     /// Compatibility metadata request by `NodeId`.
-    LoadMetadata {
+    LoadMetadataNodeCompat {
         node: NodeId,
         session: SessionId,
         request: RequestId,
     },
 
-    /// Hybrid metadata request by `LocationRef`.
-    ///
-    /// The input is Location-native, but the current metadata result event
-    /// still carries `NodeId` until the metadata result contract migrates.
-    LoadMetadataLocation {
+    /// Location-native metadata request by `LocationRef`.
+    LoadMetadata {
         location: LocationRef,
         session: SessionId,
         request: RequestId,
     },
 
     /// Compatibility extended metadata request by `NodeId`.
-    LoadExtendedMetadata {
+    LoadExtendedMetadataNodeCompat {
         node: NodeId,
         session: SessionId,
         request: RequestId,
     },
 
-    /// Hybrid extended metadata request by `LocationRef`.
-    ///
-    /// The input is Location-native, but the current extended metadata result
-    /// event still carries `NodeId` until the metadata result contract migrates.
-    LoadExtendedMetadataLocation {
+    /// Location-native extended metadata request by `LocationRef`.
+    LoadExtendedMetadata {
         location: LocationRef,
         session: SessionId,
         request: RequestId,
     },
 
     /// Compatibility direct-local scan by path.
-    Scan {
+    ScanPathCompat {
         path: PathBuf,
         session: SessionId,
         pipeline: PipelineConfig,
@@ -268,7 +259,7 @@ pub enum Command {
     },
 
     /// Location-native directory scan. Preferred for new provider-aware listing.
-    ScanLocation {
+    Scan {
         location: LocationRef,
         session: SessionId,
         pipeline: PipelineConfig,
@@ -277,7 +268,7 @@ pub enum Command {
     },
 
     /// Compatibility direct-local scan by `NodeId`.
-    ScanNode {
+    ScanNodeCompat {
         node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
@@ -303,20 +294,25 @@ pub enum Command {
     },
 
     /// Compatibility watch by `NodeId`.
-    Watch(NodeId, SessionId),
+    WatchNodeCompat {
+        node: NodeId,
+        session: SessionId,
+    },
 
     /// Location-native watch for direct-local locations.
-    WatchLocation {
+    Watch {
         location: LocationRef,
         session: SessionId,
         request: RequestId,
     },
 
     /// Compatibility unwatch by `NodeId`.
-    Unwatch(NodeId),
+    UnwatchNodeCompat {
+        node: NodeId,
+    },
 
     /// Location-native unwatch for a direct-local location.
-    UnwatchLocation {
+    Unwatch {
         location: LocationRef,
         session: SessionId,
     },
@@ -365,54 +361,53 @@ impl Command {
     /// Returns `None` for commands that don't require session validation:
     /// - `Handshake` (creates a session)
     /// - `DestroySession` (tears down — safe to no-op if unknown)
-    /// - `Unwatch` (operates on NodeId, not session-scoped)
+    /// - `UnwatchNodeCompat` (operates on NodeId, not session-scoped)
     pub fn session_id(&self) -> Option<SessionId> {
         match self {
             Command::Handshake => None,
             Command::DestroySession(_) => None,
-            Command::Unwatch(_) => None,
+            Command::UnwatchNodeCompat { .. } => None,
 
-            Command::Navigate { session: s, .. }
-            | Command::NavigateLocation { session: s, .. }
-            | Command::NavigateToNode { session: s, .. }
-            | Command::NavigateUp { session: s, .. }
-            | Command::Refresh { session: s, .. }
-            | Command::CancelSearch { session: s }
-            | Command::CancelPreview { session: s }
-            | Command::CancelScan { session: s }
-            | Command::CancelOperation { session: s, .. }
-            | Command::Watch(_, s)
-            | Command::WatchLocation { session: s, .. }
-            | Command::UnwatchLocation { session: s, .. }
-            | Command::UnwatchSession(s)
-            | Command::NavigateBack { session: s, .. }
-            | Command::NavigateForward { session: s, .. } => Some(*s),
-
-            Command::Search { session, .. }
-            | Command::SearchPath { session, .. }
-            | Command::SearchLocation { session, .. }
-            | Command::Scan { session, .. }
-            | Command::ScanLocation { session, .. }
-            | Command::ScanNode { session, .. }
-            | Command::SetPipeline { session, .. }
+            Command::NavigatePathCompat { session, .. }
+            | Command::Navigate { session, .. }
+            | Command::NavigateNodeCompat { session, .. }
+            | Command::NavigateUp { session, .. }
+            | Command::NavigateBack { session, .. }
+            | Command::NavigateForward { session, .. }
+            | Command::Refresh { session, .. }
+            | Command::SearchNodeCompat { session, .. }
+            | Command::SearchPathCompat { session, .. }
+            | Command::Search { session, .. }
+            | Command::LoadPreviewNodeCompat { session, .. }
             | Command::LoadPreview { session, .. }
-            | Command::LoadPreviewLocation { session, .. }
-            | Command::LoadMetadata { session, .. }
-            | Command::LoadMetadataLocation { session, .. }
-            | Command::LoadExtendedMetadata { session, .. }
-            | Command::LoadExtendedMetadataLocation { session, .. }
+            | Command::CopyNodeCompat { session, .. }
             | Command::Copy { session, .. }
-            | Command::CopyLocation { session, .. }
+            | Command::MoveNodeCompat { session, .. }
             | Command::Move { session, .. }
-            | Command::MoveLocation { session, .. }
+            | Command::DeleteNodeCompat { session, .. }
             | Command::Delete { session, .. }
-            | Command::DeleteLocation { session, .. }
+            | Command::RenameNodeCompat { session, .. }
             | Command::Rename { session, .. }
-            | Command::RenameLocation { session, .. }
+            | Command::CreateFolderNodeCompat { session, .. }
             | Command::CreateFolder { session, .. }
-            | Command::CreateFolderLocation { session, .. }
+            | Command::CreateFileNodeCompat { session, .. }
             | Command::CreateFile { session, .. }
-            | Command::CreateFileLocation { session, .. }
+            | Command::LoadMetadataNodeCompat { session, .. }
+            | Command::LoadMetadata { session, .. }
+            | Command::LoadExtendedMetadataNodeCompat { session, .. }
+            | Command::LoadExtendedMetadata { session, .. }
+            | Command::ScanPathCompat { session, .. }
+            | Command::Scan { session, .. }
+            | Command::ScanNodeCompat { session, .. }
+            | Command::SetPipeline { session, .. }
+            | Command::CancelSearch { session }
+            | Command::CancelPreview { session }
+            | Command::CancelScan { session }
+            | Command::CancelOperation { session, .. }
+            | Command::WatchNodeCompat { session, .. }
+            | Command::Watch { session, .. }
+            | Command::Unwatch { session, .. }
+            | Command::UnwatchSession(session)
             | Command::Extension { session, .. } => Some(*session),
         }
     }
@@ -420,47 +415,47 @@ impl Command {
     /// Extract the request ID for commands that are tied to a UI/API request.
     pub fn request_id(&self) -> Option<RequestId> {
         match self {
-            Command::Navigate { request, .. }
-            | Command::NavigateLocation { request, .. }
-            | Command::NavigateToNode { request, .. }
+            Command::NavigatePathCompat { request, .. }
+            | Command::Navigate { request, .. }
+            | Command::NavigateNodeCompat { request, .. }
             | Command::NavigateUp { request, .. }
             | Command::NavigateBack { request, .. }
             | Command::NavigateForward { request, .. }
             | Command::Refresh { request, .. }
+            | Command::SearchNodeCompat { request, .. }
+            | Command::SearchPathCompat { request, .. }
             | Command::Search { request, .. }
-            | Command::SearchPath { request, .. }
-            | Command::SearchLocation { request, .. }
+            | Command::LoadPreviewNodeCompat { request, .. }
             | Command::LoadPreview { request, .. }
-            | Command::LoadPreviewLocation { request, .. }
-            | Command::LoadMetadata { request, .. }
-            | Command::LoadMetadataLocation { request, .. }
-            | Command::LoadExtendedMetadata { request, .. }
-            | Command::LoadExtendedMetadataLocation { request, .. }
-            | Command::Scan { request, .. }
-            | Command::ScanLocation { request, .. }
-            | Command::ScanNode { request, .. }
+            | Command::CopyNodeCompat { request, .. }
             | Command::Copy { request, .. }
-            | Command::CopyLocation { request, .. }
+            | Command::MoveNodeCompat { request, .. }
             | Command::Move { request, .. }
-            | Command::MoveLocation { request, .. }
+            | Command::DeleteNodeCompat { request, .. }
             | Command::Delete { request, .. }
-            | Command::DeleteLocation { request, .. }
+            | Command::RenameNodeCompat { request, .. }
             | Command::Rename { request, .. }
-            | Command::RenameLocation { request, .. }
+            | Command::CreateFolderNodeCompat { request, .. }
             | Command::CreateFolder { request, .. }
-            | Command::CreateFolderLocation { request, .. }
+            | Command::CreateFileNodeCompat { request, .. }
             | Command::CreateFile { request, .. }
-            | Command::CreateFileLocation { request, .. }
-            | Command::WatchLocation { request, .. } => Some(*request),
+            | Command::LoadMetadataNodeCompat { request, .. }
+            | Command::LoadMetadata { request, .. }
+            | Command::LoadExtendedMetadataNodeCompat { request, .. }
+            | Command::LoadExtendedMetadata { request, .. }
+            | Command::ScanPathCompat { request, .. }
+            | Command::Scan { request, .. }
+            | Command::ScanNodeCompat { request, .. }
+            | Command::Watch { request, .. } => Some(*request),
 
             Command::CancelSearch { .. }
             | Command::CancelPreview { .. }
             | Command::SetPipeline { .. }
             | Command::CancelScan { .. }
             | Command::CancelOperation { .. }
-            | Command::Watch(_, _)
-            | Command::Unwatch(_)
-            | Command::UnwatchLocation { .. }
+            | Command::WatchNodeCompat { .. }
+            | Command::UnwatchNodeCompat { .. }
+            | Command::Unwatch { .. }
             | Command::UnwatchSession(_)
             | Command::Handshake
             | Command::DestroySession(_)
@@ -471,18 +466,18 @@ impl Command {
     /// Extract the operation ID for write-operation commands.
     pub fn operation_id(&self) -> Option<OperationId> {
         match self {
-            Command::Copy { operation, .. }
-            | Command::CopyLocation { operation, .. }
+            Command::CopyNodeCompat { operation, .. }
+            | Command::Copy { operation, .. }
+            | Command::MoveNodeCompat { operation, .. }
             | Command::Move { operation, .. }
-            | Command::MoveLocation { operation, .. }
+            | Command::DeleteNodeCompat { operation, .. }
             | Command::Delete { operation, .. }
-            | Command::DeleteLocation { operation, .. }
+            | Command::RenameNodeCompat { operation, .. }
             | Command::Rename { operation, .. }
-            | Command::RenameLocation { operation, .. }
+            | Command::CreateFolderNodeCompat { operation, .. }
             | Command::CreateFolder { operation, .. }
-            | Command::CreateFolderLocation { operation, .. }
+            | Command::CreateFileNodeCompat { operation, .. }
             | Command::CreateFile { operation, .. }
-            | Command::CreateFileLocation { operation, .. }
             | Command::CancelOperation { operation, .. } => Some(*operation),
             _ => None,
         }
@@ -495,46 +490,46 @@ impl Command {
     /// returns the user-provided key.
     pub fn key(&self) -> &str {
         match self {
+            Command::NavigatePathCompat { .. } => "navigate.path.compat",
             Command::Navigate { .. } => "navigate",
-            Command::NavigateLocation { .. } => "navigate.location",
-            Command::NavigateToNode { .. } => "navigate.node",
+            Command::NavigateNodeCompat { .. } => "navigate.node.compat",
             Command::NavigateUp { .. } => "navigate.up",
             Command::NavigateBack { .. } => "navigate.back",
             Command::NavigateForward { .. } => "navigate.forward",
             Command::Refresh { .. } => "navigate.refresh",
+            Command::SearchNodeCompat { .. } => "search.node.compat",
+            Command::SearchPathCompat { .. } => "search.path.compat",
             Command::Search { .. } => "search",
-            Command::SearchPath { .. } => "search.path",
-            Command::SearchLocation { .. } => "search.location",
             Command::CancelSearch { .. } => "search.cancel",
+            Command::LoadPreviewNodeCompat { .. } => "preview.load.node.compat",
             Command::LoadPreview { .. } => "preview.load",
-            Command::LoadPreviewLocation { .. } => "preview.load.location",
             Command::CancelPreview { .. } => "preview.cancel",
+            Command::LoadMetadataNodeCompat { .. } => "metadata.load.node.compat",
             Command::LoadMetadata { .. } => "metadata.load",
-            Command::LoadMetadataLocation { .. } => "metadata.load.location",
+            Command::LoadExtendedMetadataNodeCompat { .. } => "metadata.extended.node.compat",
             Command::LoadExtendedMetadata { .. } => "metadata.extended",
-            Command::LoadExtendedMetadataLocation { .. } => "metadata.extended.location",
+            Command::CopyNodeCompat { .. } => "ops.copy.node.compat",
             Command::Copy { .. } => "ops.copy",
-            Command::CopyLocation { .. } => "ops.copy.location",
+            Command::MoveNodeCompat { .. } => "ops.move.node.compat",
             Command::Move { .. } => "ops.move",
-            Command::MoveLocation { .. } => "ops.move.location",
+            Command::DeleteNodeCompat { .. } => "ops.delete.node.compat",
             Command::Delete { .. } => "ops.delete",
-            Command::DeleteLocation { .. } => "ops.delete.location",
+            Command::RenameNodeCompat { .. } => "ops.rename.node.compat",
             Command::Rename { .. } => "ops.rename",
-            Command::RenameLocation { .. } => "ops.rename.location",
+            Command::CreateFolderNodeCompat { .. } => "ops.create_folder.node.compat",
             Command::CreateFolder { .. } => "ops.create_folder",
-            Command::CreateFolderLocation { .. } => "ops.create_folder.location",
+            Command::CreateFileNodeCompat { .. } => "ops.create_file.node.compat",
             Command::CreateFile { .. } => "ops.create_file",
-            Command::CreateFileLocation { .. } => "ops.create_file.location",
+            Command::ScanPathCompat { .. } => "scan.path.compat",
             Command::Scan { .. } => "scan",
-            Command::ScanLocation { .. } => "scan.location",
-            Command::ScanNode { .. } => "scan.node",
+            Command::ScanNodeCompat { .. } => "scan.node.compat",
             Command::SetPipeline { .. } => "navigate.pipeline",
             Command::CancelScan { .. } => "scan.cancel",
             Command::CancelOperation { .. } => "ops.cancel",
-            Command::Watch(..) => "watch",
-            Command::WatchLocation { .. } => "watch.location",
-            Command::Unwatch(..) => "watch.remove",
-            Command::UnwatchLocation { .. } => "watch.location.remove",
+            Command::WatchNodeCompat { .. } => "watch.node.compat",
+            Command::Watch { .. } => "watch",
+            Command::UnwatchNodeCompat { .. } => "watch.node.remove.compat",
+            Command::Unwatch { .. } => "watch.remove",
             Command::UnwatchSession(..) => "watch.session_remove",
             Command::Handshake => "session.handshake",
             Command::DestroySession(..) => "session.destroy",

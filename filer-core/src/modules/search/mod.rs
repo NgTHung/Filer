@@ -1,7 +1,9 @@
 //! Search module — file search across directories.
 //!
 //! This module owns the Searcher actor and registers handlers for:
-//! - `search` — search by query
+//! - `search` — search by Location
+//! - `search.node.compat` — compatibility search by NodeId
+//! - `search.path.compat` — compatibility search by path
 //! - `search.cancel` — cancel ongoing search
 
 pub mod searcher;
@@ -33,8 +35,8 @@ impl Module for SearchModule {
 
         // ── Search ───────────────────────────────────────────────────
         let tx = search_tx.clone();
-        ctx.handlers.on("search", move |cmd, ctx| {
-            if let Command::Search {
+        ctx.handlers.on("search.node.compat", move |cmd, ctx| {
+            if let Command::SearchNodeCompat {
                 query,
                 root,
                 session,
@@ -56,8 +58,8 @@ impl Module for SearchModule {
         });
 
         let tx = search_tx.clone();
-        ctx.handlers.on("search.path", move |cmd, ctx| {
-            if let Command::SearchPath {
+        ctx.handlers.on("search.path.compat", move |cmd, ctx| {
+            if let Command::SearchPathCompat {
                 query,
                 root,
                 session,
@@ -79,8 +81,8 @@ impl Module for SearchModule {
         });
 
         let tx = search_tx.clone();
-        ctx.handlers.on("search.location", move |cmd, ctx| {
-            if let Command::SearchLocation {
+        ctx.handlers.on("search", move |cmd, ctx| {
+            if let Command::Search {
                 query,
                 root,
                 session,

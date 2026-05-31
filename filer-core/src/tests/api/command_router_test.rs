@@ -114,8 +114,8 @@ mod command_router_tests {
             // ── Navigation handlers ──────────────────────────────────
             {
                 let tx = nav_tx.clone();
-                handlers.on("navigate", move |cmd, _ctx| {
-                    if let Command::Navigate {
+                handlers.on("navigate.path.compat", move |cmd, _ctx| {
+                    if let Command::NavigatePathCompat {
                         path,
                         session,
                         request,
@@ -131,8 +131,8 @@ mod command_router_tests {
             }
             {
                 let tx = nav_tx.clone();
-                handlers.on("navigate.location", move |cmd, _ctx| {
-                    if let Command::NavigateLocation {
+                handlers.on("navigate", move |cmd, _ctx| {
+                    if let Command::Navigate {
                         location,
                         session,
                         request,
@@ -148,8 +148,8 @@ mod command_router_tests {
             }
             {
                 let tx = nav_tx.clone();
-                handlers.on("navigate.node", move |cmd, _ctx| {
-                    if let Command::NavigateToNode {
+                handlers.on("navigate.node.compat", move |cmd, _ctx| {
+                    if let Command::NavigateNodeCompat {
                         node,
                         session,
                         request,
@@ -191,8 +191,8 @@ mod command_router_tests {
             // ── Search handlers ──────────────────────────────────────
             {
                 let tx = search_tx.clone();
-                handlers.on("search", move |cmd, ctx| {
-                    if let Command::Search {
+                handlers.on("search.node.compat", move |cmd, ctx| {
+                    if let Command::SearchNodeCompat {
                         query,
                         root,
                         session,
@@ -223,8 +223,8 @@ mod command_router_tests {
             }
             {
                 let tx = search_tx.clone();
-                handlers.on("search.path", move |cmd, ctx| {
-                    if let Command::SearchPath {
+                handlers.on("search.path.compat", move |cmd, ctx| {
+                    if let Command::SearchPathCompat {
                         query,
                         root,
                         session,
@@ -255,8 +255,8 @@ mod command_router_tests {
             }
             {
                 let tx = search_tx.clone();
-                handlers.on("search.location", move |cmd, ctx| {
-                    if let Command::SearchLocation {
+                handlers.on("search", move |cmd, ctx| {
+                    if let Command::Search {
                         query,
                         root,
                         session,
@@ -297,8 +297,8 @@ mod command_router_tests {
             // ── Scan handlers ────────────────────────────────────────
             {
                 let tx = scan_tx.clone();
-                handlers.on("scan.location", move |cmd, _ctx| {
-                    if let Command::ScanLocation {
+                handlers.on("scan", move |cmd, _ctx| {
+                    if let Command::Scan {
                         location,
                         session,
                         pipeline,
@@ -320,16 +320,16 @@ mod command_router_tests {
             // ── Watch handlers ───────────────────────────────────────
             {
                 let tx = watch_tx.clone();
-                handlers.on("watch", move |cmd, _ctx| {
-                    if let Command::Watch(node, session) = cmd {
+                handlers.on("watch.node.compat", move |cmd, _ctx| {
+                    if let Command::WatchNodeCompat { node, session } = cmd {
                         let _ = tx.send(WatchCommand::Watch(node, session));
                     }
                 });
             }
             {
                 let tx = watch_tx.clone();
-                handlers.on("watch.location", move |cmd, _ctx| {
-                    if let Command::WatchLocation {
+                handlers.on("watch", move |cmd, _ctx| {
+                    if let Command::Watch {
                         location,
                         session,
                         request,
@@ -345,16 +345,16 @@ mod command_router_tests {
             }
             {
                 let tx = watch_tx.clone();
-                handlers.on("watch.remove", move |cmd, _ctx| {
-                    if let Command::Unwatch(node) = cmd {
+                handlers.on("watch.node.remove.compat", move |cmd, _ctx| {
+                    if let Command::UnwatchNodeCompat { node } = cmd {
                         let _ = tx.send(WatchCommand::Unwatch(node));
                     }
                 });
             }
             {
                 let tx = watch_tx.clone();
-                handlers.on("watch.location.remove", move |cmd, _ctx| {
-                    if let Command::UnwatchLocation { location, session } = cmd {
+                handlers.on("watch.remove", move |cmd, _ctx| {
+                    if let Command::Unwatch { location, session } = cmd {
                         let _ = tx.send(WatchCommand::UnwatchLocation { location, session });
                     }
                 });
@@ -371,8 +371,8 @@ mod command_router_tests {
             // ── Preview handlers ─────────────────────────────────────
             {
                 let tx = preview_tx.clone();
-                handlers.on("preview.load", move |cmd, _ctx| {
-                    if let Command::LoadPreview {
+                handlers.on("preview.load.node.compat", move |cmd, _ctx| {
+                    if let Command::LoadPreviewNodeCompat {
                         id,
                         options,
                         session,
@@ -390,8 +390,8 @@ mod command_router_tests {
             }
             {
                 let tx = preview_tx.clone();
-                handlers.on("preview.load.location", move |cmd, _ctx| {
-                    if let Command::LoadPreviewLocation {
+                handlers.on("preview.load", move |cmd, _ctx| {
+                    if let Command::LoadPreview {
                         location,
                         options,
                         session,
@@ -417,8 +417,8 @@ mod command_router_tests {
             }
             {
                 let tx = preview_tx.clone();
-                handlers.on("metadata.load", move |cmd, _ctx| {
-                    if let Command::LoadMetadata {
+                handlers.on("metadata.load.node.compat", move |cmd, _ctx| {
+                    if let Command::LoadMetadataNodeCompat {
                         node,
                         session,
                         request,
@@ -430,8 +430,8 @@ mod command_router_tests {
             }
             {
                 let tx = preview_tx.clone();
-                handlers.on("metadata.load.location", move |cmd, _ctx| {
-                    if let Command::LoadMetadataLocation {
+                handlers.on("metadata.load", move |cmd, _ctx| {
+                    if let Command::LoadMetadata {
                         location,
                         session,
                         request,
@@ -445,8 +445,8 @@ mod command_router_tests {
             }
             {
                 let tx = preview_tx.clone();
-                handlers.on("metadata.extended", move |cmd, _ctx| {
-                    if let Command::LoadExtendedMetadata {
+                handlers.on("metadata.extended.node.compat", move |cmd, _ctx| {
+                    if let Command::LoadExtendedMetadataNodeCompat {
                         node,
                         session,
                         request,
@@ -459,8 +459,8 @@ mod command_router_tests {
             }
             {
                 let tx = preview_tx.clone();
-                handlers.on("metadata.extended.location", move |cmd, _ctx| {
-                    if let Command::LoadExtendedMetadataLocation {
+                handlers.on("metadata.extended", move |cmd, _ctx| {
+                    if let Command::LoadExtendedMetadata {
                         location,
                         session,
                         request,
@@ -476,8 +476,8 @@ mod command_router_tests {
             // ── Operations handlers ──────────────────────────────────
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.copy", move |cmd, _ctx| {
-                    if let Command::Copy {
+                handlers.on("ops.copy.node.compat", move |cmd, _ctx| {
+                    if let Command::CopyNodeCompat {
                         sources,
                         destination,
                         session,
@@ -497,8 +497,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.copy.location", move |cmd, _ctx| {
-                    if let Command::CopyLocation {
+                handlers.on("ops.copy", move |cmd, _ctx| {
+                    if let Command::Copy {
                         sources,
                         destination,
                         session,
@@ -507,6 +507,27 @@ mod command_router_tests {
                     } = cmd
                     {
                         let _ = tx.send(OpsCommand::CopyLocation {
+                            sources,
+                            destination,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                });
+            }
+            {
+                let tx = ops_tx.clone();
+                handlers.on("ops.move.node.compat", move |cmd, _ctx| {
+                    if let Command::MoveNodeCompat {
+                        sources,
+                        destination,
+                        session,
+                        request,
+                        operation,
+                    } = cmd
+                    {
+                        let _ = tx.send(OpsCommand::Move {
                             sources,
                             destination,
                             session,
@@ -527,27 +548,6 @@ mod command_router_tests {
                         operation,
                     } = cmd
                     {
-                        let _ = tx.send(OpsCommand::Move {
-                            sources,
-                            destination,
-                            session,
-                            request,
-                            operation,
-                        });
-                    }
-                });
-            }
-            {
-                let tx = ops_tx.clone();
-                handlers.on("ops.move.location", move |cmd, _ctx| {
-                    if let Command::MoveLocation {
-                        sources,
-                        destination,
-                        session,
-                        request,
-                        operation,
-                    } = cmd
-                    {
                         let _ = tx.send(OpsCommand::MoveLocation {
                             sources,
                             destination,
@@ -560,8 +560,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.delete", move |cmd, _ctx| {
-                    if let Command::Delete {
+                handlers.on("ops.delete.node.compat", move |cmd, _ctx| {
+                    if let Command::DeleteNodeCompat {
                         nodes,
                         trash,
                         session,
@@ -581,8 +581,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.delete.location", move |cmd, _ctx| {
-                    if let Command::DeleteLocation {
+                handlers.on("ops.delete", move |cmd, _ctx| {
+                    if let Command::Delete {
                         locations,
                         trash,
                         session,
@@ -602,8 +602,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.rename", move |cmd, _ctx| {
-                    if let Command::Rename {
+                handlers.on("ops.rename.node.compat", move |cmd, _ctx| {
+                    if let Command::RenameNodeCompat {
                         node,
                         new_name,
                         session,
@@ -623,8 +623,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.rename.location", move |cmd, _ctx| {
-                    if let Command::RenameLocation {
+                handlers.on("ops.rename", move |cmd, _ctx| {
+                    if let Command::Rename {
                         location,
                         new_name,
                         session,
@@ -644,8 +644,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.create_folder", move |cmd, _ctx| {
-                    if let Command::CreateFolder {
+                handlers.on("ops.create_folder.node.compat", move |cmd, _ctx| {
+                    if let Command::CreateFolderNodeCompat {
                         parent,
                         name,
                         session,
@@ -665,8 +665,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.create_folder.location", move |cmd, _ctx| {
-                    if let Command::CreateFolderLocation {
+                handlers.on("ops.create_folder", move |cmd, _ctx| {
+                    if let Command::CreateFolder {
                         parent,
                         name,
                         session,
@@ -686,8 +686,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.create_file", move |cmd, _ctx| {
-                    if let Command::CreateFile {
+                handlers.on("ops.create_file.node.compat", move |cmd, _ctx| {
+                    if let Command::CreateFileNodeCompat {
                         parent,
                         name,
                         session,
@@ -707,8 +707,8 @@ mod command_router_tests {
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.create_file.location", move |cmd, _ctx| {
-                    if let Command::CreateFileLocation {
+                handlers.on("ops.create_file", move |cmd, _ctx| {
+                    if let Command::CreateFile {
                         parent,
                         name,
                         session,
@@ -796,7 +796,7 @@ mod command_router_tests {
 
         let request = RequestId::new();
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: path.clone(),
                 session,
                 request,
@@ -831,7 +831,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::NavigateLocation {
+            .send(Command::Navigate {
                 location: location_ref.clone(),
                 session,
                 request,
@@ -865,7 +865,7 @@ mod command_router_tests {
 
         let request = RequestId::new();
         harness
-            .send(Command::NavigateToNode {
+            .send(Command::NavigateNodeCompat {
                 node,
                 session,
                 request,
@@ -949,7 +949,7 @@ mod command_router_tests {
         let registered_id = harness.registry.clone().register(path.clone());
 
         harness
-            .send(Command::Search {
+            .send(Command::SearchNodeCompat {
                 query: "*.rs".to_string(),
                 root: registered_id,
                 session,
@@ -985,7 +985,7 @@ mod command_router_tests {
         let root = PathBuf::from("/home/user/projects");
 
         harness
-            .send(Command::SearchPath {
+            .send(Command::SearchPathCompat {
                 query: "*.rs".to_string(),
                 root: root.clone(),
                 session,
@@ -1023,7 +1023,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::SearchLocation {
+            .send(Command::Search {
                 query: "report".to_string(),
                 root: location_ref.clone(),
                 session,
@@ -1059,7 +1059,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::SearchLocation {
+            .send(Command::Search {
                 query: "type:unknown".to_string(),
                 root: LocationRef::from_location(&Location::local("/tmp/search")),
                 session,
@@ -1102,7 +1102,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::ScanLocation {
+            .send(Command::Scan {
                 location: location_ref.clone(),
                 session,
                 pipeline: pipeline.clone(),
@@ -1146,7 +1146,7 @@ mod command_router_tests {
         // First start a search so the router knows this session is searching
         let root = harness.registry.clone().register(PathBuf::from("/tmp"));
         harness
-            .send(Command::Search {
+            .send(Command::SearchNodeCompat {
                 query: "test".to_string(),
                 root,
                 session,
@@ -1184,7 +1184,12 @@ mod command_router_tests {
         let path = PathBuf::from("/home/user/watched");
         let node = harness.registry.clone().register(path.clone());
 
-        harness.send(Command::Watch(node, session)).await;
+        harness
+            .send(Command::WatchNodeCompat {
+                node: node,
+                session: session,
+            })
+            .await;
 
         let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
             .await
@@ -1207,7 +1212,9 @@ mod command_router_tests {
         let node = harness.registry.clone().register(path.clone());
 
         // Unwatch carries only NodeId, no SessionId
-        harness.send(Command::Unwatch(node)).await;
+        harness
+            .send(Command::UnwatchNodeCompat { node: node })
+            .await;
 
         let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
             .await
@@ -1230,7 +1237,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::WatchLocation {
+            .send(Command::Watch {
                 location: location.clone(),
                 session,
                 request,
@@ -1263,7 +1270,7 @@ mod command_router_tests {
         let location = LocationRef::from_location(&Location::local("/home/user/watched"));
 
         harness
-            .send(Command::UnwatchLocation {
+            .send(Command::Unwatch {
                 location: location.clone(),
                 session,
             })
@@ -1318,7 +1325,7 @@ mod command_router_tests {
         let node = harness.registry.clone().register(path.clone());
 
         harness
-            .send(Command::LoadPreview {
+            .send(Command::LoadPreviewNodeCompat {
                 id: node,
                 options: None,
                 session,
@@ -1358,7 +1365,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::LoadPreviewLocation {
+            .send(Command::LoadPreview {
                 location: location_ref.clone(),
                 options: None,
                 session,
@@ -1415,7 +1422,7 @@ mod command_router_tests {
         let node = harness.registry.clone().register(path.clone());
 
         harness
-            .send(Command::LoadMetadata {
+            .send(Command::LoadMetadataNodeCompat {
                 node,
                 session,
                 request: RequestId::new(),
@@ -1445,7 +1452,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::LoadMetadataLocation {
+            .send(Command::LoadMetadata {
                 location: location_ref.clone(),
                 session,
                 request,
@@ -1478,7 +1485,7 @@ mod command_router_tests {
         let node = harness.registry.clone().register(path.clone());
 
         harness
-            .send(Command::LoadExtendedMetadata {
+            .send(Command::LoadExtendedMetadataNodeCompat {
                 node,
                 session,
                 request: RequestId::new(),
@@ -1511,7 +1518,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::LoadExtendedMetadataLocation {
+            .send(Command::LoadExtendedMetadata {
                 location: location_ref.clone(),
                 session,
                 request,
@@ -1553,7 +1560,7 @@ mod command_router_tests {
         let operation = OperationId::new();
 
         harness
-            .send(Command::Copy {
+            .send(Command::CopyNodeCompat {
                 sources: vec![src],
                 destination: dst,
                 session,
@@ -1597,7 +1604,7 @@ mod command_router_tests {
         let operation = OperationId::new();
 
         harness
-            .send(Command::CreateFile {
+            .send(Command::CreateFileNodeCompat {
                 parent,
                 name: "notes.txt".to_string(),
                 session,
@@ -1666,7 +1673,7 @@ mod command_router_tests {
         let operation = OperationId::new();
 
         harness
-            .send(Command::CopyLocation {
+            .send(Command::Copy {
                 sources: vec![src.clone()],
                 destination: dst.clone(),
                 session,
@@ -1704,24 +1711,24 @@ mod command_router_tests {
         let operation = OperationId::new();
         let location = LocationRef::from_location(&Location::local("/tmp/file.txt"));
 
-        let copy = Command::CopyLocation {
+        let copy = Command::Copy {
             sources: vec![location.clone()],
             destination: location.clone(),
             session,
             request,
             operation,
         };
-        assert_eq!(copy.key(), "ops.copy.location");
+        assert_eq!(copy.key(), "ops.copy");
         assert_eq!(copy.session_id(), Some(session));
         assert_eq!(copy.request_id(), Some(request));
         assert_eq!(copy.operation_id(), Some(operation));
 
-        let watch = Command::WatchLocation {
+        let watch = Command::Watch {
             location,
             session,
             request,
         };
-        assert_eq!(watch.key(), "watch.location");
+        assert_eq!(watch.key(), "watch");
         assert_eq!(watch.session_id(), Some(session));
         assert_eq!(watch.request_id(), Some(request));
         assert_eq!(watch.operation_id(), None);
@@ -1744,14 +1751,14 @@ mod command_router_tests {
         let session_b = harness.create_valid_session();
 
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/a"),
                 session: session_a,
                 request: RequestId::new(),
             })
             .await;
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/b"),
                 session: session_b,
                 request: RequestId::new(),
@@ -1793,7 +1800,7 @@ mod command_router_tests {
 
         // Session A navigates
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/home/a"),
                 session: session_a,
                 request: RequestId::new(),
@@ -1806,7 +1813,7 @@ mod command_router_tests {
             .clone()
             .register(PathBuf::from("/search/root"));
         harness
-            .send(Command::Search {
+            .send(Command::SearchNodeCompat {
                 query: "find me".to_string(),
                 root,
                 session: session_b,
@@ -1848,21 +1855,21 @@ mod command_router_tests {
 
         // Interleave commands from 3 sessions going to the same actor
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/s1"),
                 session: session_1,
                 request: RequestId::new(),
             })
             .await;
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/s2"),
                 session: session_2,
                 request: RequestId::new(),
             })
             .await;
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/s3"),
                 session: session_3,
                 request: RequestId::new(),
@@ -2025,7 +2032,7 @@ mod command_router_tests {
         let unknown = SessionId::new(); // Not registered in SessionManager
 
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/home"),
                 session: unknown,
                 request: RequestId::new(),
@@ -2071,7 +2078,7 @@ mod command_router_tests {
         let request = RequestId::new();
 
         harness
-            .send(Command::NavigateLocation {
+            .send(Command::Navigate {
                 location: LocationRef::from_location(&location),
                 session: unknown,
                 request,
@@ -2121,7 +2128,7 @@ mod command_router_tests {
         let root = harness.registry.clone().register(PathBuf::from("/tmp"));
 
         harness
-            .send(Command::Search {
+            .send(Command::SearchNodeCompat {
                 query: "*.txt".to_string(),
                 root,
                 session: unknown,
@@ -2156,7 +2163,12 @@ mod command_router_tests {
         let unknown = SessionId::new();
         let node = harness.registry.clone().register(PathBuf::from("/watched"));
 
-        harness.send(Command::Watch(node, unknown)).await;
+        harness
+            .send(Command::WatchNodeCompat {
+                node: node,
+                session: unknown,
+            })
+            .await;
 
         let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
             .await
@@ -2194,7 +2206,7 @@ mod command_router_tests {
         let operation = OperationId::new();
 
         harness
-            .send(Command::CreateFolder {
+            .send(Command::CreateFolderNodeCompat {
                 parent,
                 name: "new_dir".to_string(),
                 session: unknown,
@@ -2249,7 +2261,7 @@ mod command_router_tests {
 
         // Now use that session to navigate
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/home"),
                 session,
                 request: RequestId::new(),
@@ -2279,7 +2291,7 @@ mod command_router_tests {
 
         // Verify it works before destroy
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/before"),
                 session,
                 request: RequestId::new(),
@@ -2296,7 +2308,7 @@ mod command_router_tests {
 
         // Now try to use the destroyed session
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/after"),
                 session,
                 request: RequestId::new(),
@@ -2363,7 +2375,7 @@ mod command_router_tests {
         // Send multiple navigation commands rapidly
         for i in 0..5 {
             harness
-                .send(Command::Navigate {
+                .send(Command::NavigatePathCompat {
                     path: PathBuf::from(format!("/dir/{}", i)),
                     session,
                     request: RequestId::new(),
@@ -2399,7 +2411,7 @@ mod command_router_tests {
         let session = harness.create_valid_session();
 
         harness
-            .send(Command::Navigate {
+            .send(Command::NavigatePathCompat {
                 path: PathBuf::from("/test"),
                 session,
                 request: RequestId::new(),
@@ -2439,7 +2451,7 @@ mod command_router_tests {
         let root = harness.registry.clone().register(PathBuf::from("/root"));
 
         harness
-            .send(Command::Search {
+            .send(Command::SearchNodeCompat {
                 query: "test".to_string(),
                 root,
                 session,
@@ -2466,7 +2478,12 @@ mod command_router_tests {
         let session = harness.create_valid_session();
         let node = harness.registry.clone().register(PathBuf::from("/watched"));
 
-        harness.send(Command::Watch(node, session)).await;
+        harness
+            .send(Command::WatchNodeCompat {
+                node: node,
+                session: session,
+            })
+            .await;
 
         // Watcher gets the command
         let watch = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async()).await;
@@ -2504,7 +2521,7 @@ mod command_router_tests {
         };
 
         harness
-            .send(Command::LoadPreview {
+            .send(Command::LoadPreviewNodeCompat {
                 id: node,
                 options: Some(options.clone()),
                 session,

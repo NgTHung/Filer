@@ -1,18 +1,18 @@
 //! Operations module — file system write operations.
 //!
 //! This module owns the Operator actor and registers handlers for:
-//! - `ops.copy` — copy files/directories
-//! - `ops.copy.location` — copy direct-local Locations
-//! - `ops.move` — move files/directories
-//! - `ops.move.location` — move direct-local Locations
-//! - `ops.delete` — delete (to trash or permanent)
-//! - `ops.delete.location` — delete direct-local Locations
-//! - `ops.rename` — rename a file or directory
-//! - `ops.rename.location` — rename a direct-local Location
-//! - `ops.create_folder` — create a new folder
-//! - `ops.create_folder.location` — create a folder in a direct-local Location
-//! - `ops.create_file` — create a new file
-//! - `ops.create_file.location` — create a file in a direct-local Location
+//! - `ops.copy` — copy direct-local Locations
+//! - `ops.copy.node.compat` — compatibility copy by NodeId
+//! - `ops.move` — move direct-local Locations
+//! - `ops.move.node.compat` — compatibility move by NodeId
+//! - `ops.delete` — delete direct-local Locations
+//! - `ops.delete.node.compat` — compatibility delete by NodeId
+//! - `ops.rename` — rename a direct-local Location
+//! - `ops.rename.node.compat` — compatibility rename by NodeId
+//! - `ops.create_folder` — create a folder in a direct-local Location
+//! - `ops.create_folder.node.compat` — compatibility create-folder by NodeId
+//! - `ops.create_file` — create a file in a direct-local Location
+//! - `ops.create_file.node.compat` — compatibility create-file by NodeId
 //! - `ops.cancel` — cancel a specific active operation
 
 pub mod operator;
@@ -61,8 +61,8 @@ impl Module for OperationsModule {
         let ops_rx = self.ops_rx.take().expect("ScanModule already initialized");
         // ── Copy ─────────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.copy", move |cmd, _ctx| {
-            if let Command::Copy {
+        ctx.handlers.on("ops.copy.node.compat", move |cmd, _ctx| {
+            if let Command::CopyNodeCompat {
                 sources,
                 destination,
                 session,
@@ -81,8 +81,8 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.copy.location", move |cmd, _ctx| {
-            if let Command::CopyLocation {
+        ctx.handlers.on("ops.copy", move |cmd, _ctx| {
+            if let Command::Copy {
                 sources,
                 destination,
                 session,
@@ -102,8 +102,8 @@ impl Module for OperationsModule {
 
         // ── Move ─────────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.move", move |cmd, _ctx| {
-            if let Command::Move {
+        ctx.handlers.on("ops.move.node.compat", move |cmd, _ctx| {
+            if let Command::MoveNodeCompat {
                 sources,
                 destination,
                 session,
@@ -122,8 +122,8 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.move.location", move |cmd, _ctx| {
-            if let Command::MoveLocation {
+        ctx.handlers.on("ops.move", move |cmd, _ctx| {
+            if let Command::Move {
                 sources,
                 destination,
                 session,
@@ -143,8 +143,8 @@ impl Module for OperationsModule {
 
         // ── Delete ───────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.delete", move |cmd, _ctx| {
-            if let Command::Delete {
+        ctx.handlers.on("ops.delete.node.compat", move |cmd, _ctx| {
+            if let Command::DeleteNodeCompat {
                 nodes,
                 trash,
                 session,
@@ -163,8 +163,8 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.delete.location", move |cmd, _ctx| {
-            if let Command::DeleteLocation {
+        ctx.handlers.on("ops.delete", move |cmd, _ctx| {
+            if let Command::Delete {
                 locations,
                 trash,
                 session,
@@ -184,8 +184,8 @@ impl Module for OperationsModule {
 
         // ── Rename ───────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.rename", move |cmd, _ctx| {
-            if let Command::Rename {
+        ctx.handlers.on("ops.rename.node.compat", move |cmd, _ctx| {
+            if let Command::RenameNodeCompat {
                 node,
                 new_name,
                 session,
@@ -204,8 +204,8 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.rename.location", move |cmd, _ctx| {
-            if let Command::RenameLocation {
+        ctx.handlers.on("ops.rename", move |cmd, _ctx| {
+            if let Command::Rename {
                 location,
                 new_name,
                 session,
@@ -225,29 +225,9 @@ impl Module for OperationsModule {
 
         // ── Create folder ────────────────────────────────────────────
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.create_folder", move |cmd, _ctx| {
-            if let Command::CreateFolder {
-                parent,
-                name,
-                session,
-                request,
-                operation,
-            } = cmd
-            {
-                let _ = tx.send(OpsCommand::CreateFolder {
-                    parent,
-                    name,
-                    session,
-                    request,
-                    operation,
-                });
-            }
-        });
-
-        let tx = self.ops_tx.clone();
         ctx.handlers
-            .on("ops.create_folder.location", move |cmd, _ctx| {
-                if let Command::CreateFolderLocation {
+            .on("ops.create_folder.node.compat", move |cmd, _ctx| {
+                if let Command::CreateFolderNodeCompat {
                     parent,
                     name,
                     session,
@@ -255,7 +235,7 @@ impl Module for OperationsModule {
                     operation,
                 } = cmd
                 {
-                    let _ = tx.send(OpsCommand::CreateFolderLocation {
+                    let _ = tx.send(OpsCommand::CreateFolder {
                         parent,
                         name,
                         session,
@@ -265,7 +245,48 @@ impl Module for OperationsModule {
                 }
             });
 
+        let tx = self.ops_tx.clone();
+        ctx.handlers.on("ops.create_folder", move |cmd, _ctx| {
+            if let Command::CreateFolder {
+                parent,
+                name,
+                session,
+                request,
+                operation,
+            } = cmd
+            {
+                let _ = tx.send(OpsCommand::CreateFolderLocation {
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                });
+            }
+        });
+
         // ── Create file ──────────────────────────────────────────────
+        let tx = self.ops_tx.clone();
+        ctx.handlers
+            .on("ops.create_file.node.compat", move |cmd, _ctx| {
+                if let Command::CreateFileNodeCompat {
+                    parent,
+                    name,
+                    session,
+                    request,
+                    operation,
+                } = cmd
+                {
+                    let _ = tx.send(OpsCommand::CreateFile {
+                        parent,
+                        name,
+                        session,
+                        request,
+                        operation,
+                    });
+                }
+            });
+
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.create_file", move |cmd, _ctx| {
             if let Command::CreateFile {
@@ -276,7 +297,7 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::CreateFile {
+                let _ = tx.send(OpsCommand::CreateFileLocation {
                     parent,
                     name,
                     session,
@@ -285,27 +306,6 @@ impl Module for OperationsModule {
                 });
             }
         });
-
-        let tx = self.ops_tx.clone();
-        ctx.handlers
-            .on("ops.create_file.location", move |cmd, _ctx| {
-                if let Command::CreateFileLocation {
-                    parent,
-                    name,
-                    session,
-                    request,
-                    operation,
-                } = cmd
-                {
-                    let _ = tx.send(OpsCommand::CreateFileLocation {
-                        parent,
-                        name,
-                        session,
-                        request,
-                        operation,
-                    });
-                }
-            });
 
         // ── Cancel operation ─────────────────────────────────────────
         let tx = self.ops_tx.clone();

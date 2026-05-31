@@ -250,7 +250,7 @@ impl Actor for Searcher {
                             send_or_warn(
                                 &self.events,
                                 Event::from_request_error(error, session, request),
-                                "search.location resolve error",
+                                "search resolve error",
                             );
                             continue;
                         }
@@ -264,7 +264,7 @@ impl Actor for Searcher {
                             send_or_warn(
                                 &self.events,
                                 Event::from_request_error(error, session, request),
-                                "search.location route error",
+                                "search route error",
                             );
                             continue;
                         }

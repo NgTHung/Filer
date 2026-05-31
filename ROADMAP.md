@@ -10,7 +10,7 @@ Current milestone: `0.3.0`.
 
 Filer should be a fast Explorer replacement with useful programmer support. It
 should remain a file manager first: dependable navigation, file operations,
-search, previews, provider support, and extension points that help real work
+SearchNodeCompat, previews, provider support, and extension points that help real work
 without turning the project into a full IDE.
 
 The core exists to make that possible across frontends. The Iced app, future web
@@ -21,7 +21,7 @@ The extension system should improve core mechanics by adding semantic
 capabilities around the file-manager kernel. Extensions may contribute commands,
 providers, previews, metadata, file decorations, status badges, panels, and
 other structured outputs, but core remains the authority for navigation,
-scanning, search, operations, sessions, provider access, cache correctness, and
+scanning, SearchNodeCompat, operations, sessions, provider access, cache correctness, and
 event routing. Clients render extension output; extensions should not depend on
 desktop-only UI code.
 
@@ -61,8 +61,10 @@ local-path flows.
 the misleading generic public cancel command in favor of explicit
 `CancelSearch`, `CancelScan`, `CancelPreview`, and operation-id scoped
 `CancelOperation`. It also renames cancellation errors to `Cancelled` and adds a
-stable `TimedOut` code. Remaining `0.3.0` work should finish canonical
-Location-first event/result naming and provider-context timeout propagation.
+stable `TimedOut` code. The event/result surface now makes Location-native
+results canonical and labels NodeId/FileNode outputs as explicit `*Compat`
+variants. Remaining `0.3.0` work should finish command naming consistency and
+provider-context timeout propagation.
 
 Milestone labels:
 
@@ -87,7 +89,7 @@ the other way around.
 ### All Filesystem Access Goes Through Providers
 
 Core workflows should use `FsProvider` and provider capabilities for list, read,
-write, watch, search, and future remote access. Local filesystem shortcuts are
+write, WatchNodeCompat, SearchNodeCompat, and future remote access. Local filesystem shortcuts are
 allowed only where the current API cannot yet express the required operation,
 and those shortcuts should be tracked as roadmap debt.
 
@@ -99,7 +101,7 @@ or explicitly scoped to one.
 
 ### Actors Own Long-Running Work
 
-Navigation, search, preview, operations, and watch flows should stay behind
+Navigation, SearchNodeCompat, preview, operations, and WatchNodeCompat flows should stay behind
 actors or actor-like modules with cancellation and structured events. The UI
 should not block on core work.
 
@@ -111,7 +113,7 @@ produce `GroupedNodes`. Actors should not apply ad hoc sort/group logic.
 ### Extension Contracts Stay Wire-Safe
 
 `Command::Extension` remains useful for trusted in-process modules, but the
-public extension path should move toward serializable envelopes shared with
+public extension path should MoveNodeCompat toward serializable envelopes shared with
 `filer-ecosystem`.
 
 ### Extensions Produce Semantic UI Data
@@ -124,7 +126,7 @@ translate those semantics into their own visuals.
 
 ### Core Mechanics Are Not Optional Plugins
 
-Navigation, scanning, search dispatch, watching, file operations, provider
+Navigation, scanning, SearchNodeCompat dispatch, watching, file operations, provider
 resolution, sessions, cancellation, cache invalidation, and pipeline execution
 stay in `filer-core`. They may be enhanced by extensions, but the app should not
 need an extension host to perform normal local file management.
@@ -162,24 +164,24 @@ near-term product boundary.
   searcher, previewer, and operations.
 - [x] `Core` `FsProvider` abstraction with local filesystem implementation and
   provider capability flags.
-- [x] `Core` File operations for create, copy, move, rename, delete, and folder
+- [x] `Core` File operations for create, CopyNodeCompat, MoveNodeCompat, RenameNodeCompat, DeleteNodeCompat, and folder
   creation.
 - [x] `Core` Navigation actor with history, Location-aware current state, and
   default paged directory events.
 - [x] `Core` Pipeline support for hidden filtering, extension filtering, sort,
   and group output.
-- [x] `Core` Search query parsing and streamed recursive search.
-- [x] `Core` Watcher actor with provider-backed watch/unwatch and debounced
+- [x] `Core` SearchNodeCompat query parsing and streamed recursive SearchNodeCompat.
+- [x] `Core` Watcher actor with provider-backed WatchNodeCompat/UnwatchNodeCompat and debounced
   `FsChanged` events.
 - [x] `Core` MIME detection and metadata extraction services.
 - [x] `Core` Preview registry, preview cache, preview actor, and text, code,
   image, media, and archive preview providers.
 - [x] `Core` Directory cache service with explicit refresh bypass support.
-- [x] `Core` Request ids and stale-event guards for scan, search, preview, and
+- [x] `Core` Request ids and stale-event guards for ScanPathCompat, SearchNodeCompat, preview, and
   refresh flows.
-- [x] `Reliability` Regression tests proving stale scan, search, and preview
+- [x] `Reliability` Regression tests proving stale ScanPathCompat, SearchNodeCompat, and preview
   result events are suppressed when superseded by a newer request.
-- [x] `Core` Operation ids for copy, move, delete, rename, create file, and
+- [x] `Core` Operation ids for CopyNodeCompat, MoveNodeCompat, DeleteNodeCompat, RenameNodeCompat, create file, and
   create folder progress, completion, and operation-scoped errors.
 - [x] `Core` Structured `CoreError`, `ErrorKind`, `ErrorCode`, and
   `ErrorTarget` fields on app-facing `Event::Error`, with recoverability
@@ -209,13 +211,13 @@ near-term product boundary.
 This is the next core phase. It should happen before a major app rewrite, full
 extension runtime, web transport, marketplace, or broad provider expansion.
 
-- [x] `Core` Add request ids for scan, search, preview, and refresh flows so
+- [x] `Core` Add request ids for ScanPathCompat, SearchNodeCompat, preview, and refresh flows so
   stale events can be rejected consistently.
-- [x] `Core` Add operation ids for copy, move, delete, rename, create file, and
+- [x] `Core` Add operation ids for CopyNodeCompat, MoveNodeCompat, DeleteNodeCompat, RenameNodeCompat, create file, and
   create folder progress/completion events.
 - [x] `Core` Add structured error kinds, codes, targets, and tracing diagnostics
   for current app-facing error events.
-- [x] `Reliability` Add focused regression coverage for stale scan, search, and
+- [x] `Reliability` Add focused regression coverage for stale ScanPathCompat, SearchNodeCompat, and
   preview suppression, including parallel test execution.
 - [x] `Core` Define the first additive provider `Location` model with
   `LocationId`, `LocationDescriptor`, `LocationRef`, and `ProviderRef`.
@@ -241,13 +243,13 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 - [x] `Core` Make navigation refresh prefer Location identity when a session has
   a current Location, using `RefreshLocation` to preserve cache-bypass
   semantics.
-- [x] `Core` Keep `ScanLocation` aligned with navigation refresh and listing
+- [x] `Core` Keep `Scan` aligned with navigation refresh and listing
   behavior by routing Location-backed back/forward/refresh through
   Location-native scanner commands.
-- [x] `Core` Move scan/listing cache keys and invalidation toward Location
+- [x] `Core` MoveNodeCompat ScanPathCompat/listing cache keys and invalidation toward Location
   identity instead of path/NodeId identity only.
-- [x] `Core` Bring search into Location-first read behavior after navigation
-  and scan are stable, keeping `Search` by NodeId as compatibility.
+- [x] `Core` Bring SearchNodeCompat into Location-first read behavior after navigation
+  and ScanPathCompat are stable, keeping `SearchNodeCompat` by NodeId as compatibility.
 - [x] `Core` Define a Location-aware cache and invalidation bridge before
   migrating watcher state.
 - [x] `Core` Define separate Location capability contracts for watcher and
@@ -271,12 +273,18 @@ extension runtime, web transport, marketplace, or broad provider expansion.
   behavior under mutation, and optional provider-native total counts.
 - [ ] `Core` Design mutation-stable provider cursor sessions for large
   directories so refresh/mutation does not skip or duplicate rows.
-- [x] `Core` Replace ambiguous public cancellation with explicit search, scan,
+- [x] `Core` Replace ambiguous public cancellation with explicit SearchNodeCompat, ScanPathCompat,
   preview, and operation-id scoped cancellation commands.
-- [x] `Core` Rename cancellation errors to `Cancelled` and add a stable
+- [x] `Core` RenameNodeCompat cancellation errors to `Cancelled` and add a stable
   `TimedOut` error code for future provider deadline behavior.
+- [x] `Core` Make Location-native result events canonical for directory
+  listings, pages, SearchNodeCompat results, watcher changes, operation completion,
+  preview results, and metadata results, with NodeId/FileNode outputs renamed
+  to explicit `*Compat` variants.
+- [ ] `Core` RenameNodeCompat public commands so Location-native commands are canonical
+  and path/NodeId commands use explicit compatibility names.
 - [ ] `Core` Define provider-context timeout propagation for provider calls,
-  previews, search, operations, and future extension calls.
+  previews, SearchNodeCompat, operations, and future extension calls.
 - [ ] `Ecosystem` Define the extension output envelope and first file
   decoration payload before implementing a broad runtime.
 - [ ] `Ecosystem` Define scoped core context subscriptions for visible nodes,
@@ -288,10 +296,10 @@ extension runtime, web transport, marketplace, or broad provider expansion.
 
 Exit criteria:
 
-- [x] Stale scan/search/preview results are ignored by request identity.
+- [x] Stale ScanPathCompat/SearchNodeCompat/preview results are ignored by request identity.
 - [x] Operations emit correlated progress/completion by operation id.
 - [x] Operations can be cancelled by operation id without using the ambiguous
-  search cancellation command.
+  SearchNodeCompat cancellation command.
 - [x] Error events carry structured `ErrorKind`, `ErrorCode`, and optional
   `ErrorTarget` so app and web clients can branch without parsing message
   strings.
@@ -302,10 +310,12 @@ Exit criteria:
 - [x] Navigation snapshots expose both the legacy current `NodeId` and optional
   current `LocationRef` without breaking old serialized state.
 - [x] Public read command/event transport can use reconstructable
-  `LocationRef` forms for navigation, scan, and search without id-only
+  `LocationRef` forms for navigation, ScanPathCompat, and SearchNodeCompat without id-only
   reconstruction failure across processes or machines.
-- [x] Remaining NodeId-only command and event surfaces are intentionally labeled
+- [x] Remaining NodeId/FileNode event surfaces are intentionally labeled
   compatibility, internal, or future provider-capability work.
+- [ ] Remaining NodeId/path command surfaces are intentionally labeled
+  compatibility instead of occupying canonical command names.
 - [x] Nested archive locations can be represented as provider root plus ordered
   archive/member segments.
 - [x] Location descriptors can be classified into direct local, segmented, or
@@ -332,11 +342,11 @@ core events being truthful and fresh.
 - [x] `Reliability` Finish directory cache invalidation tests for write
   operations, including parent and subtree invalidation coverage.
 - [x] `Reliability` Ensure every operation that mutates files invalidates the
-  affected parent directories, with directory move, delete, and rename clearing
+  affected parent directories, with directory MoveNodeCompat, DeleteNodeCompat, and RenameNodeCompat clearing
   stale cached descendants.
 - [ ] `Reliability` Add remaining manual refresh and same-folder navigation
   cache regression coverage.
-- [x] `Reliability` Add stale-event guards for preview and search results by
+- [x] `Reliability` Add stale-event guards for preview and SearchNodeCompat results by
   session and request identity.
 - [x] `Reliability` Add error targets and provider-specific context so app UI
   can display clear permission, not-found, location, and unsupported-provider
@@ -345,14 +355,14 @@ core events being truthful and fresh.
   error events.
 - [ ] `Reliability` Extend tracing coverage across all app-facing command
   paths, not only error conversion.
-- [ ] `Reliability` Add stress tests for rapid create/delete/rename watcher
+- [ ] `Reliability` Add stress tests for rapid create/DeleteNodeCompat/RenameNodeCompat watcher
   bursts.
-- [ ] `Reliability` Add cancellation tests for long operations, search, preview,
+- [ ] `Reliability` Add cancellation tests for long operations, SearchNodeCompat, preview,
   and provider calls.
 
 ## Navigation And Sessions
 
-- [x] `Core` Navigate to absolute paths.
+- [x] `Core` NavigatePathCompat to absolute paths.
 - [x] `Core` Back and up navigation.
 - [x] `Core` Forward navigation support in app state.
 - [x] `Core` Per-session navigation state and event routing.
@@ -384,34 +394,34 @@ core events being truthful and fresh.
 - [ ] `Core` Add pipeline-aware incremental loading so sort, filter, and group
   views do not need to fall back to full snapshot scans.
 
-## Search
+## SearchNodeCompat
 
 - [x] `Core` Parse text, glob, extension, size, type, hidden, depth, max,
-  date, name, and regex search filters.
-- [x] `Core` Stream recursive search results with completion state.
-- [x] `Core` Cancel previous search work per session.
-- [x] `Core` Add search result request ids so stale result batches can be
+  date, name, and regex SearchNodeCompat filters.
+- [x] `Core` Stream recursive SearchNodeCompat results with completion state.
+- [x] `Core` Cancel previous SearchNodeCompat work per session.
+- [x] `Core` Add SearchNodeCompat result request ids so stale result batches can be
   discarded safely by all frontends.
-- [x] `Core` Route direct-local `SearchLocation` through reconstructable
-  `LocationRef` inputs and emit `SearchEntryResults`.
-- [x] `Core` Keep `SearchPath` as explicit direct-local compatibility routing
+- [x] `Core` Route direct-local `Search` through reconstructable
+  `LocationRef` inputs and emit canonical Location-native `SearchResults`.
+- [x] `Core` Keep `SearchPathCompat` as explicit direct-local compatibility routing
   and report invalid query syntax as request-scoped input errors.
-- [ ] `Core` Add scoped search roots for selected folders, current folder, and
-  workspace/project search.
-- [ ] `Power` Add indexed search service for large projects.
-- [ ] `Power` Add provider-specific search delegation when a provider advertises
-  native search capability.
-- [ ] `Ecosystem` Expose search provider contribution points through the
-  extension host, while keeping core search cancellation, request identity, and
+- [ ] `Core` Add scoped SearchNodeCompat roots for selected folders, current folder, and
+  workspace/project SearchNodeCompat.
+- [ ] `Power` Add indexed SearchNodeCompat service for large projects.
+- [ ] `Power` Add provider-specific SearchNodeCompat delegation when a provider advertises
+  native SearchNodeCompat capability.
+- [ ] `Ecosystem` Expose SearchNodeCompat provider contribution points through the
+  extension host, while keeping core SearchNodeCompat cancellation, request identity, and
   result routing authoritative.
 
 ## File Operations
 
 - [x] `Core` Create file and folder.
-- [x] `Core` Copy, move, rename, delete, and trash-aware delete.
+- [x] `Core` CopyNodeCompat, MoveNodeCompat, RenameNodeCompat, DeleteNodeCompat, and trash-aware DeleteNodeCompat.
 - [x] `Core` Emit operation progress and completion events.
 - [x] `Core` Refresh current app state after completed operations.
-- [ ] `Reliability` Add conflict-resolution primitives for copy and move.
+- [ ] `Reliability` Add conflict-resolution primitives for CopyNodeCompat and MoveNodeCompat.
 - [ ] `Reliability` Draft undo and conflict-resolution metadata contracts now so
   operation implementation does not paint future UI into a corner.
 - [x] `Reliability` Add operation ids and request correlation for progress,
@@ -420,7 +430,7 @@ core events being truthful and fresh.
 - [ ] `Power` Add operation queue, pause/resume where practical, and operation
   history.
 - [ ] `Power` Add undo metadata for reversible operations.
-- [ ] `Power` Add bulk rename planning.
+- [ ] `Power` Add bulk RenameNodeCompat planning.
 - [ ] `Power` Add archive create, extract, compress, and decompress operations.
 
 ## Preview And Metadata
@@ -434,7 +444,7 @@ core events being truthful and fresh.
 - [x] `Core` Metadata extractors for image, audio, video, document, archive, and
   code categories.
 - [x] `Reliability` Add stale preview request ids and selection guards.
-- [ ] `Core` Move remaining local-path preview assumptions toward provider or
+- [ ] `Core` MoveNodeCompat remaining local-path preview assumptions toward provider or
   provider-backed cache access.
 - [ ] `Core` Decide which `FileNode` fields are synchronous guarantees and
   which metadata fields are lazy so grouping/sorting clients do not depend on
@@ -455,7 +465,7 @@ core events being truthful and fresh.
 ## Providers And Virtual Filesystems
 
 - [x] `Core` Local filesystem provider.
-- [x] `Core` Provider capability model for read, write, watch, and search.
+- [x] `Core` Provider capability model for read, write, WatchNodeCompat, and SearchNodeCompat.
 - [x] `Core` Introduce additive provider `Location` primitives as the
   compatibility layer for canonical file identity.
 - [ ] `Core` Make provider profile/config types serializable for app and sync.
@@ -590,7 +600,7 @@ that frontends and extensions need.
 | --- | --- | --- |
 | Watcher refresh and directory cache behavior need stronger regression coverage | App can receive `FsChanged` but still render stale directory contents | High |
 | Preview registry still has local-path assumptions for magic-byte fallback and provider generation | Remote providers and archive providers cannot preview through pure `FsProvider` yet | High |
-| Public command/event types are not fully wire-safe or versioned | Blocks web transport and public extension host | High |
+| Public command types are not fully canonical, wire-safe, or versioned | Blocks web transport and public extension host | High |
 | Extension seam still uses `Arc<dyn Any>` for payloads | Fine for trusted in-process modules, unsuitable for ecosystem packages | High |
 | Extension contracts describe declarations better than live semantic output | Blocks git-style file badges, status coloring, panel data, and web/app parity | High |
 | Provider config/profile model is not settled | Blocks persistent remote providers, sync, and extension-managed providers | Medium |
@@ -620,13 +630,13 @@ cargo test -p filer-core operator -- --nocapture
 
 Manual checks:
 
-- [ ] Create, rename, and delete files externally while the app watches the
+- [ ] Create, RenameNodeCompat, and DeleteNodeCompat files externally while the app watches the
   current folder; confirm refreshed listings are fresh.
-- [ ] Navigate, refresh, search, sort, group, and preview without losing session
+- [ ] NavigatePathCompat, refresh, SearchNodeCompat, sort, group, and preview without losing session
   isolation.
 - [ ] Run file operations and confirm cache invalidation updates the current
   directory.
-- [ ] Confirm app/core logs show command, event, watcher, preview, search, and
+- [ ] Confirm app/core logs show command, event, watcher, preview, SearchNodeCompat, and
   operation flow clearly.
 - [ ] Confirm new core APIs support the app, future web transport, and
   ecosystem contracts without UI-specific assumptions.

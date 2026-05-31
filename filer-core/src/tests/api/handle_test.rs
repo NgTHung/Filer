@@ -91,7 +91,7 @@ mod handle_tests {
         };
 
         // Now send a Navigate command using the valid session
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/tmp"),
             session: session_id,
             request: crate::model::request::RequestId::new(),
@@ -121,7 +121,7 @@ mod handle_tests {
 
         // Send a command with a completely bogus session (no Handshake first)
         let bogus = SessionId::new();
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/tmp"),
             session: bogus,
             request: crate::model::request::RequestId::new(),

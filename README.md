@@ -2,13 +2,13 @@
 
 A fast, modern file explorer built in Rust.
 
-Current milestone: `0.2.3`.
+Current milestone: `0.3.0`.
 
 ## Architecture
 
 ```
 filer/
-├── filer-core/         # Core library (actors, VFS, search, preview)
+├── filer-core/         # Core library (actors, VFS, SearchNodeCompat, preview)
 ├── filer-app/          # Iced-based GUI application
 └── filer-ecosystem/    # Extension contracts, packages, profile sync
 ```
@@ -26,7 +26,7 @@ filer/
 
 Filer's extension system is meant to improve the file-manager mechanics, not
 replace the core product. `filer-core` remains responsible for dependable
-navigation, scanning, search, file operations, provider access, sessions,
+navigation, scanning, SearchNodeCompat, file operations, provider access, sessions,
 pipeline state, and event routing.
 
 Extensions run through core-controlled contracts and produce structured,
@@ -38,25 +38,25 @@ UI framework.
 
 The near-term priority is core contract stabilization, not a full plugin
 platform or app rewrite. Request identity and stale-event guards are now in
-place for scan, search, preview, refresh, and their direct-path `Location`
+place for ScanPathCompat, SearchNodeCompat, preview, refresh, and their direct-path `Location`
 entrypoints, and file operations now emit correlated operation progress,
 completion, and error events. App-facing errors now carry `ErrorKind`, stable
 `ErrorCode`, optional `ErrorTarget`, and a recoverability flag derived from the
 code. Core also emits structured `tracing` events when `CoreError` becomes
-`Event::Error`, leaving subscriber setup to the application. The project should
-next build on the new `Location` foundation by migrating provider addressing
-where it matters, then extend large-directory paging beyond LocalFs, settle
-extension output envelopes, and define the boundary between app-local config
-and future profile sync.
+`Event::Error`, leaving subscriber setup to the application. In `0.3.0`,
+Location-native result events use canonical names while legacy NodeId/FileNode
+result events are explicit `*Compat` variants. The project should next finish
+command naming consistency, then add provider context and timeout propagation
+before widening non-local provider or extension work.
 
-`0.2.3` hardens the additive `Location` contract for provider-aware addressing.
+`0.2.3` hardened the additive `Location` contract for provider-aware addressing.
 `LocationRef` now has explicit id-only, descriptor-only, and full modes instead
 of optional fields, and `LocationDescriptor` separates the provider root from
 ordered `LocationSegment` layers. `LocationId` hashes the root plus ordered
 segments, but not display text. `LocationRoute` now classifies descriptors as
 direct local paths, segmented locations, or unsupported provider routes, with a
 derived route cache in the registry. Direct local `Location` commands are wired
-through API routing for navigation, scan, search, preview, metadata, and
+through API routing for navigation, ScanPathCompat, SearchNodeCompat, preview, metadata, and
 extended metadata, and the actor tests now check cancellation, stale-result
 suppression, cache reuse, and refresh behavior for those paths. Local file
 listing now has explicit load options: default scans request a fast provider
@@ -64,19 +64,20 @@ page, metadata listings can be requested when size, timestamps, or permissions
 are needed, and snapshot callers can still request full or bounded
 post-pipeline results. Provider-level directory paging is now wired through
 `FsProvider::list_page`, `DirectoryCursor`, `DirectoryPageState`,
-`DirectoryPageLoaded`, and `DirectoryEntryPageLoaded`, with `LocalFs` as the
-first native implementation. Filter-only page requests for hidden-file and
-extension include/exclude filters now stay incremental instead of forcing full
-directory materialization. The default core composition now routes watcher
-events for watched roots into navigation invalidation, so current directory
-refreshes bypass stale scanner cache after external file changes. This does not
-yet replace public command/event
-`PathBuf` and `NodeId` surfaces; it strengthens the compatibility layer for
-that migration. The intent is for `Location` to become the bridge across local
-files, remote providers, virtual providers, extension-backed providers, and
-archives. Nested archive addresses can now be modeled as a provider root plus
-archive/member segments instead of forcing every layer into one path string.
-Archive navigation and wire-safe transport envelopes remain future work.
+`DirectoryPageLoaded` with `LocalFs` as the first native implementation.
+Filter-only page requests for hidden-file and extension include/exclude filters
+now stay incremental instead of forcing full directory materialization. The
+default core composition now routes watcher events for watched roots into
+navigation invalidation, so current directory refreshes bypass stale scanner
+cache after external file changes. Location-native read, WatchNodeCompat, write, preview,
+and metadata result events now occupy the canonical event names; legacy
+`PathBuf`, `NodeId`, and `FileNode` result events remain as explicit
+compatibility variants. Command names have not fully caught up yet. The intent
+is for `Location` to become the bridge across local files, remote providers,
+virtual providers, extension-backed providers, and archives. Nested archive
+addresses can now be modeled as a provider root plus archive/member segments
+instead of forcing every layer into one path string. Archive navigation and
+wire-safe transport envelopes remain future work.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

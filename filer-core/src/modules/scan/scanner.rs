@@ -205,7 +205,7 @@ impl Scanner {
                 send_or_warn(
                     &self.events_sender,
                     Event::from_request_error(error, session, request),
-                    "scan.location resolve",
+                    "scan resolve",
                 );
                 return;
             }
@@ -218,7 +218,7 @@ impl Scanner {
                 send_or_warn(
                     &self.events_sender,
                     Event::from_request_error(error, session, request),
-                    "scan.location route",
+                    "scan route",
                 );
                 return;
             }

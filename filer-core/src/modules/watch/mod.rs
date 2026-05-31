@@ -1,10 +1,10 @@
 //! Watch module — filesystem change monitoring.
 //!
 //! This module owns the Watcher actor and registers handlers for:
-//! - `watch` — watch a directory for changes
-//! - `watch.location` — watch a direct-local Location for changes
-//! - `watch.remove` — stop watching a directory
-//! - `watch.location.remove` — stop watching a direct-local Location
+//! - `watch` — watch a direct-local Location for changes
+//! - `watch.node.compat` — compatibility watch by NodeId
+//! - `watch.remove` — stop watching a direct-local Location
+//! - `watch.node.remove.compat` — compatibility unwatch by NodeId
 //! - `watch.session_remove` — stop all watches for a session
 //!
 //! `WatchModule::new` emits filesystem change events only. Use
@@ -55,16 +55,16 @@ impl Module for WatchModule {
 
         // ── Watch ────────────────────────────────────────────────────
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch", move |cmd, _ctx| {
-            if let Command::Watch(node, session) = cmd {
+        ctx.handlers.on("watch.node.compat", move |cmd, _ctx| {
+            if let Command::WatchNodeCompat { node, session } = cmd {
                 let _ = tx.send(WatchCommand::Watch(node, session));
             }
         });
 
         // ── Watch location ───────────────────────────────────────────
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch.location", move |cmd, _ctx| {
-            if let Command::WatchLocation {
+        ctx.handlers.on("watch", move |cmd, _ctx| {
+            if let Command::Watch {
                 location,
                 session,
                 request,
@@ -80,16 +80,17 @@ impl Module for WatchModule {
 
         // ── Unwatch ──────────────────────────────────────────────────
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch.remove", move |cmd, _ctx| {
-            if let Command::Unwatch(node) = cmd {
-                let _ = tx.send(WatchCommand::Unwatch(node));
-            }
-        });
+        ctx.handlers
+            .on("watch.node.remove.compat", move |cmd, _ctx| {
+                if let Command::UnwatchNodeCompat { node } = cmd {
+                    let _ = tx.send(WatchCommand::Unwatch(node));
+                }
+            });
 
         // ── Unwatch location ─────────────────────────────────────────
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch.location.remove", move |cmd, _ctx| {
-            if let Command::UnwatchLocation { location, session } = cmd {
+        ctx.handlers.on("watch.remove", move |cmd, _ctx| {
+            if let Command::Unwatch { location, session } = cmd {
                 let _ = tx.send(WatchCommand::UnwatchLocation { location, session });
             }
         });

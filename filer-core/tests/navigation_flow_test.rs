@@ -275,7 +275,7 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/home/user/docs"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -301,7 +301,7 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/empty"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -326,7 +326,7 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/data"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -368,7 +368,7 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Navigate into the child
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/parent/child"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -403,7 +403,7 @@ mod navigation_flow_tests {
         let rx = core.event_receiver();
 
         // Navigate to /a/b, go up, navigate further — no "Unknown session" error
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/a/b"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -444,7 +444,7 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // First navigate to root so the navigator has a current directory
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -489,7 +489,7 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/docs"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -523,7 +523,7 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/work"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -592,7 +592,7 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/dir_a"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -600,7 +600,7 @@ mod navigation_flow_tests {
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/dir_b"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -633,7 +633,7 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         for dir in &["/a", "/b", "/c"] {
-            core.send(Command::Navigate {
+            core.send(Command::NavigatePathCompat {
                 path: PathBuf::from(dir),
                 session: session,
                 request: filer_core::RequestId::new(),
@@ -669,7 +669,7 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Single navigation — no history to go back to
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/only"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -705,7 +705,7 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/alpha"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -713,7 +713,7 @@ mod navigation_flow_tests {
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/beta"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -805,13 +805,13 @@ mod navigation_flow_tests {
 
         assert_ne!(s1, s2);
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/s1"),
             session: s1,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/s2"),
             session: s2,
             request: filer_core::RequestId::new(),
@@ -849,13 +849,13 @@ mod navigation_flow_tests {
         };
 
         // Navigate both sessions
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/stay"),
             session: session_stay,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/gone"),
             session: session_gone,
             request: filer_core::RequestId::new(),
@@ -895,7 +895,7 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
         let rx = core.event_receiver();
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/snap"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -939,7 +939,7 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/x"),
             session: session,
             request: filer_core::RequestId::new(),
@@ -948,7 +948,7 @@ mod navigation_flow_tests {
         wait_for_directory_loaded(&core, session).await;
 
         let rx = core.event_receiver();
-        core.send(Command::Navigate {
+        core.send(Command::NavigatePathCompat {
             path: PathBuf::from("/y"),
             session: session,
             request: filer_core::RequestId::new(),

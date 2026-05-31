@@ -357,7 +357,7 @@ async fn stress_search_large_flat_dir() {
     let (session, rx) = handshake(&core).await;
     let root_id = core.registry().register(root);
 
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "target".to_string(),
         root: root_id,
         session,
@@ -410,7 +410,7 @@ async fn stress_search_deep_tree() {
     let (session, rx) = handshake(&core).await;
     let root_id = core.registry().register(PathBuf::from("/stress/deep"));
 
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "needle".to_string(),
         root: root_id,
         session,
@@ -452,7 +452,7 @@ async fn stress_search_wide_deep_tree() {
     let (session, rx) = handshake(&core).await;
     let root_id = core.registry().register(root);
 
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "match".to_string(),
         root: root_id,
         session,
@@ -513,7 +513,7 @@ async fn stress_concurrent_sessions() {
 
     // Fire off all searches at once
     for &session in &sessions {
-        core.send(Command::Search {
+        core.send(Command::SearchNodeCompat {
             query: "hit".to_string(),
             root: root_id,
             session,
@@ -592,7 +592,7 @@ async fn stress_rapid_cancel_restart() {
 
     // Rapid fire: search → cancel, repeated CYCLES times
     for _ in 0..CYCLES {
-        core.send(Command::Search {
+        core.send(Command::SearchNodeCompat {
             query: "f".to_string(),
             root: root_id,
             session,
@@ -607,7 +607,7 @@ async fn stress_rapid_cancel_restart() {
     while rx.try_recv().is_ok() {}
 
     // Final search must complete correctly without hangs or panics
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "f".to_string(),
         root: root_id,
         session,
@@ -667,7 +667,7 @@ async fn stress_all_filters_combined() {
 
     // ext:rs AND size:>1000 AND after:<base_ts>
     let query = format!("ext:rs size:>1000 after:{}", base_ts);
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query,
         root: root_id,
         session,
@@ -713,7 +713,7 @@ async fn stress_streaming_batch_accuracy() {
     let (session, rx) = handshake(&core).await;
     let root_id = core.registry().register(root);
 
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "item".to_string(),
         root: root_id,
         session,
@@ -850,14 +850,14 @@ async fn stress_session_isolation_under_cancellation() {
     let sd = create_session(&core, &rx).await;
 
     // Launch A and B, then immediately cancel them
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "doc".to_string(),
         root: root_id,
         session: sa,
         request: filer_core::RequestId::new(),
     })
     .unwrap();
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "doc".to_string(),
         root: root_id,
         session: sb,
@@ -868,14 +868,14 @@ async fn stress_session_isolation_under_cancellation() {
     core.send(Command::CancelSearch { session: sb }).unwrap();
 
     // Launch C and D — these must complete despite A/B cancellations
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "doc".to_string(),
         root: root_id,
         session: sc,
         request: filer_core::RequestId::new(),
     })
     .unwrap();
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "doc".to_string(),
         root: root_id,
         session: sd,
@@ -952,7 +952,7 @@ async fn stress_search_determinism() {
     let rx = core.event_receiver();
 
     let s1 = create_session(&core, &rx).await;
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "stable".to_string(),
         root: root_id,
         session: s1,
@@ -966,7 +966,7 @@ async fn stress_search_determinism() {
         .collect();
 
     let s2 = create_session(&core, &rx).await;
-    core.send(Command::Search {
+    core.send(Command::SearchNodeCompat {
         query: "stable".to_string(),
         root: root_id,
         session: s2,

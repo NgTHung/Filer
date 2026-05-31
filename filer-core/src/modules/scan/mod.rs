@@ -1,8 +1,9 @@
 //! Scan module — directory listing via pluggable `FsProvider`.
 //!
 //! This module owns the Scanner actor and registers handlers for:
-//! - `scan` — scan by path
-//! - `scan.node` — scan by NodeId
+//! - `scan` — scan by Location
+//! - `scan.path.compat` — compatibility scan by path
+//! - `scan.node.compat` — compatibility scan by NodeId
 //! - `scan.cancel` — cancel active scan
 //!
 //! # Swapping the scanner
@@ -75,8 +76,8 @@ impl Module for ScanModule {
 
         // ── Register scan command handlers ───────────────────────────
         let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan", move |cmd, _ctx| {
-            if let Command::Scan {
+        ctx.handlers.on("scan.path.compat", move |cmd, _ctx| {
+            if let Command::ScanPathCompat {
                 path,
                 session,
                 pipeline,
@@ -93,14 +94,14 @@ impl Module for ScanModule {
                         load,
                         request,
                     },
-                    "scan",
+                    "scan.path.compat",
                 );
             }
         });
 
         let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan.location", move |cmd, _ctx| {
-            if let Command::ScanLocation {
+        ctx.handlers.on("scan", move |cmd, _ctx| {
+            if let Command::Scan {
                 location,
                 session,
                 pipeline,
@@ -117,14 +118,14 @@ impl Module for ScanModule {
                         load,
                         request,
                     },
-                    "scan.location",
+                    "scan",
                 );
             }
         });
 
         let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan.node", move |cmd, _ctx| {
-            if let Command::ScanNode {
+        ctx.handlers.on("scan.node.compat", move |cmd, _ctx| {
+            if let Command::ScanNodeCompat {
                 node,
                 session,
                 pipeline,
@@ -141,7 +142,7 @@ impl Module for ScanModule {
                         load,
                         request,
                     },
-                    "scan.node",
+                    "scan.node.compat",
                 );
             }
         });

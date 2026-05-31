@@ -1,8 +1,9 @@
 //! Navigation module — directory browsing, history, and state management.
 //!
 //! This module owns the Navigator actor and registers handlers for:
-//! - `navigate` — navigate to path
-//! - `navigate.node` — navigate to NodeId
+//! - `navigate` — navigate to Location
+//! - `navigate.path.compat` — compatibility navigation by path
+//! - `navigate.node.compat` — compatibility navigation by NodeId
 //! - `navigate.up` — go to parent
 //! - `navigate.back` — go back in history
 //! - `navigate.refresh` — refresh current directory
@@ -70,8 +71,8 @@ impl Module for NavigationModule {
 
         // ── Navigate to path ─────────────────────────────────────────
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate", move |cmd, _ctx| {
-            if let Command::Navigate {
+        ctx.handlers.on("navigate.path.compat", move |cmd, _ctx| {
+            if let Command::NavigatePathCompat {
                 path,
                 session,
                 request,
@@ -84,15 +85,15 @@ impl Module for NavigationModule {
                         path,
                         request,
                     },
-                    "navigate",
+                    "navigate.path.compat",
                 );
             }
         });
 
         // ── Navigate to location ─────────────────────────────────────
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.location", move |cmd, _ctx| {
-            if let Command::NavigateLocation {
+        ctx.handlers.on("navigate", move |cmd, _ctx| {
+            if let Command::Navigate {
                 location,
                 session,
                 request,
@@ -105,15 +106,15 @@ impl Module for NavigationModule {
                         location,
                         request,
                     },
-                    "navigate.location",
+                    "navigate",
                 );
             }
         });
 
         // ── Navigate to node ─────────────────────────────────────────
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.node", move |cmd, _ctx| {
-            if let Command::NavigateToNode {
+        ctx.handlers.on("navigate.node.compat", move |cmd, _ctx| {
+            if let Command::NavigateNodeCompat {
                 node,
                 session,
                 request,
@@ -126,7 +127,7 @@ impl Module for NavigationModule {
                         node,
                         request,
                     },
-                    "navigate.node",
+                    "navigate.node.compat",
                 );
             }
         });

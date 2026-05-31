@@ -1,10 +1,13 @@
 //! Preview module — file preview generation and metadata loading.
 //!
 //! This module owns the Previewer actor and registers handlers for:
-//! - `preview.load` — generate preview for a file
+//! - `preview.load` — generate preview for a Location
+//! - `preview.load.node.compat` — compatibility preview by NodeId
 //! - `preview.cancel` — cancel ongoing preview
-//! - `metadata.load` — load basic metadata
-//! - `metadata.extended` — load extended metadata (EXIF, ID3, etc.)
+//! - `metadata.load` — load basic metadata for a Location
+//! - `metadata.load.node.compat` — compatibility metadata by NodeId
+//! - `metadata.extended` — load extended metadata for a Location
+//! - `metadata.extended.node.compat` — compatibility extended metadata by NodeId
 
 pub mod previewer;
 
@@ -32,26 +35,27 @@ impl Module for PreviewModule {
 
         // ── Load preview ─────────────────────────────────────────────
         let tx = preview_tx.clone();
-        ctx.handlers.on("preview.load", move |cmd, _ctx| {
-            if let Command::LoadPreview {
-                id,
-                options,
-                session,
-                request,
-            } = cmd
-            {
-                let _ = tx.send(PreviewCommand::Generate {
-                    path: id,
+        ctx.handlers
+            .on("preview.load.node.compat", move |cmd, _ctx| {
+                if let Command::LoadPreviewNodeCompat {
+                    id,
                     options,
                     session,
                     request,
-                });
-            }
-        });
+                } = cmd
+                {
+                    let _ = tx.send(PreviewCommand::Generate {
+                        path: id,
+                        options,
+                        session,
+                        request,
+                    });
+                }
+            });
 
         let tx = preview_tx.clone();
-        ctx.handlers.on("preview.load.location", move |cmd, _ctx| {
-            if let Command::LoadPreviewLocation {
+        ctx.handlers.on("preview.load", move |cmd, _ctx| {
+            if let Command::LoadPreview {
                 location,
                 options,
                 session,
@@ -77,20 +81,21 @@ impl Module for PreviewModule {
 
         // ── Load metadata ────────────────────────────────────────────
         let tx = preview_tx.clone();
-        ctx.handlers.on("metadata.load", move |cmd, _ctx| {
-            if let Command::LoadMetadata {
-                node,
-                session,
-                request,
-            } = cmd
-            {
-                let _ = tx.send(PreviewCommand::LoadMetadata(node, session, request));
-            }
-        });
+        ctx.handlers
+            .on("metadata.load.node.compat", move |cmd, _ctx| {
+                if let Command::LoadMetadataNodeCompat {
+                    node,
+                    session,
+                    request,
+                } = cmd
+                {
+                    let _ = tx.send(PreviewCommand::LoadMetadata(node, session, request));
+                }
+            });
 
         let tx = preview_tx.clone();
-        ctx.handlers.on("metadata.load.location", move |cmd, _ctx| {
-            if let Command::LoadMetadataLocation {
+        ctx.handlers.on("metadata.load", move |cmd, _ctx| {
+            if let Command::LoadMetadata {
                 location,
                 session,
                 request,
@@ -104,31 +109,31 @@ impl Module for PreviewModule {
 
         // ── Load extended metadata ───────────────────────────────────
         let tx = preview_tx.clone();
-        ctx.handlers.on("metadata.extended", move |cmd, _ctx| {
-            if let Command::LoadExtendedMetadata {
-                node,
-                session,
-                request,
-            } = cmd
-            {
-                let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
-            }
-        });
-
-        let tx = preview_tx.clone();
         ctx.handlers
-            .on("metadata.extended.location", move |cmd, _ctx| {
-                if let Command::LoadExtendedMetadataLocation {
-                    location,
+            .on("metadata.extended.node.compat", move |cmd, _ctx| {
+                if let Command::LoadExtendedMetadataNodeCompat {
+                    node,
                     session,
                     request,
                 } = cmd
                 {
-                    let _ = tx.send(PreviewCommand::LoadExtendedMetadataLocation(
-                        location, session, request,
-                    ));
+                    let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
                 }
             });
+
+        let tx = preview_tx.clone();
+        ctx.handlers.on("metadata.extended", move |cmd, _ctx| {
+            if let Command::LoadExtendedMetadata {
+                location,
+                session,
+                request,
+            } = cmd
+            {
+                let _ = tx.send(PreviewCommand::LoadExtendedMetadataLocation(
+                    location, session, request,
+                ));
+            }
+        });
 
         // ── Session cleanup hook ─────────────────────────────────────
         let tx = preview_tx.clone();
