@@ -178,7 +178,7 @@ async fn test_scanner_processes_scan_command() {
     assert_eq!(calls[0], PathBuf::from("/test"));
 
     match event {
-        Event::DirectoryLoaded { groups, .. } => {
+        Event::DirectoryLoadedCompat { groups, .. } => {
             let total: usize = groups.groups.iter().map(|g| g.nodes.len()).sum();
             assert_eq!(total, 2);
         }

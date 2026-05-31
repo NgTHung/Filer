@@ -185,29 +185,29 @@ async fn wait_for_directory_loaded(
             panic!("timed out waiting for directory load event");
         }
         match timeout(Duration::from_millis(100), rx.recv_async()).await {
+            Ok(Ok(Event::DirectoryLoadedCompat {
+                path,
+                groups,
+                session,
+                ..
+            })) => {
+                if session == expected_session {
+                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
+                    return (path, total);
+                }
+            }
+            Ok(Ok(Event::DirectoryPageLoadedCompat {
+                path,
+                groups,
+                session,
+                ..
+            })) => {
+                if session == expected_session {
+                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
+                    return (path, total);
+                }
+            }
             Ok(Ok(Event::DirectoryLoaded {
-                path,
-                groups,
-                session,
-                ..
-            })) => {
-                if session == expected_session {
-                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
-                    return (path, total);
-                }
-            }
-            Ok(Ok(Event::DirectoryPageLoaded {
-                path,
-                groups,
-                session,
-                ..
-            })) => {
-                if session == expected_session {
-                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
-                    return (path, total);
-                }
-            }
-            Ok(Ok(Event::DirectoryEntriesLoaded {
                 parent,
                 groups,
                 session,
@@ -220,7 +220,7 @@ async fn wait_for_directory_loaded(
                     return (path, total);
                 }
             }
-            Ok(Ok(Event::DirectoryEntryPageLoaded {
+            Ok(Ok(Event::DirectoryPageLoaded {
                 parent,
                 groups,
                 session,
@@ -257,9 +257,9 @@ fn path_from_location_ref(location: &LocationRef) -> Option<PathBuf> {
 mod navigation_flow_tests {
     use super::*;
 
-    // ── Navigate(session, path) → DirectoryLoaded ─────────────────────────
+    // ── Navigate(session, path) → DirectoryLoadedCompat ─────────────────────────
 
-    /// Navigate to a known directory → `DirectoryLoaded` event is emitted
+    /// Navigate to a known directory → `DirectoryLoadedCompat` event is emitted
     /// with the correct session and path.
     #[tokio::test]
     async fn test_navigate_emits_directory_loaded() {
@@ -291,7 +291,7 @@ mod navigation_flow_tests {
         assert_eq!(count, 2, "should have received 2 files");
     }
 
-    /// Navigate to an empty directory should still emit `DirectoryLoaded`
+    /// Navigate to an empty directory should still emit `DirectoryLoadedCompat`
     /// (with 0 results — not an error).
     #[tokio::test]
     async fn test_navigate_to_empty_directory() {
@@ -313,7 +313,7 @@ mod navigation_flow_tests {
         assert_eq!(count, 0);
     }
 
-    /// The `SessionId` on the `DirectoryLoaded` event must match the session
+    /// The `SessionId` on the `DirectoryLoadedCompat` event must match the session
     /// that issued the `Navigate` command.
     #[tokio::test]
     async fn test_navigate_event_carries_correct_session() {
@@ -337,7 +337,7 @@ mod navigation_flow_tests {
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         loop {
             assert!(tokio::time::Instant::now() <= deadline, "timeout");
-            if let Ok(Ok(Event::DirectoryPageLoaded {
+            if let Ok(Ok(Event::DirectoryPageLoadedCompat {
                 session: ev_session,
                 ..
             })) = timeout(Duration::from_millis(100), rx.recv_async()).await
@@ -354,7 +354,7 @@ mod navigation_flow_tests {
     // ── NavigateUp preserves session ──────────────────────────────────────
 
     /// Navigate into a subdirectory, then `NavigateUp` → we land back in the parent
-    /// and get a fresh `DirectoryLoaded` for the parent path.
+    /// and get a fresh `DirectoryLoadedCompat` for the parent path.
     #[tokio::test]
     async fn test_navigate_up_returns_to_parent() {
         let provider = MockProvider::new();
@@ -480,7 +480,7 @@ mod navigation_flow_tests {
 
     // ── Refresh current directory ─────────────────────────────────────────
 
-    /// Refresh re-scans the current directory and emits `DirectoryLoaded`.
+    /// Refresh re-scans the current directory and emits `DirectoryLoadedCompat`.
     #[tokio::test]
     async fn test_refresh_emits_directory_loaded() {
         let provider = MockProvider::new();
@@ -576,7 +576,7 @@ mod navigation_flow_tests {
 
     // ── Back / Forward with session ───────────────────────────────────────
 
-    /// Navigate A → B, then NavigateBack → we should get DirectoryLoaded for A.
+    /// Navigate A → B, then NavigateBack → we should get DirectoryLoadedCompat for A.
     #[tokio::test]
     async fn test_navigate_back_returns_to_previous() {
         let provider = MockProvider::new();
@@ -739,13 +739,13 @@ mod navigation_flow_tests {
                 "timeout waiting for back events"
             );
             match timeout(Duration::from_millis(100), rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryPageLoaded {
+                Ok(Ok(Event::DirectoryPageLoadedCompat {
                     path, session: s, ..
                 })) if s == session => {
                     assert_eq!(path, PathBuf::from("/alpha"), "back should land on /alpha");
                     dir_loaded = true;
                 }
-                Ok(Ok(Event::DirectoryEntryPageLoaded {
+                Ok(Ok(Event::DirectoryPageLoaded {
                     parent, session: s, ..
                 })) if s == session => {
                     assert_eq!(
@@ -776,7 +776,7 @@ mod navigation_flow_tests {
     // ── Session isolation ─────────────────────────────────────────────────
 
     /// Two independent sessions navigating different paths must each receive
-    /// their own `DirectoryLoaded` events with the correct session tag.
+    /// their own `DirectoryLoadedCompat` events with the correct session tag.
     #[tokio::test]
     async fn test_two_sessions_navigate_independently() {
         let provider = MockProvider::new();
@@ -970,7 +970,7 @@ mod navigation_flow_tests {
                         break;
                     }
                 }
-                Ok(Ok(Event::DirectoryPageLoaded { session: s, .. })) if s == session => {}
+                Ok(Ok(Event::DirectoryPageLoadedCompat { session: s, .. })) if s == session => {}
                 _ => {}
             }
         }

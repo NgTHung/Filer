@@ -290,22 +290,22 @@ impl Watcher {
                         path = %change.path.display(),
                         kind = ?change.kind,
                         session = ?session,
-                        "Watcher dispatching FsChanged"
+                        "Watcher dispatching FsChangedCompat"
                     );
                     let evt = if let Some(location) = &entry.location {
-                        Event::FsChangedLocation {
+                        Event::FsChanged {
                             location: location.clone(),
                             kind: change.kind.clone(),
                             session: *session,
                         }
                     } else {
-                        Event::FsChanged {
+                        Event::FsChangedCompat {
                             node: entry.node.expect("legacy watch entry must have node"),
                             kind: change.kind.clone(),
                             session: *session,
                         }
                     };
-                    send_or_warn(&self.events, evt, "emit FsChanged");
+                    send_or_warn(&self.events, evt, "emit FsChangedCompat");
                 }
 
                 if let (Some(refresh_tx), Some(node)) = (&self.refresh_tx, entry.node) {

@@ -414,7 +414,7 @@ impl Scanner {
             if let Some(parent) = parent_location {
                 send_or_warn_async(
                     events,
-                    Event::DirectoryEntriesLoaded {
+                    Event::DirectoryLoaded {
                         parent,
                         groups: crate::pipeline::GroupedEntries::from_grouped_nodes(
                             groups, registry,
@@ -429,7 +429,7 @@ impl Scanner {
             } else {
                 send_or_warn_async(
                     events,
-                    Event::DirectoryLoaded {
+                    Event::DirectoryLoadedCompat {
                         parent: parent_id,
                         path: path.to_path_buf(),
                         groups,
@@ -763,7 +763,7 @@ impl Scanner {
         if let Some(parent) = parent_location {
             send_or_warn_async(
                 events,
-                Event::DirectoryEntriesLoaded {
+                Event::DirectoryLoaded {
                     parent,
                     groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
                     load,
@@ -776,7 +776,7 @@ impl Scanner {
         } else {
             send_or_warn_async(
                 events,
-                Event::DirectoryLoaded {
+                Event::DirectoryLoadedCompat {
                     parent: parent_id,
                     path: path.to_path_buf(),
                     groups,
@@ -1080,7 +1080,7 @@ impl Scanner {
         if let Some(parent) = parent_location {
             send_or_warn_async(
                 events,
-                Event::DirectoryEntryPageLoaded {
+                Event::DirectoryPageLoaded {
                     parent,
                     groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
                     page: page_state.clone(),
@@ -1093,7 +1093,7 @@ impl Scanner {
         } else {
             send_or_warn_async(
                 events,
-                Event::DirectoryPageLoaded {
+                Event::DirectoryPageLoadedCompat {
                     parent: parent_id,
                     path: path.to_path_buf(),
                     groups,

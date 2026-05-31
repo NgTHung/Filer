@@ -26,7 +26,7 @@ pub enum Event {
     /// contains a single group with an empty label (degenerate flat list).
     /// The UI iterates `.groups` uniformly — one unnamed group renders
     /// as a flat list, multiple named groups render section headers.
-    DirectoryLoaded {
+    DirectoryLoadedCompat {
         parent: NodeId,
         path: PathBuf, // Keep path for display in breadcrumb
         groups: GroupedNodes,
@@ -36,7 +36,7 @@ pub enum Event {
     },
 
     /// Location-native directory contents loaded with provider-aware locations.
-    DirectoryEntriesLoaded {
+    DirectoryLoaded {
         parent: LocationRef,
         groups: GroupedEntries,
         load: DirectoryLoadState,
@@ -45,7 +45,7 @@ pub enum Event {
     },
 
     /// Compatibility directory page loaded by `NodeId`.
-    DirectoryPageLoaded {
+    DirectoryPageLoadedCompat {
         parent: NodeId,
         path: PathBuf,
         groups: GroupedNodes,
@@ -55,7 +55,7 @@ pub enum Event {
     },
 
     /// Location-native directory page loaded with provider-aware locations.
-    DirectoryEntryPageLoaded {
+    DirectoryPageLoaded {
         parent: LocationRef,
         groups: GroupedEntries,
         page: DirectoryPageState,
@@ -73,7 +73,7 @@ pub enum Event {
     FilesBatch(Vec<FileNode>, SessionId),
 
     /// Compatibility search results by `FileNode`.
-    SearchResults {
+    SearchResultsCompat {
         matches: Vec<FileNode>,
         complete: bool,
         session: SessionId,
@@ -81,7 +81,7 @@ pub enum Event {
     },
 
     /// Location-native search results by `NodeEntry`.
-    SearchEntryResults {
+    SearchResults {
         matches: Vec<NodeEntry>,
         complete: bool,
         session: SessionId,
@@ -89,21 +89,21 @@ pub enum Event {
     },
 
     /// Future provider-capability work: filesystem change by `NodeId`.
-    FsChanged {
+    FsChangedCompat {
         node: NodeId,
         kind: FsChangeKind,
         session: SessionId,
     },
 
     /// Location-native filesystem change.
-    FsChangedLocation {
+    FsChanged {
         location: LocationRef,
         kind: FsChangeKind,
         session: SessionId,
     },
 
     /// Compatibility operation completion by affected `NodeId`s.
-    OperationComplete {
+    OperationCompleteCompat {
         operation_id: OperationId,
         operation: OperationKind,
         success: bool,
@@ -112,7 +112,7 @@ pub enum Event {
     },
 
     /// Location-native operation completion by affected locations.
-    OperationCompleteLocation {
+    OperationComplete {
         operation_id: OperationId,
         operation: OperationKind,
         success: bool,
@@ -133,32 +133,64 @@ pub enum Event {
     },
 
     /// Compatibility metadata result by `NodeId`.
-    MetadataLoaded {
+    MetadataLoadedCompat {
         node: NodeId,
         meta: NodeMeta,
         session: SessionId,
         request: RequestId,
     },
 
+    /// Location-native metadata result.
+    MetadataLoaded {
+        location: LocationRef,
+        meta: NodeMeta,
+        session: SessionId,
+        request: RequestId,
+    },
+
     /// Compatibility extended metadata result by `NodeId`.
-    ExtendedMetadataLoaded {
+    ExtendedMetadataLoadedCompat {
         node: NodeId,
         extended: ExtendedMetadata,
         session: SessionId,
         request: RequestId,
     },
 
+    /// Location-native extended metadata result.
+    ExtendedMetadataLoaded {
+        location: LocationRef,
+        extended: ExtendedMetadata,
+        session: SessionId,
+        request: RequestId,
+    },
+
     /// Compatibility preview result by `NodeId`.
-    PreviewReady {
+    PreviewReadyCompat {
         node: NodeId,
         preview: PreviewData,
         session: SessionId,
         request: RequestId,
     },
 
+    /// Location-native preview result.
+    PreviewReady {
+        location: LocationRef,
+        preview: PreviewData,
+        session: SessionId,
+        request: RequestId,
+    },
+
     /// Compatibility preview failure by `NodeId`.
-    PreviewFailed {
+    PreviewFailedCompat {
         node: NodeId,
+        reason: String,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Location-native preview failure.
+    PreviewFailed {
+        location: LocationRef,
         reason: String,
         session: SessionId,
         request: RequestId,

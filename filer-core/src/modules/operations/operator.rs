@@ -1087,14 +1087,14 @@ fn operation_complete_event(
     completion: CompletionShape,
 ) -> Event {
     match completion {
-        CompletionShape::Node => Event::OperationComplete {
+        CompletionShape::Node => Event::OperationCompleteCompat {
             operation_id: operation,
             operation: kind,
             success: true,
             affected,
             session,
         },
-        CompletionShape::Location => Event::OperationCompleteLocation {
+        CompletionShape::Location => Event::OperationComplete {
             operation_id: operation,
             operation: kind,
             success: true,

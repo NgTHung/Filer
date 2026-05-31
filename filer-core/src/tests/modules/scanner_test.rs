@@ -267,14 +267,14 @@ mod scanner_cache_tests {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryLoaded {
+                Ok(Ok(Event::DirectoryLoadedCompat {
                     session: s,
                     groups,
                     load,
                     ..
                 })) if s == session => return (groups, load),
                 Ok(Ok(_)) => {}
-                _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
+                _ => panic!("timed out or channel closed waiting for DirectoryLoadedCompat"),
             }
         }
     }
@@ -295,14 +295,14 @@ mod scanner_cache_tests {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryEntriesLoaded {
+                Ok(Ok(Event::DirectoryLoaded {
                     session: s,
                     groups,
                     load,
                     ..
                 })) if s == session => return (groups, load),
                 Ok(Ok(_)) => {}
-                _ => panic!("timed out or channel closed waiting for DirectoryEntriesLoaded"),
+                _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
             }
         }
     }
@@ -326,7 +326,7 @@ mod scanner_cache_tests {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryPageLoaded {
+                Ok(Ok(Event::DirectoryPageLoadedCompat {
                     session: s,
                     groups,
                     page,
@@ -334,7 +334,7 @@ mod scanner_cache_tests {
                     ..
                 })) if s == session => return (groups, page, request),
                 Ok(Ok(_)) => {}
-                _ => panic!("timed out or channel closed waiting for DirectoryPageLoaded"),
+                _ => panic!("timed out or channel closed waiting for DirectoryPageLoadedCompat"),
             }
         }
     }
@@ -359,7 +359,7 @@ mod scanner_cache_tests {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryEntryPageLoaded {
+                Ok(Ok(Event::DirectoryPageLoaded {
                     session: s,
                     groups,
                     page,
@@ -367,7 +367,7 @@ mod scanner_cache_tests {
                     ..
                 })) if s == session => return (groups, page, request),
                 Ok(Ok(_)) => {}
-                _ => panic!("timed out or channel closed waiting for DirectoryEntryPageLoaded"),
+                _ => panic!("timed out or channel closed waiting for DirectoryPageLoaded"),
             }
         }
     }
@@ -377,13 +377,13 @@ mod scanner_cache_tests {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(event @ Event::DirectoryLoaded { session: s, .. })) if s == session => {
+                Ok(Ok(event @ Event::DirectoryLoadedCompat { session: s, .. })) if s == session => {
                     events.push(event);
                     events.extend(collect_for_duration(evt_rx, Duration::from_millis(50)).await);
                     return events;
                 }
                 Ok(Ok(event)) => events.push(event),
-                _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
+                _ => panic!("timed out or channel closed waiting for DirectoryLoadedCompat"),
             }
         }
     }
@@ -489,10 +489,10 @@ mod scanner_cache_tests {
             )
         }));
         assert!(!events.iter().any(|event| {
-            matches!(event, Event::DirectoryLoaded { session: s, .. } if *s == session)
+            matches!(event, Event::DirectoryLoadedCompat { session: s, .. } if *s == session)
         }));
         assert!(!events.iter().any(|event| {
-            matches!(event, Event::DirectoryPageLoaded { session: s, .. } if *s == session)
+            matches!(event, Event::DirectoryPageLoadedCompat { session: s, .. } if *s == session)
         }));
         assert!(!events.iter().any(|event| {
             matches!(
@@ -547,10 +547,10 @@ mod scanner_cache_tests {
             )
         }));
         assert!(!events.iter().any(|event| {
-            matches!(event, Event::DirectoryEntryPageLoaded { session: s, .. } if *s == session)
+            matches!(event, Event::DirectoryPageLoaded { session: s, .. } if *s == session)
         }));
         assert!(!events.iter().any(|event| {
-            matches!(event, Event::DirectoryEntriesLoaded { session: s, .. } if *s == session)
+            matches!(event, Event::DirectoryLoaded { session: s, .. } if *s == session)
         }));
         assert!(!events.iter().any(|event| {
             matches!(
@@ -1188,7 +1188,7 @@ mod scanner_cache_tests {
             )
         }));
         assert!(!events.iter().any(|event| {
-            matches!(event, Event::DirectoryPageLoaded { session: s, .. } if *s == session)
+            matches!(event, Event::DirectoryPageLoadedCompat { session: s, .. } if *s == session)
         }));
         assert!(!events.iter().any(|event| {
             matches!(
@@ -1878,7 +1878,7 @@ mod scanner_cache_tests {
         assert_eq!(
             provider.get_list_calls().len(),
             1,
-            "second ScanLocation should hit cache but still emit DirectoryEntriesLoaded"
+            "second ScanLocation should hit cache but still emit DirectoryLoaded"
         );
     }
 
@@ -2265,7 +2265,7 @@ mod scanner_cache_tests {
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryEntriesLoaded {
+            if let Event::DirectoryLoaded {
                 session: s,
                 request,
                 ..
@@ -2282,7 +2282,7 @@ mod scanner_cache_tests {
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale ScanLocation request should not emit DirectoryEntriesLoaded"
+            "stale ScanLocation request should not emit DirectoryLoaded"
         );
     }
 
@@ -2327,7 +2327,7 @@ mod scanner_cache_tests {
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryLoaded {
+            if let Event::DirectoryLoadedCompat {
                 session: s,
                 request,
                 ..
@@ -2344,7 +2344,7 @@ mod scanner_cache_tests {
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale scan request should not emit DirectoryLoaded"
+            "stale scan request should not emit DirectoryLoadedCompat"
         );
     }
 
@@ -2389,7 +2389,7 @@ mod scanner_cache_tests {
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryPageLoaded {
+            if let Event::DirectoryPageLoadedCompat {
                 session: s,
                 request,
                 ..
@@ -2406,7 +2406,7 @@ mod scanner_cache_tests {
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale scan request should not emit DirectoryPageLoaded"
+            "stale scan request should not emit DirectoryPageLoadedCompat"
         );
     }
 
@@ -2454,7 +2454,7 @@ mod scanner_cache_tests {
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryPageLoaded {
+            if let Event::DirectoryPageLoadedCompat {
                 session: s,
                 request,
                 ..
@@ -2471,7 +2471,7 @@ mod scanner_cache_tests {
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale filtered scan request should not emit DirectoryPageLoaded"
+            "stale filtered scan request should not emit DirectoryPageLoadedCompat"
         );
     }
 
@@ -2521,7 +2521,7 @@ mod scanner_cache_tests {
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryEntryPageLoaded {
+            if let Event::DirectoryPageLoaded {
                 session: s,
                 request,
                 ..
@@ -2538,7 +2538,7 @@ mod scanner_cache_tests {
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale ScanLocation request should not emit DirectoryEntryPageLoaded"
+            "stale ScanLocation request should not emit DirectoryPageLoaded"
         );
     }
 
@@ -2596,7 +2596,7 @@ mod scanner_cache_tests {
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryEntryPageLoaded {
+            if let Event::DirectoryPageLoaded {
                 session: s,
                 request,
                 ..
@@ -2613,7 +2613,7 @@ mod scanner_cache_tests {
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale filtered ScanLocation request should not emit DirectoryEntryPageLoaded"
+            "stale filtered ScanLocation request should not emit DirectoryPageLoaded"
         );
     }
 }

@@ -156,6 +156,8 @@ async fn wait_for_preview(evt_rx: &Receiver<Event>, session: SessionId) -> Event
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            Ok(Ok(e @ Event::PreviewReadyCompat { session: s, .. })) if s == session => return e,
+            Ok(Ok(e @ Event::PreviewFailedCompat { session: s, .. })) if s == session => return e,
             Ok(Ok(e @ Event::PreviewReady { session: s, .. })) if s == session => return e,
             Ok(Ok(e @ Event::PreviewFailed { session: s, .. })) if s == session => return e,
             Ok(Ok(e @ Event::Error { session: s, .. })) if s == session => return e,
@@ -224,7 +226,7 @@ mod cache_tests {
             .unwrap();
 
         let event = wait_for_preview(&evt_rx, session).await;
-        assert!(matches!(event, Event::PreviewReady { .. }));
+        assert!(matches!(event, Event::PreviewReadyCompat { .. }));
         assert_eq!(
             mock.calls(),
             0,
@@ -252,7 +254,7 @@ mod cache_tests {
             .unwrap();
 
         let event = wait_for_preview(&evt_rx, session).await;
-        assert!(matches!(event, Event::PreviewReady { .. }));
+        assert!(matches!(event, Event::PreviewReadyCompat { .. }));
         assert_eq!(mock.calls(), 1);
     }
 
@@ -326,15 +328,15 @@ mod cancel_tests {
         let session_events: Vec<_> = events
             .iter()
             .filter(|e| match e {
-                Event::PreviewReady { session: s, .. }
-                | Event::PreviewFailed { session: s, .. } => *s == session,
+                Event::PreviewReadyCompat { session: s, .. }
+                | Event::PreviewFailedCompat { session: s, .. } => *s == session,
                 _ => false,
             })
             .collect();
 
         assert!(
             session_events.is_empty(),
-            "Cancelled preview should not emit PreviewReady or PreviewFailed"
+            "Cancelled preview should not emit PreviewReadyCompat or PreviewFailedCompat"
         );
     }
 
@@ -370,15 +372,15 @@ mod cancel_tests {
         let session_events: Vec<_> = events
             .iter()
             .filter(|e| match e {
-                Event::PreviewReady { session: s, .. }
-                | Event::PreviewFailed { session: s, .. } => *s == session,
+                Event::PreviewReadyCompat { session: s, .. }
+                | Event::PreviewFailedCompat { session: s, .. } => *s == session,
                 _ => false,
             })
             .collect();
 
         assert!(
             session_events.is_empty(),
-            "Cancelled Location preview should not emit PreviewReady or PreviewFailed"
+            "Cancelled Location preview should not emit PreviewReadyCompat or PreviewFailedCompat"
         );
     }
 }
@@ -420,7 +422,7 @@ mod stale_event_tests {
         let mut ready_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::PreviewReady {
+            if let Event::PreviewReadyCompat {
                 session: s,
                 request,
                 ..
@@ -437,7 +439,7 @@ mod stale_event_tests {
         assert_eq!(ready_requests, vec![fresh_request]);
         assert!(
             !ready_requests.contains(&stale_request),
-            "stale preview request should not emit PreviewReady"
+            "stale preview request should not emit PreviewReadyCompat"
         );
     }
 

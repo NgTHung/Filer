@@ -293,7 +293,7 @@ fn search_results_event(
     location_output: bool,
 ) -> Event {
     if location_output {
-        Event::SearchEntryResults {
+        Event::SearchResults {
             matches: matches
                 .into_iter()
                 .map(|node| crate::NodeEntry::from_file_node(node, registry))
@@ -303,7 +303,7 @@ fn search_results_event(
             request,
         }
     } else {
-        Event::SearchResults {
+        Event::SearchResultsCompat {
             matches,
             complete,
             session,

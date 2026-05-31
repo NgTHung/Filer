@@ -99,7 +99,7 @@ mod handle_tests {
         .unwrap();
 
         // The command should be accepted and routed (no Error event for invalid session)
-        // We may receive DirectoryLoaded or another event, but NOT an "Unknown session" error
+        // We may receive DirectoryLoadedCompat or another event, but NOT an "Unknown session" error
         // Give time for routing
         tokio::time::sleep(Duration::from_millis(50)).await;
 

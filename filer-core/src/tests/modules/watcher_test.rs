@@ -131,7 +131,7 @@ async fn test_watch_location_emits_location_event_and_refresh_invalidation() {
     assert!(events.iter().any(|event| {
         matches!(
             event,
-            Event::FsChangedLocation {
+            Event::FsChanged {
                 location,
                 kind: FsChangeKind::Created,
                 session: SessionId(1),
@@ -233,7 +233,7 @@ async fn test_watch_command() {
     let has_create_event = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChanged {
+            Event::FsChangedCompat {
                 kind: FsChangeKind::Created,
                 session,
                 ..
@@ -241,7 +241,10 @@ async fn test_watch_command() {
         )
     });
 
-    assert!(has_create_event, "Should receive FsChanged::Created event");
+    assert!(
+        has_create_event,
+        "Should receive FsChangedCompat::Created event"
+    );
 
     // Cleanup
     cmd_tx.send(WatchCommand::UnwatchAll).unwrap();
@@ -328,13 +331,13 @@ async fn test_fs_changed_create() {
     let has_create = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChanged {
+            Event::FsChangedCompat {
                 kind: FsChangeKind::Created,
                 ..
             }
         )
     });
-    assert!(has_create, "Should receive FsChanged::Created");
+    assert!(has_create, "Should receive FsChangedCompat::Created");
 
     // Cleanup
     drop(cmd_tx);
@@ -377,13 +380,13 @@ async fn test_fs_changed_modify() {
     let has_modify = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChanged {
+            Event::FsChangedCompat {
                 kind: FsChangeKind::Modified,
                 ..
             }
         )
     });
-    assert!(has_modify, "Should receive FsChanged::Modified");
+    assert!(has_modify, "Should receive FsChangedCompat::Modified");
 
     // Cleanup
     drop(cmd_tx);
@@ -426,13 +429,13 @@ async fn test_fs_changed_delete() {
     let has_delete = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChanged {
+            Event::FsChangedCompat {
                 kind: FsChangeKind::Deleted,
                 ..
             }
         )
     });
-    assert!(has_delete, "Should receive FsChanged::Deleted");
+    assert!(has_delete, "Should receive FsChangedCompat::Deleted");
 
     // Cleanup
     drop(cmd_tx);
@@ -575,12 +578,12 @@ async fn test_multiple_sessions_watching_same_path() {
     // Both sessions should receive the event
     let session1_events: Vec<_> = events
         .iter()
-        .filter(|e| matches!(e, Event::FsChanged { session, .. } if *session == SessionId(1)))
+        .filter(|e| matches!(e, Event::FsChangedCompat { session, .. } if *session == SessionId(1)))
         .collect();
 
     let session2_events: Vec<_> = events
         .iter()
-        .filter(|e| matches!(e, Event::FsChanged { session, .. } if *session == SessionId(2)))
+        .filter(|e| matches!(e, Event::FsChangedCompat { session, .. } if *session == SessionId(2)))
         .collect();
 
     assert!(
@@ -673,10 +676,10 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
     assert_eq!(
         events
             .iter()
-            .filter(|event| matches!(event, Event::FsChanged { .. }))
+            .filter(|event| matches!(event, Event::FsChangedCompat { .. }))
             .count(),
         2,
-        "both watching sessions should still receive FsChanged"
+        "both watching sessions should still receive FsChangedCompat"
     );
 
     let invalidate = timeout(Duration::from_millis(100), nav_rx.recv_async())
@@ -775,7 +778,7 @@ async fn test_watcher_refresh_sink_ignores_unrelated_sibling_paths() {
 
     assert!(
         collect_available_events(&evt_rx).is_empty(),
-        "sibling paths should not produce FsChanged for the watched node"
+        "sibling paths should not produce FsChangedCompat for the watched node"
     );
     assert!(
         nav_rx.try_recv().is_err(),

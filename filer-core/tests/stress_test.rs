@@ -294,7 +294,7 @@ async fn create_session(core: &FilerCore, rx: &Receiver<Event>) -> SessionId {
     }
 }
 
-/// Drain SearchResults until `complete: true`, returning all matched files.
+/// Drain SearchResultsCompat until `complete: true`, returning all matched files.
 async fn drain_search(
     rx: &Receiver<Event>,
     session: SessionId,
@@ -304,7 +304,7 @@ async fn drain_search(
     let limit = tokio::time::Instant::now() + deadline;
     loop {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults {
+            Ok(Ok(Event::SearchResultsCompat {
                 matches,
                 complete,
                 session: s,
@@ -530,7 +530,7 @@ async fn stress_concurrent_sessions() {
 
     while completed < SESSIONS {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults {
+            Ok(Ok(Event::SearchResultsCompat {
                 matches,
                 complete,
                 session,
@@ -728,7 +728,7 @@ async fn stress_streaming_batch_accuracy() {
 
     loop {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults {
+            Ok(Ok(Event::SearchResultsCompat {
                 matches,
                 complete,
                 session: s,
@@ -809,7 +809,7 @@ async fn stress_scanner_large_dir() {
         .expect("event channel closed");
 
     let total = match event {
-        Event::DirectoryLoaded { groups, .. } => {
+        Event::DirectoryLoadedCompat { groups, .. } => {
             groups.groups.iter().map(|g| g.nodes.len()).sum::<usize>()
         }
         Event::FilesBatch(nodes, _) => nodes.len(),
@@ -892,7 +892,7 @@ async fn stress_session_isolation_under_cancellation() {
 
     while !done_c || !done_d {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults {
+            Ok(Ok(Event::SearchResultsCompat {
                 matches,
                 complete,
                 session,

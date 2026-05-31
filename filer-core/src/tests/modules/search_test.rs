@@ -203,11 +203,38 @@ impl FsProvider for MockProvider {
 
 // ── Test Helpers ─────────────────────────────────────────────────────────────
 
-/// Collect all SearchResults batches until `complete: true`.
+/// Collect all SearchResultsCompat batches until `complete: true`.
 async fn wait_for_search_complete(
     evt_rx: &Receiver<Event>,
     expected_session: SessionId,
 ) -> Vec<FileNode> {
+    let mut matches = Vec::new();
+    let deadline = tokio::time::Instant::now() + TIMEOUT;
+    loop {
+        match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            Ok(Ok(Event::SearchResultsCompat {
+                matches: batch,
+                complete,
+                session,
+                ..
+            })) if session == expected_session => {
+                matches.extend(batch);
+                if complete {
+                    return matches;
+                }
+            }
+            Ok(Ok(_)) => { /* skip non-search events */ }
+            Ok(Err(_)) => panic!("event channel closed while waiting for SearchResultsCompat"),
+            Err(_) => panic!("timed out waiting for SearchResultsCompat (complete: true)"),
+        }
+    }
+}
+
+/// Collect all SearchResults batches until `complete: true`.
+async fn wait_for_search_entries_complete(
+    evt_rx: &Receiver<Event>,
+    expected_session: SessionId,
+) -> Vec<crate::NodeEntry> {
     let mut matches = Vec::new();
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
@@ -223,36 +250,9 @@ async fn wait_for_search_complete(
                     return matches;
                 }
             }
-            Ok(Ok(_)) => { /* skip non-search events */ }
+            Ok(Ok(_)) => {}
             Ok(Err(_)) => panic!("event channel closed while waiting for SearchResults"),
             Err(_) => panic!("timed out waiting for SearchResults (complete: true)"),
-        }
-    }
-}
-
-/// Collect all SearchEntryResults batches until `complete: true`.
-async fn wait_for_search_entries_complete(
-    evt_rx: &Receiver<Event>,
-    expected_session: SessionId,
-) -> Vec<crate::NodeEntry> {
-    let mut matches = Vec::new();
-    let deadline = tokio::time::Instant::now() + TIMEOUT;
-    loop {
-        match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(Event::SearchEntryResults {
-                matches: batch,
-                complete,
-                session,
-                ..
-            })) if session == expected_session => {
-                matches.extend(batch);
-                if complete {
-                    return matches;
-                }
-            }
-            Ok(Ok(_)) => {}
-            Ok(Err(_)) => panic!("event channel closed while waiting for SearchEntryResults"),
-            Err(_) => panic!("timed out waiting for SearchEntryResults (complete: true)"),
         }
     }
 }
@@ -1423,14 +1423,14 @@ mod searcher_limit_tests {
             })
             .unwrap();
 
-        // Count the number of SearchResults events
+        // Count the number of SearchResultsCompat events
         let mut batch_count = 0;
         let mut total_matches = 0;
         let deadline = tokio::time::Instant::now() + TIMEOUT;
 
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::SearchResults {
+                Ok(Ok(Event::SearchResultsCompat {
                     matches,
                     complete,
                     session: s,
@@ -1503,7 +1503,7 @@ mod searcher_cancellation_tests {
         let total_matches: usize = events
             .iter()
             .filter_map(|e| {
-                if let Event::SearchResults {
+                if let Event::SearchResultsCompat {
                     matches,
                     session: s,
                     ..
@@ -1563,7 +1563,7 @@ mod searcher_cancellation_tests {
         let total_matches: usize = events
             .iter()
             .filter_map(|e| {
-                if let Event::SearchEntryResults {
+                if let Event::SearchResults {
                     matches,
                     session: s,
                     ..
@@ -1707,7 +1707,7 @@ mod searcher_cancellation_tests {
         let mut result_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::SearchResults {
+            if let Event::SearchResultsCompat {
                 session: s,
                 request,
                 complete,
@@ -1725,7 +1725,7 @@ mod searcher_cancellation_tests {
         assert_eq!(result_requests, vec![fresh_request]);
         assert!(
             !result_requests.contains(&stale_request),
-            "stale search request should not emit SearchResults"
+            "stale search request should not emit SearchResultsCompat"
         );
     }
 
@@ -1767,7 +1767,7 @@ mod searcher_cancellation_tests {
         let mut result_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::SearchEntryResults {
+            if let Event::SearchResults {
                 session: s,
                 request,
                 complete,
@@ -1785,7 +1785,7 @@ mod searcher_cancellation_tests {
         assert_eq!(result_requests, vec![fresh_request]);
         assert!(
             !result_requests.contains(&stale_request),
-            "stale SearchLocation request should not emit SearchEntryResults"
+            "stale SearchLocation request should not emit SearchResults"
         );
     }
 }
@@ -1820,13 +1820,13 @@ mod searcher_error_tests {
                 Ok(Ok(Event::Error { session: s, .. })) if s == session => {
                     return; // Test passes — got expected error
                 }
-                Ok(Ok(Event::SearchResults {
+                Ok(Ok(Event::SearchResultsCompat {
                     session: s,
                     complete,
                     ..
                 })) if s == session => {
                     if complete {
-                        panic!("got SearchResults instead of Error for unresolvable root");
+                        panic!("got SearchResultsCompat instead of Error for unresolvable root");
                     }
                 }
                 Ok(Ok(_)) => {}
@@ -1916,14 +1916,14 @@ mod searcher_session_tests {
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::SearchResults {
+                Ok(Ok(Event::SearchResultsCompat {
                     session: s,
                     complete,
                     ..
                 })) => {
                     assert_eq!(
                         s, session,
-                        "SearchResults should carry the correct session ID"
+                        "SearchResultsCompat should carry the correct session ID"
                     );
                     if complete {
                         return;

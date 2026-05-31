@@ -354,7 +354,7 @@ fn register(registry: &NodeRegistry, path: impl Into<PathBuf>) -> NodeId {
     registry.clone().register(path.into())
 }
 
-/// Collect all events until an OperationComplete or Error is received.
+/// Collect all events until an OperationCompleteCompat or Error is received.
 /// Returns (progress_events, final_event).
 async fn wait_for_completion(
     evt_rx: &Receiver<Event>,
@@ -364,8 +364,8 @@ async fn wait_for_completion(
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(event @ Event::OperationComplete { session, .. }))
-            | Ok(Ok(event @ Event::OperationCompleteLocation { session, .. }))
+            Ok(Ok(event @ Event::OperationCompleteCompat { session, .. }))
+            | Ok(Ok(event @ Event::OperationComplete { session, .. }))
                 if session == expected_session =>
             {
                 return (progress_events, event);
@@ -376,8 +376,8 @@ async fn wait_for_completion(
             Ok(Ok(event)) => {
                 progress_events.push(event);
             }
-            Ok(Err(_)) => panic!("event channel closed while waiting for OperationComplete"),
-            Err(_) => panic!("timed out waiting for OperationComplete"),
+            Ok(Err(_)) => panic!("event channel closed while waiting for OperationCompleteCompat"),
+            Err(_) => panic!("timed out waiting for OperationCompleteCompat"),
         }
     }
 }
@@ -503,7 +503,7 @@ mod copy_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation_id: id,
                 operation,
                 success,
@@ -517,7 +517,7 @@ mod copy_tests {
                 assert!(!affected.is_empty());
                 assert_eq!(s, session);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         let copies = provider.get_copy_calls();
@@ -604,7 +604,7 @@ mod copy_tests {
         }
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation,
                 operation_id: id,
                 success,
@@ -614,7 +614,7 @@ mod copy_tests {
                 assert_eq!(id, operation_id);
                 assert!(success);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         // All 3 files should have been copied
@@ -664,13 +664,13 @@ mod copy_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 success, affected, ..
             } => {
                 assert!(success);
                 assert_eq!(affected.len(), 2);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         let copies = provider.get_copy_calls();
@@ -817,13 +817,13 @@ mod move_tests {
         }));
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Move));
                 assert!(success);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         // Should have used rename, not copy
@@ -871,13 +871,13 @@ mod move_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Move));
                 assert!(success);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         // Should have fallen back to copy + delete
@@ -957,7 +957,7 @@ mod delete_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation,
                 success,
                 affected,
@@ -969,7 +969,7 @@ mod delete_tests {
                 assert_eq!(affected.len(), 1);
                 assert_eq!(s, session);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         let deletes = provider.get_delete_calls();
@@ -1002,13 +1002,13 @@ mod delete_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Delete));
                 assert!(success);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         // Should have called trash_fn, not provider.delete()
@@ -1051,13 +1051,13 @@ mod delete_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 success, affected, ..
             } => {
                 assert!(success);
                 assert_eq!(affected.len(), 3);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         assert_eq!(provider.get_delete_calls().len(), 3);
@@ -1125,13 +1125,13 @@ mod rename_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Rename));
                 assert!(success);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         let renames = provider.get_rename_calls();
@@ -1168,13 +1168,13 @@ mod rename_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Rename));
                 assert!(success);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         let renames = provider.get_rename_calls();
@@ -1249,7 +1249,7 @@ mod create_folder_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation,
                 success,
                 affected,
@@ -1261,7 +1261,7 @@ mod create_folder_tests {
                 assert!(!affected.is_empty());
                 assert_eq!(s, session);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         let mkdirs = provider.get_mkdir_calls();
@@ -1336,7 +1336,7 @@ mod create_file_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationComplete {
+            Event::OperationCompleteCompat {
                 operation,
                 success,
                 affected,
@@ -1348,7 +1348,7 @@ mod create_file_tests {
                 assert!(!affected.is_empty());
                 assert_eq!(s, session);
             }
-            other => panic!("Expected OperationComplete, got: {other:?}"),
+            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
         }
 
         let writes = provider.get_write_calls();
@@ -1424,7 +1424,7 @@ mod location_operation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteLocation {
+            Event::OperationComplete {
                 operation_id,
                 operation: kind,
                 success,
@@ -1438,7 +1438,7 @@ mod location_operation_tests {
                 assert_eq!(affected.len(), 1);
                 assert!(matches!(affected[0], LocationRef::Full { .. }));
             }
-            other => panic!("Expected OperationCompleteLocation, got {other:?}"),
+            other => panic!("Expected OperationComplete, got {other:?}"),
         }
 
         let writes = provider.get_write_calls();
@@ -1552,7 +1552,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationComplete { success: true, .. }
+            Event::OperationCompleteCompat { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
     }
@@ -1581,7 +1581,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationComplete { success: true, .. }
+            Event::OperationCompleteCompat { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
     }
@@ -1615,7 +1615,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationComplete { success: true, .. }
+            Event::OperationCompleteCompat { success: true, .. }
         ));
         assert_cached(&cache, src_parent);
         assert_invalidated(&cache, dst_parent);
@@ -1649,7 +1649,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationComplete { success: true, .. }
+            Event::OperationCompleteCompat { success: true, .. }
         ));
         assert_invalidated(&cache, src_parent);
         assert_invalidated(&cache, dst_parent);
@@ -1685,7 +1685,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationComplete { success: true, .. }
+            Event::OperationCompleteCompat { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
         assert_invalidated(&cache, dir);
@@ -1724,7 +1724,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationComplete { success: true, .. }
+            Event::OperationCompleteCompat { success: true, .. }
         ));
         assert_invalidated(&cache, src_parent);
         assert_invalidated(&cache, dst_parent);
@@ -1760,7 +1760,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationComplete { success: true, .. }
+            Event::OperationCompleteCompat { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
         assert_invalidated(&cache, dir);
@@ -1847,13 +1847,13 @@ mod cancel_tests {
         tokio::task::yield_now().await;
         cmd_tx.send(OpsCommand::Cancel(session)).unwrap();
 
-        // Collect events — should NOT get a successful OperationComplete
+        // Collect events — should NOT get a successful OperationCompleteCompat
         let events = collect_events_for(&evt_rx, Duration::from_millis(500)).await;
 
         let has_successful_complete = events.iter().any(|e| {
             matches!(
                 e,
-                Event::OperationComplete {
+                Event::OperationCompleteCompat {
                     success: true,
                     session: s,
                     ..
@@ -1863,7 +1863,7 @@ mod cancel_tests {
 
         assert!(
             !has_successful_complete,
-            "Cancelled copy should not emit OperationComplete with success"
+            "Cancelled copy should not emit OperationCompleteCompat with success"
         );
 
         // Should have copied fewer than 50 files
@@ -1922,7 +1922,7 @@ mod cancel_tests {
         let has_successful_complete = events.iter().any(|e| {
             matches!(
                 e,
-                Event::OperationComplete {
+                Event::OperationCompleteCompat {
                     operation_id,
                     success: true,
                     session: s,

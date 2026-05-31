@@ -1,7 +1,7 @@
 //! Search Module Integration Tests
 //!
 //! These tests exercise the full command→event pipeline for search:
-//!   FilerCore (Command::Search) → Router → SearchModule → Searcher → Event::SearchResults
+//!   FilerCore (Command::Search) → Router → SearchModule → Searcher → Event::SearchResultsCompat
 //!
 //! The module stack used in every test:
 //!   ScanModule::new(MockProvider) + SearchModule::new(MockProvider)
@@ -168,7 +168,7 @@ async fn wait_for_search_complete(
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(Event::SearchResults {
+            Ok(Ok(Event::SearchResultsCompat {
                 matches: batch,
                 complete,
                 session,
@@ -180,8 +180,8 @@ async fn wait_for_search_complete(
                 }
             }
             Ok(Ok(_)) => {}
-            Ok(Err(_)) => panic!("event channel closed while waiting for SearchResults"),
-            Err(_) => panic!("timed out waiting for SearchResults (complete: true)"),
+            Ok(Err(_)) => panic!("event channel closed while waiting for SearchResultsCompat"),
+            Err(_) => panic!("timed out waiting for SearchResultsCompat (complete: true)"),
         }
     }
 }
