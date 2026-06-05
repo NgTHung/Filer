@@ -5,7 +5,7 @@ The `.tasks/` directory contains a structured task tracking system that manages 
 Task tracking provides:
 - **Hierarchical organization** with epics and subtasks
 - **Status tracking** across the development lifecycle
-- **Metadata** like priority, assignee, and whitepaper references
+- **Metadata** like priority, tags, and whitepaper references
 - **Validation** via a CLI tool to ensure consistency
 
 ### Directory Structure
@@ -137,16 +137,16 @@ Ecosystem-specific tasks (future):
 |--------|--------|
 | `PLUG` | Plugin system |
 
-## Task Validator CLI
+## Task CLI
 
-The `task-validator` binary provides utilities for managing and validating tasks.
+The `filer-task` binary provides utilities for managing and validating tasks.
 
 ### List Tasks
 
 View all tasks sorted by status:
 
 ```bash
-cargo run --bin task-validator -- list --sort-by status
+cargo run -p filer-task -- list --sort-by status
 ```
 
 Output groups tasks by status (To Do, In Progress, Done):
@@ -170,13 +170,13 @@ Filter by specific criteria:
 
 ```bash
 # By status
-cargo run --bin task-validator -- list --status "In Progress"
+cargo run -p filer-task -- list --status "In Progress"
 
 # By priority
-cargo run --bin task-validator -- list --priority High
+cargo run -p filer-task -- list --priority High
 
-# By assignee
-cargo run --bin task-validator -- list --assignee james
+# By tag
+cargo run -p filer-task -- list --tag location
 ```
 
 ### Validate Schema
@@ -184,7 +184,7 @@ cargo run --bin task-validator -- list --assignee james
 Ensure all task files conform to the schema:
 
 ```bash
-cargo run --bin task-validator -- validate
+cargo run -p filer-task -- validate
 ```
 
 This checks:
@@ -204,7 +204,7 @@ When code has been merged, tasks should be reviewed and updated:
 
 1. **List current task state**:
    ```bash
-   cargo run --bin task-validator -- list --sort-by status
+   cargo run -p filer-task -- list --sort-by status
    ```
 
 2. **For each potential completed feature**:
@@ -224,7 +224,7 @@ When code has been merged, tasks should be reviewed and updated:
 
 4. **Validate changes**:
    ```bash
-   cargo run --bin task-validator -- validate
+   cargo run -p filer-task -- validate
    ```
 
 #### Tip
@@ -240,7 +240,7 @@ When unsure if a task is complete, leave it as `In Progress` rather than prematu
 6. Write task description and acceptance criteria
 7. Validate:
    ```bash
-   cargo run --bin task-validator -- validate
+   cargo run -p filer-task -- validate
    ```
 
 ### Updating Task Status
@@ -381,7 +381,7 @@ Renumber conflicting tasks and update any parent references.
 Tasks with `parent` fields referencing non-existent tasks:
 
 ```bash
-cargo run --bin task-validator -- validate
+cargo run -p filer-task -- validate
 ```
 
 Will report broken parent references. Either remove the parent field or create the missing epic.

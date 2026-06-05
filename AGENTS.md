@@ -91,7 +91,7 @@ comprehensive, delve, utilize, harness, realm, tapestry, unlock, revolutionary, 
 
 ## Task Tracking
 
-Spacedrive uses a file-based task system in `/.tasks/` to track features, epics, and development work. All task files are version-controlled alongside the code.
+Filer uses a file-based task system in `/.tasks/` to track features, epics, and development work. All task files are version-controlled alongside the code.
 
 ### When to Create Tasks
 
