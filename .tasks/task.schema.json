@@ -55,6 +55,10 @@
 			"type": "string",
 			"pattern": "^[A-Z]+-[0-9]+$"
 		},
+		"milestone": {
+			"type": "string",
+			"pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+		},
 		"depends_on": {
 			"type": "array",
 			"items": {

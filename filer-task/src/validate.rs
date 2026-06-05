@@ -7,8 +7,9 @@ use std::{
 use crate::{
     error::{TaskError, ValidationError},
     frontmatter::parse_metadata,
-    model::{Priority, SortBy, Task, TaskStatus},
-    repo::{DOMAINS, TASK_DIR, find_repo_root, read_task_files},
+    markdown::{has_section, has_unchecked_checklist_item},
+    model::{Priority, SortBy, Task, TaskStatus, TaskType},
+    repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR, find_repo_root, read_task_files},
 };
 
 const CORE_PREFIXES: &[&str] = &[
@@ -34,7 +35,9 @@ pub struct TaskFilter {
     pub priority: Option<Priority>,
     pub domain: Option<String>,
     pub parent: Option<String>,
+    pub milestone: Option<String>,
     pub tag: Option<String>,
+    pub blocked: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -110,9 +113,14 @@ pub fn filter_tasks(mut tasks: Vec<Task>, filter: &TaskFilter, sort_by: SortBy) 
                 .as_ref()
                 .is_none_or(|parent| task.metadata.parent.as_ref() == Some(parent))
             && filter
+                .milestone
+                .as_ref()
+                .is_none_or(|milestone| task.metadata.milestone.as_ref() == Some(milestone))
+            && filter
                 .tag
                 .as_ref()
                 .is_none_or(|tag| task.metadata.tags.iter().any(|value| value == tag))
+            && (!filter.blocked || task.metadata.status == TaskStatus::Blocked)
     });
 
     match sort_by {
@@ -217,8 +225,15 @@ fn validate_single_task(root: &Path, task: &Task, errors: &mut Vec<ValidationErr
 
 fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) {
     let metadata = &task.metadata;
+    if metadata.status == TaskStatus::Blocked && !has_section(content, "Blocked Reason") {
+        errors.push(ValidationError::at(
+            &task.path,
+            "blocked tasks must include ## Blocked Reason",
+        ));
+    }
+
     if matches!(metadata.status, TaskStatus::Deferred | TaskStatus::Obsolete) {
-        if !has_heading(content, "Rationale") {
+        if !has_section(content, "Rationale") {
             errors.push(ValidationError::at(
                 &task.path,
                 "deferred and obsolete tasks must include ## Rationale",
@@ -228,19 +243,35 @@ fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) 
     }
 
     match metadata.task_type {
-        crate::model::TaskType::Milestone | crate::model::TaskType::Epic => {
-            if !has_heading(content, "Exit Criteria") {
+        TaskType::Milestone | TaskType::Epic => {
+            if !has_section(content, "Exit Criteria") {
                 errors.push(ValidationError::at(
                     &task.path,
                     "milestone and epic tasks must include ## Exit Criteria",
                 ));
             }
+            if metadata.status == TaskStatus::Done
+                && has_unchecked_checklist_item(content, "Exit Criteria")
+            {
+                errors.push(ValidationError::at(
+                    &task.path,
+                    "done tasks must not have unchecked ## Exit Criteria items",
+                ));
+            }
         }
         _ => {
-            if !has_heading(content, "Acceptance Criteria") {
+            if !has_section(content, "Acceptance Criteria") {
                 errors.push(ValidationError::at(
                     &task.path,
                     "tasks must include ## Acceptance Criteria",
+                ));
+            }
+            if metadata.status == TaskStatus::Done
+                && has_unchecked_checklist_item(content, "Acceptance Criteria")
+            {
+                errors.push(ValidationError::at(
+                    &task.path,
+                    "done tasks must not have unchecked ## Acceptance Criteria items",
                 ));
             }
         }
@@ -260,10 +291,12 @@ fn validate_path(root: &Path, task: &Task, errors: &mut Vec<ValidationError>) {
     let mut parts = relative.components();
     let task_dir = parts.next().and_then(|part| part.as_os_str().to_str());
     let domain = parts.next().and_then(|part| part.as_os_str().to_str());
-    if task_dir != Some(TASK_DIR) || !domain.is_some_and(|value| DOMAINS.contains(&value)) {
+    let valid_domain =
+        domain.is_some_and(|value| DOMAINS.contains(&value) || value == MILESTONE_DOMAIN);
+    if task_dir != Some(TASK_DIR) || !valid_domain {
         errors.push(ValidationError::at(
             path,
-            "task file must live under .tasks/core, .tasks/app, or .tasks/ecosystem",
+            "task file must live under .tasks/core, .tasks/app, .tasks/ecosystem, or .tasks/milestones",
         ));
     }
 
@@ -285,10 +318,22 @@ fn validate_path(root: &Path, task: &Task, errors: &mut Vec<ValidationError>) {
         .split_once('-')
         .map(|(prefix, _)| prefix)
         .unwrap_or("");
-    if !allowed_prefixes(&task.domain).contains(&prefix) {
+    if prefix == "MILESTONE" && task.domain != MILESTONE_DOMAIN {
+        errors.push(ValidationError::at(
+            path,
+            "MILESTONE prefix is only allowed under .tasks/milestones",
+        ));
+    } else if !allowed_prefixes(&task.domain).contains(&prefix) {
         errors.push(ValidationError::at(
             path,
             format!("prefix {prefix} is not allowed for {} tasks", task.domain),
+        ));
+    }
+
+    if task.metadata.task_type == TaskType::Milestone && task.domain != MILESTONE_DOMAIN {
+        errors.push(ValidationError::at(
+            path,
+            "Milestone tasks must live under .tasks/milestones",
         ));
     }
 }
@@ -330,7 +375,46 @@ fn validate_cross_references(tasks: &[Task], errors: &mut Vec<ValidationError>) 
         }
     }
 
+    validate_milestone_references(tasks, errors);
+
     validate_dependency_cycles(tasks, errors);
+}
+
+fn validate_milestone_references(tasks: &[Task], errors: &mut Vec<ValidationError>) {
+    let mut milestone_counts: HashMap<&str, usize> = HashMap::new();
+    for task in tasks {
+        if task.metadata.task_type == TaskType::Milestone {
+            if let Some(milestone) = &task.metadata.milestone {
+                *milestone_counts.entry(milestone.as_str()).or_default() += 1;
+            } else {
+                errors.push(ValidationError::at(
+                    &task.path,
+                    "milestone tasks must include milestone",
+                ));
+            }
+        }
+    }
+
+    for task in tasks {
+        let Some(milestone) = &task.metadata.milestone else {
+            continue;
+        };
+        match milestone_counts
+            .get(milestone.as_str())
+            .copied()
+            .unwrap_or(0)
+        {
+            1 => {}
+            0 => errors.push(ValidationError::at(
+                &task.path,
+                format!("milestone {milestone} does not reference an existing milestone task"),
+            )),
+            _ => errors.push(ValidationError::at(
+                &task.path,
+                format!("milestone {milestone} references multiple milestone tasks"),
+            )),
+        }
+    }
 }
 
 fn validate_dependency_cycles(tasks: &[Task], errors: &mut Vec<ValidationError>) {
@@ -399,6 +483,7 @@ fn allowed_prefixes(domain: &str) -> &'static [&'static str] {
         "core" => CORE_PREFIXES,
         "app" => APP_PREFIXES,
         "ecosystem" => ECOSYSTEM_PREFIXES,
+        "milestones" => &["MILESTONE"],
         _ => &[],
     }
 }
@@ -442,13 +527,6 @@ fn is_valid_iso_date(value: &str) -> bool {
 
 fn is_leap_year(year: u16) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
-}
-
-fn has_heading(content: &str, heading: &str) -> bool {
-    let expected = format!("## {heading}");
-    content
-        .lines()
-        .any(|line| line.trim_end_matches('\r').trim() == expected)
 }
 
 fn status_order(status: TaskStatus) -> u8 {
@@ -628,7 +706,9 @@ mod tests {
                 priority: Some(Priority::Medium),
                 domain: Some("core".to_string()),
                 parent: Some("CORE-001".to_string()),
+                milestone: None,
                 tag: Some("provider".to_string()),
+                blocked: false,
             },
             SortBy::Id,
         );
@@ -677,9 +757,11 @@ mod tests {
     #[test]
     fn validate_requires_exit_criteria_for_milestones() {
         let temp = task_repo();
+        fs::create_dir_all(temp.path().join(".tasks/milestones"))
+            .expect("milestone task dir should exist");
         fs::write(
-            temp.path().join(".tasks/core/CORE-000-core-contracts.md"),
-            "---\nid: CORE-000\ntitle: Core contracts\nstatus: To Do\npriority: High\ntype: Milestone\n---\n",
+            temp.path().join(".tasks/milestones/MILESTONE-000-core-contracts.md"),
+            "---\nid: MILESTONE-000\ntitle: Core contracts\nstatus: To Do\npriority: High\ntype: Milestone\nmilestone: \"0.3.0\"\n---\n",
         )
         .expect("task should be written");
 
@@ -689,6 +771,133 @@ mod tests {
             error
                 .message
                 .contains("milestone and epic tasks must include ## Exit Criteria")
+        }));
+    }
+
+    #[test]
+    fn validate_accepts_project_milestone_references() {
+        let temp = task_repo();
+        write_milestone(temp.path(), "MILESTONE-003", "0.3.0");
+        write_task(
+            temp.path(),
+            "core/CORE-042-timeout-propagation.md",
+            "CORE-042",
+            "Timeout propagation",
+            "To Do",
+            "High",
+            "milestone: \"0.3.0\"\n",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should validate");
+
+        assert!(report.errors.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_missing_milestone_declaration() {
+        let temp = task_repo();
+        write_task(
+            temp.path(),
+            "core/CORE-042-timeout-propagation.md",
+            "CORE-042",
+            "Timeout propagation",
+            "To Do",
+            "High",
+            "milestone: \"0.3.0\"\n",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("milestone 0.3.0 does not reference an existing milestone task")
+        }));
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_milestone_declarations() {
+        let temp = task_repo();
+        write_milestone(temp.path(), "MILESTONE-003", "0.3.0");
+        write_milestone(temp.path(), "MILESTONE-004", "0.3.0");
+        write_task(
+            temp.path(),
+            "core/CORE-042-timeout-propagation.md",
+            "CORE-042",
+            "Timeout propagation",
+            "To Do",
+            "High",
+            "milestone: \"0.3.0\"\n",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("milestone 0.3.0 references multiple milestone tasks")
+        }));
+    }
+
+    #[test]
+    fn validate_rejects_milestone_prefix_outside_milestones_dir() {
+        let temp = task_repo();
+        fs::write(
+            temp.path().join(".tasks/core/MILESTONE-003-core-contracts.md"),
+            "---\nid: MILESTONE-003\ntitle: Core contracts\nstatus: To Do\npriority: High\ntype: Feature\n---\n\n## Acceptance Criteria\n\n- [ ] Works\n",
+        )
+        .expect("task should be written");
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("MILESTONE prefix is only allowed under .tasks/milestones")
+        }));
+    }
+
+    #[test]
+    fn validate_rejects_blocked_tasks_without_reason() {
+        let temp = task_repo();
+        write_task(
+            temp.path(),
+            "core/CORE-042-timeout-propagation.md",
+            "CORE-042",
+            "Timeout propagation",
+            "Blocked",
+            "High",
+            "",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("blocked tasks must include ## Blocked Reason")
+        }));
+    }
+
+    #[test]
+    fn validate_rejects_done_tasks_with_unchecked_acceptance() {
+        let temp = task_repo();
+        write_task(
+            temp.path(),
+            "core/CORE-042-timeout-propagation.md",
+            "CORE-042",
+            "Timeout propagation",
+            "Done",
+            "High",
+            "",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("done tasks must not have unchecked ## Acceptance Criteria items")
         }));
     }
 
@@ -839,6 +1048,22 @@ mod tests {
         fs::write(temp.path().join(".tasks/task.schema.json"), "{}")
             .expect("schema should be written");
         temp
+    }
+
+    fn write_milestone(root: &Path, id: &str, milestone: &str) {
+        let path = root
+            .join(".tasks/milestones")
+            .join(format!("{id}-project-milestone.md"));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("task parent dir should exist");
+        }
+        fs::write(
+            path,
+            format!(
+                "---\nid: {id}\ntitle: Project milestone\nstatus: To Do\npriority: High\ntype: Milestone\nmilestone: \"{milestone}\"\n---\n\n## Exit Criteria\n\n- [ ] Finished\n"
+            ),
+        )
+        .expect("milestone should be written");
     }
 
     fn write_task(

@@ -50,6 +50,7 @@ pub struct TaskMetadata {
     #[serde(rename = "type")]
     pub task_type: TaskType,
     pub parent: Option<String>,
+    pub milestone: Option<String>,
     #[serde(default)]
     pub depends_on: Vec<String>,
     #[serde(default)]

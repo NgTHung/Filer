@@ -15,6 +15,8 @@
 pub mod cli;
 pub mod error;
 pub mod frontmatter;
+pub mod lifecycle;
+pub mod markdown;
 pub mod model;
 pub mod repo;
 pub mod validate;

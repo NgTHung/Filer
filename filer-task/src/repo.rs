@@ -8,6 +8,7 @@ use crate::error::TaskError;
 pub const TASK_DIR: &str = ".tasks";
 pub const TASK_SCHEMA: &str = "task.schema.json";
 pub const DOMAINS: &[&str] = &["core", "app", "ecosystem"];
+pub const MILESTONE_DOMAIN: &str = "milestones";
 
 pub fn find_repo_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskError> {
     let start = start.as_ref();
@@ -32,7 +33,7 @@ pub fn find_repo_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskError> {
 
 pub fn read_task_files(root: &Path) -> Result<Vec<PathBuf>, TaskError> {
     let mut files = Vec::new();
-    for domain in DOMAINS {
+    for domain in DOMAINS.iter().copied().chain([MILESTONE_DOMAIN]) {
         let dir = root.join(TASK_DIR).join(domain);
         if !dir.exists() {
             continue;

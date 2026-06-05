@@ -7,17 +7,19 @@ Use these commands before and after task changes:
 ```bash
 cargo run -p filer-task -- validate
 cargo run -p filer-task -- list
+cargo run -p filer-task -- summary
 cargo run -p filer-task -- list --format json
 ```
 
 ## Task Files
 
-Tasks live under `.tasks/core`, `.tasks/app`, or `.tasks/ecosystem`.
+Tasks live under `.tasks/core`, `.tasks/app`, or `.tasks/ecosystem`. Project milestones live under `.tasks/milestones`.
 
 File names must start with the task ID:
 
 ```text
 .tasks/core/CORE-001-location-routing.md
+.tasks/milestones/MILESTONE-003-core-contract-stabilization.md
 ```
 
 Every task uses frontmatter followed by markdown body sections:
@@ -30,11 +32,26 @@ status: To Do
 priority: High
 type: Feature
 parent: CORE-000
+milestone: "0.3.0"
 depends_on: [CORE-000]
 rules: [CORE-LIBRARY, PROVIDER-ACCESS]
 risk: High
 impact: Touches public command and event routing.
 tags: [core, location]
+last_updated: 2026-06-05
+---
+```
+
+Milestone tasks are project references, not domain-local IDs. A milestone file uses a normal task ID with the `MILESTONE` prefix and stores the shared milestone value in `milestone`:
+
+```yaml
+---
+id: MILESTONE-003
+title: Core contract stabilization
+status: In Progress
+priority: High
+type: Milestone
+milestone: "0.3.0"
 last_updated: 2026-06-05
 ---
 ```
@@ -68,6 +85,7 @@ Optional fields:
 | Field | Purpose |
 | --- | --- |
 | `parent` | Parent task ID for hierarchy |
+| `milestone` | Project milestone value, for example `0.3.0` |
 | `depends_on` | Task IDs that must exist and must not form cycles |
 | `rules` | Architecture rule IDs from `docs/architecture/invariants.md` |
 | `risk` | `High`, `Medium`, or `Low` |
@@ -98,6 +116,14 @@ All other active task types must include:
 ## Rationale
 ```
 
+`Blocked` tasks must include:
+
+```markdown
+## Blocked Reason
+```
+
+`Done` tasks must not have unchecked checklist items in `## Acceptance Criteria` or `## Exit Criteria`.
+
 ## Prefixes
 
 Prefixes are fixed by domain so invalid IDs are caught early.
@@ -114,6 +140,10 @@ Ecosystem prefixes:
 
 `PLUG`, `EXT`, `THEME`, `PROFILE`, `PROVIDER`
 
+Milestone prefixes:
+
+`MILESTONE`, only under `.tasks/milestones`
+
 ## Validation
 
 `cargo run -p filer-task -- validate` checks:
@@ -123,11 +153,14 @@ Ecosystem prefixes:
 - File names start with the task ID.
 - Prefixes are allowed for the task domain.
 - Parent tasks exist.
+- Referenced milestones match exactly one milestone task.
+- The `MILESTONE` prefix appears only under `.tasks/milestones`.
 - Dependencies exist, do not duplicate IDs, do not reference self, and do not form cycles.
 - Rule IDs exist in `docs/architecture/invariants.md`.
 - `last_updated` is a real `YYYY-MM-DD` date.
 - `impact` has useful content when present.
-- Required criteria or rationale sections exist.
+- Required criteria, blocked reason, or rationale sections exist.
+- `Done` tasks have no unchecked criteria items.
 
 ## Workflow
 
@@ -143,10 +176,45 @@ cargo run -p filer-task -- list --priority High
 cargo run -p filer-task -- list --domain core
 cargo run -p filer-task -- list --parent CORE-000
 cargo run -p filer-task -- list --tag location
+cargo run -p filer-task -- list --milestone 0.3.0
+cargo run -p filer-task -- list --blocked
 ```
 
 Use JSON output when another tool needs structured data:
 
 ```bash
 cargo run -p filer-task -- list --format json
+```
+
+Inspect dependencies that still need work:
+
+```bash
+cargo run -p filer-task -- deps --incomplete CORE-042
+cargo run -p filer-task -- deps --incomplete CORE-042 --format json
+```
+
+Inspect milestone exit criteria and progress:
+
+```bash
+cargo run -p filer-task -- milestone 0.3.0 --exit-checklist
+cargo run -p filer-task -- milestone 0.3.0 --exit-checklist --format json
+```
+
+Generate progress summaries:
+
+```bash
+cargo run -p filer-task -- summary
+cargo run -p filer-task -- summary --milestone 0.3.0
+cargo run -p filer-task -- summary --format json
+```
+
+Use lifecycle commands to keep status and rationale sections consistent:
+
+```bash
+cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --milestone 0.3.0
+cargo run -p filer-task -- start CORE-042
+cargo run -p filer-task -- done CORE-042
+cargo run -p filer-task -- block CORE-042 "Waiting for provider timeout policy decision."
+cargo run -p filer-task -- defer CORE-042 "No longer needed for the current milestone."
+cargo run -p filer-task -- obsolete CORE-042 "Replaced by CORE-044."
 ```

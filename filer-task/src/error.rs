@@ -15,6 +15,7 @@ pub enum TaskError {
     },
     Validation(Vec<ValidationError>),
     Json(serde_json::Error),
+    Message(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +59,7 @@ impl fmt::Display for TaskError {
                 Ok(())
             }
             Self::Json(error) => write!(f, "failed to render JSON output: {error}"),
+            Self::Message(message) => write!(f, "{message}"),
         }
     }
 }
@@ -67,7 +69,7 @@ impl Error for TaskError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Json(error) => Some(error),
-            Self::MissingRepoRoot { .. } | Self::Validation(_) => None,
+            Self::MissingRepoRoot { .. } | Self::Validation(_) | Self::Message(_) => None,
         }
     }
 }

@@ -91,8 +91,16 @@ comprehensive, delve, utilize, harness, realm, tapestry, unlock, revolutionary, 
 
 ## Task Tracking
 
-Filer uses a file-based task system in `/.tasks/` to track features, epics, and development work. All task files are version-controlled alongside the code.
-Use filer-task to inspect and validate .tasks/ before and after task changes. Run cargo run -p filer-task -- validate to check task metadata, filenames, duplicate IDs, parent links, and date format. Run cargo run -p filer-task -- list to view tasks, and add filters such as --status "In Progress", --priority High, --domain core, --parent CORE-000, or --tag location when you need a narrower view. Use --format json when another tool needs structured output.
+Filer uses `.tasks/` to track features, epics, milestones, and development work. Task files are version-controlled with the code. Read `/docs/task-tracking.md` when you need command details.
+
+Use `filer-task` before and after task changes:
+
+```bash
+cargo run -p filer-task -- validate
+cargo run -p filer-task -- list
+```
+
+Project milestones live in `.tasks/milestones/`. Normal tasks may reference a project milestone with `milestone: "0.3.0"`.
 
 ### When to Create Tasks
 
@@ -112,9 +120,6 @@ Do not create tasks for:
 
 ### Task Lifecycle
 
-1. Create task file in `/.tasks/` with `status: "To Do"`
-2. Update status to `"In Progress"` when you start work
-3. Complete implementation and tests
-4. Update status to `"Done"` and commit
+Use lifecycle commands when possible. `Blocked` tasks need `## Blocked Reason`. `Deferred` and `Obsolete` tasks need `## Rationale`. `Done` tasks must have all acceptance or exit criteria checked.
 
 Full documentation: `/docs/task-tracking.md`
