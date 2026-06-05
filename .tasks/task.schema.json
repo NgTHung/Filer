@@ -6,7 +6,8 @@
 		"id",
 		"title",
 		"status",
-		"priority"
+		"priority",
+		"type"
 	],
 	"properties": {
 		"id": {
@@ -22,12 +23,11 @@
 			"enum": [
 				"To Do",
 				"In Progress",
-				"Done"
+				"Blocked",
+				"Done",
+				"Deferred",
+				"Obsolete"
 			]
-		},
-		"parent": {
-			"type": "string",
-			"pattern": "^[A-Z]+-[0-9]+$"
 		},
 		"priority": {
 			"type": "string",
@@ -36,6 +36,51 @@
 				"Medium",
 				"Low"
 			]
+		},
+		"type": {
+			"type": "string",
+			"enum": [
+				"Milestone",
+				"Epic",
+				"Feature",
+				"Bug",
+				"Refactor",
+				"TechDebt",
+				"TestDebt",
+				"Design",
+				"Docs"
+			]
+		},
+		"parent": {
+			"type": "string",
+			"pattern": "^[A-Z]+-[0-9]+$"
+		},
+		"depends_on": {
+			"type": "array",
+			"items": {
+				"type": "string",
+				"pattern": "^[A-Z]+-[0-9]+$"
+			},
+			"uniqueItems": true
+		},
+		"rules": {
+			"type": "array",
+			"items": {
+				"type": "string"
+			},
+			"uniqueItems": true
+		},
+		"risk": {
+			"type": "string",
+			"enum": [
+				"High",
+				"Medium",
+				"Low"
+			]
+		},
+		"impact": {
+			"type": "string",
+			"minLength": 10
 		},
 		"tags": {
 			"type": "array",

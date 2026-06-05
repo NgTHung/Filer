@@ -103,15 +103,22 @@ fn resolve_root(root: Option<PathBuf>) -> Result<PathBuf, TaskError> {
 
 fn print_human(tasks: &[Task]) {
     println!(
-        "{:<12}  {:<12}  {:<8}  {:<9}  TITLE",
-        "ID", "STATUS", "PRIORITY", "DOMAIN"
+        "{:<12}  {:<12}  {:<9}  {:<8}  {:<8}  {:<9}  TITLE",
+        "ID", "STATUS", "TYPE", "PRIORITY", "RISK", "DOMAIN"
     );
     for task in tasks {
+        let risk = task
+            .metadata
+            .risk
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "-".to_string());
         println!(
-            "{:<12}  {:<12}  {:<8}  {:<9}  {}",
+            "{:<12}  {:<12}  {:<9}  {:<8}  {:<8}  {:<9}  {}",
             task.metadata.id,
             task.metadata.status,
+            task.metadata.task_type,
             task.metadata.priority,
+            risk,
             task.domain,
             task.metadata.title
         );

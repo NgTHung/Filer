@@ -12,10 +12,21 @@ use crate::{
 };
 
 const CORE_PREFIXES: &[&str] = &[
-    "CORE", "ACTORS", "API", "MODULES", "PIPELINE", "SERVICES", "UTILS", "VFS",
+    "CORE", "ACTORS", "API", "MODULES", "PIPELINE", "SERVICES", "UTILS", "VFS", "REL", "NAV",
+    "SEARCH", "OPS", "PREVIEW", "PROVIDER", "PROTOCOL",
 ];
 const APP_PREFIXES: &[&str] = &["UI", "EXPL", "SETS", "SRCH", "MEDIA", "NAV", "PERF", "A11Y"];
-const ECOSYSTEM_PREFIXES: &[&str] = &["PLUG"];
+const ECOSYSTEM_PREFIXES: &[&str] = &["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"];
+const RULE_IDS: &[&str] = &[
+    "CORE-LIBRARY",
+    "PROVIDER-ACCESS",
+    "SESSION-BOUNDARY",
+    "ACTOR-LONG-WORK",
+    "PIPELINE-TRANSFORMS",
+    "WIRE-SAFE-EXTENSIONS",
+    "SEMANTIC-EXTENSION-OUTPUT",
+    "CORE-MECHANICS-BUILTIN",
+];
 
 #[derive(Debug, Clone, Default)]
 pub struct TaskFilter {
@@ -61,6 +72,7 @@ pub fn validate_repo(root: &Path) -> Result<ValidationReport, TaskError> {
                     metadata,
                 };
                 validate_single_task(root, &task, &mut errors);
+                validate_body(&task, &content, &mut errors);
                 tasks.push(task);
             }
             Err(error) => errors.push(error),
@@ -144,6 +156,53 @@ fn validate_single_task(root: &Path, task: &Task, errors: &mut Vec<ValidationErr
         }
     }
 
+    for depends_on in &metadata.depends_on {
+        if !is_valid_task_id(depends_on) {
+            errors.push(ValidationError::at(
+                path,
+                format!("invalid dependency id {depends_on}; expected PREFIX-NUMBER"),
+            ));
+        }
+    }
+
+    let mut seen_dependencies = HashSet::new();
+    for depends_on in &metadata.depends_on {
+        if !seen_dependencies.insert(depends_on) {
+            errors.push(ValidationError::at(
+                path,
+                format!("duplicate dependency id {depends_on}"),
+            ));
+        }
+        if depends_on == &metadata.id {
+            errors.push(ValidationError::at(path, "task cannot depend on itself"));
+        }
+    }
+
+    for rule in &metadata.rules {
+        if !RULE_IDS.contains(&rule.as_str()) {
+            errors.push(ValidationError::at(path, format!("unknown rule id {rule}")));
+        }
+    }
+
+    let mut seen_rules = HashSet::new();
+    for rule in &metadata.rules {
+        if !seen_rules.insert(rule) {
+            errors.push(ValidationError::at(
+                path,
+                format!("duplicate rule id {rule}"),
+            ));
+        }
+    }
+
+    if let Some(impact) = &metadata.impact {
+        if impact.chars().count() < 10 {
+            errors.push(ValidationError::at(
+                path,
+                "impact must be at least 10 characters when present",
+            ));
+        }
+    }
+
     if let Some(last_updated) = &metadata.last_updated {
         if !is_valid_iso_date(last_updated) {
             errors.push(ValidationError::at(
@@ -154,6 +213,38 @@ fn validate_single_task(root: &Path, task: &Task, errors: &mut Vec<ValidationErr
     }
 
     validate_path(root, task, errors);
+}
+
+fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) {
+    let metadata = &task.metadata;
+    if matches!(metadata.status, TaskStatus::Deferred | TaskStatus::Obsolete) {
+        if !has_heading(content, "Rationale") {
+            errors.push(ValidationError::at(
+                &task.path,
+                "deferred and obsolete tasks must include ## Rationale",
+            ));
+        }
+        return;
+    }
+
+    match metadata.task_type {
+        crate::model::TaskType::Milestone | crate::model::TaskType::Epic => {
+            if !has_heading(content, "Exit Criteria") {
+                errors.push(ValidationError::at(
+                    &task.path,
+                    "milestone and epic tasks must include ## Exit Criteria",
+                ));
+            }
+        }
+        _ => {
+            if !has_heading(content, "Acceptance Criteria") {
+                errors.push(ValidationError::at(
+                    &task.path,
+                    "tasks must include ## Acceptance Criteria",
+                ));
+            }
+        }
+    }
 }
 
 fn validate_path(root: &Path, task: &Task, errors: &mut Vec<ValidationError>) {
@@ -228,7 +319,69 @@ fn validate_cross_references(tasks: &[Task], errors: &mut Vec<ValidationError>) 
                 ));
             }
         }
+
+        for depends_on in &task.metadata.depends_on {
+            if !by_id.contains_key(depends_on.as_str()) {
+                errors.push(ValidationError::at(
+                    &task.path,
+                    format!("dependency {depends_on} does not reference an existing task"),
+                ));
+            }
+        }
     }
+
+    validate_dependency_cycles(tasks, errors);
+}
+
+fn validate_dependency_cycles(tasks: &[Task], errors: &mut Vec<ValidationError>) {
+    let by_id: HashMap<&str, &Task> = tasks
+        .iter()
+        .map(|task| (task.metadata.id.as_str(), task))
+        .collect();
+    let mut checked = HashSet::new();
+
+    for task in tasks {
+        let mut visiting = Vec::new();
+        detect_cycle(
+            task.metadata.id.as_str(),
+            &by_id,
+            &mut visiting,
+            &mut checked,
+            errors,
+        );
+    }
+}
+
+fn detect_cycle<'a>(
+    id: &'a str,
+    by_id: &HashMap<&'a str, &'a Task>,
+    visiting: &mut Vec<&'a str>,
+    checked: &mut HashSet<&'a str>,
+    errors: &mut Vec<ValidationError>,
+) {
+    if checked.contains(id) {
+        return;
+    }
+
+    if let Some(position) = visiting.iter().position(|current| *current == id) {
+        let cycle = visiting[position..].join(" -> ");
+        errors.push(ValidationError::new(
+            None,
+            format!("dependency cycle detected: {cycle} -> {id}"),
+        ));
+        return;
+    }
+
+    let Some(task) = by_id.get(id) else {
+        return;
+    };
+
+    visiting.push(id);
+    for depends_on in &task.metadata.depends_on {
+        detect_cycle(depends_on, by_id, visiting, checked, errors);
+    }
+    visiting.pop();
+    checked.insert(id);
 }
 
 fn domain_for_path(root: &Path, path: &Path) -> Option<String> {
@@ -291,11 +444,21 @@ fn is_leap_year(year: u16) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
+fn has_heading(content: &str, heading: &str) -> bool {
+    let expected = format!("## {heading}");
+    content
+        .lines()
+        .any(|line| line.trim_end_matches('\r').trim() == expected)
+}
+
 fn status_order(status: TaskStatus) -> u8 {
     match status {
         TaskStatus::Done => 0,
         TaskStatus::InProgress => 1,
-        TaskStatus::ToDo => 2,
+        TaskStatus::Blocked => 2,
+        TaskStatus::ToDo => 3,
+        TaskStatus::Deferred => 4,
+        TaskStatus::Obsolete => 5,
     }
 }
 
@@ -474,6 +637,199 @@ mod tests {
         assert_eq!(filtered[0].metadata.id, "VFS-001");
     }
 
+    #[test]
+    fn validate_rejects_missing_type() {
+        let temp = task_repo();
+        fs::write(
+            temp.path().join(".tasks/core/CORE-001-location-routing.md"),
+            "---\nid: CORE-001\ntitle: Location routing\nstatus: To Do\npriority: High\n---\n\n## Acceptance Criteria\n\n- [ ] Works\n",
+        )
+        .expect("task should be written");
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|error| { error.message.contains("missing field `type`") })
+        );
+    }
+
+    #[test]
+    fn validate_rejects_missing_acceptance_criteria() {
+        let temp = task_repo();
+        fs::write(
+            temp.path().join(".tasks/core/CORE-001-location-routing.md"),
+            "---\nid: CORE-001\ntitle: Location routing\nstatus: To Do\npriority: High\ntype: Feature\n---\n",
+        )
+        .expect("task should be written");
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("tasks must include ## Acceptance Criteria")
+        }));
+    }
+
+    #[test]
+    fn validate_requires_exit_criteria_for_milestones() {
+        let temp = task_repo();
+        fs::write(
+            temp.path().join(".tasks/core/CORE-000-core-contracts.md"),
+            "---\nid: CORE-000\ntitle: Core contracts\nstatus: To Do\npriority: High\ntype: Milestone\n---\n",
+        )
+        .expect("task should be written");
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("milestone and epic tasks must include ## Exit Criteria")
+        }));
+    }
+
+    #[test]
+    fn validate_requires_rationale_for_deferred_tasks() {
+        let temp = task_repo();
+        fs::write(
+            temp.path().join(".tasks/core/CORE-001-location-routing.md"),
+            "---\nid: CORE-001\ntitle: Location routing\nstatus: Deferred\npriority: High\ntype: Feature\n---\n",
+        )
+        .expect("task should be written");
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("deferred and obsolete tasks must include ## Rationale")
+        }));
+    }
+
+    #[test]
+    fn validate_rejects_dependency_problems() {
+        let temp = task_repo();
+        write_task(
+            temp.path(),
+            "core/CORE-001-location-routing.md",
+            "CORE-001",
+            "Location routing",
+            "To Do",
+            "High",
+            "depends_on: [CORE-001, CORE-404, CORE-404]\n",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|error| error.message.contains("task cannot depend on itself"))
+        );
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("dependency CORE-404 does not reference an existing task")
+        }));
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|error| error.message.contains("duplicate dependency id CORE-404"))
+        );
+    }
+
+    #[test]
+    fn validate_rejects_dependency_cycles() {
+        let temp = task_repo();
+        write_task(
+            temp.path(),
+            "core/CORE-001-location-routing.md",
+            "CORE-001",
+            "Location routing",
+            "To Do",
+            "High",
+            "depends_on: [CORE-002]\n",
+        );
+        write_task(
+            temp.path(),
+            "core/CORE-002-location-cache.md",
+            "CORE-002",
+            "Location cache",
+            "To Do",
+            "High",
+            "depends_on: [CORE-001]\n",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("dependency cycle detected: CORE-001 -> CORE-002 -> CORE-001")
+        }));
+    }
+
+    #[test]
+    fn validate_rejects_unknown_rule_and_short_impact() {
+        let temp = task_repo();
+        write_task(
+            temp.path(),
+            "core/CORE-001-location-routing.md",
+            "CORE-001",
+            "Location routing",
+            "To Do",
+            "High",
+            "rules: [CORE-LIBRARY, UNKNOWN-RULE]\nimpact: short\n",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should scan");
+
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|error| error.message.contains("unknown rule id UNKNOWN-RULE"))
+        );
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("impact must be at least 10 characters when present")
+        }));
+    }
+
+    #[test]
+    fn validate_accepts_expanded_prefixes() {
+        let temp = task_repo();
+        write_task(
+            temp.path(),
+            "core/PROTOCOL-001-wire-envelope.md",
+            "PROTOCOL-001",
+            "Wire envelope",
+            "To Do",
+            "High",
+            "",
+        );
+        write_task(
+            temp.path(),
+            "ecosystem/EXT-001-decoration-output.md",
+            "EXT-001",
+            "Decoration output",
+            "To Do",
+            "High",
+            "",
+        );
+
+        let report = validate_repo(temp.path()).expect("repo should validate");
+
+        assert!(report.errors.is_empty());
+    }
+
     fn task_repo() -> TempDir {
         let temp = tempfile::tempdir().expect("temp dir should be created");
         fs::create_dir_all(temp.path().join(".tasks/core")).expect("core task dir should exist");
@@ -501,7 +857,7 @@ mod tests {
         fs::write(
             path,
             format!(
-                "---\nid: {id}\ntitle: {title}\nstatus: {status}\npriority: {priority}\n{extra}---\n"
+                "---\nid: {id}\ntitle: {title}\nstatus: {status}\npriority: {priority}\ntype: Feature\n{extra}---\n\n## Acceptance Criteria\n\n- [ ] Works\n"
             ),
         )
         .expect("task should be written");

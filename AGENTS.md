@@ -92,6 +92,7 @@ comprehensive, delve, utilize, harness, realm, tapestry, unlock, revolutionary, 
 ## Task Tracking
 
 Filer uses a file-based task system in `/.tasks/` to track features, epics, and development work. All task files are version-controlled alongside the code.
+Use filer-task to inspect and validate .tasks/ before and after task changes. Run cargo run -p filer-task -- validate to check task metadata, filenames, duplicate IDs, parent links, and date format. Run cargo run -p filer-task -- list to view tasks, and add filters such as --status "In Progress", --priority High, --domain core, --parent CORE-000, or --tag location when you need a narrower view. Use --format json when another tool needs structured output.
 
 ### When to Create Tasks
 

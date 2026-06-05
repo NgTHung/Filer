@@ -34,13 +34,12 @@ fn extract_yaml(path: &std::path::Path, content: &str) -> Result<String, Validat
 #[cfg(test)]
 mod tests {
     use super::parse_metadata;
-    use crate::model::{Priority, TaskStatus};
+    use crate::model::{Priority, TaskStatus, TaskType};
     use std::path::Path;
 
     #[test]
     fn parses_valid_frontmatter() {
-        let content =
-            "---\nid: CORE-001\ntitle: Location routing\nstatus: To Do\npriority: High\n---\n";
+        let content = "---\nid: CORE-001\ntitle: Location routing\nstatus: To Do\npriority: High\ntype: Feature\n---\n";
 
         let metadata = parse_metadata(Path::new("CORE-001-location-routing.md"), content)
             .expect("valid frontmatter should parse");
@@ -48,6 +47,7 @@ mod tests {
         assert_eq!(metadata.id, "CORE-001");
         assert_eq!(metadata.status, TaskStatus::ToDo);
         assert_eq!(metadata.priority, Priority::High);
+        assert_eq!(metadata.task_type, TaskType::Feature);
     }
 
     #[test]

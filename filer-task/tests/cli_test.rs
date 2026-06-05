@@ -62,6 +62,17 @@ fn list_command_emits_parseable_json() {
         1
     );
     assert_eq!(json[0]["id"], "CORE-001");
+    assert_eq!(json[0]["type"], "Feature");
+    assert_eq!(json[0]["rules"][0], "CORE-LIBRARY");
+    assert_eq!(json[0]["risk"], "High");
+    assert_eq!(json[0]["impact"], "Touches validation and output");
+    assert_eq!(
+        json[0]["depends_on"]
+            .as_array()
+            .expect("depends_on should be an array")
+            .len(),
+        0
+    );
 }
 
 fn task_repo() -> TempDir {
@@ -86,7 +97,7 @@ fn write_task(
     fs::write(
         repo.path().join(".tasks").join(relative),
         format!(
-            "---\nid: {id}\ntitle: {title}\nstatus: {status}\npriority: {priority}\n{extra}---\n"
+            "---\nid: {id}\ntitle: {title}\nstatus: {status}\npriority: {priority}\ntype: Feature\nrules: [CORE-LIBRARY]\nrisk: High\nimpact: Touches validation and output\n{extra}---\n\n## Acceptance Criteria\n\n- [ ] Works\n"
         ),
     )
     .expect("task should be written");
