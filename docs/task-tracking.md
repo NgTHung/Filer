@@ -1,4 +1,4 @@
-The `.tasks/` directory contains a structured task tracking system that manages the entire development lifecycle of Spacedrive. Tasks are defined as markdown files with YAML frontmatter and validated against a JSON schema.
+The `.tasks/` directory contains a structured task tracking system that manages the entire development lifecycle of Filer. Tasks are defined as markdown files with YAML frontmatter and validated against a JSON schema.
 
 ## Overview
 
@@ -124,7 +124,6 @@ Frontend and Iced-related tasks:
 | `EXPL` | Explorer interface |
 | `SETS` | Settings pages |
 | `SRCH` | Search UI |
-| `TAG` | Tagging interface |
 | `MEDIA` | Media viewer |
 | `NAV` | Navigation and routing |
 | `PERF` | Performance optimizations |
