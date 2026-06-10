@@ -1,10 +1,9 @@
-use std::time::SystemTime;
-
 use rapidhash::RapidHashMap;
 
 use crate::model::node::FileNode;
+use crate::pipeline::config::{GroupBy as ConfigGroupBy, GroupConfig, PipelineConfig};
+use crate::pipeline::order::group_label;
 use crate::pipeline::{FileGroup, GroupedNodes, PipelineData, Stage};
-use crate::utils;
 
 #[derive(Debug, Clone, Copy)]
 pub enum GroupField {
@@ -37,20 +36,19 @@ impl Stage for GroupBy {
         let mut groups_map: RapidHashMap<String, Vec<FileNode>> = RapidHashMap::default();
 
         for node in nodes {
-            let key = match self.field {
-                GroupField::Extension => node.extension().unwrap_or("No extension").to_string(),
-                GroupField::Date => {
-                    utils::time_group_name(node.modified.unwrap_or(SystemTime::now())).to_string()
-                }
-                GroupField::Size => utils::size_group_name(node.size).to_string(),
-                GroupField::FirstLetter => node
-                    .name
-                    .chars()
-                    .next()
-                    .unwrap_or('#')
-                    .to_uppercase()
-                    .to_string(),
+            let by = match self.field {
+                GroupField::Extension => ConfigGroupBy::Extension,
+                GroupField::Date => ConfigGroupBy::Date,
+                GroupField::Size => ConfigGroupBy::Size,
+                GroupField::FirstLetter => ConfigGroupBy::FirstLetter,
             };
+            let key = group_label(
+                &PipelineConfig {
+                    group: Some(GroupConfig { by }),
+                    ..PipelineConfig::default()
+                },
+                &node,
+            );
 
             groups_map.entry(key).or_default().push(node);
         }

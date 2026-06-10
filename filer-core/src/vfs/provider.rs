@@ -27,6 +27,13 @@ pub struct Capabilities {
     pub search: bool,
 }
 
+/// Describes whether a provider can fetch pages without materializing a full listing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderPaging {
+    Fallback,
+    Native,
+}
+
 /// Controls how much metadata a directory listing should populate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -67,6 +74,10 @@ pub trait FsProvider: Send + Sync {
 
     /// Provider capabilities
     fn capabilities(&self) -> Capabilities;
+
+    fn paging(&self) -> ProviderPaging {
+        ProviderPaging::Fallback
+    }
 
     /// List contents of a directory
     async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError>;

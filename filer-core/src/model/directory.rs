@@ -166,6 +166,12 @@ pub struct DirectoryPageState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<DirectoryCursor>,
     pub complete: bool,
+    /// Zero-based index of the first row in this page.
+    #[serde(default)]
+    pub start_index: usize,
+    /// Number of rows loaded through the end of this page.
+    #[serde(default)]
+    pub loaded_count: usize,
 }
 
 impl DirectoryPageState {
@@ -179,6 +185,8 @@ impl DirectoryPageState {
             total_count,
             next_cursor: Some(next_cursor),
             complete: false,
+            start_index: 0,
+            loaded_count: page_count,
         }
     }
 
@@ -188,6 +196,14 @@ impl DirectoryPageState {
             total_count,
             next_cursor: None,
             complete: true,
+            start_index: 0,
+            loaded_count: page_count,
         }
+    }
+
+    pub const fn with_window(mut self, start_index: usize) -> Self {
+        self.start_index = start_index;
+        self.loaded_count = start_index.saturating_add(self.page_count);
+        self
     }
 }

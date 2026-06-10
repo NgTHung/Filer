@@ -1,6 +1,7 @@
 pub mod config;
 pub mod filter;
 pub mod group;
+mod order;
 pub mod sort;
 
 use crate::model::directory::DirectoryLoadState;
@@ -11,6 +12,8 @@ use crate::model::registry::NodeRegistry;
 pub use config::{
     FilterConfig, GroupBy, GroupConfig, PipelineConfig, PipelinePagingMode, SortConfig,
 };
+pub use order::compare_nodes;
+pub(crate) use order::effective_listing;
 
 /// Grouped file nodes with metadata
 #[derive(Debug, Clone)]

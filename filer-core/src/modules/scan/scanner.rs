@@ -7,10 +7,7 @@ use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::errors::CoreError;
-use crate::model::directory::{
-    DirectoryCursor, DirectoryLoadOptions, DirectoryPageRequest, DirectoryPageResult,
-    DirectoryPageState,
-};
+use crate::model::directory::{DirectoryLoadOptions, DirectoryPageResult};
 use crate::model::location::{LocationId, LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::progress::{
@@ -19,17 +16,12 @@ use crate::model::progress::{
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::pipeline::{Pipeline, PipelineConfig, PipelinePagingMode};
+use crate::pipeline::{Pipeline, PipelineConfig, effective_listing};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::vfs::provider::{FsProvider, ListingOptions, parse_offset_cursor, validate_page_limit};
+use crate::vfs::provider::FsProvider;
 
-const FILTER_CURSOR_PREFIX: &str = "filter:v1:";
-
-enum FilteredPageLoad {
-    Page(DirectoryPageResult),
-    Cancelled,
-}
+use super::paging::{PageLoad, PagingSessions};
 
 /// Commands for scanner actor
 #[derive(Debug, Clone)]
@@ -82,6 +74,7 @@ pub struct Scanner {
     active_scans: CancelMap,
     latest_scans: Arc<scc::HashMap<SessionId, RequestId, RandomState>>,
     cache: Option<SharedDirCache>,
+    paging: PagingSessions,
 }
 
 impl Scanner {
@@ -99,6 +92,7 @@ impl Scanner {
             active_scans: CancelMap::new(),
             latest_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             cache: None,
+            paging: PagingSessions::new(),
         }
     }
 
@@ -117,6 +111,7 @@ impl Scanner {
             active_scans: CancelMap::new(),
             latest_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             cache: Some(cache),
+            paging: PagingSessions::new(),
         }
     }
 
@@ -164,6 +159,7 @@ impl Scanner {
         let active_scans = self.active_scans.clone();
         let latest_scans = self.latest_scans.clone();
         let cache = self.cache.clone();
+        let paging = self.paging.clone();
 
         let _ = self.latest_scans.remove_sync(&session);
         let _ = self.latest_scans.insert_sync(session, request);
@@ -181,6 +177,7 @@ impl Scanner {
                 request,
                 &latest_scans,
                 cache.as_ref(),
+                &paging,
                 invalidate_cache,
                 parent_location,
                 parent_location_id,
@@ -235,11 +232,6 @@ impl Scanner {
         );
     }
 
-    /// Perform a single directory scan: list → register → pipeline → emit.
-    ///
-    /// Checks the cancellation token at two points:
-    /// 1. After the (potentially slow) filesystem listing
-    /// 2. After pipeline execution, before sending the result
     async fn scan_directory(
         provider: &Arc<dyn FsProvider>,
         registry: &NodeRegistry,
@@ -252,11 +244,13 @@ impl Scanner {
         request: RequestId,
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
         cache: Option<&SharedDirCache>,
+        paging: &PagingSessions,
         invalidate_cache: bool,
         parent_location: Option<LocationRef>,
         parent_location_id: Option<LocationId>,
     ) {
         if invalidate_cache {
+            paging.clear_session(session);
             if let Some(cache) = cache {
                 if let Ok(mut cache) = cache.lock() {
                     tracing::debug!(path = %path.display(), "Invalidating directory cache before scan");
@@ -284,7 +278,6 @@ impl Scanner {
         )
         .await;
 
-        // 1. Cache check (before I/O)
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -300,20 +293,25 @@ impl Scanner {
             ),
         )
         .await;
+        let cache_listing = if load_options.is_paged() {
+            effective_listing(&pipeline_config, load_options.listing)
+        } else {
+            load_options.listing
+        };
         let cached_nodes = cache.and_then(|c| {
             let mut cache = c.lock().ok()?;
             if let Some(location_id) = parent_location_id
-                && let Some(nodes) = cache.get_location(location_id, load_options.listing)
+                && let Some(nodes) = cache.get_location(location_id, cache_listing)
             {
                 return Some(nodes);
             }
 
-            let nodes = cache.get(path, load_options.listing)?;
+            let nodes = cache.get(path, cache_listing)?;
             if let Some(location_id) = parent_location_id {
                 cache.put_location(
                     location_id,
                     path.to_path_buf(),
-                    load_options.listing,
+                    cache_listing,
                     nodes.clone(),
                 );
             }
@@ -323,54 +321,36 @@ impl Scanner {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
             let parent_id = registry.clone().register(path.to_path_buf());
             if let Some(page_request) = load_options.page_request() {
-                match pipeline_config.paging_mode() {
-                    PipelinePagingMode::ProviderPage | PipelinePagingMode::FilteredPage => {
-                        let page = match pipeline_config.paging_mode() {
-                            PipelinePagingMode::ProviderPage => {
-                                Self::page_from_cached_listing(cached, &page_request)
-                            }
-                            PipelinePagingMode::FilteredPage => {
-                                Self::filtered_page_from_cached_listing(
-                                    cached,
-                                    &page_request,
-                                    &pipeline_config,
-                                )
-                            }
-                            PipelinePagingMode::SnapshotOnly => unreachable!(),
-                        };
-
-                        match page {
-                            Ok(page) => {
-                                registry.clone().register_batch_file_node(&page.entries);
-                                Self::emit_page_result(
-                                    events,
-                                    latest_scans,
-                                    registry,
-                                    path,
-                                    parent_id,
-                                    parent_location,
-                                    session,
-                                    request,
-                                    page,
-                                    "scan page result (cached)",
-                                )
-                                .await;
-                            }
-                            Err(e) => {
-                                if Self::is_latest(latest_scans, session, request) {
-                                    send_or_warn_async(
-                                        events,
-                                        Event::from_request_error(e, session, request),
-                                        "scan cached page error",
-                                    )
-                                    .await;
-                                }
-                            }
-                        }
-                        return;
+                match paging.load_cached(cached, path, session, page_request, &pipeline_config) {
+                    Ok(page) => {
+                        registry.clone().register_batch_file_node(&page.entries);
+                        Self::emit_page_result(
+                            events,
+                            latest_scans,
+                            registry,
+                            path,
+                            parent_id,
+                            parent_location,
+                            session,
+                            request,
+                            page,
+                            &pipeline_config,
+                            "scan page result (cached)",
+                        )
+                        .await;
                     }
-                    PipelinePagingMode::SnapshotOnly => {}
+                    Err(e) => {
+                        if Self::is_latest(latest_scans, session, request) {
+                            send_or_warn_async(
+                                events,
+                                Event::from_request_error(e, session, request),
+                                "scan cached page error",
+                            )
+                            .await;
+                        }
+                    }
                 }
+                return;
             }
 
             registry.clone().register_batch_file_node(&cached);
@@ -459,7 +439,6 @@ impl Scanner {
             return;
         }
 
-        // 2. List directory (cache miss)
         tracing::trace!(path = %path.display(), session = %session, "Directory scan cache miss, listing provider");
         Self::emit_scan_progress(
             events,
@@ -477,33 +456,21 @@ impl Scanner {
         )
         .await;
 
-        if let Some(page_request) = load_options.page_request()
-            && !matches!(
-                pipeline_config.paging_mode(),
-                PipelinePagingMode::SnapshotOnly
-            )
-        {
-            let page = match pipeline_config.paging_mode() {
-                PipelinePagingMode::ProviderPage => provider
-                    .list_page(path, page_request.clone())
-                    .await
-                    .map(FilteredPageLoad::Page),
-                PipelinePagingMode::FilteredPage => {
-                    Self::load_filtered_page(
-                        provider.as_ref(),
-                        path,
-                        page_request.clone(),
-                        &pipeline_config,
-                        cancel,
-                    )
-                    .await
-                }
-                PipelinePagingMode::SnapshotOnly => unreachable!(),
-            };
-
-            let page = match page {
-                Ok(FilteredPageLoad::Page(page)) => page,
-                Ok(FilteredPageLoad::Cancelled) => {
+        if let Some(page_request) = load_options.page_request() {
+            let first_page = page_request.cursor.is_none();
+            let page = match paging
+                .load_provider(
+                    provider.as_ref(),
+                    path,
+                    session,
+                    page_request,
+                    &pipeline_config,
+                    cancel,
+                )
+                .await
+            {
+                Ok(PageLoad::Page(page)) => page,
+                Ok(PageLoad::Cancelled) => {
                     Self::emit_scan_progress(
                         events,
                         latest_scans,
@@ -549,12 +516,9 @@ impl Scanner {
                 }
             };
 
-            if page_request.cursor.is_none()
+            if first_page
                 && page.state.complete
-                && matches!(
-                    pipeline_config.paging_mode(),
-                    PipelinePagingMode::ProviderPage
-                )
+                && pipeline_config == PipelineConfig::default()
                 && let Some(cache) = cache
             {
                 if let Ok(mut c) = cache.lock() {
@@ -606,6 +570,7 @@ impl Scanner {
                 session,
                 request,
                 page,
+                &pipeline_config,
                 "scan page result",
             )
             .await;
@@ -642,7 +607,6 @@ impl Scanner {
             }
         };
 
-        // Populate cache after successful unbounded lists.
         if !load_options.is_bounded()
             && let Some(cache) = cache
         {
@@ -661,7 +625,6 @@ impl Scanner {
             }
         }
 
-        // 3. Check cancellation after I/O
         if cancel.is_cancelled() {
             Self::emit_scan_progress(
                 events,
@@ -681,7 +644,6 @@ impl Scanner {
             return;
         }
 
-        // 4. Register nodes
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -700,7 +662,6 @@ impl Scanner {
         let parent_id = registry.clone().register(path.to_path_buf());
         registry.clone().register_batch_file_node(&entries);
 
-        // 5. Execute pipeline (always returns GroupedNodes)
         let pipeline = Pipeline::from_config(&pipeline_config);
         let (groups, load) = pipeline
             .execute_grouped(entries)
@@ -721,7 +682,6 @@ impl Scanner {
         )
         .await;
 
-        // 5. Check cancellation after pipeline
         if cancel.is_cancelled() {
             Self::emit_scan_progress(
                 events,
@@ -744,7 +704,6 @@ impl Scanner {
             return;
         }
 
-        // 6. Send result
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -805,230 +764,6 @@ impl Scanner {
         .await;
     }
 
-    fn page_from_cached_listing(
-        entries: Vec<crate::FileNode>,
-        request: &DirectoryPageRequest,
-    ) -> Result<DirectoryPageResult, CoreError> {
-        validate_page_limit(request.limit)?;
-        let start = parse_offset_cursor(request.cursor.as_ref())?;
-        let end = start.saturating_add(request.limit).min(entries.len());
-        let page_entries = if start < entries.len() {
-            entries[start..end].to_vec()
-        } else {
-            Vec::new()
-        };
-        let state = if end < entries.len() {
-            DirectoryPageState::partial(
-                page_entries.len(),
-                Some(entries.len()),
-                DirectoryCursor(end.to_string()),
-            )
-        } else {
-            DirectoryPageState::complete(page_entries.len(), Some(entries.len()))
-        };
-        Ok(DirectoryPageResult {
-            entries: page_entries,
-            state,
-        })
-    }
-
-    fn filtered_page_from_cached_listing(
-        entries: Vec<crate::FileNode>,
-        request: &DirectoryPageRequest,
-        pipeline_config: &PipelineConfig,
-    ) -> Result<DirectoryPageResult, CoreError> {
-        validate_page_limit(request.limit)?;
-        if request
-            .cursor
-            .as_ref()
-            .is_some_and(|cursor| cursor.0.starts_with(FILTER_CURSOR_PREFIX))
-        {
-            return Err(CoreError::invalid_input(
-                "Filtered provider cursors cannot be used with cached listings",
-            ));
-        }
-
-        let pipeline = Pipeline::from_config(pipeline_config);
-        let entries = pipeline.execute_flat(entries);
-        Self::page_from_cached_listing(entries, request)
-    }
-
-    async fn load_filtered_page(
-        provider: &dyn FsProvider,
-        path: &Path,
-        request: DirectoryPageRequest,
-        pipeline_config: &PipelineConfig,
-        cancel: &CancellationToken,
-    ) -> Result<FilteredPageLoad, CoreError> {
-        validate_page_limit(request.limit)?;
-        let mut provider_cursor =
-            Self::decode_filter_cursor(request.cursor.as_ref(), request.listing, pipeline_config)?;
-        let raw_budget = request
-            .limit
-            .saturating_mul(4)
-            .max(crate::DEFAULT_DIRECTORY_PAGE_SIZE);
-        let mut raw_read = 0usize;
-        let mut filtered_entries = Vec::with_capacity(request.limit);
-        let pipeline = Pipeline::from_config(pipeline_config);
-
-        loop {
-            if cancel.is_cancelled() {
-                return Ok(FilteredPageLoad::Cancelled);
-            }
-
-            if filtered_entries.len() >= request.limit {
-                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
-                    filtered_entries,
-                    provider_cursor,
-                    false,
-                    request.listing,
-                    pipeline_config,
-                )?));
-            }
-
-            let remaining_budget = raw_budget.saturating_sub(raw_read);
-            if remaining_budget == 0 {
-                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
-                    filtered_entries,
-                    provider_cursor,
-                    false,
-                    request.listing,
-                    pipeline_config,
-                )?));
-            }
-
-            let remaining_output = request.limit - filtered_entries.len();
-            let raw_limit = remaining_budget.min(remaining_output).max(1);
-            let raw_page = provider
-                .list_page(
-                    path,
-                    DirectoryPageRequest {
-                        listing: request.listing,
-                        limit: raw_limit,
-                        cursor: provider_cursor.clone(),
-                    },
-                )
-                .await?;
-
-            if cancel.is_cancelled() {
-                return Ok(FilteredPageLoad::Cancelled);
-            }
-
-            raw_read = raw_read.saturating_add(raw_page.state.page_count);
-            let raw_complete = raw_page.state.complete;
-            provider_cursor = raw_page.state.next_cursor.clone();
-            filtered_entries.extend(pipeline.execute_flat(raw_page.entries));
-
-            if raw_complete {
-                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
-                    filtered_entries,
-                    None,
-                    true,
-                    request.listing,
-                    pipeline_config,
-                )?));
-            }
-
-            if raw_read >= raw_budget || raw_page.state.page_count == 0 {
-                return Ok(FilteredPageLoad::Page(Self::filtered_page_result(
-                    filtered_entries,
-                    provider_cursor,
-                    false,
-                    request.listing,
-                    pipeline_config,
-                )?));
-            }
-        }
-    }
-
-    fn filtered_page_result(
-        entries: Vec<crate::FileNode>,
-        provider_cursor: Option<DirectoryCursor>,
-        complete: bool,
-        listing: ListingOptions,
-        pipeline_config: &PipelineConfig,
-    ) -> Result<DirectoryPageResult, CoreError> {
-        let state = if complete || provider_cursor.is_none() {
-            DirectoryPageState::complete(entries.len(), None)
-        } else {
-            DirectoryPageState::partial(
-                entries.len(),
-                None,
-                Self::encode_filter_cursor(provider_cursor, listing, pipeline_config)?,
-            )
-        };
-        Ok(DirectoryPageResult { entries, state })
-    }
-
-    fn encode_filter_cursor(
-        provider_cursor: Option<DirectoryCursor>,
-        listing: ListingOptions,
-        pipeline_config: &PipelineConfig,
-    ) -> Result<DirectoryCursor, CoreError> {
-        let listing_json = serde_json::to_string(&listing)
-            .map_err(|e| CoreError::invalid_input(format!("Invalid listing cursor: {e}")))?;
-        let pipeline_json = serde_json::to_string(pipeline_config)
-            .map_err(|e| CoreError::invalid_input(format!("Invalid pipeline cursor: {e}")))?;
-        let provider_cursor = provider_cursor.map(|cursor| cursor.0).unwrap_or_default();
-        Ok(DirectoryCursor(format!(
-            "{FILTER_CURSOR_PREFIX}{}:{}:{}:{}{}{}",
-            listing_json.len(),
-            pipeline_json.len(),
-            provider_cursor.len(),
-            listing_json,
-            pipeline_json,
-            provider_cursor
-        )))
-    }
-
-    fn decode_filter_cursor(
-        cursor: Option<&DirectoryCursor>,
-        listing: ListingOptions,
-        pipeline_config: &PipelineConfig,
-    ) -> Result<Option<DirectoryCursor>, CoreError> {
-        let Some(cursor) = cursor else {
-            return Ok(None);
-        };
-        let Some(payload) = cursor.0.strip_prefix(FILTER_CURSOR_PREFIX) else {
-            return Err(CoreError::invalid_input(
-                "Filtered page requests require a filtered cursor",
-            ));
-        };
-
-        let parts: Vec<&str> = payload.splitn(4, ':').collect();
-        if parts.len() != 4 {
-            return Err(CoreError::invalid_input("Invalid filtered cursor"));
-        }
-        let listing_len = parts[0]
-            .parse::<usize>()
-            .map_err(|_| CoreError::invalid_input("Invalid filtered cursor listing length"))?;
-        let pipeline_len = parts[1]
-            .parse::<usize>()
-            .map_err(|_| CoreError::invalid_input("Invalid filtered cursor pipeline length"))?;
-        let provider_len = parts[2]
-            .parse::<usize>()
-            .map_err(|_| CoreError::invalid_input("Invalid filtered cursor provider length"))?;
-        let data = parts[3];
-        if data.len() != listing_len + pipeline_len + provider_len {
-            return Err(CoreError::invalid_input("Invalid filtered cursor payload"));
-        }
-
-        let listing_json = data[..listing_len].to_string();
-        let pipeline_json = data[listing_len..listing_len + pipeline_len].to_string();
-        let provider_cursor = data[listing_len + pipeline_len..].to_string();
-        let expected_listing_json = serde_json::to_string(&listing)
-            .map_err(|e| CoreError::invalid_input(format!("Invalid listing cursor: {e}")))?;
-        let expected_pipeline_json = serde_json::to_string(pipeline_config)
-            .map_err(|e| CoreError::invalid_input(format!("Invalid pipeline cursor: {e}")))?;
-        if listing_json != expected_listing_json || pipeline_json != expected_pipeline_json {
-            return Err(CoreError::invalid_input(
-                "Filtered cursor does not match requested listing or pipeline",
-            ));
-        }
-
-        Ok((!provider_cursor.is_empty()).then_some(DirectoryCursor(provider_cursor)))
-    }
-
     async fn emit_page_result(
         events: &Sender<Event>,
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
@@ -1039,6 +774,7 @@ impl Scanner {
         session: SessionId,
         request: RequestId,
         page: DirectoryPageResult,
+        pipeline_config: &PipelineConfig,
         context: &'static str,
     ) {
         let page_state = page.state.clone();
@@ -1061,7 +797,7 @@ impl Scanner {
             return;
         }
 
-        let groups = Pipeline::default().execute_grouped(page.entries);
+        let groups = Pipeline::from_config(pipeline_config).execute_grouped(page.entries);
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -1162,6 +898,7 @@ impl Scanner {
 
     fn cancel_scan(&self, session: SessionId) {
         self.active_scans.cancel(session);
+        self.paging.clear_session(session);
     }
 }
 

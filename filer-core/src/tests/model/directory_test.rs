@@ -82,6 +82,8 @@ fn test_directory_page_state_marks_partial_and_complete_pages() {
             total_count: Some(100),
             next_cursor: Some(cursor),
             complete: false,
+            start_index: 0,
+            loaded_count: 25,
         }
     );
     assert_eq!(
@@ -91,6 +93,28 @@ fn test_directory_page_state_marks_partial_and_complete_pages() {
             total_count: Some(35),
             next_cursor: None,
             complete: true,
+            start_index: 0,
+            loaded_count: 10,
         }
     );
+}
+
+#[test]
+fn test_directory_page_state_exposes_virtualization_window() {
+    let state =
+        DirectoryPageState::partial(25, Some(100), DirectoryCursor("next".into())).with_window(50);
+
+    assert_eq!(state.start_index, 50);
+    assert_eq!(state.loaded_count, 75);
+}
+
+#[test]
+fn test_directory_page_state_deserializes_legacy_payload_without_window() {
+    let state: DirectoryPageState = serde_json::from_str(
+        r#"{"page_count":2,"total_count":3,"next_cursor":null,"complete":false}"#,
+    )
+    .unwrap();
+
+    assert_eq!(state.start_index, 0);
+    assert_eq!(state.loaded_count, 0);
 }

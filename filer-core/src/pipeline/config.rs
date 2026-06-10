@@ -14,6 +14,8 @@ pub enum PipelinePagingMode {
     ProviderPage,
     /// Provider pages can be filtered incrementally without changing order.
     FilteredPage,
+    /// Provider rows require bounded global ordering or grouping.
+    PipelinePage,
     /// Correct results require full materialization.
     SnapshotOnly,
 }
@@ -109,7 +111,7 @@ impl PipelineConfig {
 
     pub fn paging_mode(&self) -> PipelinePagingMode {
         if self.sort.is_some() || self.group.is_some() {
-            return PipelinePagingMode::SnapshotOnly;
+            return PipelinePagingMode::PipelinePage;
         }
 
         match &self.filter {

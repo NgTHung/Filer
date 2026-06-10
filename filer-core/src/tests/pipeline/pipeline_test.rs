@@ -205,13 +205,13 @@ fn test_pipeline_paging_mode_classifies_filter_only_pages() {
 fn test_pipeline_paging_mode_keeps_order_changing_or_unsupported_filters_snapshot_only() {
     assert_eq!(
         PipelineConfig::with_default_sort().paging_mode(),
-        PipelinePagingMode::SnapshotOnly
+        PipelinePagingMode::PipelinePage
     );
     assert_eq!(
         PipelineConfig::default()
             .group_by(ConfigGroupBy::Extension)
             .paging_mode(),
-        PipelinePagingMode::SnapshotOnly
+        PipelinePagingMode::PipelinePage
     );
 
     let mut filter = FilterConfig {

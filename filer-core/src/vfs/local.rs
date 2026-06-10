@@ -10,8 +10,8 @@ use crate::model::directory::{
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
 use crate::vfs::provider::{
-    Capabilities, FsProvider, ListingDetail, ListingOptions, ReadSeek, parse_offset_cursor,
-    validate_page_limit,
+    Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging, ReadSeek,
+    parse_offset_cursor, validate_page_limit,
 };
 
 /// Local filesystem provider
@@ -38,6 +38,10 @@ impl FsProvider for LocalFs {
             watch: true,
             search: false,
         }
+    }
+
+    fn paging(&self) -> ProviderPaging {
+        ProviderPaging::Native
     }
 
     /// List directory contents using only `d_type` from the dirent — no stat per entry.

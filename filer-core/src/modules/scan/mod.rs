@@ -16,6 +16,7 @@
 //! core.load(scan);
 //! ```
 
+mod paging;
 pub mod scanner;
 
 use std::sync::Arc;
