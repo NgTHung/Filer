@@ -59,7 +59,6 @@ impl OperationsModule {
 impl Module for OperationsModule {
     fn init(mut self: Box<Self>, ctx: ModuleContext<'_>) {
         let ops_rx = self.ops_rx.take().expect("ScanModule already initialized");
-        // ── Copy ─────────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.copy.node.compat", move |cmd, _ctx| {
             if let Command::CopyNodeCompat {
@@ -100,7 +99,6 @@ impl Module for OperationsModule {
             }
         });
 
-        // ── Move ─────────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.move.node.compat", move |cmd, _ctx| {
             if let Command::MoveNodeCompat {
@@ -141,7 +139,6 @@ impl Module for OperationsModule {
             }
         });
 
-        // ── Delete ───────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.delete.node.compat", move |cmd, _ctx| {
             if let Command::DeleteNodeCompat {
@@ -182,7 +179,6 @@ impl Module for OperationsModule {
             }
         });
 
-        // ── Rename ───────────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.rename.node.compat", move |cmd, _ctx| {
             if let Command::RenameNodeCompat {
@@ -223,7 +219,6 @@ impl Module for OperationsModule {
             }
         });
 
-        // ── Create folder ────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers
             .on("ops.create_folder.node.compat", move |cmd, _ctx| {
@@ -265,7 +260,6 @@ impl Module for OperationsModule {
             }
         });
 
-        // ── Create file ──────────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers
             .on("ops.create_file.node.compat", move |cmd, _ctx| {
@@ -307,7 +301,6 @@ impl Module for OperationsModule {
             }
         });
 
-        // ── Cancel operation ─────────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.cancel", move |cmd, _ctx| {
             if let Command::CancelOperation { session, operation } = cmd {
@@ -315,13 +308,11 @@ impl Module for OperationsModule {
             }
         });
 
-        // ── Session cleanup hook ─────────────────────────────────────
         let tx = self.ops_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
             let _ = tx.send(OpsCommand::Cancel(session));
         });
 
-        // ── Spawn Operator actor ─────────────────────────────────────
         let operator = match self.cache.take() {
             Some(cache) => Operator::with_cache(
                 ops_rx,

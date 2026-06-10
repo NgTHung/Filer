@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
+use crate::errors::{CoreError, ErrorCode, ErrorContext, ErrorKind, ErrorTarget};
 use crate::model::directory::{DirectoryLoadState, DirectoryPageState};
 use crate::model::location::LocationRef;
 use crate::model::node::{NodeEntry, NodeId, NodeMeta};
@@ -125,6 +125,7 @@ pub enum Event {
         kind: ErrorKind,
         code: ErrorCode,
         target: Option<ErrorTarget>,
+        context: Option<Box<ErrorContext>>,
         message: String,
         recoverable: bool,
         session: SessionId,
@@ -215,6 +216,7 @@ impl Event {
             kind: err.kind(),
             code: err.code(),
             target: err.target().cloned(),
+            context: err.context().cloned().map(Box::new),
             message: err.to_string(),
             recoverable: err.recoverable(),
             session,

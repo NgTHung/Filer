@@ -16,8 +16,6 @@ use std::path::Path;
 
 use crate::services::mime::{DetectionConfidence, DetectionStrategy, MimeCategory, MimeDetector};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn png_header() -> Vec<u8> {
     vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
 }
@@ -56,8 +54,6 @@ fn elf_header() -> Vec<u8> {
     res
     // vec![0x7F, 0x45, 0x4C, 0x46] // \x7FELF
 }
-
-// ── detect_from_path ─────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod detect_from_path_tests {
@@ -146,8 +142,6 @@ mod detect_from_path_tests {
     }
 }
 
-// ── detect_from_bytes ─────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod detect_from_bytes_tests {
     use super::*;
@@ -231,8 +225,6 @@ mod detect_from_bytes_tests {
     }
 }
 
-// ── detect (combined) ────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod detect_tests {
     use super::*;
@@ -262,8 +254,6 @@ mod detect_tests {
         assert_eq!(info.confidence, DetectionConfidence::Unknown);
     }
 }
-
-// ── detect_with_strategy ──────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod detect_with_strategy_tests {
@@ -328,8 +318,6 @@ mod detect_with_strategy_tests {
         assert_eq!(info.mime_type, "image/png");
     }
 }
-
-// ── categorize ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod categorize_tests {
@@ -398,7 +386,6 @@ mod categorize_tests {
     }
 }
 
-// ── is_ambiguous_extension ────────────────────────────────────────────────────
 // These tests run immediately — is_ambiguous_extension has a real implementation.
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 ---
 id: REL-001
 title: Complete structured error context
-status: To Do
+status: Done
 priority: High
 type: Feature
 parent: CORE-001
@@ -10,7 +10,7 @@ rules: [PROVIDER-ACCESS]
 risk: Medium
 impact: "Changes error context consumed by app and transport clients."
 tags: [reliability, errors, provider]
-last_updated: 2026-06-06
+last_updated: 2026-06-10
 ---
 
 ## Summary
@@ -19,7 +19,7 @@ Add stable context for collisions, stale requests, and provider capability failu
 
 ## Acceptance Criteria
 
-- [ ] Collision errors identify the conflicting source and destination context.
-- [ ] Stale-request errors identify session and request identity.
-- [ ] Provider capability errors identify the provider, location, and missing capability.
-- [ ] Clients can branch on structured fields without parsing messages.
+- [x] Collision errors identify the conflicting source and destination context.
+- [x] Stale-request errors identify session and request identity.
+- [x] Provider capability errors identify the provider, location, and missing capability.
+- [x] Clients can branch on structured fields without parsing messages.

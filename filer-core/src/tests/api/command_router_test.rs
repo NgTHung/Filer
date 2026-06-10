@@ -99,7 +99,6 @@ mod command_router_tests {
                 registry: registry.clone(),
             };
 
-            // ── Session lifecycle ────────────────────────────────────
             handlers.on("session.handshake", |_cmd, ctx| {
                 let session = ctx.sessions.create_session(ctx.events.clone());
                 let _ = ctx.events.send(Event::SessionCreated(session));
@@ -111,7 +110,6 @@ mod command_router_tests {
                 }
             });
 
-            // ── Navigation handlers ──────────────────────────────────
             {
                 let tx = nav_tx.clone();
                 handlers.on("navigate.path.compat", move |cmd, _ctx| {
@@ -188,7 +186,6 @@ mod command_router_tests {
                 });
             }
 
-            // ── Search handlers ──────────────────────────────────────
             {
                 let tx = search_tx.clone();
                 handlers.on("search.node.compat", move |cmd, ctx| {
@@ -294,7 +291,27 @@ mod command_router_tests {
                 });
             }
 
-            // ── Scan handlers ────────────────────────────────────────
+            {
+                let tx = scan_tx.clone();
+                handlers.on("scan.path.compat", move |cmd, _ctx| {
+                    if let Command::ScanPathCompat {
+                        path,
+                        session,
+                        pipeline,
+                        load,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(ScanCommand::Scan {
+                            path,
+                            session,
+                            pipeline,
+                            load,
+                            request,
+                        });
+                    }
+                });
+            }
             {
                 let tx = scan_tx.clone();
                 handlers.on("scan", move |cmd, _ctx| {
@@ -316,8 +333,28 @@ mod command_router_tests {
                     }
                 });
             }
+            {
+                let tx = scan_tx.clone();
+                handlers.on("scan.node.compat", move |cmd, _ctx| {
+                    if let Command::ScanNodeCompat {
+                        node,
+                        session,
+                        pipeline,
+                        load,
+                        request,
+                    } = cmd
+                    {
+                        let _ = tx.send(ScanCommand::ScanNode {
+                            node,
+                            session,
+                            pipeline,
+                            load,
+                            request,
+                        });
+                    }
+                });
+            }
 
-            // ── Watch handlers ───────────────────────────────────────
             {
                 let tx = watch_tx.clone();
                 handlers.on("watch.node.compat", move |cmd, _ctx| {
@@ -368,7 +405,6 @@ mod command_router_tests {
                 });
             }
 
-            // ── Preview handlers ─────────────────────────────────────
             {
                 let tx = preview_tx.clone();
                 handlers.on("preview.load.node.compat", move |cmd, _ctx| {
@@ -473,7 +509,6 @@ mod command_router_tests {
                 });
             }
 
-            // ── Operations handlers ──────────────────────────────────
             {
                 let tx = ops_tx.clone();
                 handlers.on("ops.copy.node.compat", move |cmd, _ctx| {
@@ -735,7 +770,6 @@ mod command_router_tests {
                 });
             }
 
-            // ── Destroy hooks (per-module cleanup) ───────────────────
             {
                 let tx = watch_tx.clone();
                 handlers.on_session_destroy(move |session, _ctx| {
@@ -783,10 +817,6 @@ mod command_router_tests {
             self.session_manager.create_session(self.event_tx.clone())
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Route Navigate commands to Navigator
-    // ─────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_route_navigate_path_to_navigator() {
@@ -934,10 +964,6 @@ mod command_router_tests {
             other => panic!("Expected NavCommand::Refresh, got {:?}", other),
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Route Search commands to Searcher
-    // ─────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_route_search_to_searcher() {
@@ -1139,6 +1165,80 @@ mod command_router_tests {
     }
 
     #[tokio::test]
+    async fn test_route_compat_scans_to_scanner() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let path = PathBuf::from("/tmp/compat-scan");
+        let node = harness.registry.clone().register(path.clone());
+        let pipeline = PipelineConfig::with_default_sort();
+        let load = crate::DirectoryLoadOptions::bounded(32);
+        let path_request = RequestId::new();
+        let node_request = RequestId::new();
+
+        harness
+            .send(Command::ScanPathCompat {
+                path: path.clone(),
+                session,
+                pipeline: pipeline.clone(),
+                load: load.clone(),
+                request: path_request,
+            })
+            .await;
+
+        match timeout(TEST_TIMEOUT, harness.scan_rx.recv_async())
+            .await
+            .expect("Timed out waiting for path ScanCommand")
+            .expect("ScanCommand channel closed")
+        {
+            ScanCommand::Scan {
+                path: routed_path,
+                session: routed_session,
+                pipeline: routed_pipeline,
+                load: routed_load,
+                request,
+            } => {
+                assert_eq!(routed_path, path);
+                assert_eq!(routed_session, session);
+                assert_eq!(routed_pipeline, pipeline);
+                assert_eq!(routed_load, load);
+                assert_eq!(request, path_request);
+            }
+            other => panic!("Expected ScanCommand::Scan, got {other:?}"),
+        }
+
+        harness
+            .send(Command::ScanNodeCompat {
+                node,
+                session,
+                pipeline: pipeline.clone(),
+                load: load.clone(),
+                request: node_request,
+            })
+            .await;
+
+        match timeout(TEST_TIMEOUT, harness.scan_rx.recv_async())
+            .await
+            .expect("Timed out waiting for node ScanCommand")
+            .expect("ScanCommand channel closed")
+        {
+            ScanCommand::ScanNode {
+                node: routed_node,
+                session: routed_session,
+                pipeline: routed_pipeline,
+                load: routed_load,
+                request,
+            } => {
+                assert_eq!(routed_node, node);
+                assert_eq!(routed_session, session);
+                assert_eq!(routed_pipeline, pipeline);
+                assert_eq!(routed_load, load);
+                assert_eq!(request, node_request);
+            }
+            other => panic!("Expected ScanCommand::ScanNode, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_route_cancel_to_searcher_when_searching() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -1173,10 +1273,6 @@ mod command_router_tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Route Watch/Unwatch to Watcher
-    // ─────────────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_route_watch_to_watcher() {
         let harness = RouterTestHarness::new();
@@ -1185,10 +1281,7 @@ mod command_router_tests {
         let node = harness.registry.clone().register(path.clone());
 
         harness
-            .send(Command::WatchNodeCompat {
-                node: node,
-                session: session,
-            })
+            .send(Command::WatchNodeCompat { node, session })
             .await;
 
         let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
@@ -1212,9 +1305,7 @@ mod command_router_tests {
         let node = harness.registry.clone().register(path.clone());
 
         // Unwatch carries only NodeId, no SessionId
-        harness
-            .send(Command::UnwatchNodeCompat { node: node })
-            .await;
+        harness.send(Command::UnwatchNodeCompat { node }).await;
 
         let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
             .await
@@ -1312,10 +1403,6 @@ mod command_router_tests {
             other => panic!("Expected WatchCommand::UnwatchSession, got {:?}", other),
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Route Preview commands to Previewer
-    // ─────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_route_load_preview_to_previewer() {
@@ -1543,10 +1630,6 @@ mod command_router_tests {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Route file operations to Operator
-    // ─────────────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_route_copy_to_operator() {
         let harness = RouterTestHarness::new();
@@ -1740,10 +1823,6 @@ mod command_router_tests {
         assert_eq!(cancel_operation.operation_id(), Some(operation));
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Route by SessionId — session isolation
-    // ─────────────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_route_preserves_session_id_navigate() {
         let harness = RouterTestHarness::new();
@@ -1897,10 +1976,6 @@ mod command_router_tests {
         assert_eq!(received_sessions[2], session_3);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Session lifecycle commands
-    // ─────────────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_route_handshake_emits_session_created() {
         let harness = RouterTestHarness::new();
@@ -2021,10 +2096,6 @@ mod command_router_tests {
             other => panic!("Expected WatchCommand::UnwatchSession, got {:?}", other),
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Session validation — unknown sessions get Event::Error
-    // ─────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_unknown_session_navigate_emits_error() {
@@ -2165,7 +2236,7 @@ mod command_router_tests {
 
         harness
             .send(Command::WatchNodeCompat {
-                node: node,
+                node,
                 session: unknown,
             })
             .await;
@@ -2335,10 +2406,6 @@ mod command_router_tests {
         );
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Router lifecycle
-    // ─────────────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_router_shuts_down_when_command_channel_closes() {
         let (command_tx, command_rx) = flume::unbounded::<Command>();
@@ -2400,10 +2467,6 @@ mod command_router_tests {
             }
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // No cross-contamination — commands only go to their target actor
-    // ─────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_navigate_does_not_reach_searcher_or_watcher() {
@@ -2479,10 +2542,7 @@ mod command_router_tests {
         let node = harness.registry.clone().register(PathBuf::from("/watched"));
 
         harness
-            .send(Command::WatchNodeCompat {
-                node: node,
-                session: session,
-            })
+            .send(Command::WatchNodeCompat { node, session })
             .await;
 
         // Watcher gets the command
@@ -2500,10 +2560,6 @@ mod command_router_tests {
             "Searcher should not receive Watch commands"
         );
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Full routing table coverage
-    // ─────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_route_load_preview_with_options() {

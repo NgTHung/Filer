@@ -22,8 +22,6 @@ use crate::vfs::provider::{Capabilities, FsProvider};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
 
-// ── Minimal FsProvider stub ──────────────────────────────────────────────────
-
 struct NullProvider;
 
 #[async_trait]
@@ -55,8 +53,6 @@ impl FsProvider for NullProvider {
         Err(CoreError::not_found(p.to_path_buf()))
     }
 }
-
-// ── MockPreviewProvider ──────────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct MockPreviewProvider {
@@ -167,8 +163,6 @@ async fn wait_for_preview(evt_rx: &Receiver<Event>, session: SessionId) -> Event
         }
     }
 }
-
-// ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod lifecycle_tests {

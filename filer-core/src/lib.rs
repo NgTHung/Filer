@@ -11,8 +11,9 @@ mod vfs;
 
 // Re-exports
 pub use api::module::Module;
+pub use api::wire_commands::{WireCommand, WireCommandConversionError};
 pub use api::{commands::Command, events::Event, handle::FilerCore};
-pub use errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
+pub use errors::{CoreError, ErrorCode, ErrorContext, ErrorKind, ErrorTarget};
 pub use model::capability::{
     LocationCapabilityError, LocationConflictPolicy, LocationCrossProviderPolicy,
     LocationOperationCapability, LocationWatchCapability, LocationWatchReliability,

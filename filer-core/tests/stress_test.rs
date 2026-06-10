@@ -31,12 +31,8 @@ use filer_core::{
     Actor, Capabilities, Command, CoreError, Event, FilerCore, FsProvider, PipelineConfig,
 };
 
-// ── Timeouts ──────────────────────────────────────────────────────────────────
-
 const SHORT: Duration = Duration::from_secs(5);
 const LONG: Duration = Duration::from_secs(30);
-
-// ── MockProvider (HashMap-backed, O(1) directory lookup) ──────────────────────
 
 /// High-throughput in-memory provider for stress testing.
 /// Uses a HashMap for O(1) directory lookups — essential when traversing
@@ -106,7 +102,6 @@ impl FsProvider for MockFs {
     }
 }
 
-// ── LazyTreeFs — zero-allocation computed filesystem ─────────────────────────
 //
 // Instead of pre-generating and storing every FileNode, this provider
 // computes directory children on-the-fly from the path depth alone.
@@ -218,8 +213,6 @@ impl FsProvider for LazyTreeFs {
     }
 }
 
-// ── Node builders ─────────────────────────────────────────────────────────────
-
 fn file(name: &str, parent: &Path, size: u64) -> FileNode {
     let ext = Path::new(name)
         .extension()
@@ -263,8 +256,6 @@ fn dir(name: &str, parent: &Path) -> FileNode {
         accessed: None,
     }
 }
-
-// ── Test harness helpers ──────────────────────────────────────────────────────
 
 fn build_core(fs: MockFs) -> FilerCore {
     let fs = Arc::new(fs);
@@ -326,10 +317,6 @@ async fn drain_search(
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 1. Large flat directory — 5 000 files, half matching
-// ═══════════════════════════════════════════════════════════════════════════════
-
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
 async fn stress_search_large_flat_dir() {
@@ -379,10 +366,6 @@ async fn stress_search_large_flat_dir() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 2. Deep tree — 300 levels, 1 matching file per level
-// ═══════════════════════════════════════════════════════════════════════════════
-
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
 async fn stress_search_deep_tree() {
@@ -427,13 +410,10 @@ async fn stress_search_deep_tree() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 3. Wide + deep tree — LazyTreeFs, width=10 × depth=5 = 11 111 dirs
 //
 // Uses LazyTreeFs so no FileNodes are stored up front.
 // Memory during traversal: O(width^depth) PathBufs in the BFS queue at peak
 //   = 10^4 = 10 000 PathBufs ≈ 640 KB. Results ≈ 66 666 FileNodes ≈ 20 MB.
-// ═══════════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
@@ -472,10 +452,6 @@ async fn stress_search_wide_deep_tree() {
         "all results must start with 'match_'"
     );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 4. Concurrent sessions — 8 sessions searching the same tree simultaneously
-// ═══════════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
@@ -561,10 +537,6 @@ async fn stress_concurrent_sessions() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 5. Rapid cancel-restart — 30 cycles, final search must still complete
-// ═══════════════════════════════════════════════════════════════════════════════
-
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
 async fn stress_rapid_cancel_restart() {
@@ -621,10 +593,6 @@ async fn stress_rapid_cancel_restart() {
         CYCLES
     );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 6. All filters combined on a large mixed dataset
-// ═══════════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
@@ -691,10 +659,6 @@ async fn stress_all_filters_combined() {
         "all results must be > 1000 bytes"
     );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 7. Batch streaming accuracy — no results lost across batch boundaries
-// ═══════════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
@@ -765,10 +729,6 @@ async fn stress_streaming_batch_accuracy() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// 8. Scanner stress — scan a directory with 3 000 files
-// ═══════════════════════════════════════════════════════════════════════════════
-
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
 async fn stress_scanner_large_dir() {
@@ -822,10 +782,6 @@ async fn stress_scanner_large_dir() {
         FILE_COUNT
     );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 9. Session isolation under load — cancel A, B and C must still complete
-// ═══════════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
@@ -928,10 +884,6 @@ async fn stress_session_isolation_under_cancellation() {
         FILES
     );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 10. Determinism — same query on the same tree returns identical results twice
-// ═══════════════════════════════════════════════════════════════════════════════
 
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]

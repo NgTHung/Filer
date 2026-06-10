@@ -3,6 +3,7 @@
 Filer are file explorer fast alternative with some sprinkle of dev enviroment improvement. 
 This is a current WIP project. Proposed sweeping changes that improve long-term maintainability is encouraged.
 The current repo/project focus is on Filer-core, we want to fully focus on Filer-core crate without bothering others crate(even filer-app and filer-ecosystem).
+Workspace crates live directly under the repository root. Read the root Cargo.toml before assuming crate paths.
 
 ## Core Priority
 ---
@@ -39,6 +40,7 @@ Avoid unnecessary `.clone()`.
 Prefer borrowing when practical.
 Do not add dependencies unless needed.
 Keep code simple and idomatic.
+Do not use comment to dividing sections of code(`-------\nABC\n------`). 
 
 ### Documentation rules
 Core principle: Explain WHY, not WHAT. Keep comments as short as possible. One sentence explaining rationale beats a paragraph restating code.

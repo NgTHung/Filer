@@ -74,7 +74,6 @@ impl Module for ScanModule {
     fn init(mut self: Box<Self>, ctx: ModuleContext<'_>) {
         let scan_rx = self.scan_rx.take().expect("ScanModule already initialized");
 
-        // ── Register scan command handlers ───────────────────────────
         let tx = self.scan_tx.clone();
         ctx.handlers.on("scan.path.compat", move |cmd, _ctx| {
             if let Command::ScanPathCompat {
@@ -154,7 +153,6 @@ impl Module for ScanModule {
             }
         });
 
-        // ── Spawn Scanner actor ──────────────────────────────────────
         let scanner = match self.cache.take() {
             Some(cache) => Scanner::with_cache(
                 scan_rx,

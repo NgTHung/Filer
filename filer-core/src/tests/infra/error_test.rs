@@ -1,7 +1,9 @@
 //! Tests for structured error types
 
 use crate::api::events::Event;
-use crate::errors::{CoreError, ErrorCode, ErrorKind, ErrorTarget};
+use crate::errors::{CoreError, ErrorCode, ErrorContext, ErrorKind, ErrorTarget};
+use crate::model::capability::LocationCapabilityError;
+use crate::model::location::{Location, LocationRef, ProviderRef};
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -70,9 +72,15 @@ fn test_error_code_kind_mapping() {
         (ErrorCode::NetworkFailed, ErrorKind::Network),
         (ErrorCode::DataInvalid, ErrorKind::InvalidData),
         (ErrorCode::InputInvalid, ErrorKind::InvalidInput),
+        (ErrorCode::Collision, ErrorKind::Conflict),
+        (ErrorCode::StaleRequest, ErrorKind::InvalidInput),
         (ErrorCode::SessionUnknown, ErrorKind::InvalidInput),
         (ErrorCode::NavigationUnavailable, ErrorKind::InvalidInput),
         (ErrorCode::UnsupportedOperation, ErrorKind::Unsupported),
+        (
+            ErrorCode::ProviderCapabilityUnavailable,
+            ErrorKind::Unsupported,
+        ),
         (ErrorCode::Unknown, ErrorKind::Unknown),
     ];
 
@@ -94,9 +102,12 @@ fn test_error_code_recoverability() {
         ErrorCode::Cancelled,
         ErrorCode::TimedOut,
         ErrorCode::NetworkFailed,
+        ErrorCode::Collision,
+        ErrorCode::StaleRequest,
         ErrorCode::SessionUnknown,
         ErrorCode::NavigationUnavailable,
         ErrorCode::UnsupportedOperation,
+        ErrorCode::ProviderCapabilityUnavailable,
     ] {
         assert!(code.is_recoverable(), "{code:?} should be recoverable");
     }
@@ -220,4 +231,80 @@ fn test_conversion_from_other_io_error() {
 #[test]
 fn test_emit_trace_does_not_require_subscriber() {
     CoreError::invalid_input("bad input").emit_trace();
+}
+
+#[test]
+fn collision_error_exposes_source_and_destination() {
+    let source = ErrorTarget::Path(PathBuf::from("/tmp/source.txt"));
+    let destination = ErrorTarget::Path(PathBuf::from("/tmp/destination.txt"));
+
+    let error = CoreError::collision(source.clone(), destination.clone());
+
+    assert_eq!(error.kind(), ErrorKind::Conflict);
+    assert_eq!(error.code(), ErrorCode::Collision);
+    assert!(error.recoverable());
+    assert_eq!(
+        error.context(),
+        Some(&ErrorContext::Collision {
+            source,
+            destination,
+        })
+    );
+}
+
+#[test]
+fn stale_request_error_exposes_session_and_request() {
+    let session = SessionId::new();
+    let request = RequestId::new();
+
+    let error = CoreError::stale_request(session, request);
+
+    assert_eq!(error.code(), ErrorCode::StaleRequest);
+    assert_eq!(
+        error.context(),
+        Some(&ErrorContext::StaleRequest { session, request })
+    );
+}
+
+#[test]
+fn provider_capability_error_exposes_provider_location_and_capability() {
+    let location = LocationRef::from_location(&Location::local("/tmp/read-only"));
+    let capability = LocationCapabilityError::WriteUnsupported;
+
+    let error =
+        CoreError::provider_capability(ProviderRef::Local, location.clone(), capability.clone());
+
+    assert_eq!(error.code(), ErrorCode::ProviderCapabilityUnavailable);
+    assert_eq!(
+        error.context(),
+        Some(&ErrorContext::ProviderCapability {
+            provider: ProviderRef::Local,
+            location,
+            capability,
+        })
+    );
+}
+
+#[test]
+fn error_event_preserves_structured_context() {
+    let session = SessionId::new();
+    let request = RequestId::new();
+    let error = CoreError::stale_request(session, request);
+
+    match Event::from_request_error(error, session, request) {
+        Event::Error {
+            context: Some(context),
+            ..
+        } => match *context {
+            ErrorContext::StaleRequest {
+                session: context_session,
+                request: context_request,
+            } => {
+                assert_eq!(context_session, session);
+                assert_eq!(context_request, request);
+            }
+            other => panic!("expected stale-request context, got {other:?}"),
+        },
+        other => panic!("expected structured stale-request event, got {other:?}"),
+    }
 }

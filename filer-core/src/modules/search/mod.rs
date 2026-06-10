@@ -33,7 +33,6 @@ impl Module for SearchModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
         let (search_tx, search_rx) = flume::unbounded::<SearchCommand>();
 
-        // ── Search ───────────────────────────────────────────────────
         let tx = search_tx.clone();
         ctx.handlers.on("search.node.compat", move |cmd, ctx| {
             if let Command::SearchNodeCompat {
@@ -103,7 +102,6 @@ impl Module for SearchModule {
             }
         });
 
-        // ── Cancel search ────────────────────────────────────────────
         let tx = search_tx.clone();
         ctx.handlers.on("search.cancel", move |cmd, _ctx| {
             if let Command::CancelSearch { session } = cmd {
@@ -111,7 +109,6 @@ impl Module for SearchModule {
             }
         });
 
-        // ── Session cleanup hook ─────────────────────────────────────
         let tx = search_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
             let _ = tx.send(SearchCommand::Cancel(session));

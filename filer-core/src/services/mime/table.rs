@@ -12,16 +12,12 @@
 
 use super::detector::{DetectionConfidence, MimeCategory};
 
-// ── Entry type ───────────────────────────────────────────────────────────────
-
 #[derive(Clone, Copy)]
 pub struct ExtEntry {
     pub mime_type: &'static str,
     pub category: MimeCategory,
     pub confidence: DetectionConfidence,
 }
-
-// ── Lookup ────────────────────────────────────────────────────────────────────
 
 /// Look up `ext` (lower-case, no leading dot) in `EXT_TABLE`.
 ///
@@ -33,7 +29,6 @@ pub fn lookup_extension(ext: &str) -> Option<&'static ExtEntry> {
         .map(|i| &EXT_TABLE[i].1)
 }
 
-// ── Extension table ───────────────────────────────────────────────────────────
 //
 // Rules:
 //   - Sorted lexicographically by extension (required for binary_search_by_key).

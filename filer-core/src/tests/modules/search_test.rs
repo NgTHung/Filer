@@ -34,11 +34,7 @@ use crate::modules::search::searcher::{SearchCommand, Searcher};
 use crate::utils;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
 const TIMEOUT: Duration = Duration::from_millis(3000);
-
-// ── MockProvider ─────────────────────────────────────────────────────────────
 
 /// Hierarchical mock filesystem for search testing.
 /// Maps directory paths to their children, supporting recursive traversal.
@@ -78,8 +74,6 @@ impl MockProvider {
     fn set_delay_ms(&self, delay_ms: u64) {
         *self.delay_ms.lock().unwrap() = delay_ms;
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
 
     fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
         let extension = utils::get_extension(Path::new(name)).map(str::to_string);
@@ -200,8 +194,6 @@ impl FsProvider for MockProvider {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }
-
-// ── Test Helpers ─────────────────────────────────────────────────────────────
 
 /// Collect all SearchResultsCompat batches until `complete: true`.
 async fn wait_for_search_complete(
@@ -462,10 +454,6 @@ mod searcher_location_tests {
         }
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Actor-Level Tests
-// ══════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod searcher_lifecycle_tests {

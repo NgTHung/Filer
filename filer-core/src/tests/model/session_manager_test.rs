@@ -36,8 +36,6 @@ mod session_manager_tests {
         flume::bounded(64)
     }
 
-    // ── create session ──────────────────────────────────────────────
-
     #[test]
     fn test_create_session_returns_id() {
         let mgr = make_manager();
@@ -78,8 +76,6 @@ mod session_manager_tests {
         assert_ne!(id1, id3);
     }
 
-    // ── exists (get session by id) ──────────────────────────────────
-
     #[test]
     fn test_get_session() {
         let mgr = make_manager();
@@ -101,8 +97,6 @@ mod session_manager_tests {
         let mgr = make_manager();
         assert!(!mgr.exists(SessionId::DEFAULT));
     }
-
-    // ── remove session ──────────────────────────────────────────────
 
     #[test]
     fn test_remove_session() {
@@ -132,8 +126,6 @@ mod session_manager_tests {
         assert!(!mgr.remove(id)); // second remove returns false
     }
 
-    // ── session isolation ───────────────────────────────────────────
-
     #[test]
     fn test_session_isolation() {
         let mgr = make_manager();
@@ -148,6 +140,7 @@ mod session_manager_tests {
             kind: ErrorKind::Unknown,
             code: ErrorCode::Unknown,
             target: None,
+            context: None,
             message: "for session 1 only".into(),
             recoverable: true,
             session: id1,
@@ -168,8 +161,6 @@ mod session_manager_tests {
         assert!(rx2.try_recv().is_err());
     }
 
-    // ── broadcast ───────────────────────────────────────────────────
-
     #[test]
     fn test_broadcast_to_all() {
         let mgr = make_manager();
@@ -185,6 +176,7 @@ mod session_manager_tests {
             kind: ErrorKind::Unknown,
             code: ErrorCode::Unknown,
             target: None,
+            context: None,
             message: "broadcast".into(),
             recoverable: false,
             session: SessionId::DEFAULT, // broadcast, so session field is illustrative
@@ -212,6 +204,7 @@ mod session_manager_tests {
             kind: ErrorKind::Unknown,
             code: ErrorCode::Unknown,
             target: None,
+            context: None,
             message: "nobody home".into(),
             recoverable: true,
             session: SessionId::DEFAULT,
@@ -220,8 +213,6 @@ mod session_manager_tests {
         };
         mgr.broadcast(event);
     }
-
-    // ── send_to ─────────────────────────────────────────────────────
 
     #[test]
     fn test_send_to_specific() {
@@ -233,6 +224,7 @@ mod session_manager_tests {
             kind: ErrorKind::Unknown,
             code: ErrorCode::Unknown,
             target: None,
+            context: None,
             message: "hello".into(),
             recoverable: true,
             session: id,
@@ -258,6 +250,7 @@ mod session_manager_tests {
             kind: ErrorKind::Unknown,
             code: ErrorCode::Unknown,
             target: None,
+            context: None,
             message: "lost".into(),
             recoverable: false,
             session: bogus,
@@ -286,6 +279,7 @@ mod session_manager_tests {
             kind: ErrorKind::Unknown,
             code: ErrorCode::Unknown,
             target: None,
+            context: None,
             message: "orphan".into(),
             recoverable: false,
             session: id,
@@ -300,8 +294,6 @@ mod session_manager_tests {
             other => panic!("expected ChannelClosed, got {:?}", other),
         }
     }
-
-    // ── create_session_with_policy ──────────────────────────────────
 
     #[test]
     fn test_create_session_with_policy() {
@@ -318,8 +310,6 @@ mod session_manager_tests {
         assert!(mgr.exists(id));
         assert_eq!(mgr.count(), 1);
     }
-
-    // ── is_allowed ──────────────────────────────────────────────────
 
     #[test]
     fn test_is_allowed_with_allow_all() {
@@ -365,8 +355,6 @@ mod session_manager_tests {
         assert!(!mgr.is_allowed(bogus, Operation::Read, &PathBuf::from("/tmp")));
     }
 
-    // ── clone shares state ──────────────────────────────────────────
-
     #[test]
     fn test_clone_shares_state() {
         let mgr = make_manager();
@@ -384,8 +372,6 @@ mod session_manager_tests {
         assert!(!mgr.exists(id));
         assert_eq!(mgr.count(), 0);
     }
-
-    // ── concurrent session creation ─────────────────────────────────
 
     #[test]
     fn test_concurrent_session_creation() {
@@ -419,8 +405,6 @@ mod session_manager_tests {
         }
     }
 
-    // ── broadcast after partial removal ─────────────────────────────
-
     #[test]
     fn test_broadcast_after_removing_some_sessions() {
         let mgr = make_manager();
@@ -437,6 +421,7 @@ mod session_manager_tests {
             kind: ErrorKind::Unknown,
             code: ErrorCode::Unknown,
             target: None,
+            context: None,
             message: "still here".into(),
             recoverable: true,
             session: SessionId::DEFAULT,
@@ -452,8 +437,6 @@ mod session_manager_tests {
         assert!(received.is_ok());
     }
 
-    // ── multiple events queued ──────────────────────────────────────
-
     #[test]
     fn test_multiple_events_queued_in_order() {
         let mgr = make_manager();
@@ -465,6 +448,7 @@ mod session_manager_tests {
                 kind: ErrorKind::Unknown,
                 code: ErrorCode::Unknown,
                 target: None,
+                context: None,
                 message: format!("msg-{}", i),
                 recoverable: true,
                 session: id,

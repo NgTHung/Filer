@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use mime as mime_crate;
+use serde::{Deserialize, Serialize};
 
 /// How confident the detector is in its result.
 ///
@@ -24,7 +25,8 @@ pub enum DetectionConfidence {
 /// - Local FS  -> `MagicBytes` (single cheap `pread`, best accuracy)
 /// - Remote FS -> `ExtensionOnly` (any read has network latency)
 /// - Unknown   -> `ExtensionWithFallback` (read only when truly needed)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DetectionStrategy {
     /// Never read file bytes. Fast; may misclassify renamed or extensionless files.
     ExtensionOnly,
@@ -81,7 +83,7 @@ impl MimeDetector {
     /// # Confidence
     /// - `Definitive` — unambiguous extension with a known MIME type
     /// - `Probable`   — extension is in `AMBIGUOUS_EXTENSIONS` but resolves to
-    ///                  a `text/*` type (e.g. `.txt` → `text/plain`)
+    ///   a `text/*` type (e.g. `.txt` → `text/plain`)
     /// - `Unknown`    — no extension, ambiguous non-text extension, or unknown extension
     pub fn detect_from_path(path: &Path) -> MimeInfo {
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -250,7 +252,6 @@ impl MimeDetector {
         }
 
         match mime_type {
-            // ── Text-like application types (new_mime_guess) ──────────────────
             "application/json"
             | "application/javascript"
             | "application/xml"
@@ -258,7 +259,6 @@ impl MimeDetector {
             | "application/x-sh"
             | "application/x-httpd-php" => MimeCategory::Text,
 
-            // ── Documents ─────────────────────────────────────────────────────
             // infer MatcherType::Doc
             "application/msword"
             | "application/vnd.ms-excel"
@@ -286,7 +286,6 @@ impl MimeDetector {
             | "application/vnd.ms-excel.sheet.binary.macroenabled.12"
             | "application/vnd.ms-powerpoint.presentation.macroenabled.12" => MimeCategory::Document,
 
-            // ── Archives ──────────────────────────────────────────────────────
             // infer MatcherType::Archive (browsable compressed containers)
             "application/zip"
             | "application/gzip"
@@ -311,7 +310,6 @@ impl MimeDetector {
             | "application/x-gtar"
             | "application/x-apple-diskimage" => MimeCategory::Archive,
 
-            // ── Binary ────────────────────────────────────────────────────────
             // infer MatcherType::App
             "application/wasm"
             | "application/x-executable"              // ELF and COFF .obj

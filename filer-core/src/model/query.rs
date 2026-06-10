@@ -166,8 +166,6 @@ impl SearchQuery {
         })
     }
 
-    // ── Private helpers ──────────────────────────────────────────────
-
     fn parse_ext(value: &str, position: usize) -> Result<ParsedToken, QueryParseError> {
         if value.is_empty() {
             return Err(QueryParseError {

@@ -233,8 +233,6 @@ fn test_pipeline_paging_mode_keeps_order_changing_or_unsupported_filters_snapsho
     );
 }
 
-// ===== FilterHidden Tests =====
-
 #[test]
 fn test_filter_hidden() {
     let filter = FilterHidden::new(false); // Hide hidden files
@@ -332,8 +330,6 @@ fn test_filter_hidden_directories() {
         panic!("Expected Flat output");
     }
 }
-
-// ===== FilterByExtension Tests =====
 
 #[test]
 fn test_filter_by_extension_include() {
@@ -437,8 +433,6 @@ fn test_filter_by_extension_files_without_extension() {
         panic!("Expected Flat output");
     }
 }
-
-// ===== SortBy Tests =====
 
 #[test]
 fn test_sort_by_name_asc() {
@@ -727,8 +721,6 @@ fn test_sort_name() {
     assert_eq!(sort.name(), "sort_by");
 }
 
-// ===== GroupBy Tests =====
-
 #[test]
 fn test_group_by_extension() {
     let group = GroupBy::new(GroupField::Extension);
@@ -790,8 +782,6 @@ fn test_group_by_empty_input() {
         panic!("Expected Grouped output");
     }
 }
-
-// ===== Pipeline Tests =====
 
 #[test]
 fn test_pipeline_new() {
@@ -986,8 +976,6 @@ fn test_pipeline_all_filtered_out() {
         panic!("Expected Flat output");
     }
 }
-
-// ===== PipelineConfig Tests =====
 
 #[test]
 fn test_pipeline_config_new() {

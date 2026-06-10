@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use crate::errors::CoreError;
@@ -65,7 +66,8 @@ pub enum PreviewData {
     Unsupported { mime_type: String, reason: String },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ImageFormat {
     Png,
     Jpeg,
@@ -98,7 +100,7 @@ pub struct ArchivePreviewEntry {
 }
 
 /// Options for preview generation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PreviewOptions {
     /// Maximum width for image thumbnails
     pub max_width: u32,

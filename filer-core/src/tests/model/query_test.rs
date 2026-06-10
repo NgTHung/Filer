@@ -10,8 +10,6 @@ use std::time::{Duration, SystemTime};
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::query::{QueryFilter, SearchQuery};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn make_file(name: &str, size: u64) -> FileNode {
     let path = PathBuf::from("/test").join(name);
     let ext = path
@@ -261,13 +259,9 @@ mod tests {
     }
 }
 
-// ── SearchQuery::matches tests ────────────────────────────────────────────────
-
 #[cfg(test)]
 mod matches_tests {
     use super::*;
-
-    // ── Text matching ─────────────────────────────────────────────────────────
 
     #[test]
     fn text_match_case_insensitive_by_default() {
@@ -291,8 +285,6 @@ mod matches_tests {
         assert!(!q.matches(&make_dir("a_dir")));
     }
 
-    // ── Filter: Extension ─────────────────────────────────────────────────────
-
     #[test]
     fn filter_extension_matches() {
         let q = SearchQuery::parse("ext:rs,toml").unwrap();
@@ -314,8 +306,6 @@ mod matches_tests {
         let q = SearchQuery::parse("ext:rs").unwrap();
         assert!(!q.matches(&make_dir("src")));
     }
-
-    // ── Filter: Size ──────────────────────────────────────────────────────────
 
     #[test]
     fn filter_size_greater_than() {
@@ -341,8 +331,6 @@ mod matches_tests {
         assert!(!q.matches(&make_file("huge.txt", 2000)));
     }
 
-    // ── Filter: Type ──────────────────────────────────────────────────────────
-
     #[test]
     fn filter_is_file() {
         let q = SearchQuery::parse("type:file").unwrap();
@@ -357,16 +345,12 @@ mod matches_tests {
         assert!(!q.matches(&make_file("src.txt", 100)));
     }
 
-    // ── Filter: Hidden ────────────────────────────────────────────────────────
-
     #[test]
     fn filter_is_hidden() {
         let q = SearchQuery::parse("hidden:yes").unwrap();
         assert!(q.matches(&make_hidden(".env")));
         assert!(!q.matches(&make_file("visible.txt", 100)));
     }
-
-    // ── Filter: NameContains ──────────────────────────────────────────────────
 
     #[test]
     fn filter_name_contains() {
@@ -384,8 +368,6 @@ mod matches_tests {
         assert!(q.matches(&make_file("Config.json", 100)));
     }
 
-    // ── Filter: NameMatches (regex) ───────────────────────────────────────────
-
     #[test]
     fn filter_name_matches_regex() {
         let q = SearchQuery::parse(r"match:^test_.*\.rs$").unwrap();
@@ -401,8 +383,6 @@ mod matches_tests {
         assert!(q.matches(&make_file("lib.rs", 100)));
         assert!(!q.matches(&make_file("stdlib.rs", 100)));
     }
-
-    // ── Filter: ModifiedAfter / ModifiedBefore ────────────────────────────────
 
     #[test]
     fn filter_modified_after() {
@@ -427,8 +407,6 @@ mod matches_tests {
         assert!(!q.matches(&f));
     }
 
-    // ── AND semantics ─────────────────────────────────────────────────────────
-
     #[test]
     fn multiple_filters_all_must_pass() {
         let q = SearchQuery::parse("ext:rs size:>100").unwrap();
@@ -444,8 +422,6 @@ mod matches_tests {
         assert!(!q.matches(&make_file("test_main.py", 100))); // ext fails
         assert!(!q.matches(&make_file("main.rs", 100))); // text fails
     }
-
-    // ── QueryFilter::matches directly ─────────────────────────────────────────
 
     #[test]
     fn query_filter_extension_direct() {

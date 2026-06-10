@@ -7,7 +7,7 @@ use rapidhash::fast::RandomState;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
-use crate::model::capability::operation_capability_for_location;
+use crate::model::capability::{LocationCapabilityError, operation_capability_for_location};
 use crate::model::location::LocationRef;
 use crate::model::node::NodeId;
 use crate::model::operation::{OperationId, OperationKind};
@@ -19,7 +19,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::{CoreError, ErrorCode, FsProvider};
+use crate::{CoreError, ErrorCode, ErrorTarget, FsProvider};
 
 type TrashFn = Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>;
 
@@ -751,7 +751,10 @@ impl Operator {
                 send_or_warn_async(
                     &events,
                     Event::from_operation_error(
-                        CoreError::invalid_path("File/Folder already exists"),
+                        CoreError::collision(
+                            ErrorTarget::Path(src_path.clone()),
+                            ErrorTarget::Path(new_path.clone()),
+                        ),
                         session,
                         request,
                         operation,
@@ -841,7 +844,10 @@ impl Operator {
                 send_or_warn_async(
                     &events,
                     Event::from_operation_error(
-                        CoreError::invalid_path("File/Folder already exists"),
+                        CoreError::collision(
+                            ErrorTarget::Path(path.clone()),
+                            ErrorTarget::Path(full_path.clone()),
+                        ),
                         session,
                         request,
                         operation,
@@ -928,7 +934,10 @@ impl Operator {
                 send_or_warn_async(
                     &events,
                     Event::from_operation_error(
-                        CoreError::invalid_path("File/Folder already exists"),
+                        CoreError::collision(
+                            ErrorTarget::Path(path.clone()),
+                            ErrorTarget::Path(full_path.clone()),
+                        ),
                         session,
                         request,
                         operation,
@@ -993,9 +1002,24 @@ impl Operator {
             self.provider.capabilities(),
         )?;
         if !capability.supported {
-            return Err(CoreError::unsupported_operation(format!(
-                "{kind:?} is not supported by this provider"
-            )));
+            let provider = capability
+                .location
+                .descriptor()
+                .map(|descriptor| descriptor.provider().clone())
+                .ok_or_else(|| {
+                    CoreError::invalid_data(
+                        "Resolved capability location is missing its provider descriptor",
+                    )
+                })?;
+            let missing = capability
+                .unsupported
+                .clone()
+                .unwrap_or(LocationCapabilityError::OperationUnsupported(kind));
+            return Err(CoreError::provider_capability(
+                provider,
+                capability.location,
+                missing,
+            ));
         }
         let location = self.registry.resolve_location_ref(location)?;
         self.registry.register_location_node(location)

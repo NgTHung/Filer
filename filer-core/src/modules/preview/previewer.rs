@@ -108,8 +108,6 @@ impl Previewer {
         }
     }
 
-    // ── Preview generation ────────────────────────────────────────────────────
-
     fn dispatch_preview(
         &self,
         node: NodeId,
@@ -329,8 +327,6 @@ impl Previewer {
         }
     }
 
-    // ── Basic metadata ────────────────────────────────────────────────────────
-
     fn dispatch_metadata(&self, node: NodeId, session: SessionId, request: RequestId) {
         self.mark_latest(session, request);
         let Some(path) = self.registry.resolve(node) else {
@@ -429,8 +425,6 @@ impl Previewer {
             }
         });
     }
-
-    // ── Extended metadata ─────────────────────────────────────────────────────
 
     fn dispatch_extended_metadata(&self, node: NodeId, session: SessionId, request: RequestId) {
         self.mark_latest(session, request);
@@ -590,8 +584,6 @@ impl Previewer {
             active.remove(session).await;
         });
     }
-
-    // ── Cancellation helpers ──────────────────────────────────────────────────
 
     fn arm_cancel(&self, session: SessionId) -> CancellationToken {
         self.active.arm(session)

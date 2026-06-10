@@ -6,8 +6,6 @@
 use crate::services::mime::table::lookup_extension;
 use crate::services::mime::{MimeCategory, MimeDetector};
 
-// ── Structural integrity ───────────────────────────────────────────────────────
-
 #[test]
 fn table_is_sorted() {
     // Pull all extension keys and compare to a freshly-sorted copy.
@@ -18,8 +16,6 @@ fn table_is_sorted() {
     sorted.sort();
     assert_eq!(keys, sorted, "EXT_TABLE must be sorted for binary search");
 }
-
-// ── Code-file extensions (new_mime_guess gets these wrong) ────────────────────
 
 #[test]
 fn py_returns_x_python() {
@@ -46,8 +42,6 @@ fn ts_returns_typescript() {
     let entry = lookup_extension("ts").expect("ts must be in table");
     assert_eq!(entry.mime_type, "text/typescript");
 }
-
-// ── Correctness spot-checks ────────────────────────────────────────────────────
 
 #[test]
 fn png_returns_image_png() {
@@ -94,8 +88,6 @@ fn zip_returns_archive() {
 fn unknown_extension_returns_none() {
     assert!(lookup_extension("zzz_unknown").is_none());
 }
-
-// ── Integration: detector uses table for code files ──────────────────────────
 
 #[test]
 fn detector_uses_table_for_py() {

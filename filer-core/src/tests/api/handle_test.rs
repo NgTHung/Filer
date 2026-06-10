@@ -26,8 +26,6 @@ mod handle_tests {
     /// Timeout for async operations in tests
     const TEST_TIMEOUT: Duration = Duration::from_millis(1000);
 
-    // ── FilerCore::new() creates actors ─────────────────────────────
-
     #[tokio::test]
     async fn test_new_creates_instance() {
         // FilerCore::new() should succeed and return a valid handle
@@ -50,8 +48,6 @@ mod handle_tests {
         let receiver = core.event_receiver();
         assert!(!receiver.is_disconnected(), "event channel should be open");
     }
-
-    // ── send command with session ───────────────────────────────────
 
     #[tokio::test]
     async fn test_send_handshake_returns_session_created() {
@@ -147,8 +143,6 @@ mod handle_tests {
         }
     }
 
-    // ── receive event with session ──────────────────────────────────
-
     #[tokio::test]
     async fn test_try_recv_returns_none_when_no_events() {
         let core = FilerCore::new();
@@ -228,8 +222,6 @@ mod handle_tests {
         }
     }
 
-    // ── multiple handshakes produce unique sessions ─────────────────
-
     #[tokio::test]
     async fn test_multiple_handshakes_unique_sessions() {
         let core = FilerCore::new();
@@ -253,8 +245,6 @@ mod handle_tests {
         deduped.dedup();
         assert_eq!(deduped.len(), 5, "all 5 session IDs should be unique");
     }
-
-    // ── destroy session lifecycle ───────────────────────────────────
 
     #[tokio::test]
     async fn test_destroy_session_emits_session_destroyed() {
@@ -313,8 +303,6 @@ mod handle_tests {
             other => panic!("expected Error(Unknown session), got {:?}", other),
         }
     }
-
-    // ── shutdown ────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_shutdown_succeeds() {
@@ -375,8 +363,6 @@ mod handle_tests {
         );
     }
 
-    // ── send returns error when channel closed ──────────────────────
-
     #[tokio::test]
     async fn test_send_after_shutdown_returns_error() {
         let core = FilerCore::new();
@@ -389,8 +375,6 @@ mod handle_tests {
             "send after shutdown should return CoreError"
         );
     }
-
-    // ── event_receiver clone independence ────────────────────────────
 
     #[tokio::test]
     async fn test_event_receiver_clone_receives_same_events() {
@@ -418,8 +402,6 @@ mod handle_tests {
             other => panic!("expected SessionCreated from one receiver, got {:?}", other),
         }
     }
-
-    // ── command_sender clone independence ────────────────────────────
 
     #[tokio::test]
     async fn test_command_sender_clone_sends_to_same_router() {

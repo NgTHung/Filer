@@ -26,8 +26,6 @@ use crate::services::metadata::{ExtendedMetadata, MetadataRegistry};
 use crate::services::mime::{DetectionConfidence, MimeCategory, MimeInfo};
 use crate::vfs::local::LocalFs;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn mime(mime_type: &str, category: MimeCategory) -> MimeInfo {
     MimeInfo {
         mime_type: mime_type.to_string(),
@@ -145,8 +143,6 @@ fn zip_empty() -> Vec<u8> {
     ]
 }
 
-// ── MetadataRegistry tests ────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod registry_tests {
     use super::*;
@@ -249,8 +245,6 @@ mod registry_tests {
         assert_eq!(reg.get(&info).unwrap().name(), "image");
     }
 }
-
-// ── ImageExtractor tests ──────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod image_extractor_tests {
@@ -360,8 +354,6 @@ mod image_extractor_tests {
     }
 }
 
-// ── AudioExtractor tests ──────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod audio_extractor_tests {
     use super::*;
@@ -452,8 +444,6 @@ mod audio_extractor_tests {
     }
 }
 
-// ── VideoExtractor tests ──────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod video_extractor_tests {
     use super::*;
@@ -532,8 +522,6 @@ mod video_extractor_tests {
     }
 }
 
-// ── DocumentExtractor tests ───────────────────────────────────────────────────
-
 #[cfg(test)]
 mod document_extractor_tests {
     use super::*;
@@ -596,8 +584,6 @@ mod document_extractor_tests {
         assert!(meta.title.is_none());
     }
 }
-
-// ── ArchiveExtractor tests ────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod archive_extractor_tests {
@@ -675,8 +661,6 @@ mod archive_extractor_tests {
         assert_eq!(meta.total_size, 0);
     }
 }
-
-// ── CodeExtractor tests ───────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod code_extractor_tests {

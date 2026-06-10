@@ -20,11 +20,7 @@ use filer_core::modules::navigation::NavigationModule;
 use filer_core::modules::scan::ScanModule;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
 const TIMEOUT: Duration = Duration::from_millis(2000);
-
-// ── MockProvider ──────────────────────────────────────────────────────────────
 
 /// A simple in-memory filesystem provider for integration testing.
 ///
@@ -58,8 +54,6 @@ impl MockProvider {
     fn list_calls(&self) -> Vec<PathBuf> {
         self.list_calls.lock().unwrap().clone()
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
 
     fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
         FileNode {
@@ -148,8 +142,6 @@ impl FsProvider for MockProvider {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }
-
-// ── Test helpers ──────────────────────────────────────────────────────────────
 
 /// Build a wired-up FilerCore with Navigation + Scan modules backed by `provider`.
 fn build_core(provider: MockProvider) -> FilerCore {
@@ -251,13 +243,9 @@ fn path_from_location_ref(location: &LocationRef) -> Option<PathBuf> {
     }
 }
 
-// ── Phase 4: Navigation Flow Tests ────────────────────────────────────────────
-
 #[cfg(test)]
 mod navigation_flow_tests {
     use super::*;
-
-    // ── Navigate(session, path) → DirectoryLoadedCompat ─────────────────────────
 
     /// Navigate to a known directory → `DirectoryLoadedCompat` event is emitted
     /// with the correct session and path.
@@ -350,8 +338,6 @@ mod navigation_flow_tests {
             }
         }
     }
-
-    // ── NavigateUp preserves session ──────────────────────────────────────
 
     /// Navigate into a subdirectory, then `NavigateUp` → we land back in the parent
     /// and get a fresh `DirectoryLoadedCompat` for the parent path.
@@ -478,8 +464,6 @@ mod navigation_flow_tests {
         );
     }
 
-    // ── Refresh current directory ─────────────────────────────────────────
-
     /// Refresh re-scans the current directory and emits `DirectoryLoadedCompat`.
     #[tokio::test]
     async fn test_refresh_emits_directory_loaded() {
@@ -573,8 +557,6 @@ mod navigation_flow_tests {
             "Refresh with no current dir should emit a recoverable Error"
         );
     }
-
-    // ── Back / Forward with session ───────────────────────────────────────
 
     /// Navigate A → B, then NavigateBack → we should get DirectoryLoadedCompat for A.
     #[tokio::test]
@@ -773,8 +755,6 @@ mod navigation_flow_tests {
         );
     }
 
-    // ── Session isolation ─────────────────────────────────────────────────
-
     /// Two independent sessions navigating different paths must each receive
     /// their own `DirectoryLoadedCompat` events with the correct session tag.
     #[tokio::test]
@@ -881,8 +861,6 @@ mod navigation_flow_tests {
             "surviving session should still work"
         );
     }
-
-    // ── NavState snapshot ─────────────────────────────────────────────────
 
     /// After Navigate, the `CurrentNavigateState` event must carry a snapshot
     /// with `current` set and `can_back = false` (first navigation).

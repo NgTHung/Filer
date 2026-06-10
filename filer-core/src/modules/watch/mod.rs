@@ -53,7 +53,6 @@ impl Module for WatchModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
         let (watch_tx, watch_rx) = flume::unbounded::<WatchCommand>();
 
-        // ── Watch ────────────────────────────────────────────────────
         let tx = watch_tx.clone();
         ctx.handlers.on("watch.node.compat", move |cmd, _ctx| {
             if let Command::WatchNodeCompat { node, session } = cmd {
@@ -61,7 +60,6 @@ impl Module for WatchModule {
             }
         });
 
-        // ── Watch location ───────────────────────────────────────────
         let tx = watch_tx.clone();
         ctx.handlers.on("watch", move |cmd, _ctx| {
             if let Command::Watch {
@@ -78,7 +76,6 @@ impl Module for WatchModule {
             }
         });
 
-        // ── Unwatch ──────────────────────────────────────────────────
         let tx = watch_tx.clone();
         ctx.handlers
             .on("watch.node.remove.compat", move |cmd, _ctx| {
@@ -87,7 +84,6 @@ impl Module for WatchModule {
                 }
             });
 
-        // ── Unwatch location ─────────────────────────────────────────
         let tx = watch_tx.clone();
         ctx.handlers.on("watch.remove", move |cmd, _ctx| {
             if let Command::Unwatch { location, session } = cmd {
@@ -95,7 +91,6 @@ impl Module for WatchModule {
             }
         });
 
-        // ── Unwatch session ──────────────────────────────────────────
         let tx = watch_tx.clone();
         ctx.handlers.on("watch.session_remove", move |cmd, _ctx| {
             if let Command::UnwatchSession(session) = cmd {
@@ -103,13 +98,11 @@ impl Module for WatchModule {
             }
         });
 
-        // ── Session cleanup hook ─────────────────────────────────────
         let tx = watch_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
             let _ = tx.send(WatchCommand::UnwatchSession(session));
         });
 
-        // ── Spawn Watcher actor ──────────────────────────────────────
         let watcher = match self.refresh_tx {
             Some(refresh_tx) => watcher::Watcher::with_refresh(
                 watch_rx,

@@ -11,8 +11,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
-// ===== LocalFs Tests =====
-
 fn local_fs() -> (LocalFs, TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let fs = LocalFs::new(NodeRegistry::new());
@@ -409,8 +407,6 @@ async fn test_local_fs_metadata_not_found() {
     assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
 }
 
-// ===== MockFs Implementation =====
-
 pub struct MockFs {
     files: HashMap<PathBuf, Vec<u8>>,
     directories: Vec<PathBuf>,
@@ -507,8 +503,6 @@ impl FsProvider for MockFs {
     }
 }
 
-// ===== MockFs Tests =====
-
 #[tokio::test]
 async fn test_mock_fs_scheme() {
     let fs = MockFs::new();
@@ -586,16 +580,12 @@ async fn test_mock_fs_trait_usage() {
     assert_eq!(result.unwrap(), b"content");
 }
 
-// ===== Write Operation Tests =====
-
 mod write_tests {
     use super::*;
 
     fn fs() -> (LocalFs, TempDir) {
         local_fs()
     }
-
-    // --- write ---
 
     #[tokio::test]
     async fn test_write_creates_new_file() {
@@ -628,8 +618,6 @@ mod write_tests {
         let result = fs.write(&path, b"data").await;
         assert!(result.is_err());
     }
-
-    // --- copy ---
 
     #[tokio::test]
     async fn test_copy_file_creates_destination() {
@@ -665,8 +653,6 @@ mod write_tests {
         let result = fs.copy(&src, &dst).await;
         assert!(result.is_err());
     }
-
-    // --- rename ---
 
     #[tokio::test]
     async fn test_rename_file() {
@@ -704,8 +690,6 @@ mod write_tests {
         assert!(result.is_err());
     }
 
-    // --- delete ---
-
     #[tokio::test]
     async fn test_delete_file() {
         let (fs, dir) = fs();
@@ -741,8 +725,6 @@ mod write_tests {
         let result = fs.delete(&path).await;
         assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
     }
-
-    // --- mkdir ---
 
     #[tokio::test]
     async fn test_mkdir_creates_directory() {

@@ -16,8 +16,6 @@ use filer_core::model::session;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
 use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
     let extension = PathBuf::from(name)
         .extension()
@@ -39,8 +37,6 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
         accessed: None,
     }
 }
-
-// ── MockProvider ──────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct MockProvider {
@@ -110,8 +106,6 @@ impl FsProvider for MockProvider {
         Err(CoreError::not_found(PathBuf::from("test")))
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_scanner_actor_starts_and_stops() {

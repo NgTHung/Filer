@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use flume::SendError;
 
-use crate::model::location::LocationId;
+use crate::model::capability::LocationCapabilityError;
+use crate::model::location::{LocationId, LocationRef, ProviderRef};
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -24,6 +25,7 @@ pub enum ErrorKind {
     Network,
     InvalidData,
     InvalidInput,
+    Conflict,
     Unsupported,
     Unknown,
 }
@@ -39,6 +41,7 @@ impl ErrorKind {
                 | ErrorKind::Cancelled
                 | ErrorKind::Timeout
                 | ErrorKind::Network
+                | ErrorKind::Conflict
                 | ErrorKind::Unsupported
         )
     }
@@ -61,9 +64,12 @@ pub enum ErrorCode {
     NetworkFailed,
     DataInvalid,
     InputInvalid,
+    Collision,
+    StaleRequest,
     SessionUnknown,
     NavigationUnavailable,
     UnsupportedOperation,
+    ProviderCapabilityUnavailable,
     Unknown,
 }
 
@@ -87,8 +93,11 @@ impl ErrorCode {
             ErrorCode::NetworkFailed => ErrorKind::Network,
             ErrorCode::DataInvalid => ErrorKind::InvalidData,
             ErrorCode::InputInvalid
+            | ErrorCode::StaleRequest
             | ErrorCode::SessionUnknown
             | ErrorCode::NavigationUnavailable => ErrorKind::InvalidInput,
+            ErrorCode::Collision => ErrorKind::Conflict,
+            ErrorCode::ProviderCapabilityUnavailable => ErrorKind::Unsupported,
             ErrorCode::Unknown => ErrorKind::Unknown,
         }
     }
@@ -106,9 +115,12 @@ impl ErrorCode {
                 | ErrorCode::Cancelled
                 | ErrorCode::TimedOut
                 | ErrorCode::NetworkFailed
+                | ErrorCode::Collision
+                | ErrorCode::StaleRequest
                 | ErrorCode::SessionUnknown
                 | ErrorCode::NavigationUnavailable
                 | ErrorCode::UnsupportedOperation
+                | ErrorCode::ProviderCapabilityUnavailable
         )
     }
 }
@@ -125,11 +137,29 @@ pub enum ErrorTarget {
     Channel(&'static str),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErrorContext {
+    Collision {
+        source: ErrorTarget,
+        destination: ErrorTarget,
+    },
+    StaleRequest {
+        session: SessionId,
+        request: RequestId,
+    },
+    ProviderCapability {
+        provider: ProviderRef,
+        location: LocationRef,
+        capability: LocationCapabilityError,
+    },
+}
+
 #[derive(Debug)]
 pub struct CoreError {
     pub kind: ErrorKind,
     pub code: ErrorCode,
     pub target: Option<ErrorTarget>,
+    pub context: Option<Box<ErrorContext>>,
     pub message: String,
     pub recoverable: bool,
     source: Option<Box<dyn StdError + Send + Sync>>,
@@ -141,6 +171,7 @@ impl CoreError {
             kind: code.kind(),
             code,
             target,
+            context: None,
             message: message.into(),
             recoverable: code.is_recoverable(),
             source: None,
@@ -152,6 +183,11 @@ impl CoreError {
         E: StdError + Send + Sync + 'static,
     {
         self.source = Some(Box::new(source));
+        self
+    }
+
+    fn with_context(mut self, context: ErrorContext) -> Self {
+        self.context = Some(Box::new(context));
         self
     }
 
@@ -251,6 +287,47 @@ impl CoreError {
         Self::new(ErrorCode::InputInvalid, None, message)
     }
 
+    pub fn collision(source: ErrorTarget, destination: ErrorTarget) -> Self {
+        Self::new(
+            ErrorCode::Collision,
+            Some(destination.clone()),
+            "Source conflicts with an existing destination",
+        )
+        .with_context(ErrorContext::Collision {
+            source,
+            destination,
+        })
+    }
+
+    pub fn stale_request(session: SessionId, request: RequestId) -> Self {
+        Self::new(
+            ErrorCode::StaleRequest,
+            Some(ErrorTarget::Request(request)),
+            format!("Request {request} is stale for {session}"),
+        )
+        .with_context(ErrorContext::StaleRequest { session, request })
+    }
+
+    pub fn provider_capability(
+        provider: ProviderRef,
+        location: LocationRef,
+        capability: LocationCapabilityError,
+    ) -> Self {
+        Self::new(
+            ErrorCode::ProviderCapabilityUnavailable,
+            location
+                .id()
+                .map(ErrorTarget::Location)
+                .or_else(|| Some(ErrorTarget::Provider(format!("{provider:?}")))),
+            format!("Provider {provider:?} does not support {capability:?}"),
+        )
+        .with_context(ErrorContext::ProviderCapability {
+            provider,
+            location,
+            capability,
+        })
+    }
+
     pub fn unknown_session(session: SessionId) -> Self {
         Self::new(
             ErrorCode::SessionUnknown,
@@ -284,6 +361,10 @@ impl CoreError {
         self.target.as_ref()
     }
 
+    pub fn context(&self) -> Option<&ErrorContext> {
+        self.context.as_deref()
+    }
+
     pub fn recoverable(&self) -> bool {
         self.recoverable
     }
@@ -296,6 +377,7 @@ impl CoreError {
                     | ErrorCode::ReadOnly
                     | ErrorCode::UnsupportedProvider
                     | ErrorCode::UnsupportedOperation
+                    | ErrorCode::ProviderCapabilityUnavailable
             ) {
                 TraceLevel::Warn
             } else {
@@ -310,6 +392,7 @@ impl CoreError {
                 error.kind = ?self.kind,
                 error.code = ?self.code,
                 error.target = ?self.target,
+                error.context = ?self.context,
                 error.recoverable = self.recoverable,
                 error.message = %self.message,
                 "core error"
@@ -318,6 +401,7 @@ impl CoreError {
                 error.kind = ?self.kind,
                 error.code = ?self.code,
                 error.target = ?self.target,
+                error.context = ?self.context,
                 error.recoverable = self.recoverable,
                 error.message = %self.message,
                 "core error"
@@ -326,6 +410,7 @@ impl CoreError {
                 error.kind = ?self.kind,
                 error.code = ?self.code,
                 error.target = ?self.target,
+                error.context = ?self.context,
                 error.recoverable = self.recoverable,
                 error.message = %self.message,
                 "core error"

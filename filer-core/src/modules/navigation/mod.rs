@@ -69,7 +69,6 @@ impl Module for NavigationModule {
             .take()
             .expect("NavigationModule already initialized");
 
-        // ── Navigate to path ─────────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.path.compat", move |cmd, _ctx| {
             if let Command::NavigatePathCompat {
@@ -90,7 +89,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Navigate to location ─────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate", move |cmd, _ctx| {
             if let Command::Navigate {
@@ -111,7 +109,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Navigate to node ─────────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.node.compat", move |cmd, _ctx| {
             if let Command::NavigateNodeCompat {
@@ -132,7 +129,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Navigate up ──────────────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.up", move |cmd, _ctx| {
             if let Command::NavigateUp { session, request } = cmd {
@@ -140,7 +136,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Navigate back ────────────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.back", move |cmd, _ctx| {
             if let Command::NavigateBack { session, request } = cmd {
@@ -148,7 +143,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Navigate forward ─────────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.forward", move |cmd, _ctx| {
             if let Command::NavigateForward { session, request } = cmd {
@@ -160,7 +154,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Refresh ──────────────────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.refresh", move |cmd, _ctx| {
             if let Command::Refresh { session, request } = cmd {
@@ -172,7 +165,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Pipeline state ──────────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate.pipeline", move |cmd, _ctx| {
             if let Command::SetPipeline { session, config } = cmd {
@@ -184,7 +176,6 @@ impl Module for NavigationModule {
             }
         });
 
-        // ── Session cleanup hook ─────────────────────────────────────
         let tx = self.nav_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
             send_or_warn(
@@ -194,7 +185,6 @@ impl Module for NavigationModule {
             );
         });
 
-        // ── Spawn Navigator actor ────────────────────────────────────
         let navigator = Navigator::new(
             nav_rx,
             ctx.events.clone(),

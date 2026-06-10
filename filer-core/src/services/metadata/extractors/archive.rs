@@ -183,19 +183,16 @@ impl MetadataExtractor for ArchiveExtractor {
             };
 
             let meta = match &*mime.mime_type {
-                // ── ZIP ──────────────────────────────────────────────────────
                 "application/zip" => {
                     let entries = Self::parse_zip(provider.open_reader(path).await?)?;
                     Self::build("ZIP", entries, 0)
                 }
 
-                // ── TAR ──────────────────────────────────────────────────────
                 "application/x-tar" => {
                     let entries = Self::parse_tar(provider.open_reader(path).await?)?;
                     Self::build("TAR", entries, 0)
                 }
 
-                // ── GZ ───────────────────────────────────────────────────────
                 "application/gzip" if tarball => {
                     let entries =
                         Self::parse_tar(GzDecoder::new(provider.open_reader(path).await?))?;
@@ -220,7 +217,6 @@ impl MetadataExtractor for ArchiveExtractor {
                     )
                 }
 
-                // ── BZ2 ──────────────────────────────────────────────────────
                 "application/x-bzip2" if tarball => {
                     let entries =
                         Self::parse_tar(BzDecoder::new(provider.open_reader(path).await?))?;
@@ -245,7 +241,6 @@ impl MetadataExtractor for ArchiveExtractor {
                     )
                 }
 
-                // ── XZ ───────────────────────────────────────────────────────
                 "application/x-xz" if tarball => {
                     let entries =
                         Self::parse_tar(XzDecoder::new(provider.open_reader(path).await?))?;
@@ -270,7 +265,6 @@ impl MetadataExtractor for ArchiveExtractor {
                     )
                 }
 
-                // ── ZSTD ─────────────────────────────────────────────────────
                 "application/zstd" if tarball => {
                     let decoder =
                         zstd::stream::read::Decoder::new(provider.open_reader(path).await?)
@@ -297,13 +291,11 @@ impl MetadataExtractor for ArchiveExtractor {
                     )
                 }
 
-                // ── 7Z ───────────────────────────────────────────────────────
                 "application/x-7z-compressed" => {
                     let entries = Self::parse_7z(provider.open_reader(path).await?)?;
                     Self::build("7Z", entries, 0)
                 }
 
-                // ── RAR (optional feature) ────────────────────────────────────
                 #[cfg(feature = "metadata-archive-rar")]
                 "application/vnd.rar" => {
                     let mut archive = unrar::Archive::new(path)

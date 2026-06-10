@@ -23,8 +23,11 @@ use tokio::time::timeout;
 
 use crate::actors::Actor;
 use crate::api::events::Event;
-use crate::errors::CoreError;
-use crate::model::location::{Location, LocationDescriptor, LocationRef, LocationSegment};
+use crate::errors::{CoreError, ErrorCode, ErrorContext, ErrorTarget};
+use crate::model::capability::LocationCapabilityError;
+use crate::model::location::{
+    Location, LocationDescriptor, LocationRef, LocationSegment, ProviderRef,
+};
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{ProgressKind, ProgressStatus};
@@ -35,11 +38,7 @@ use crate::modules::operations::operator::{Operator, OpsCommand};
 use crate::services::dir_cache::{DirCache, SharedDirCache};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
 const TIMEOUT: Duration = Duration::from_millis(3000);
-
-// ── MockOpsProvider ─────────────────────────────────────────────────────────
 
 /// Mock filesystem provider for testing Operator behavior.
 /// Tracks all write-method calls and supports configurable results.
@@ -55,8 +54,8 @@ struct MockOpsProvider {
     fail_paths: Arc<Mutex<Vec<PathBuf>>>,
     /// If true, rename returns a cross-device error
     fail_rename_cross_device: Arc<Mutex<bool>>,
+    write_supported: Arc<Mutex<bool>>,
 
-    // ── Call trackers ────────────────────────────────────────────────────
     copy_calls: Arc<Mutex<Vec<(PathBuf, PathBuf)>>>,
     rename_calls: Arc<Mutex<Vec<(PathBuf, PathBuf)>>>,
     delete_calls: Arc<Mutex<Vec<PathBuf>>>,
@@ -73,6 +72,7 @@ impl MockOpsProvider {
             metadata_results: Arc::new(Mutex::new(HashMap::new())),
             fail_paths: Arc::new(Mutex::new(Vec::new())),
             fail_rename_cross_device: Arc::new(Mutex::new(false)),
+            write_supported: Arc::new(Mutex::new(true)),
             copy_calls: Arc::new(Mutex::new(Vec::new())),
             rename_calls: Arc::new(Mutex::new(Vec::new())),
             delete_calls: Arc::new(Mutex::new(Vec::new())),
@@ -108,6 +108,10 @@ impl MockOpsProvider {
         *self.fail_rename_cross_device.lock().unwrap() = val;
     }
 
+    fn set_write_supported(&self, supported: bool) {
+        *self.write_supported.lock().unwrap() = supported;
+    }
+
     fn get_copy_calls(&self) -> Vec<(PathBuf, PathBuf)> {
         self.copy_calls.lock().unwrap().clone()
     }
@@ -127,8 +131,6 @@ impl MockOpsProvider {
     fn get_write_calls(&self) -> Vec<(PathBuf, Vec<u8>)> {
         self.write_calls.lock().unwrap().clone()
     }
-
-    // ── Node helpers ────────────────────────────────────────────────────
 
     fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
         let path = PathBuf::from(parent).join(name);
@@ -183,7 +185,7 @@ impl FsProvider for MockOpsProvider {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             read: true,
-            write: true,
+            write: *self.write_supported.lock().unwrap(),
             watch: false,
             search: false,
         }
@@ -285,8 +287,6 @@ impl FsProvider for MockOpsProvider {
         Ok(())
     }
 }
-
-// ── Test Helpers ─────────────────────────────────────────────────────────────
 
 /// A no-op trash function for tests that don't care about trash behavior.
 fn noop_trash_fn() -> Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync> {
@@ -416,9 +416,12 @@ fn assert_error_correlation(
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Lifecycle Tests
-// ══════════════════════════════════════════════════════════════════════════════
+fn error_context(event: &Event) -> Option<&ErrorContext> {
+    match event {
+        Event::Error { context, .. } => context.as_deref(),
+        other => panic!("Expected Error event, got: {other:?}"),
+    }
+}
 
 #[cfg(test)]
 mod lifecycle_tests {
@@ -461,10 +464,6 @@ mod lifecycle_tests {
         );
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Copy Tests
-// ══════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod copy_tests {
@@ -757,10 +756,6 @@ mod copy_tests {
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Move Tests
-// ══════════════════════════════════════════════════════════════════════════════
-
 #[cfg(test)]
 mod move_tests {
     use super::*;
@@ -924,10 +919,6 @@ mod move_tests {
         assert_error_correlation(&final_event, session, request_id, operation_id);
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Delete Tests
-// ══════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod delete_tests {
@@ -1093,10 +1084,6 @@ mod delete_tests {
     }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Rename Tests
-// ══════════════════════════════════════════════════════════════════════════════
-
 #[cfg(test)]
 mod rename_tests {
     use super::*;
@@ -1209,6 +1196,13 @@ mod rename_tests {
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert_error_correlation(&final_event, session, request_id, operation_id);
+        assert_eq!(
+            error_context(&final_event),
+            Some(&ErrorContext::Collision {
+                source: ErrorTarget::Path(src_path),
+                destination: ErrorTarget::Path(collision_path),
+            })
+        );
 
         assert!(
             provider.get_rename_calls().is_empty(),
@@ -1216,10 +1210,6 @@ mod rename_tests {
         );
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CreateFolder Tests
-// ══════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod create_folder_tests {
@@ -1296,6 +1286,13 @@ mod create_folder_tests {
 
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert_error_correlation(&final_event, session, request_id, operation_id);
+        assert_eq!(
+            error_context(&final_event),
+            Some(&ErrorContext::Collision {
+                source: ErrorTarget::Path(parent_path),
+                destination: ErrorTarget::Path(PathBuf::from("/home/user/existing_dir")),
+            })
+        );
 
         assert!(
             provider.get_mkdir_calls().is_empty(),
@@ -1303,10 +1300,6 @@ mod create_folder_tests {
         );
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// CreateFile Tests
-// ══════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod create_file_tests {
@@ -1385,6 +1378,13 @@ mod create_file_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         assert_error_correlation(&final_event, session, request_id, operation_id);
+        assert_eq!(
+            error_context(&final_event),
+            Some(&ErrorContext::Collision {
+                source: ErrorTarget::Path(parent_path),
+                destination: ErrorTarget::Path(PathBuf::from("/home/user/exists.txt")),
+            })
+        );
 
         assert!(
             provider.get_write_calls().is_empty(),
@@ -1392,10 +1392,6 @@ mod create_file_tests {
         );
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Location Operation Tests
-// ══════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod location_operation_tests {
@@ -1480,11 +1476,48 @@ mod location_operation_tests {
             "segmented locations must not reach provider delete"
         );
     }
-}
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Cache Invalidation Tests
-// ══════════════════════════════════════════════════════════════════════════════
+    #[tokio::test]
+    async fn unsupported_location_write_exposes_provider_capability_context() {
+        let provider = MockOpsProvider::new();
+        provider.set_write_supported(false);
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let request = RequestId::new();
+        let operation = OperationId::new();
+        let parent = LocationRef::from_location(&Location::local("/home/user"));
+        let expected_location = parent.clone();
+        let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
+
+        cmd_tx
+            .send(OpsCommand::CreateFileLocation {
+                parent,
+                name: "blocked.txt".to_string(),
+                session,
+                request,
+                operation,
+            })
+            .unwrap();
+
+        let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
+        assert_error_correlation(&final_event, session, request, operation);
+        match final_event {
+            Event::Error {
+                code: ErrorCode::ProviderCapabilityUnavailable,
+                context: Some(context),
+                ..
+            } => assert!(matches!(
+                *context,
+                ErrorContext::ProviderCapability {
+                    provider: ProviderRef::Local,
+                    location,
+                    capability: LocationCapabilityError::WriteUnsupported,
+                } if location == expected_location
+            )),
+            other => panic!("Expected provider capability error, got {other:?}"),
+        }
+    }
+}
 
 #[cfg(test)]
 mod cache_invalidation_tests {
@@ -1795,10 +1828,6 @@ mod cache_invalidation_tests {
         assert_cached(&cache, parent);
     }
 }
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Cancel Tests
-// ══════════════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod cancel_tests {

@@ -33,7 +33,6 @@ impl Module for PreviewModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
         let (preview_tx, preview_rx) = flume::unbounded();
 
-        // ── Load preview ─────────────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers
             .on("preview.load.node.compat", move |cmd, _ctx| {
@@ -71,7 +70,6 @@ impl Module for PreviewModule {
             }
         });
 
-        // ── Cancel preview ───────────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on("preview.cancel", move |cmd, _ctx| {
             if let Command::CancelPreview { session } = cmd {
@@ -79,7 +77,6 @@ impl Module for PreviewModule {
             }
         });
 
-        // ── Load metadata ────────────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers
             .on("metadata.load.node.compat", move |cmd, _ctx| {
@@ -107,7 +104,6 @@ impl Module for PreviewModule {
             }
         });
 
-        // ── Load extended metadata ───────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers
             .on("metadata.extended.node.compat", move |cmd, _ctx| {
@@ -135,13 +131,11 @@ impl Module for PreviewModule {
             }
         });
 
-        // ── Session cleanup hook ─────────────────────────────────────
         let tx = preview_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
             let _ = tx.send(PreviewCommand::Cancel(session));
         });
 
-        // ── Spawn Previewer actor ────────────────────────────────────
         let previewer = Previewer::new(
             preview_rx,
             ctx.events.clone(),

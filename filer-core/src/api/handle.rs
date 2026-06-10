@@ -88,23 +88,19 @@ impl FilerCore {
     pub fn new() -> Self {
         let system = ActorSystem::new();
 
-        // ── API boundary channels ────────────────────────────────────
         let (command_tx, command_rx) = flume::unbounded();
         let (event_tx, event_rx) = flume::unbounded();
 
-        // ── Shared state ─────────────────────────────────────────────
         let registry = NodeRegistry::new();
         let sessions = SessionManager::new(registry.clone());
         let handlers = Arc::new(HandlerRegistry::new());
 
-        // ── Context shared with all handlers ─────────────────────────
         let ctx = HandlerContext {
             events: event_tx.clone(),
             sessions: sessions.clone(),
             registry: registry.clone(),
         };
 
-        // ── Register built-in session lifecycle handlers ─────────────
         handlers.on("session.handshake", |_cmd, ctx| {
             let session = ctx.sessions.create_session(ctx.events.clone());
             send_or_warn(
@@ -125,7 +121,6 @@ impl FilerCore {
             }
         });
 
-        // ── Spawn the generic Router ─────────────────────────────────
         let router = CommandRouter::new(command_rx, handlers.clone(), ctx);
         system.spawn(router);
 

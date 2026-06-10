@@ -9,7 +9,7 @@ Current milestone: `0.3.0`.
 `filer-core` owns the file-manager kernel:
 
 - sessions and command/event routing
-- navigation, scanning, SearchNodeCompat, watching, preview, and metadata dispatch
+- navigation, scanning, search, watching, preview, and metadata dispatch
 - file operations
 - provider access and directory loading
 - pipeline execution for filter, sort, and group
@@ -75,7 +75,7 @@ Still open:
 - provider-context timeout propagation across provider calls and long-running
   tasks
 - extension output envelopes and a first git decoration prototype
-- serde/wire protocol envelopes for future server/web transport
+- versioned protocol envelopes, events, and server transport
 
 ## Directory Loading
 
@@ -191,7 +191,7 @@ Transport rule:
 Direct local Location commands currently route through the existing path-based
 execution layer. `Navigate`, `Scan`, `Search`,
 `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`,
-`Watch`, `Unwatch`, and the `*Location` write commands resolve
+`Watch`, `Unwatch`, and the Location-native write commands resolve
 a `LocationRef`, require a direct path, and preserve the original request and
 operation ids on results or structured errors.
 
@@ -210,10 +210,57 @@ segments, preserving each VFS boundary for later archive/provider traversal.
 
 | Label | Surfaces | Contract |
 |---|---|---|
-| Location-native preferred | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `*Location` write commands, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | Preferred for new provider-aware work. Event names are canonical; command names still carry `Location` until the command cleanup pass. |
+| Location-native preferred | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | Preferred for new provider-aware work. |
 | Compatibility | `NavigatePathCompat`, `NavigateNodeCompat`, `SearchNodeCompat`, `SearchPathCompat`, `ScanPathCompat`, `ScanNodeCompat`, `DirectoryLoadedCompat`, `DirectoryPageLoadedCompat`, `SearchResultsCompat`, `PreviewReadyCompat`, `PreviewFailedCompat`, `MetadataLoadedCompat`, `ExtendedMetadataLoadedCompat`, `FileNode` | Supported direct-local/path-era surface. Do not extend with new provider identity semantics. |
 | Internal/cache handle | `NodeRegistry`, `NavState.current`, history, selection, direct-local cache bridge ids | Runtime handles for compatibility and cache lookup. |
 | Compatibility WatchNodeCompat/write | `WatchNodeCompat`, `UnwatchNodeCompat`, NodeId write commands, `FsChangedCompat`, `OperationCompleteCompat.affected` | Supported direct-local compatibility surface. Prefer Location variants for new provider-aware callers. |
+
+## Command API
+
+Location-native commands use the short canonical Rust names and dispatch keys.
+Path and `NodeId` entry points use explicit `*Compat` names and `.compat`
+dispatch keys.
+
+| Family | Canonical Rust command | Canonical key | Compatibility Rust command | Compatibility key |
+|---|---|---|---|---|
+| Navigate | `Navigate` | `navigate` | `NavigatePathCompat`, `NavigateNodeCompat` | `navigate.path.compat`, `navigate.node.compat` |
+| Search | `Search` | `search` | `SearchPathCompat`, `SearchNodeCompat` | `search.path.compat`, `search.node.compat` |
+| Scan | `Scan` | `scan` | `ScanPathCompat`, `ScanNodeCompat` | `scan.path.compat`, `scan.node.compat` |
+| Preview | `LoadPreview` | `preview.load` | `LoadPreviewNodeCompat` | `preview.load.node.compat` |
+| Metadata | `LoadMetadata`, `LoadExtendedMetadata` | `metadata.load`, `metadata.extended` | `LoadMetadataNodeCompat`, `LoadExtendedMetadataNodeCompat` | `metadata.load.node.compat`, `metadata.extended.node.compat` |
+| Watch | `Watch`, `Unwatch` | `watch`, `watch.remove` | `WatchNodeCompat`, `UnwatchNodeCompat` | `watch.node.compat`, `watch.node.remove.compat` |
+| Write | `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile` | `ops.*` | Matching `*NodeCompat` commands | Matching `ops.*.node.compat` keys |
+
+### Rust Migration
+
+No aliases preserve the former Rust variant names. Update callers directly:
+
+| Former command | Current command |
+|---|---|
+| `Navigate` with `PathBuf` | `NavigatePathCompat` |
+| `NavigateLocation` | `Navigate` |
+| `NavigateToNode` | `NavigateNodeCompat` |
+| `Search`, `SearchPath`, `SearchLocation` | `SearchNodeCompat`, `SearchPathCompat`, `Search` |
+| `Scan`, `ScanNode`, `ScanLocation` | `ScanPathCompat`, `ScanNodeCompat`, `Scan` |
+| `LoadPreview`, `LoadPreviewLocation` | `LoadPreviewNodeCompat`, `LoadPreview` |
+| `LoadMetadata`, `LoadMetadataLocation` | `LoadMetadataNodeCompat`, `LoadMetadata` |
+| `LoadExtendedMetadata`, `LoadExtendedMetadataLocation` | `LoadExtendedMetadataNodeCompat`, `LoadExtendedMetadata` |
+| `Watch`, `WatchLocation` | `WatchNodeCompat`, `Watch` |
+| `Unwatch`, `UnwatchLocation` | `UnwatchNodeCompat`, `Unwatch` |
+| Node-based write commands | Matching `*NodeCompat` command |
+| `*Location` write commands | Canonical `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, or `CreateFile` |
+
+### Wire DTO
+
+`WireCommand` is the unversioned serde DTO for every built-in command. JSON
+uses an internal `type` tag with snake_case labels such as `navigate` and
+`navigate_path_compat`. Convert with `Command::from(wire)` and
+`WireCommand::try_from(command)`.
+
+`Command::Extension` cannot convert because its `Arc<dyn Any>` payload is
+runtime-only. Conversion returns `WireCommandConversionError`. MODULES-001
+owns the future wire-safe extension payload. PROTOCOL-001 owns version
+envelopes, unknown-field policy, events, and server transport.
 
 ### Capabilities
 
@@ -222,7 +269,7 @@ checks for Location-native routing. They inspect a `LocationRef`,
 `NodeRegistry`, and provider `Capabilities` without starting watches or
 mutating files.
 
-Direct local routes use provider `WatchNodeCompat` and `write` booleans. Segmented routes
+Direct local routes use provider `watch` and `write` booleans. Segmented routes
 return `LocationSegmentedUnsupported`; unsupported provider references return
 `UnsupportedProvider`; id-only references with no registry entry return
 `LocationUnresolved`.
@@ -271,9 +318,7 @@ Those helpers preserve correlation and emit structured `tracing` diagnostics.
 ## Usage
 
 ```rust
-use std::path::PathBuf;
-
-use filer_core::{Command, Event, FilerCore, RequestId};
+use filer_core::{Command, Event, FilerCore, Location, LocationRef, RequestId};
 
 #[tokio::main]
 async fn main() {
@@ -286,8 +331,9 @@ async fn main() {
     };
 
     let request = RequestId::new();
-    core.send(Command::NavigatePathCompat {
-        path: PathBuf::from("/home"),
+    let location = Location::local("/home");
+    core.send(Command::Navigate {
+        location: LocationRef::from_location(&location),
         session,
         request,
     })

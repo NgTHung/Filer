@@ -62,7 +62,6 @@ impl CommandRouter {
     /// Session validation is the only cross-cutting concern the Router
     /// handles directly. Everything else is delegated to the registry.
     fn route(&self, command: Command) {
-        // ── Session validation ───────────────────────────────────────
         let request = command.request_id();
         let operation = command.operation_id();
         if let Some(session) = command.session_id()

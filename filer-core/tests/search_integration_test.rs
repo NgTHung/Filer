@@ -20,11 +20,7 @@ use filer_core::modules::scan::ScanModule;
 use filer_core::modules::search::SearchModule;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
 const TIMEOUT: Duration = Duration::from_millis(3000);
-
-// ── MockProvider ──────────────────────────────────────────────────────────────
 
 /// Hierarchical in-memory filesystem for integration testing.
 /// Maps directory paths to their children, supporting recursive traversal.
@@ -47,8 +43,6 @@ impl MockProvider {
             .push((dir.into(), children));
     }
 }
-
-// ── Node helpers ──────────────────────────────────────────────────────────────
 
 fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
     let extension = Path::new(name)
@@ -93,8 +87,6 @@ fn make_dir(name: &str, parent: &str) -> FileNode {
         accessed: None,
     }
 }
-
-// ── FsProvider impl ───────────────────────────────────────────────────────────
 
 #[async_trait]
 impl FsProvider for MockProvider {
@@ -141,8 +133,6 @@ impl FsProvider for MockProvider {
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 fn build_core_with_search(provider: MockProvider) -> FilerCore {
     let provider = Arc::new(provider);
     let core = FilerCore::new();
@@ -185,8 +175,6 @@ async fn wait_for_search_complete(
         }
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_search_command_through_filer_core() {
