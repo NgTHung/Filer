@@ -12,11 +12,13 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod agent_context;
 pub mod cli;
 pub mod error;
 pub mod frontmatter;
 pub mod lifecycle;
 pub mod markdown;
 pub mod model;
+mod output;
 pub mod repo;
 pub mod validate;

@@ -186,6 +186,43 @@ Use JSON output when another tool needs structured data:
 cargo run -p filer-task -- list --format json
 ```
 
+## Agent Workflow
+
+Use `ready` to select executable work. A ready task is `To Do`, is not a milestone, has no child tasks, has only `Done` dependencies, and has only `To Do` or `In Progress` ancestors. Results sort by priority and then task ID.
+
+```bash
+cargo run -p filer-task -- ready
+cargo run -p filer-task -- ready --domain core --milestone 0.3.0 --limit 5
+cargo run -p filer-task -- ready --tag provider --format json
+```
+
+Use `show` when you need one task's full metadata and body sections:
+
+```bash
+cargo run -p filer-task -- show PROVIDER-001
+cargo run -p filer-task -- show PROVIDER-001 --format json
+```
+
+Use `context` before implementation. It returns the target task, readiness blockers, direct task relationships, milestone, referenced architecture rule text, and whitepaper path. It does not infer source files.
+
+```bash
+cargo run -p filer-task -- context PROVIDER-001
+cargo run -p filer-task -- context PROVIDER-001 --format json
+```
+
+New agent-oriented JSON responses include `schema_version: 1`. Existing command JSON stays unchanged.
+
+An agent should use this sequence:
+
+```bash
+cargo run -p filer-task -- ready --limit 5 --format json
+cargo run -p filer-task -- context PROVIDER-001 --format json
+cargo run -p filer-task -- start PROVIDER-001
+# Implement and test the task.
+cargo run -p filer-task -- validate
+cargo run -p filer-task -- done PROVIDER-001
+```
+
 Inspect dependencies that still need work:
 
 ```bash
@@ -212,9 +249,91 @@ Use lifecycle commands to keep status and rationale sections consistent:
 
 ```bash
 cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --milestone 0.3.0
+cargo run -p filer-task -- add --domain milestones --id MILESTONE-003 --title "Core contract stabilization" --priority High --type Milestone --milestone 0.3.0
 cargo run -p filer-task -- start CORE-042
 cargo run -p filer-task -- done CORE-042
 cargo run -p filer-task -- block CORE-042 "Waiting for provider timeout policy decision."
 cargo run -p filer-task -- defer CORE-042 "No longer needed for the current milestone."
 cargo run -p filer-task -- obsolete CORE-042 "Replaced by CORE-044."
 ```
+
+Successful human output uses the same headings, labels, and path format across commands. Paths are relative to the repository and use `/` separators:
+
+```text
+Task Started
+Task: CORE-042
+Path: .tasks/core/CORE-042-provider-timeout-propagation.md
+```
+
+Validation and imports use labeled summaries:
+
+```text
+Validation
+Status: Passed
+Tasks: 23
+```
+
+```text
+Import
+Mode: Dry Run
+Tasks: 2
+
+Paths
+.tasks/milestones/MILESTONE-003-core-contract-stabilization.md
+.tasks/core/CORE-042-provider-timeout-propagation.md
+```
+
+`add` can scaffold richer task files when a migration already knows the metadata:
+
+```bash
+cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --parent MILESTONE-003 --milestone 0.3.0 --rule PROVIDER-ACCESS --risk High --impact "Touches provider calls and cancellation behavior." --tag provider --summary "Propagate provider deadlines through core calls." --criterion "Provider calls receive timeout context."
+```
+
+Use `--criterion` for open checklist items and `--checked-criterion` when creating a `Done` task with completed criteria. `Blocked` tasks need `--blocked-reason`. `Deferred` and `Obsolete` tasks need `--rationale`.
+
+## Batch Import
+
+Use `import` when migrating curated roadmap items into `.tasks/` without writing each markdown file by hand. The input is JSON and uses the same field names as task frontmatter, plus `summary`, `criteria`, `rationale`, and `blocked_reason` for body sections:
+
+```json
+[
+  {
+    "domain": "milestones",
+    "id": "MILESTONE-003",
+    "title": "Core contract stabilization",
+    "priority": "High",
+    "type": "Milestone",
+    "milestone": "0.3.0",
+    "criteria": [{ "text": "Public contracts are named consistently." }]
+  },
+  {
+    "domain": "core",
+    "id": "CORE-042",
+    "title": "Provider timeout propagation",
+    "priority": "High",
+    "type": "Feature",
+    "parent": "MILESTONE-003",
+    "milestone": "0.3.0",
+    "rules": ["PROVIDER-ACCESS"],
+    "risk": "High",
+    "impact": "Touches provider calls and cancellation behavior.",
+    "tags": ["provider"],
+    "summary": "Propagate provider deadlines through core calls.",
+    "criteria": [{ "text": "Provider calls receive timeout context." }]
+  }
+]
+```
+
+Validate the batch before writing:
+
+```bash
+cargo run -p filer-task -- import docs/roadmap-migration.tasks.json --dry-run
+```
+
+Write the batch once dry run passes:
+
+```bash
+cargo run -p filer-task -- import docs/roadmap-migration.tasks.json
+```
+
+Use `--skip-existing` for reruns after a partial manual migration. Import validates the whole batch before writing files, including parent, dependency, milestone, and rule references.

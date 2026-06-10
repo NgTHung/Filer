@@ -93,6 +93,8 @@ comprehensive, delve, utilize, harness, realm, tapestry, unlock, revolutionary, 
 
 Filer uses `.tasks/` to track features, epics, milestones, and development work. Task files are version-controlled with the code. Read `/docs/task-tracking.md` when you need command details.
 
+Use the repository-local `filer-task-workflow` skill for substantial planning or implementation, named task IDs, ready-work selection, and work that may require creating or refining a task.
+
 Use `filer-task` before and after task changes:
 
 ```bash

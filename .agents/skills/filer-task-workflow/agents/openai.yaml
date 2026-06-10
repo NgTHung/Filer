@@ -1,0 +1,4 @@
+interface:
+  display_name: "Filer Task Workflow"
+  short_description: "Drive Filer work through validated tasks"
+  default_prompt: "Use $filer-task-workflow to plan and execute this Filer change through its task lifecycle."

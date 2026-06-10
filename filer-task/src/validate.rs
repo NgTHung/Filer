@@ -12,13 +12,14 @@ use crate::{
     repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR, find_repo_root, read_task_files},
 };
 
-const CORE_PREFIXES: &[&str] = &[
+pub(crate) const CORE_PREFIXES: &[&str] = &[
     "CORE", "ACTORS", "API", "MODULES", "PIPELINE", "SERVICES", "UTILS", "VFS", "REL", "NAV",
     "SEARCH", "OPS", "PREVIEW", "PROVIDER", "PROTOCOL",
 ];
-const APP_PREFIXES: &[&str] = &["UI", "EXPL", "SETS", "SRCH", "MEDIA", "NAV", "PERF", "A11Y"];
-const ECOSYSTEM_PREFIXES: &[&str] = &["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"];
-const RULE_IDS: &[&str] = &[
+pub(crate) const APP_PREFIXES: &[&str] =
+    &["UI", "EXPL", "SETS", "SRCH", "MEDIA", "NAV", "PERF", "A11Y"];
+pub(crate) const ECOSYSTEM_PREFIXES: &[&str] = &["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"];
+pub(crate) const RULE_IDS: &[&str] = &[
     "CORE-LIBRARY",
     "PROVIDER-ACCESS",
     "SESSION-BOUNDARY",
@@ -478,7 +479,7 @@ fn domain_for_path(root: &Path, path: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-fn allowed_prefixes(domain: &str) -> &'static [&'static str] {
+pub(crate) fn allowed_prefixes(domain: &str) -> &'static [&'static str] {
     match domain {
         "core" => CORE_PREFIXES,
         "app" => APP_PREFIXES,
@@ -488,7 +489,7 @@ fn allowed_prefixes(domain: &str) -> &'static [&'static str] {
     }
 }
 
-fn is_valid_task_id(value: &str) -> bool {
+pub(crate) fn is_valid_task_id(value: &str) -> bool {
     let Some((prefix, number)) = value.split_once('-') else {
         return false;
     };

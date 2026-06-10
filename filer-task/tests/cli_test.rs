@@ -24,7 +24,7 @@ fn validate_command_accepts_minimal_task_repo() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout should be valid UTF-8");
-    assert!(stdout.contains("task validation passed (1 task(s))"));
+    assert_eq!(stdout, "Validation\nStatus: Passed\nTasks: 1\n");
 }
 
 #[test]
@@ -130,6 +130,42 @@ fn list_command_filters_by_milestone_and_blocked() {
 }
 
 #[test]
+fn list_command_aligns_human_task_columns() {
+    let repo = task_repo();
+    write_task(
+        &repo,
+        "core/CORE-001-location-routing.md",
+        "CORE-001",
+        "Location routing",
+        "To Do",
+        "High",
+        "",
+    );
+    write_task(
+        &repo,
+        "core/CORE-002-cache-policy.md",
+        "CORE-002",
+        "Cache policy",
+        "In Progress",
+        "Medium",
+        "",
+    );
+
+    let stdout = run_task_command_stdout(&repo, ["list"]);
+    let lines: Vec<&str> = stdout.lines().collect();
+    let status_column = lines[0].find("STATUS").expect("status header should exist");
+
+    assert_eq!(lines.len(), 4);
+    assert!(
+        lines[1]
+            .chars()
+            .all(|character| character == '-' || character == ' ')
+    );
+    assert!(lines[2][status_column..].starts_with("To Do"));
+    assert!(lines[3][status_column..].starts_with("In Progress"));
+}
+
+#[test]
 fn deps_command_outputs_incomplete_dependencies() {
     let repo = task_repo();
     write_checked_task(
@@ -184,6 +220,41 @@ fn deps_command_outputs_incomplete_dependencies() {
 }
 
 #[test]
+fn deps_command_uses_aligned_human_table() {
+    let repo = task_repo();
+    write_task(
+        &repo,
+        "core/CORE-001-open-dependency.md",
+        "CORE-001",
+        "Open dependency",
+        "To Do",
+        "High",
+        "",
+    );
+    write_task(
+        &repo,
+        "core/CORE-042-timeout-propagation.md",
+        "CORE-042",
+        "Timeout propagation",
+        "To Do",
+        "High",
+        "depends_on: [CORE-001]\n",
+    );
+
+    let stdout = run_task_command_stdout(&repo, ["deps", "CORE-042"]);
+    let lines: Vec<&str> = stdout.lines().collect();
+
+    assert_eq!(lines.len(), 3);
+    assert!(lines[0].starts_with("ID"));
+    assert!(
+        lines[1]
+            .chars()
+            .all(|character| character == '-' || character == ' ')
+    );
+    assert!(lines[2].starts_with("CORE-001"));
+}
+
+#[test]
 fn milestone_command_outputs_exit_checklist() {
     let repo = task_repo();
     write_milestone(&repo, "MILESTONE-003", "0.3.0");
@@ -211,7 +282,25 @@ fn milestone_command_outputs_exit_checklist() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout should be valid UTF-8");
     assert!(stdout.contains("- [ ] Finish milestone"));
-    assert!(stdout.contains("CORE-042"));
+    let lines: Vec<&str> = stdout.lines().collect();
+    let heading = lines
+        .iter()
+        .position(|line| *line == "Open Tasks")
+        .expect("open tasks heading should exist");
+    let header = lines[heading + 1];
+    let status_column = header.find("STATUS").expect("status header should exist");
+    let task_line = lines
+        .iter()
+        .find(|line| line.starts_with("CORE-042"))
+        .expect("open task should exist");
+
+    assert!(header.starts_with("ID"));
+    assert!(
+        lines[heading + 2]
+            .chars()
+            .all(|character| character == '-' || character == ' ')
+    );
+    assert!(task_line[status_column..].starts_with("To Do"));
 }
 
 #[test]
@@ -271,21 +360,31 @@ fn lifecycle_commands_update_task_files() {
         .output()
         .expect("add command should run");
     assert!(add.status.success());
+    assert_eq!(
+        String::from_utf8(add.stdout).expect("stdout should be valid UTF-8"),
+        "Task Created\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
+    );
 
-    run_task_command(&repo, ["start", "CORE-042"]);
+    assert_eq!(
+        run_task_command_stdout(&repo, ["start", "CORE-042"]),
+        "Task Started\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
+    );
     let task_path = repo
         .path()
         .join(".tasks/core/CORE-042-provider-timeout-propagation.md");
     let started = fs::read_to_string(&task_path).expect("task should be readable");
     assert!(started.contains("status: In Progress"));
 
-    run_task_command(
-        &repo,
-        [
-            "block",
-            "CORE-042",
-            "Waiting for provider timeout policy decision.",
-        ],
+    assert_eq!(
+        run_task_command_stdout(
+            &repo,
+            [
+                "block",
+                "CORE-042",
+                "Waiting for provider timeout policy decision.",
+            ],
+        ),
+        "Task Blocked\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
     );
     let blocked = fs::read_to_string(&task_path).expect("task should be readable");
     assert!(blocked.contains("status: Blocked"));
@@ -299,7 +398,10 @@ fn lifecycle_commands_update_task_files() {
         ),
     )
     .expect("task should be updated");
-    run_task_command(&repo, ["done", "CORE-042"]);
+    assert_eq!(
+        run_task_command_stdout(&repo, ["done", "CORE-042"]),
+        "Task Completed\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
+    );
     let done = fs::read_to_string(&task_path).expect("task should be readable");
     assert!(done.contains("status: Done"));
 
@@ -312,9 +414,12 @@ fn lifecycle_commands_update_task_files() {
         "High",
         "",
     );
-    run_task_command(
-        &repo,
-        ["defer", "CORE-043", "No longer needed for this milestone."],
+    assert_eq!(
+        run_task_command_stdout(
+            &repo,
+            ["defer", "CORE-043", "No longer needed for this milestone."],
+        ),
+        "Task Deferred\nTask: CORE-043\nPath: .tasks/core/CORE-043-cache-policy.md\n"
     );
     let deferred = fs::read_to_string(repo.path().join(".tasks/core/CORE-043-cache-policy.md"))
         .expect("task should be readable");
@@ -330,11 +435,196 @@ fn lifecycle_commands_update_task_files() {
         "High",
         "",
     );
-    run_task_command(&repo, ["obsolete", "CORE-044", "Replaced by CORE-045."]);
+    assert_eq!(
+        run_task_command_stdout(&repo, ["obsolete", "CORE-044", "Replaced by CORE-045."]),
+        "Task Obsolete\nTask: CORE-044\nPath: .tasks/core/CORE-044-replaced-policy.md\n"
+    );
     let obsolete = fs::read_to_string(repo.path().join(".tasks/core/CORE-044-replaced-policy.md"))
         .expect("task should be readable");
     assert!(obsolete.contains("status: Obsolete"));
     assert!(obsolete.contains("## Rationale"));
+}
+
+#[test]
+fn add_command_creates_milestone_and_rich_task() {
+    let repo = task_repo();
+
+    run_task_command(
+        &repo,
+        [
+            "add",
+            "--domain",
+            "milestones",
+            "--id",
+            "MILESTONE-003",
+            "--title",
+            "Core contract stabilization",
+            "--priority",
+            "High",
+            "--type",
+            "Milestone",
+            "--milestone",
+            "0.3.0",
+            "--criterion",
+            "Public contracts are named consistently.",
+        ],
+    );
+    run_task_command(
+        &repo,
+        [
+            "add",
+            "--domain",
+            "core",
+            "--id",
+            "CORE-042",
+            "--title",
+            "Provider timeout propagation",
+            "--priority",
+            "High",
+            "--type",
+            "Feature",
+            "--parent",
+            "MILESTONE-003",
+            "--milestone",
+            "0.3.0",
+            "--rule",
+            "PROVIDER-ACCESS",
+            "--risk",
+            "High",
+            "--impact",
+            "Touches provider calls and cancellation behavior.",
+            "--tag",
+            "provider",
+            "--summary",
+            "Propagate provider deadlines through core calls.",
+            "--criterion",
+            "Provider calls receive timeout context.",
+        ],
+    );
+
+    run_task_command(&repo, ["validate"]);
+    let task = fs::read_to_string(
+        repo.path()
+            .join(".tasks/core/CORE-042-provider-timeout-propagation.md"),
+    )
+    .expect("task should be readable");
+    assert!(task.contains("parent: MILESTONE-003"));
+    assert!(task.contains("rules: [PROVIDER-ACCESS]"));
+    assert!(task.contains("tags: [provider]"));
+    assert!(task.contains("## Acceptance Criteria"));
+}
+
+#[test]
+fn import_command_dry_run_writes_no_files() {
+    let repo = task_repo();
+    let manifest = write_import_manifest(
+        &repo,
+        r#"[
+  {
+    "domain": "milestones",
+    "id": "MILESTONE-003",
+    "title": "Core contract stabilization",
+    "priority": "High",
+    "type": "Milestone",
+    "milestone": "0.3.0",
+    "criteria": [{ "text": "Contracts are stable." }]
+  }
+]"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_filer-task"))
+        .args([
+            "import",
+            "--root",
+            repo.path().to_str().expect("temp path should be UTF-8"),
+        ])
+        .arg(&manifest)
+        .arg("--dry-run")
+        .output()
+        .expect("import command should run");
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be valid UTF-8"),
+        "Import\nMode: Dry Run\nTasks: 1\n\nPaths\n.tasks/milestones/MILESTONE-003-core-contract-stabilization.md\n"
+    );
+    assert!(!repo.path().join(".tasks/milestones").exists());
+}
+
+#[test]
+fn import_command_writes_batch_and_allows_skip_existing_rerun() {
+    let repo = task_repo();
+    let manifest = write_import_manifest(
+        &repo,
+        r#"[
+  {
+    "domain": "milestones",
+    "id": "MILESTONE-003",
+    "title": "Core contract stabilization",
+    "priority": "High",
+    "type": "Milestone",
+    "milestone": "0.3.0",
+    "criteria": [{ "text": "Contracts are stable." }]
+  },
+  {
+    "domain": "core",
+    "id": "CORE-042",
+    "title": "Provider timeout propagation",
+    "priority": "High",
+    "type": "Feature",
+    "parent": "MILESTONE-003",
+    "milestone": "0.3.0",
+    "rules": ["PROVIDER-ACCESS"],
+    "risk": "High",
+    "impact": "Touches provider calls and cancellation behavior.",
+    "tags": ["provider"],
+    "summary": "Propagate provider deadlines through core calls.",
+    "criteria": [{ "text": "Provider calls receive timeout context." }]
+  }
+]"#,
+    );
+
+    run_import_command(&repo, &manifest, false, false);
+    run_task_command(&repo, ["validate"]);
+    run_import_command(&repo, &manifest, false, true);
+}
+
+#[test]
+fn import_command_rejects_invalid_references_before_writing() {
+    let repo = task_repo();
+    let manifest = write_import_manifest(
+        &repo,
+        r#"[
+  {
+    "domain": "core",
+    "id": "CORE-042",
+    "title": "Provider timeout propagation",
+    "priority": "High",
+    "type": "Feature",
+    "parent": "CORE-999",
+    "criteria": [{ "text": "Provider calls receive timeout context." }]
+  }
+]"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_filer-task"))
+        .args([
+            "import",
+            "--root",
+            repo.path().to_str().expect("temp path should be UTF-8"),
+        ])
+        .arg(&manifest)
+        .output()
+        .expect("import command should run");
+
+    assert!(!output.status.success());
+    assert!(
+        !repo
+            .path()
+            .join(".tasks/core")
+            .join("CORE-042-provider-timeout-propagation.md")
+            .exists()
+    );
 }
 
 fn task_repo() -> TempDir {
@@ -345,6 +635,33 @@ fn task_repo() -> TempDir {
         .expect("ecosystem task dir should exist");
     fs::write(temp.path().join(".tasks/task.schema.json"), "{}").expect("schema should exist");
     temp
+}
+
+fn run_import_command(
+    repo: &TempDir,
+    manifest: &std::path::Path,
+    dry_run: bool,
+    skip_existing: bool,
+) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_filer-task"));
+    command.args([
+        "import",
+        "--root",
+        repo.path().to_str().expect("temp path should be UTF-8"),
+    ]);
+    command.arg(manifest);
+    if dry_run {
+        command.arg("--dry-run");
+    }
+    if skip_existing {
+        command.arg("--skip-existing");
+    }
+    let output = command.output().expect("import command should run");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn run_task_command<const N: usize>(repo: &TempDir, args: [&str; N]) {
@@ -362,6 +679,24 @@ fn run_task_command<const N: usize>(repo: &TempDir, args: [&str; N]) {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn run_task_command_stdout<const N: usize>(repo: &TempDir, args: [&str; N]) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_filer-task"))
+        .arg(args[0])
+        .args([
+            "--root",
+            repo.path().to_str().expect("temp path should be UTF-8"),
+        ])
+        .args(&args[1..])
+        .output()
+        .expect("command should run");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("stdout should be valid UTF-8")
 }
 
 fn write_task(
@@ -419,4 +754,10 @@ fn append_section(repo: &TempDir, relative: &str, section: &str) {
     content.push('\n');
     content.push_str(section);
     fs::write(path, content).expect("task should be updated");
+}
+
+fn write_import_manifest(repo: &TempDir, content: &str) -> std::path::PathBuf {
+    let path = repo.path().join("roadmap-import.json");
+    fs::write(&path, content).expect("manifest should be written");
+    path
 }

@@ -17,6 +17,38 @@ pub struct ChecklistItem {
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct MarkdownSection {
+    pub heading: String,
+    pub content: String,
+}
+
+pub fn level_two_sections(content: &str) -> Vec<MarkdownSection> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut sections = Vec::new();
+    let mut index = 0;
+
+    while index < lines.len() {
+        let Some(heading) = level_two_heading(lines[index]) else {
+            index += 1;
+            continue;
+        };
+        let start = index + 1;
+        let end = lines[start..]
+            .iter()
+            .position(|line| level_two_heading(line).is_some())
+            .map(|offset| start + offset)
+            .unwrap_or(lines.len());
+        sections.push(MarkdownSection {
+            heading: heading.to_string(),
+            content: lines[start..end].join("\n").trim().to_string(),
+        });
+        index = end;
+    }
+
+    sections
+}
+
 pub fn section(content: &str, heading: &str) -> Option<String> {
     let lines: Vec<&str> = content.lines().collect();
     let start = lines
@@ -101,14 +133,21 @@ fn is_heading(line: &str, heading: &str) -> bool {
 }
 
 fn is_level_two_heading(line: &str) -> bool {
-    let trimmed = line.trim_end_matches('\r').trim_start();
-    trimmed.starts_with("## ") && !trimmed.starts_with("### ")
+    level_two_heading(line).is_some()
+}
+
+fn level_two_heading(line: &str) -> Option<&str> {
+    line.trim_end_matches('\r')
+        .trim()
+        .strip_prefix("## ")
+        .filter(|heading| !heading.is_empty() && !heading.starts_with('#'))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        checklist_items, has_unchecked_checklist_item, replace_or_append_section, section,
+        checklist_items, has_unchecked_checklist_item, level_two_sections,
+        replace_or_append_section, section,
     };
 
     #[test]
@@ -152,5 +191,17 @@ mod tests {
         let updated = replace_or_append_section(content, "Rationale", "Deferred.");
 
         assert!(updated.ends_with("## Rationale\n\nDeferred.\n"));
+    }
+
+    #[test]
+    fn extracts_all_level_two_sections_in_order() {
+        let content = "---\nid: CORE-001\n---\n\n## Summary\n\nWhy.\n\n### Detail\n\nMore.\n\n## Acceptance Criteria\n\n- [ ] Works\n";
+
+        let sections = level_two_sections(content);
+
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].heading, "Summary");
+        assert_eq!(sections[0].content, "Why.\n\n### Detail\n\nMore.");
+        assert_eq!(sections[1].heading, "Acceptance Criteria");
     }
 }

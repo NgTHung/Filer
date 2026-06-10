@@ -1,17 +1,24 @@
-use std::path::PathBuf;
-
-use clap::{Args, Parser, Subcommand};
-use serde::Serialize;
-use std::collections::BTreeMap;
+use std::{fs, path::PathBuf};
 
 use crate::{
+    agent_context::{ReadyFilter, build_context, build_ready, build_show},
     error::TaskError,
-    lifecycle::{NewTask, add_task, block_task, defer_task, done_task, obsolete_task, start_task},
+    lifecycle::{
+        Criterion, NewTask, add_task, block_task, defer_task, done_task, import_tasks,
+        obsolete_task, start_task,
+    },
     markdown::checklist_items,
-    model::{Priority, SortBy, Task, TaskStatus, TaskType},
+    model::{Priority, Risk, SortBy, Task, TaskStatus, TaskType},
+    output::{
+        ImportOutput, MilestoneOutput, SummaryOutput, TaskAction, TaskActionOutput,
+        ValidationOutput, render_context, render_import, render_milestone, render_ready,
+        render_show, render_summary_output, render_task_action, render_tasks, render_validation,
+    },
     repo::find_repo_root,
     validate::{TaskFilter, filter_tasks, require_valid_report, validate_repo},
 };
+use clap::{Args, Parser, Subcommand};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
 #[command(name = "filer-task")]
@@ -25,10 +32,14 @@ pub struct Cli {
 pub enum Command {
     Validate(ValidateArgs),
     List(ListArgs),
+    Show(DetailArgs),
+    Ready(ReadyArgs),
+    Context(DetailArgs),
     Deps(DepsArgs),
     Milestone(MilestoneArgs),
     Summary(SummaryArgs),
     Add(AddArgs),
+    Import(ImportArgs),
     Start(TaskIdArgs),
     Done(TaskIdArgs),
     Block(ReasonArgs),
@@ -62,6 +73,33 @@ pub struct ListArgs {
     pub blocked: bool,
     #[arg(long, value_enum, default_value_t = SortBy::Id)]
     pub sort_by: SortBy,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+pub struct DetailArgs {
+    #[arg(long)]
+    pub root: Option<PathBuf>,
+    pub id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, Args)]
+pub struct ReadyArgs {
+    #[arg(long)]
+    pub root: Option<PathBuf>,
+    #[arg(long)]
+    pub domain: Option<String>,
+    #[arg(long)]
+    pub milestone: Option<String>,
+    #[arg(long)]
+    pub priority: Option<Priority>,
+    #[arg(long)]
+    pub tag: Option<String>,
+    #[arg(long)]
+    pub limit: Option<usize>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     pub format: OutputFormat,
 }
@@ -108,12 +146,49 @@ pub struct AddArgs {
     pub id: String,
     #[arg(long)]
     pub title: String,
+    #[arg(long, default_value = "To Do")]
+    pub status: TaskStatus,
     #[arg(long)]
     pub priority: Priority,
     #[arg(long = "type", value_name = "TYPE")]
     pub task_type: TaskType,
     #[arg(long)]
+    pub parent: Option<String>,
+    #[arg(long)]
     pub milestone: Option<String>,
+    #[arg(long = "depends-on", value_delimiter = ',')]
+    pub depends_on: Vec<String>,
+    #[arg(long = "rule", value_delimiter = ',')]
+    pub rules: Vec<String>,
+    #[arg(long)]
+    pub risk: Option<Risk>,
+    #[arg(long)]
+    pub impact: Option<String>,
+    #[arg(long = "tag", value_delimiter = ',')]
+    pub tags: Vec<String>,
+    #[arg(long)]
+    pub whitepaper: Option<String>,
+    #[arg(long)]
+    pub summary: Option<String>,
+    #[arg(long = "criterion")]
+    pub criteria: Vec<String>,
+    #[arg(long = "checked-criterion")]
+    pub checked_criteria: Vec<String>,
+    #[arg(long)]
+    pub rationale: Option<String>,
+    #[arg(long = "blocked-reason")]
+    pub blocked_reason: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct ImportArgs {
+    #[arg(long)]
+    pub root: Option<PathBuf>,
+    pub file: PathBuf,
+    #[arg(long)]
+    pub dry_run: bool,
+    #[arg(long)]
+    pub skip_existing: bool,
 }
 
 #[derive(Debug, Args)]
@@ -142,7 +217,7 @@ pub fn run_validate(args: ValidateArgs) -> Result<(), TaskError> {
     let report = validate_repo(&root)?;
     let task_count = report.tasks.len();
     require_valid_report(report)?;
-    println!("task validation passed ({task_count} task(s))");
+    println!("{}", render_validation(&ValidationOutput { task_count }));
     Ok(())
 }
 
@@ -165,10 +240,53 @@ pub fn run_list(args: ListArgs) -> Result<(), TaskError> {
     );
 
     match args.format {
-        OutputFormat::Human => print_human(&filtered),
+        OutputFormat::Human => println!("{}", render_tasks(&filtered)),
         OutputFormat::Json => print_json(&filtered)?,
     }
 
+    Ok(())
+}
+
+pub fn run_show(args: DetailArgs) -> Result<(), TaskError> {
+    let root = resolve_root(args.root)?;
+    let tasks = require_valid_report(validate_repo(&root)?)?;
+    let view = build_show(&root, &tasks, &args.id)?;
+    match args.format {
+        OutputFormat::Human => println!("{}", render_show(&view)),
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
+    }
+    Ok(())
+}
+
+pub fn run_ready(args: ReadyArgs) -> Result<(), TaskError> {
+    let root = resolve_root(args.root)?;
+    let tasks = require_valid_report(validate_repo(&root)?)?;
+    let view = build_ready(
+        &root,
+        &tasks,
+        &ReadyFilter {
+            domain: args.domain,
+            milestone: args.milestone,
+            priority: args.priority,
+            tag: args.tag,
+            limit: args.limit,
+        },
+    );
+    match args.format {
+        OutputFormat::Human => println!("{}", render_ready(&view)),
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
+    }
+    Ok(())
+}
+
+pub fn run_context(args: DetailArgs) -> Result<(), TaskError> {
+    let root = resolve_root(args.root)?;
+    let tasks = require_valid_report(validate_repo(&root)?)?;
+    let view = build_context(&root, &tasks, &args.id)?;
+    match args.format {
+        OutputFormat::Human => println!("{}", render_context(&view)),
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
+    }
     Ok(())
 }
 
@@ -189,7 +307,7 @@ pub fn run_deps(args: DepsArgs) -> Result<(), TaskError> {
         .collect();
 
     match args.format {
-        OutputFormat::Human => print_human(&deps),
+        OutputFormat::Human => println!("{}", render_tasks(&deps)),
         OutputFormat::Json => print_json(&deps)?,
     }
     Ok(())
@@ -222,17 +340,16 @@ pub fn run_milestone(args: MilestoneArgs) -> Result<(), TaskError> {
 
     match args.format {
         OutputFormat::Human => {
-            println!("Milestone {}: {}", args.milestone, milestone.metadata.title);
-            print_summary_human(&summary);
-            if args.exit_checklist {
-                println!("\nExit Criteria");
-                for item in &criteria {
-                    let marker = if item.checked { "x" } else { " " };
-                    println!("- [{marker}] {}", item.text);
-                }
-            }
-            println!("\nOpen Tasks");
-            print_human(&open_tasks);
+            println!(
+                "{}",
+                render_milestone(&MilestoneOutput {
+                    milestone: &args.milestone,
+                    title: &milestone.metadata.title,
+                    summary: &summary,
+                    exit_criteria: args.exit_checklist.then_some(criteria.as_slice()),
+                    open_tasks: &open_tasks,
+                })
+            );
         }
         OutputFormat::Json => {
             let view = MilestoneView {
@@ -256,7 +373,7 @@ pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
     };
     let summary = build_summary(&scoped);
     match args.format {
-        OutputFormat::Human => print_summary_human(&summary),
+        OutputFormat::Human => println!("{}", render_summary_output(&summary)),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&summary)?),
     }
     Ok(())
@@ -264,53 +381,134 @@ pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
 
 pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
     let root = resolve_root(args.root)?;
+    let task_id = args.id.clone();
     let path = add_task(
         &root,
         NewTask {
             domain: args.domain,
             id: args.id,
             title: args.title,
+            status: args.status,
             priority: args.priority,
             task_type: args.task_type,
+            parent: args.parent,
             milestone: args.milestone,
+            depends_on: args.depends_on,
+            rules: args.rules,
+            risk: args.risk,
+            impact: args.impact,
+            tags: args.tags,
+            whitepaper: args.whitepaper,
+            summary: args.summary,
+            criteria: criteria_from_args(args.criteria, args.checked_criteria),
+            rationale: args.rationale,
+            blocked_reason: args.blocked_reason,
         },
     )?;
-    println!("created {}", path.display());
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::Created,
+            task_id: &task_id,
+            root: &root,
+            path: &path,
+        })
+    );
+    Ok(())
+}
+
+pub fn run_import(args: ImportArgs) -> Result<(), TaskError> {
+    let root = resolve_root(args.root)?;
+    let content = fs::read_to_string(&args.file).map_err(|source| TaskError::Io {
+        path: args.file.clone(),
+        source,
+    })?;
+    let tasks: Vec<ImportTask> = serde_json::from_str(&content)?;
+    let tasks: Vec<NewTask> = tasks.into_iter().map(NewTask::from).collect();
+    let paths = import_tasks(&root, &tasks, args.dry_run, args.skip_existing)?;
+    println!(
+        "{}",
+        render_import(&ImportOutput {
+            dry_run: args.dry_run,
+            root: &root,
+            paths: &paths,
+        })
+    );
     Ok(())
 }
 
 pub fn run_start(args: TaskIdArgs) -> Result<(), TaskError> {
     let root = resolve_root(args.root)?;
     let path = start_task(&root, &args.id)?;
-    println!("started {}", path.display());
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::Started,
+            task_id: &args.id,
+            root: &root,
+            path: &path,
+        })
+    );
     Ok(())
 }
 
 pub fn run_done(args: TaskIdArgs) -> Result<(), TaskError> {
     let root = resolve_root(args.root)?;
     let path = done_task(&root, &args.id)?;
-    println!("completed {}", path.display());
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::Completed,
+            task_id: &args.id,
+            root: &root,
+            path: &path,
+        })
+    );
     Ok(())
 }
 
 pub fn run_block(args: ReasonArgs) -> Result<(), TaskError> {
     let root = resolve_root(args.root)?;
     let path = block_task(&root, &args.id, &args.reason)?;
-    println!("blocked {}", path.display());
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::Blocked,
+            task_id: &args.id,
+            root: &root,
+            path: &path,
+        })
+    );
     Ok(())
 }
 
 pub fn run_defer(args: ReasonArgs) -> Result<(), TaskError> {
     let root = resolve_root(args.root)?;
     let path = defer_task(&root, &args.id, &args.reason)?;
-    println!("deferred {}", path.display());
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::Deferred,
+            task_id: &args.id,
+            root: &root,
+            path: &path,
+        })
+    );
     Ok(())
 }
 
 pub fn run_obsolete(args: ReasonArgs) -> Result<(), TaskError> {
     let root = resolve_root(args.root)?;
     let path = obsolete_task(&root, &args.id, &args.reason)?;
-    println!("marked obsolete {}", path.display());
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::Obsolete,
+            task_id: &args.id,
+            root: &root,
+            path: &path,
+        })
+    );
     Ok(())
 }
 
@@ -327,32 +525,6 @@ fn resolve_root(root: Option<PathBuf>) -> Result<PathBuf, TaskError> {
     }
 }
 
-fn print_human(tasks: &[Task]) {
-    println!(
-        "{:<14}  {:<12}  {:<9}  {:<8}  {:<8}  {:<9}  {:<9}  TITLE",
-        "ID", "STATUS", "TYPE", "PRIORITY", "RISK", "DOMAIN", "MILESTONE"
-    );
-    for task in tasks {
-        let risk = task
-            .metadata
-            .risk
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        let milestone = task.metadata.milestone.as_deref().unwrap_or("-");
-        println!(
-            "{:<14}  {:<12}  {:<9}  {:<8}  {:<8}  {:<9}  {:<9}  {}",
-            task.metadata.id,
-            task.metadata.status,
-            task.metadata.task_type,
-            task.metadata.priority,
-            risk,
-            task.domain,
-            milestone,
-            task.metadata.title
-        );
-    }
-}
-
 fn print_json(tasks: &[Task]) -> Result<(), TaskError> {
     let json = serde_json::to_string_pretty(tasks)?;
     println!("{json}");
@@ -360,17 +532,10 @@ fn print_json(tasks: &[Task]) -> Result<(), TaskError> {
 }
 
 #[derive(Debug, Serialize)]
-pub struct SummaryView {
-    pub status: BTreeMap<String, usize>,
-    pub domain: BTreeMap<String, usize>,
-    pub priority: BTreeMap<String, usize>,
-}
-
-#[derive(Debug, Serialize)]
 struct MilestoneView<'a> {
     milestone: &'a Task,
     exit_criteria: Vec<crate::markdown::ChecklistItem>,
-    counts: SummaryView,
+    counts: SummaryOutput,
     open_tasks: Vec<Task>,
 }
 
@@ -382,11 +547,11 @@ fn milestone_tasks(tasks: &[Task], milestone: &str) -> Vec<Task> {
         .collect()
 }
 
-fn build_summary(tasks: &[Task]) -> SummaryView {
-    let mut summary = SummaryView {
-        status: BTreeMap::new(),
-        domain: BTreeMap::new(),
-        priority: BTreeMap::new(),
+fn build_summary(tasks: &[Task]) -> SummaryOutput {
+    let mut summary = SummaryOutput {
+        status: Default::default(),
+        domain: Default::default(),
+        priority: Default::default(),
     };
     for task in tasks {
         *summary
@@ -402,17 +567,72 @@ fn build_summary(tasks: &[Task]) -> SummaryView {
     summary
 }
 
-fn print_summary_human(summary: &SummaryView) {
-    println!("Status");
-    for (key, value) in &summary.status {
-        println!("{key}: {value}");
+#[derive(Debug, Deserialize)]
+struct ImportTask {
+    domain: String,
+    id: String,
+    title: String,
+    #[serde(default = "default_status")]
+    status: TaskStatus,
+    priority: Priority,
+    #[serde(rename = "type")]
+    task_type: TaskType,
+    parent: Option<String>,
+    milestone: Option<String>,
+    #[serde(default)]
+    depends_on: Vec<String>,
+    #[serde(default)]
+    rules: Vec<String>,
+    risk: Option<Risk>,
+    impact: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    whitepaper: Option<String>,
+    summary: Option<String>,
+    #[serde(default)]
+    criteria: Vec<Criterion>,
+    rationale: Option<String>,
+    blocked_reason: Option<String>,
+}
+
+impl From<ImportTask> for NewTask {
+    fn from(value: ImportTask) -> Self {
+        Self {
+            domain: value.domain,
+            id: value.id,
+            title: value.title,
+            status: value.status,
+            priority: value.priority,
+            task_type: value.task_type,
+            parent: value.parent,
+            milestone: value.milestone,
+            depends_on: value.depends_on,
+            rules: value.rules,
+            risk: value.risk,
+            impact: value.impact,
+            tags: value.tags,
+            whitepaper: value.whitepaper,
+            summary: value.summary,
+            criteria: value.criteria,
+            rationale: value.rationale,
+            blocked_reason: value.blocked_reason,
+        }
     }
-    println!("\nDomain");
-    for (key, value) in &summary.domain {
-        println!("{key}: {value}");
-    }
-    println!("\nPriority");
-    for (key, value) in &summary.priority {
-        println!("{key}: {value}");
-    }
+}
+
+fn default_status() -> TaskStatus {
+    TaskStatus::ToDo
+}
+
+fn criteria_from_args(open: Vec<String>, checked: Vec<String>) -> Vec<Criterion> {
+    open.into_iter()
+        .map(|text| Criterion {
+            text,
+            checked: false,
+        })
+        .chain(checked.into_iter().map(|text| Criterion {
+            text,
+            checked: true,
+        }))
+        .collect()
 }

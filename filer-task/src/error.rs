@@ -58,7 +58,7 @@ impl fmt::Display for TaskError {
                 }
                 Ok(())
             }
-            Self::Json(error) => write!(f, "failed to render JSON output: {error}"),
+            Self::Json(error) => write!(f, "failed to process JSON: {error}"),
             Self::Message(message) => write!(f, "{message}"),
         }
     }

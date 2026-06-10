@@ -1,0 +1,28 @@
+---
+id: MODULES-001
+title: Define semantic extension data plane
+status: To Do
+priority: High
+type: Feature
+parent: CORE-001
+milestone: "0.3.0"
+depends_on: [API-001, REL-001]
+rules: [WIRE-SAFE-EXTENSIONS, SEMANTIC-EXTENSION-OUTPUT, SESSION-BOUNDARY]
+risk: High
+impact: "Defines extension output consumed by desktop and future transport clients."
+tags: [extensions, events, semantic-output]
+last_updated: 2026-06-06
+---
+
+## Summary
+
+Add wire-safe extension envelopes, semantic row output, and scoped core context subscriptions.
+
+## Acceptance Criteria
+
+- [ ] Serializable envelopes carry decorations, badges, action state, metadata, previews, and invalidations.
+- [ ] Early output is limited to client-neutral file-manager semantics.
+- [ ] Subscriptions can scope visible nodes, current directory, selection, provider changes, and filesystem changes.
+- [ ] A trusted core host consumes validated manifests and maps permissions to sessions and provider capabilities.
+- [ ] Scoped filesystem calls, contribution registration, tracing, and recoverable failures remain core-authoritative.
+- [ ] The bridge depends on filer-ecosystem only when live host contracts require it.
