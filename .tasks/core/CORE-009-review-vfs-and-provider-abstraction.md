@@ -1,7 +1,7 @@
 ---
 id: CORE-009
 title: Review VFS and provider abstraction
-status: To Do
+status: Done
 priority: High
 type: Design
 parent: CORE-004
@@ -18,6 +18,6 @@ Review the FsProvider trait surface, native vs fallback paging, the capability m
 
 ## Acceptance Criteria
 
-- [ ] Report at docs/reviews/filer-core/vfs-provider.md evaluates the trait surface and paging strategies.
-- [ ] The timeout-context gap and segmented/archive routing readiness are assessed against the planned providers.
-- [ ] Follow-up task candidates are listed for abstraction gaps that would force later rework.
+- [x] Report at docs/reviews/filer-core/vfs-provider.md evaluates the trait surface and paging strategies.
+- [x] The timeout-context gap and segmented/archive routing readiness are assessed against the planned providers.
+- [x] Follow-up task candidates are listed for abstraction gaps that would force later rework.

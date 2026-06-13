@@ -1,7 +1,7 @@
 ---
 id: CORE-007
 title: Review Rust-rule and error-handling compliance
-status: To Do
+status: Done
 priority: High
 type: Refactor
 parent: CORE-004
@@ -17,6 +17,6 @@ Audit the 19 production unwrap/expect sites, needless clones, Result + ? usage, 
 
 ## Acceptance Criteria
 
-- [ ] Report at docs/reviews/filer-core/rust-rules.md classifies each unwrap/expect site as justified-and-tested or a violation.
-- [ ] Silent error-swallowing and needless-clone hotspots are listed with file:line.
-- [ ] Follow-up task candidates are listed for the violations worth fixing.
+- [x] Report at docs/reviews/filer-core/rust-rules.md classifies each unwrap/expect site as justified-and-tested or a violation.
+- [x] Silent error-swallowing and needless-clone hotspots are listed with file:line.
+- [x] Follow-up task candidates are listed for the violations worth fixing.

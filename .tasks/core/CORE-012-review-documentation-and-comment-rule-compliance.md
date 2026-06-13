@@ -1,7 +1,7 @@
 ---
 id: CORE-012
 title: Review documentation and comment-rule compliance
-status: To Do
+status: Done
 priority: Low
 type: Docs
 parent: CORE-004
@@ -17,6 +17,6 @@ Review module docs against the WHY-not-WHAT rule, comment-rule compliance, and t
 
 ## Acceptance Criteria
 
-- [ ] Report at docs/reviews/filer-core/documentation.md flags comment-rule violations with file:line.
-- [ ] README and DESIGN claims that no longer match the code are listed.
-- [ ] Follow-up doc-fix candidates are listed.
+- [x] Report at docs/reviews/filer-core/documentation.md flags comment-rule violations with file:line.
+- [x] README and DESIGN claims that no longer match the code are listed.
+- [x] Follow-up doc-fix candidates are listed.

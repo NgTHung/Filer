@@ -1,7 +1,7 @@
 ---
 id: CORE-013
 title: Synthesize audit verdict and remediation backlog
-status: To Do
+status: Done
 priority: High
 type: Design
 parent: CORE-004
@@ -18,6 +18,6 @@ Roll up all eight review reports into one verdict on whether the architecture su
 
 ## Acceptance Criteria
 
-- [ ] Verdict doc at docs/reviews/filer-core/VERDICT.md answers whether the architecture supports the ambitions.
-- [ ] Findings are consolidated and de-duplicated across the eight passes.
-- [ ] Prioritized remediation tasks are created in .tasks/ for accepted findings.
+- [x] Verdict doc at docs/reviews/filer-core/VERDICT.md answers whether the architecture supports the ambitions.
+- [x] Findings are consolidated and de-duplicated across the eight passes.
+- [x] Prioritized remediation tasks are created in .tasks/ for accepted findings.

@@ -21,3 +21,4 @@ Stabilize the public core contracts needed by desktop, transport, provider, and 
 - [ ] Undo and conflict-resolution contracts are defined.
 - [ ] A trusted git decoration prototype emits semantic output without blocking directory loading.
 - [ ] App-local configuration remains separate from core and ecosystem profile state.
+- [ ] The high-severity correctness defects from the CORE-004 audit are fixed: the NodeId non-UTF-8 panic, the split listing-order authority, and the cancellation-cleanup clobber.

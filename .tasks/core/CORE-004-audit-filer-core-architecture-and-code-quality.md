@@ -1,7 +1,7 @@
 ---
 id: CORE-004
 title: Audit filer-core architecture and code quality
-status: To Do
+status: Done
 priority: High
 type: Epic
 risk: Medium
@@ -16,6 +16,6 @@ Audit-only review of filer-core. Each child pass produces a findings report unde
 
 ## Exit Criteria
 
-- [ ] All eight review reports exist under docs/reviews/filer-core/.
-- [ ] CORE-013 verdict at docs/reviews/filer-core/VERDICT.md is published.
-- [ ] Prioritized remediation follow-up tasks are created from accepted findings.
+- [x] All eight review reports exist under docs/reviews/filer-core/.
+- [x] CORE-013 verdict at docs/reviews/filer-core/VERDICT.md is published.
+- [x] Prioritized remediation follow-up tasks are created from accepted findings.

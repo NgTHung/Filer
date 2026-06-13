@@ -1,7 +1,7 @@
 ---
 id: CORE-010
 title: Review data model and pipeline contracts
-status: To Do
+status: Done
 priority: Medium
 type: Design
 parent: CORE-004
@@ -18,6 +18,6 @@ Review the Location/Node/Query types, Pipeline transforms, the GroupedNodes cont
 
 ## Acceptance Criteria
 
-- [ ] Report at docs/reviews/filer-core/model-pipeline.md evaluates the core data types and pipeline transform contract.
-- [ ] Cursor stability under directory mutation is assessed with the failure modes documented.
-- [ ] Follow-up task candidates are listed for contract weaknesses.
+- [x] Report at docs/reviews/filer-core/model-pipeline.md evaluates the core data types and pipeline transform contract.
+- [x] Cursor stability under directory mutation is assessed with the failure modes documented.
+- [x] Follow-up task candidates are listed for contract weaknesses.

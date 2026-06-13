@@ -1,7 +1,7 @@
 ---
 id: CORE-011
 title: Review test-suite quality and coverage
-status: To Do
+status: Done
 priority: Medium
 type: TestDebt
 parent: CORE-004
@@ -17,6 +17,6 @@ Review the test-to-code ratio, coverage gaps, fixture patterns, and missing canc
 
 ## Acceptance Criteria
 
-- [ ] Report at docs/reviews/filer-core/test-suite.md inventories coverage by subsystem and flags gaps.
-- [ ] Fixture and test-style inconsistencies are documented with examples.
-- [ ] Follow-up test-debt candidates are listed and cross-referenced with REL-002.
+- [x] Report at docs/reviews/filer-core/test-suite.md inventories coverage by subsystem and flags gaps.
+- [x] Fixture and test-style inconsistencies are documented with examples.
+- [x] Follow-up test-debt candidates are listed and cross-referenced with REL-002.

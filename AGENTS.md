@@ -63,9 +63,12 @@ Explain strategy and recovery, not just "log and continue".
 **Platform-specific comments:**
 Explain consequences, not implementation blockers.
 
+**Markdown in doc comments:**
+Rustdoc renders markdown, so doc comments (`///` and `//!`) may use it where it aids the rendered output: code spans, fenced code blocks, lists, and links. Keep it minimal and in service of clarity, not decoration. Plain inline comments (`//`) render as nothing, so they carry no markdown.
+
 **Never use:**
 - Placeholder comments ("for now", "TODO: extract this later")
-- Markdown formatting (`**bold**`, `_italic_`) in code comments
+- Markdown formatting (`**bold**`, `_italic_`) in plain `//` inline comments
 - ASCII diagrams (put those in `/docs/` if needed)
 - Section divider comments (`// ========== Section ==========`)
 - Comments explaining removed code during refactors

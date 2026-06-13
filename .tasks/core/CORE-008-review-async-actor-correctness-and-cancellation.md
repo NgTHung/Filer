@@ -1,7 +1,7 @@
 ---
 id: CORE-008
 title: Review async/actor correctness and cancellation
-status: To Do
+status: Done
 priority: High
 type: TestDebt
 parent: CORE-004
@@ -18,6 +18,6 @@ Review per-session cancellation correctness, stale-result guards, task leaks, un
 
 ## Acceptance Criteria
 
-- [ ] Report at docs/reviews/filer-core/async-actors.md covers cancellation, stale-result guards, channel backpressure, and shutdown.
-- [ ] Each potential task leak or stale-result race is documented with the actor and code path.
-- [ ] Missing cancellation/backpressure test scenarios are listed as follow-up candidates.
+- [x] Report at docs/reviews/filer-core/async-actors.md covers cancellation, stale-result guards, channel backpressure, and shutdown.
+- [x] Each potential task leak or stale-result race is documented with the actor and code path.
+- [x] Missing cancellation/backpressure test scenarios are listed as follow-up candidates.

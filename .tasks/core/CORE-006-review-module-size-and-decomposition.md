@@ -1,7 +1,7 @@
 ---
 id: CORE-006
 title: Review module size and decomposition
-status: To Do
+status: Done
 priority: Medium
 type: Refactor
 parent: CORE-004
@@ -17,6 +17,6 @@ Review files over the 700 LoC preferred ceiling and the 1000 LoC hard limit. No 
 
 ## Acceptance Criteria
 
-- [ ] Report at docs/reviews/filer-core/module-size.md inventories every file over 700 LoC.
-- [ ] operator.rs (1431) and mime/table.rs (1041) each have a proposed split into cohesive modules.
-- [ ] scanner.rs, navigator.rs, and previewer.rs each have a split recommendation or a documented reason to keep.
+- [x] Report at docs/reviews/filer-core/module-size.md inventories every file over 700 LoC.
+- [x] operator.rs (1431) and mime/table.rs (1041) each have a proposed split into cohesive modules.
+- [x] scanner.rs, navigator.rs, and previewer.rs each have a split recommendation or a documented reason to keep.
