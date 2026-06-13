@@ -66,12 +66,9 @@ fn list_command_emits_parseable_json() {
     assert_eq!(json[0]["rules"][0], "CORE-LIBRARY");
     assert_eq!(json[0]["risk"], "High");
     assert_eq!(json[0]["impact"], "Touches validation and output");
-    assert_eq!(
-        json[0]["depends_on"]
-            .as_array()
-            .expect("depends_on should be an array")
-            .len(),
-        0
+    assert!(
+        json[0].get("depends_on").is_none(),
+        "empty depends_on should be omitted from JSON"
     );
 }
 

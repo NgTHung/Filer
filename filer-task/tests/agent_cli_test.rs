@@ -29,13 +29,42 @@ fn show_returns_structured_task_body_and_complete_human_metadata() {
         ".tasks/core/CORE-001-location-routing.md"
     );
     assert_eq!(json["detail"]["criteria"][0]["text"], "Works");
-    assert_eq!(json["detail"]["sections"][1]["heading"], "Notes");
+
+    let sections = json["detail"]["sections"]
+        .as_array()
+        .expect("sections should be an array");
+    assert_eq!(sections[0]["heading"], "Notes");
+    assert!(
+        sections
+            .iter()
+            .all(|section| section["heading"] != "Acceptance Criteria"),
+        "criteria heading must not be duplicated in sections"
+    );
+
+    let task = &json["detail"]["task"];
+    assert!(task.get("parent").is_none(), "absent parent should be omitted");
+    assert!(
+        task.get("milestone").is_none(),
+        "absent milestone should be omitted"
+    );
+    assert!(
+        task.get("whitepaper").is_none(),
+        "absent whitepaper should be omitted"
+    );
+    assert!(
+        task.get("depends_on").is_none(),
+        "empty depends_on should be omitted"
+    );
 
     let human = run_stdout(&repo, ["show", "CORE-001"]);
     assert!(human.contains("Dependencies: -"));
     assert!(human.contains("Rules: CORE-LIBRARY"));
     assert!(human.contains("Tags: location"));
     assert!(human.contains("Notes\nKeep provider boundaries explicit."));
+    assert!(
+        human.contains("Acceptance Criteria\n- [ ] Works"),
+        "human output should still render the criteria checklist"
+    );
 }
 
 #[test]

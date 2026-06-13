@@ -272,6 +272,21 @@ fn render_detail(detail: &TaskDetail) -> String {
     for section in &detail.sections {
         output.push_str(&format!("\n\n{}\n{}", section.heading, section.content));
     }
+    if !detail.criteria.is_empty() {
+        let items = detail
+            .criteria
+            .iter()
+            .map(|item| {
+                let mark = if item.checked { 'x' } else { ' ' };
+                format!("- [{mark}] {}", item.text)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        output.push_str(&format!(
+            "\n\n{}\n{items}",
+            metadata.task_type.criteria_heading()
+        ));
+    }
     output
 }
 

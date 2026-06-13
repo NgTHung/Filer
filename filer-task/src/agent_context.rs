@@ -208,13 +208,16 @@ fn task_detail(root: &Path, task: &Task) -> Result<TaskDetail, TaskError> {
         path: task.path.clone(),
         source,
     })?;
-    let criteria_heading = match task.metadata.task_type {
-        TaskType::Milestone | TaskType::Epic => "Exit Criteria",
-        _ => "Acceptance Criteria",
-    };
+    let criteria_heading = task.metadata.task_type.criteria_heading();
+    // The criteria heading is exposed structurally through `criteria`, so drop
+    // it from `sections` to avoid emitting the same checklist text twice.
+    let sections = level_two_sections(&content)
+        .into_iter()
+        .filter(|section| section.heading != criteria_heading)
+        .collect();
     Ok(TaskDetail {
         task: task_view(root, task),
-        sections: level_two_sections(&content),
+        sections,
         criteria: checklist_items(&content, criteria_heading),
     })
 }

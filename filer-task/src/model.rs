@@ -49,17 +49,23 @@ pub struct TaskMetadata {
     pub priority: Priority,
     #[serde(rename = "type")]
     pub task_type: TaskType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub milestone: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub depends_on: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub risk: Option<Risk>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub impact: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub whitepaper: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_updated: Option<String>,
 }
 
@@ -69,6 +75,18 @@ pub struct Task {
     pub domain: String,
     #[serde(flatten)]
     pub metadata: TaskMetadata,
+}
+
+impl TaskType {
+    /// Milestones and epics track Exit Criteria; every other task tracks
+    /// Acceptance Criteria. Both the agent context and the human renderer
+    /// resolve the checklist heading through here so the two never diverge.
+    pub fn criteria_heading(self) -> &'static str {
+        match self {
+            Self::Milestone | Self::Epic => "Exit Criteria",
+            _ => "Acceptance Criteria",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
