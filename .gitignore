@@ -7,7 +7,9 @@
 
 #/target
 .gitnexus
-.claude
+.claude/*
+!.claude/skills/
 .cargo
 .gortex
 .vscode
+.rtk

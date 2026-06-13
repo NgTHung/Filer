@@ -93,37 +93,17 @@ comprehensive, delve, utilize, harness, realm, tapestry, unlock, revolutionary, 
 
 ## Task Tracking
 
-Filer uses `.tasks/` to track features, epics, milestones, and development work. Task files are version-controlled with the code. Read `/docs/task-tracking.md` when you need command details.
+Filer tracks features, epics, milestones, and development work in `.tasks/`, version-controlled with the code. The `filer-task` CLI validates and queries them.
 
-Use the repository-local `filer-task-workflow` skill for substantial planning or implementation, named task IDs, ready-work selection, and work that may require creating or refining a task.
+Use the repository-local `filer-task-workflow` skill for substantial planning or implementation, named task IDs, ready-work selection, and any work that may create or refine a task.
 
-Use `filer-task` before and after task changes:
+Run `filer-task` before and after task changes:
 
 ```bash
 cargo run -p filer-task -- validate
 cargo run -p filer-task -- list
 ```
 
-Project milestones live in `.tasks/milestones/`. Normal tasks may reference a project milestone with `milestone: "0.3.0"`.
+Project milestones live in `.tasks/milestones/`. Normal tasks reference one with `milestone: "0.3.0"`.
 
-### When to Create Tasks
-
-Create tasks for work that:
-
-- Introduces a new feature or capability
-- Refactors a significant system or module
-- Fixes a bug requiring architectural changes
-- Implements a whitepaper specification
-
-Do not create tasks for:
-
-- Routine code formatting or style fixes
-- Trivial bug fixes (single line changes)
-- Documentation updates to existing features
-- Dependency version bumps
-
-### Task Lifecycle
-
-Use lifecycle commands when possible. `Blocked` tasks need `## Blocked Reason`. `Deferred` and `Obsolete` tasks need `## Rationale`. `Done` tasks must have all acceptance or exit criteria checked.
-
-Full documentation: `/docs/task-tracking.md`
+`docs/task-tracking.md` is the authoritative reference for when to create tasks, the task lifecycle, frontmatter, and every command. Do not restate those rules here.

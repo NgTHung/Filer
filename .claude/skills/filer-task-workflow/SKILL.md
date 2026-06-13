@@ -3,7 +3,7 @@ name: filer-task-workflow
 description: Use when planning or implementing substantial Filer work, when a request names a task ID, when choosing ready work, or when work may require creating or refining a task.
 ---
 
-<!-- Mirror of .claude/skills/filer-task-workflow/SKILL.md (Claude Code). Keep both copies identical; symlinks are not portable on this repo. -->
+<!-- Mirror of .agents/skills/filer-task-workflow/SKILL.md (Codex). Keep both copies identical; symlinks are not portable on this repo. -->
 
 # Filer Task Workflow
 
