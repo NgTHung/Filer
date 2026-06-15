@@ -365,7 +365,7 @@ fn find_task<'a>(tasks: &'a [Task], id: &str) -> Result<&'a Task, TaskError> {
     tasks
         .iter()
         .find(|task| task.metadata.id == id)
-        .ok_or_else(|| TaskError::Message(format!("task {id} does not exist")))
+        .ok_or_else(|| TaskError::NotFound { id: id.to_string() })
 }
 
 fn priority_order(priority: Priority) -> u8 {

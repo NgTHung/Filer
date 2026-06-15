@@ -517,7 +517,7 @@ fn task_path(root: &Path, id: &str) -> Result<PathBuf, TaskError> {
         .into_iter()
         .find(|task| task.metadata.id == id)
         .map(|task| task.path)
-        .ok_or_else(|| TaskError::Message(format!("task {id} does not exist")))
+        .ok_or_else(|| TaskError::NotFound { id: id.to_string() })
 }
 
 fn write_status(

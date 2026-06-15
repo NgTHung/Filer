@@ -12,7 +12,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-mod agent_context;
+pub mod agent_context;
 pub mod cli;
 pub mod error;
 pub mod frontmatter;

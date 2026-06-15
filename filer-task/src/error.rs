@@ -15,6 +15,9 @@ pub enum TaskError {
     },
     Validation(Vec<ValidationError>),
     Json(serde_json::Error),
+    NotFound {
+        id: String,
+    },
     Message(String),
 }
 
@@ -59,6 +62,7 @@ impl fmt::Display for TaskError {
                 Ok(())
             }
             Self::Json(error) => write!(f, "failed to process JSON: {error}"),
+            Self::NotFound { id } => write!(f, "task {id} does not exist"),
             Self::Message(message) => write!(f, "{message}"),
         }
     }
@@ -69,7 +73,10 @@ impl Error for TaskError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Json(error) => Some(error),
-            Self::MissingRepoRoot { .. } | Self::Validation(_) | Self::Message(_) => None,
+            Self::MissingRepoRoot { .. }
+            | Self::Validation(_)
+            | Self::NotFound { .. }
+            | Self::Message(_) => None,
         }
     }
 }

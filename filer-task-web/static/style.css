@@ -1,0 +1,158 @@
+:root {
+  --bg: #1b1d21;
+  --panel: #24272c;
+  --border: #353a41;
+  --text: #e6e8ea;
+  --muted: #9aa1aa;
+  --accent: #5aa9e6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.5 system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+select,
+input,
+button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+main {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+tbody tr:hover,
+tbody tr.selected {
+  background: var(--panel);
+}
+
+#detail-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 200px;
+}
+
+#detail h2 {
+  margin-top: 0;
+  font-size: 16px;
+}
+
+.meta {
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.criteria {
+  list-style: none;
+  padding-left: 0;
+}
+
+.criteria li::before {
+  content: "☐ ";
+}
+
+.criteria li.checked::before {
+  content: "☑ ";
+  color: var(--accent);
+}
+
+.section {
+  margin-top: 12px;
+}
+
+.section h3 {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.section pre {
+  white-space: pre-wrap;
+  margin: 0;
+  font: inherit;
+}
+
+#error {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: #4a1d1d;
+  border: 1px solid #7a2e2e;
+  color: #ffd7d7;
+  padding: 10px 14px;
+  border-radius: 8px;
+  max-width: 360px;
+}
+
+.hidden {
+  display: none;
+}

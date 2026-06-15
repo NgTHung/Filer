@@ -1,8 +1,8 @@
-# filer-core Audit Reports
+# filer-core review reports
 
-This directory holds the findings from the filer-core architecture and code-quality audit
-(epic `CORE-004`). The audit is review-only. It does not change production code. Concrete
-fixes are tracked as separate follow-up tasks spawned from these findings.
+This directory holds the filer-core architecture and code-quality audit reports from
+epic `CORE-004`, plus later review-only backlog reports. These documents do not change
+production code. Concrete fixes stay in tracked follow-up tasks.
 
 ## Convention
 
@@ -20,6 +20,7 @@ follow-up task candidates so remediation can be triaged by priority.
 | `test-suite.md` | CORE-011 | Coverage by subsystem, fixture patterns, missing cancellation/timeout tests |
 | `documentation.md` | CORE-012 | Comment-rule compliance, README/DESIGN accuracy vs code |
 | `VERDICT.md` | CORE-013 | Consolidated verdict and prioritized remediation backlog |
+| `task-state.md` | review only | Current `.tasks/` state against filer-core ambitions and milestone `0.3.0` |
 
 ## Severity scale
 
