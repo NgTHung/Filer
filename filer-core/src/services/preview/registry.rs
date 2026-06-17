@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use crate::errors::CoreError;
-use crate::services::mime::{DetectionConfidence, DetectionStrategy, MimeDetector, MimeInfo};
+use crate::services::mime::{
+    DetectionConfidence, DetectionStrategy, MAGIC_BYTE_WINDOW, MimeDetector, MimeInfo,
+};
+use crate::vfs::provider::FsProvider;
 
 use super::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
@@ -44,8 +47,12 @@ impl PreviewRegistry {
     }
 
     /// Generate preview for a file using default options.
-    pub async fn generate(&self, path: &Path) -> Result<PreviewData, CoreError> {
-        self.generate_with_options(path, &self.default_options)
+    pub async fn generate(
+        &self,
+        path: &Path,
+        provider: &dyn FsProvider,
+    ) -> Result<PreviewData, CoreError> {
+        self.generate_with_options(path, &self.default_options, provider)
             .await
     }
 
@@ -61,7 +68,7 @@ impl PreviewRegistry {
     /// `MagicBytes` — this correctly keeps `.docx` as Document instead of
     /// being overridden by its ZIP magic bytes.
     ///
-    /// **Tier 2** — Magic bytes (512-byte header read).
+    /// **Tier 2** — Magic bytes (reads the file head through the provider).
     /// Skipped when strategy is `ExtensionOnly` or Tier 1 was Definitive.
     /// On I/O failure the read is silently dropped and Tier 1 result is used.
     ///
@@ -71,8 +78,9 @@ impl PreviewRegistry {
         &self,
         path: &Path,
         options: &PreviewOptions,
+        provider: &dyn FsProvider,
     ) -> Result<PreviewData, CoreError> {
-        let mime = self.detect_mime(path, options).await;
+        let mime = self.detect_mime(path, options, provider).await;
         match self.get_provider(&mime) {
             Some(p) => p.generate(path, &mime, options).await,
             None => Ok(PreviewData::Unsupported {
@@ -90,7 +98,12 @@ impl PreviewRegistry {
     }
 
     /// Run the two-tier MIME detection pipeline for `path`.
-    async fn detect_mime(&self, path: &Path, options: &PreviewOptions) -> MimeInfo {
+    async fn detect_mime(
+        &self,
+        path: &Path,
+        options: &PreviewOptions,
+        provider: &dyn FsProvider,
+    ) -> MimeInfo {
         // Tier 1 — extension
         let ext_info = MimeDetector::detect_from_path(path);
 
@@ -105,23 +118,10 @@ impl PreviewRegistry {
             return ext_info;
         }
 
-        // Tier 2 — magic bytes (first 512 bytes).
-        // Read directly; `PreviewProvider::generate` also has no FsProvider, so
-        // the preview layer is intentionally local-FS-first. Failures fall back
-        // to the Tier 1 result silently.
-        let header = Self::read_header(path).await;
+        // Tier 2 — magic bytes. The provider read keeps detection consistent
+        // with the rest of the VFS; failures fall back to the Tier 1 result.
+        let header = provider.read_header(path, MAGIC_BYTE_WINDOW).await.ok();
         MimeDetector::detect_with_strategy(path, header.as_deref(), options.detection_strategy)
-    }
-
-    /// Read up to 512 bytes from the beginning of `path` for magic-byte detection.
-    /// Returns `None` on any I/O error (remote path, permissions, etc.).
-    async fn read_header(path: &Path) -> Option<Vec<u8>> {
-        use tokio::io::AsyncReadExt;
-        let mut file = tokio::fs::File::open(path).await.ok()?;
-        let mut buf = vec![0u8; 512];
-        let n = file.read(&mut buf).await.ok()?;
-        buf.truncate(n);
-        Some(buf)
     }
 
     /// Get the highest-priority provider that handles `mime.category`.

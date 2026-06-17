@@ -66,6 +66,12 @@ pub enum MimeCategory {
 /// these extensions always trigger a magic-byte read even if the extension
 /// is technically "known". An empty string represents a missing extension
 /// (e.g., `Makefile`, `Dockerfile`, `LICENSE`).
+/// Bytes read from a file's head for magic-byte detection.
+///
+/// 4096 matches the OS page/block size, so it costs the same single read as
+/// 512 on local FS while covering deeper magic offsets.
+pub const MAGIC_BYTE_WINDOW: usize = 4096;
+
 pub const AMBIGUOUS_EXTENSIONS: &[&str] = &[
     "", // no extension at all
     "bin", "dat", "raw", "out", "tmp",
@@ -141,7 +147,7 @@ impl MimeDetector {
     /// Delegates to the `infer` crate which covers ~70 formats including
     /// HEIC/HEIF, 3GP, RIFF disambiguation (WebP/WAV/AVI), OLE2, and RAR.
     ///
-    /// `bytes` should be the first 512 bytes of the file.
+    /// `bytes` should be the file's head, up to `MAGIC_BYTE_WINDOW`.
     ///
     /// # Confidence
     /// - `Definitive` — a magic signature matched

@@ -4,6 +4,9 @@ use crate::errors::{CoreError, ErrorCode};
 use crate::model::directory::{DirectoryCursor, DirectoryPageRequest};
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
+use crate::services::mime::{
+    DetectionConfidence, MimeCategory, MimeDetector, MAGIC_BYTE_WINDOW,
+};
 use crate::vfs::local::LocalFs;
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 use async_trait::async_trait;
@@ -333,6 +336,48 @@ async fn test_local_fs_read_range_beyond_end() {
     // Should return only available content
     let data = result.unwrap();
     assert_eq!(data, content);
+}
+
+#[tokio::test]
+async fn test_local_fs_read_header_smaller_than_window() {
+    let (fs, dir) = local_fs();
+
+    // A file smaller than the window must return the bytes it has, not error.
+    let temp_file = dir.path().join("filer_test_header_small.bin");
+    let content = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    std::fs::write(&temp_file, &content).unwrap();
+
+    let result = fs.read_header(&temp_file, MAGIC_BYTE_WINDOW).await;
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), content);
+}
+
+#[tokio::test]
+async fn test_local_fs_read_header_empty_file() {
+    let (fs, dir) = local_fs();
+
+    let temp_file = dir.path().join("filer_test_header_empty.bin");
+    std::fs::write(&temp_file, b"").unwrap();
+
+    let result = fs.read_header(&temp_file, MAGIC_BYTE_WINDOW).await;
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), Vec::<u8>::new());
+}
+
+#[tokio::test]
+async fn test_small_file_magic_detection() {
+    let (fs, dir) = local_fs();
+
+    // PNG signature in a file smaller than the window, with no extension so
+    // detection must come from magic bytes, not the name.
+    let temp_file = dir.path().join("blob");
+    let png_signature = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    std::fs::write(&temp_file, &png_signature).unwrap();
+
+    let header = fs.read_header(&temp_file, MAGIC_BYTE_WINDOW).await.unwrap();
+    let info = MimeDetector::detect(&temp_file, &header);
+    assert_eq!(info.category, MimeCategory::Image);
+    assert_eq!(info.confidence, DetectionConfidence::Definitive);
 }
 
 #[tokio::test]

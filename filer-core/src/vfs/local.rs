@@ -206,29 +206,29 @@ impl FsProvider for LocalFs {
         Ok(Box::new(std::io::BufReader::new(file)))
     }
 
-    /// Read the first `n_bytes` for MIME detection using a single `read_exact`.
+    /// Read up to `n_bytes` from the file head for MIME detection.
     ///
-    /// More efficient than the default `read_range` implementation because it
-    /// opens the file once without seeking and reads exactly what is needed.
-    ///
-    /// # TODO
-    /// - Open file with `tokio::fs::File::open(path)`
-    /// - Allocate `buf: Vec<u8>` of capacity `n_bytes`
-    /// - `file.read_exact(&mut buf)` — handle short reads (file smaller than n_bytes)
-    ///   by resizing the buffer to the number of bytes actually read
-    /// - Return `Ok(buf)`
+    /// More efficient than the default `read_range` because it opens the file
+    /// once without seeking. The fill loop tolerates short reads and returns
+    /// the bytes actually available, so files smaller than `n_bytes` still get
+    /// magic-byte detection instead of an `UnexpectedEof` error.
     async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
         let mut f = File::open(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let mut buf = vec![0; n_bytes];
-        let size = f
-            .read_exact(&mut buf)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        if size != n_bytes {
-            buf.resize(size, 0);
+        let mut buf = vec![0u8; n_bytes];
+        let mut filled = 0;
+        while filled < n_bytes {
+            let n = f
+                .read(&mut buf[filled..])
+                .await
+                .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
         }
+        buf.truncate(filled);
         Ok(buf)
     }
 

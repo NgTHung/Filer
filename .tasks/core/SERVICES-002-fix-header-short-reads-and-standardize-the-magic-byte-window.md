@@ -1,13 +1,13 @@
 ---
 id: SERVICES-002
 title: Fix header short reads and standardize the magic-byte window
-status: To Do
+status: Done
 priority: High
 type: Bug
 risk: Medium
 impact: "Fixes missing magic-byte detection for files smaller than the header window and centralizes the window size."
 tags: [mime, vfs, bugfix]
-last_updated: 2026-06-13
+last_updated: 2026-06-17
 ---
 
 ## Summary
@@ -16,8 +16,8 @@ LocalFs read_header uses read_exact, which returns UnexpectedEof for files small
 
 ## Acceptance Criteria
 
-- [ ] LocalFs read_header returns the available bytes for files smaller than the requested size instead of erroring.
-- [ ] A single named constant defines the magic-byte window and is used by the registry and previewer call sites.
-- [ ] The magic-byte window is 4096 bytes.
-- [ ] A regression test covers a file smaller than the window producing a correct detection result.
-- [ ] Duplicated 512 literals are removed from the detection call sites.
+- [x] LocalFs read_header returns the available bytes for files smaller than the requested size instead of erroring.
+- [x] A single named constant defines the magic-byte window and is used by the registry and previewer call sites.
+- [x] The magic-byte window is 4096 bytes.
+- [x] A regression test covers a file smaller than the window producing a correct detection result.
+- [x] Duplicated 512 literals are removed from the detection call sites.

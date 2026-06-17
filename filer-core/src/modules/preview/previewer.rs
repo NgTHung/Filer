@@ -13,7 +13,7 @@ use crate::model::node::{FileNode, NodeId};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::services::mime::MimeDetector;
+use crate::services::mime::{MAGIC_BYTE_WINDOW, MimeDetector};
 use crate::services::preview::PreviewCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::provider::FsProvider;
@@ -149,6 +149,7 @@ impl Previewer {
         let cancel = self.arm_cancel(session);
         let events = self.events.clone();
         let preview_registry = self.preview_registry.clone();
+        let provider = self.provider.clone();
         let cache = self.cache.clone();
         let active = self.active.clone();
         let latest = self.latest.clone();
@@ -159,7 +160,9 @@ impl Previewer {
                 return;
             }
 
-            let result = preview_registry.generate_with_options(&path, &opts).await;
+            let result = preview_registry
+                .generate_with_options(&path, &opts, provider.as_ref())
+                .await;
 
             if cancel.is_cancelled() {
                 return;
@@ -241,6 +244,7 @@ impl Previewer {
         let cancel = self.arm_cancel(session);
         let events = self.events.clone();
         let preview_registry = self.preview_registry.clone();
+        let provider = self.provider.clone();
         let cache = self.cache.clone();
         let active = self.active.clone();
         let latest = self.latest.clone();
@@ -251,7 +255,9 @@ impl Previewer {
                 return;
             }
 
-            let result = preview_registry.generate_with_options(&path, &opts).await;
+            let result = preview_registry
+                .generate_with_options(&path, &opts, provider.as_ref())
+                .await;
 
             if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
                 return;
@@ -460,8 +466,7 @@ impl Previewer {
                 if ext_info.confidence == crate::services::mime::DetectionConfidence::Definitive {
                     ext_info
                 } else {
-                    // Read 512-byte header through the provider.
-                    let header = provider.read_header(&path, 512).await.ok();
+                    let header = provider.read_header(&path, MAGIC_BYTE_WINDOW).await.ok();
                     MimeDetector::detect_with_strategy(
                         &path,
                         header.as_deref(),
@@ -541,7 +546,7 @@ impl Previewer {
                 if ext_info.confidence == crate::services::mime::DetectionConfidence::Definitive {
                     ext_info
                 } else {
-                    let header = provider.read_header(&path, 512).await.ok();
+                    let header = provider.read_header(&path, MAGIC_BYTE_WINDOW).await.ok();
                     MimeDetector::detect_with_strategy(
                         &path,
                         header.as_deref(),
