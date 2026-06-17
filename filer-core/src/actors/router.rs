@@ -94,6 +94,19 @@ impl CommandRouter {
             _ => None,
         };
 
+        // One structured record per command at the single dispatch choke point:
+        // the structural guarantee that every app-facing command path is traced.
+        // debug keeps the default info-level production path quiet on this hot
+        // path. Emitted after session validation so rejected commands don't count.
+        tracing::debug!(
+            target: "filer_core::command",
+            key = command.key(),
+            session = ?command.session_id(),
+            request = ?request,
+            operation = ?operation,
+            "command dispatched",
+        );
+
         // Dispatch to registered handler
         let key = command.key().to_string();
         if !self.handlers.dispatch(command, &self.ctx) {

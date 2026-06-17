@@ -1,26 +1,24 @@
 ---
 id: REL-002
-title: Close core reliability coverage gaps
-status: To Do
+title: Add command-path tracing coverage
+status: Done
 priority: High
 type: TestDebt
 parent: CORE-001
 milestone: "0.3.0"
 rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY, CORE-MECHANICS-BUILTIN]
 risk: Medium
-impact: "Validates cache freshness, event truthfulness, and cancellation under load."
+impact: "Makes every app-facing command observable for debugging and reliability triage."
 tags: [reliability, testing, tracing]
-last_updated: 2026-06-06
+last_updated: 2026-06-17
 ---
 
 ## Summary
 
-Add regression and stress coverage for remaining app-facing reliability risks.
+Instrument the single command dispatch choke point (`CommandRouter::route`) so every app-facing command path emits one structured trace record carrying key, session, request, and operation. Add a tracing-capture test proving the records appear. This is the first stage split out of the original reliability-coverage umbrella; cache freshness, watcher bursts, and cancellation gaps move to REL-003, REL-004, and REL-005.
 
 ## Acceptance Criteria
 
-- [ ] Manual refresh and same-folder navigation bypass stale cache entries.
-- [ ] Tracing covers every app-facing command path.
-- [ ] Rapid create, delete, and rename watcher bursts remain fresh and ordered.
-- [ ] Long operations, search, preview, and provider calls have cancellation tests.
-- [ ] Reproduced UI races become core contract regression tests when core owns the failure.
+- [x] Every command dispatched through `CommandRouter::route` emits one structured trace record carrying key, session, request, and operation.
+- [x] The record is emitted only after session validation, so rejected unknown-session commands are not counted.
+- [x] A test installs a capturing subscriber and asserts a record with the correct key and session for one command per drivable family (navigate, scan, search, preview, ops, session lifecycle).
