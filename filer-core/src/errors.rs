@@ -152,6 +152,9 @@ pub enum ErrorContext {
         location: LocationRef,
         capability: LocationCapabilityError,
     },
+    Timeout {
+        provider: String,
+    },
 }
 
 #[derive(Debug)]
@@ -265,6 +268,17 @@ impl CoreError {
 
     pub fn timed_out(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::TimedOut, None, message)
+    }
+
+    /// Timeout breached inside a provider call, tagged with the provider scheme.
+    pub fn provider_timed_out(scheme: impl Into<String>, message: impl Into<String>) -> Self {
+        let scheme = scheme.into();
+        Self::new(
+            ErrorCode::TimedOut,
+            Some(ErrorTarget::Provider(scheme.clone())),
+            message,
+        )
+        .with_context(ErrorContext::Timeout { provider: scheme })
     }
 
     pub fn actor(actor: &'static str, message: impl Into<String>) -> Self {

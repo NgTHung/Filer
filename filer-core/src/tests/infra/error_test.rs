@@ -286,6 +286,25 @@ fn provider_capability_error_exposes_provider_location_and_capability() {
 }
 
 #[test]
+fn provider_timed_out_exposes_scheme_and_timeout_context() {
+    let error = CoreError::provider_timed_out("mock", "Provider 'mock' timed out");
+
+    assert_eq!(error.code(), ErrorCode::TimedOut);
+    assert_eq!(error.kind(), ErrorKind::Timeout);
+    assert!(error.recoverable());
+    assert_eq!(
+        error.target(),
+        Some(&ErrorTarget::Provider("mock".to_string()))
+    );
+    assert_eq!(
+        error.context(),
+        Some(&ErrorContext::Timeout {
+            provider: "mock".to_string(),
+        })
+    );
+}
+
+#[test]
 fn error_event_preserves_structured_context() {
     let session = SessionId::new();
     let request = RequestId::new();

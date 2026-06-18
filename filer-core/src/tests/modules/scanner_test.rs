@@ -162,8 +162,12 @@ impl FsProvider for MockProvider {
         }
     }
 
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
-        self.list_with_options(path, ListingOptions::default())
+    async fn list(
+        &self,
+        path: &Path,
+        cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<FileNode>, CoreError> {
+        self.list_with_options(path, ListingOptions::default(), cx)
             .await
     }
 
@@ -171,6 +175,7 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         options: ListingOptions,
+        _cx: &crate::ProviderCx<'_>,
     ) -> Result<Vec<FileNode>, CoreError> {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::not_found(path.to_path_buf()));
@@ -190,6 +195,7 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         request: DirectoryPageRequest,
+        _cx: &crate::ProviderCx<'_>,
     ) -> Result<DirectoryPageResult, CoreError> {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::not_found(path.to_path_buf()));
@@ -221,19 +227,29 @@ impl FsProvider for MockProvider {
         Ok(DirectoryPageResult { entries, state })
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        _path: &Path,
+        _start: u64,
+        _len: u64,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(true)
     }
 
-    async fn metadata(&self, _path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(
+        &self,
+        _path: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(PathBuf::from("test")))
     }
 }
@@ -2948,7 +2964,9 @@ mod mock_provider_tests {
         // });
         provider.add_file(make_file("test.txt", "/test", 100, false));
 
-        let result = provider.list(Path::new("/test")).await;
+        let result = provider
+            .list(Path::new("/test"), &crate::ProviderCx::none())
+            .await;
 
         assert!(result.is_ok());
         let files = result.unwrap();
@@ -2960,8 +2978,14 @@ mod mock_provider_tests {
     async fn test_mock_provider_tracks_calls() {
         let provider = MockProvider::new();
 
-        provider.list(Path::new("/dir1")).await.unwrap();
-        provider.list(Path::new("/dir2")).await.unwrap();
+        provider
+            .list(Path::new("/dir1"), &crate::ProviderCx::none())
+            .await
+            .unwrap();
+        provider
+            .list(Path::new("/dir2"), &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         let calls = provider.get_list_calls();
         assert_eq!(calls.len(), 2);
@@ -2974,7 +2998,9 @@ mod mock_provider_tests {
         let provider = MockProvider::new();
         provider.set_should_fail(true);
 
-        let result = provider.list(Path::new("/test")).await;
+        let result = provider
+            .list(Path::new("/test"), &crate::ProviderCx::none())
+            .await;
         assert!(result.is_err());
     }
 }

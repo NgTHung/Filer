@@ -37,19 +37,33 @@ impl FsProvider for NullProvider {
             search: false,
         }
     }
-    async fn list(&self, _: &Path) -> Result<Vec<crate::model::node::FileNode>, CoreError> {
+    async fn list(
+        &self,
+        _: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<crate::model::node::FileNode>, CoreError> {
         Ok(vec![])
     }
-    async fn read(&self, p: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, p: &Path, _cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Err(CoreError::not_found(p.to_path_buf()))
     }
-    async fn read_range(&self, p: &Path, _: u64, _: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        p: &Path,
+        _: u64,
+        _: u64,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Err(CoreError::not_found(p.to_path_buf()))
     }
-    async fn exists(&self, _: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _: &Path, _cx: &crate::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(false)
     }
-    async fn metadata(&self, p: &Path) -> Result<crate::model::node::FileNode, CoreError> {
+    async fn metadata(
+        &self,
+        p: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<crate::model::node::FileNode, CoreError> {
         Err(CoreError::not_found(p.to_path_buf()))
     }
 }

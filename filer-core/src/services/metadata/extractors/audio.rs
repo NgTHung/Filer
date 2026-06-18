@@ -30,7 +30,7 @@ impl AudioExtractor {
     async fn read_tag(&self, path: &Path, provider: &dyn FsProvider) -> Option<(f64, AudioTags)> {
         use id3::TagLike;
 
-        let mut reader = provider.open_reader(path).await.ok()?;
+        let mut reader = provider.open_reader(path, &crate::ProviderCx::none()).await.ok()?;
         let tag = id3::Tag::read_from2(&mut *reader).ok()?;
 
         let duration_secs = tag.duration().map(|d| d as f64).unwrap_or(0.0);

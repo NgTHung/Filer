@@ -14,6 +14,7 @@ pub use api::module::Module;
 pub use api::wire_commands::{WireCommand, WireCommandConversionError};
 pub use api::{commands::Command, events::Event, handle::FilerCore};
 pub use errors::{CoreError, ErrorCode, ErrorContext, ErrorKind, ErrorTarget};
+pub use model::cancel::CancelSignal;
 pub use model::capability::{
     LocationCapabilityError, LocationConflictPolicy, LocationCrossProviderPolicy,
     LocationOperationCapability, LocationWatchCapability, LocationWatchReliability,
@@ -42,6 +43,7 @@ pub use services::preview::{ArchivePreviewEntry, PreviewData, PreviewOptions, Pr
 
 // VFS providers
 pub use vfs::local::LocalFs;
+pub use vfs::context::ProviderCx;
 pub use vfs::provider::{Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging};
 
 // Actor infrastructure

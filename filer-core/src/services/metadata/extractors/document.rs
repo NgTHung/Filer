@@ -27,7 +27,7 @@ impl DocumentExtractor {
         path: &Path,
         provider: &dyn FsProvider,
     ) -> Result<DocumentMetadata, CoreError> {
-        let reader = provider.open_reader(path).await?;
+        let reader = provider.open_reader(path, &crate::ProviderCx::none()).await?;
         let meta = lopdf::Document::load_metadata_from(reader)
             .map_err(|e| CoreError::invalid_data(format!("Cannot parse PDF: {e}")))?;
 

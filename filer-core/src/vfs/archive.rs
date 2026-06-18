@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::model::node::FileNode;
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
 /// Archive filesystem provider (ZIP, TAR, etc.)
@@ -40,23 +41,29 @@ impl FsProvider for ArchiveFs {
         }
     }
 
-    async fn list(&self, _path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(&self, _path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError> {
         Err(self.unsupported())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Err(self.unsupported())
     }
 
-    async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        _path: &Path,
+        _start: u64,
+        _len: u64,
+        _cx: &ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Err(self.unsupported())
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _path: &Path, _cx: &ProviderCx<'_>) -> Result<bool, CoreError> {
         Err(self.unsupported())
     }
 
-    async fn metadata(&self, _path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, _path: &Path, _cx: &ProviderCx<'_>) -> Result<FileNode, CoreError> {
         Err(self.unsupported())
     }
 }

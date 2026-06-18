@@ -82,7 +82,11 @@ impl FsProvider for MockProvider {
         }
     }
 
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(
+        &self,
+        path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<FileNode>, CoreError> {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
@@ -90,19 +94,25 @@ impl FsProvider for MockProvider {
         Ok(self.files.lock().unwrap().clone())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        _path: &Path,
+        _start: u64,
+        _len: u64,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(true)
     }
 
-    async fn metadata(&self, _path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(PathBuf::from("test")))
     }
 }
@@ -222,7 +232,10 @@ async fn test_scanner_handles_multiple_scans() {
     let (evt_tx, _evt_rx) = flume::unbounded();
     let provider = MockProvider::new();
     let reg = NodeRegistry::new();
+    // Distinct sessions so the two scans run concurrently. Same-session scans
+    // supersede each other, cancelling the first before it lists.
     let sess = session::SessionId::new();
+    let sess2 = session::SessionId::new();
 
     provider.add_file(make_file("test.txt", "/dir1", 50, false));
 
@@ -253,7 +266,7 @@ async fn test_scanner_handles_multiple_scans() {
                 group: None,
             },
             load: filer_core::DirectoryLoadOptions::default(),
-            session: sess,
+            session: sess2,
             request: filer_core::RequestId::new(),
         })
         .unwrap();

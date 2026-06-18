@@ -1,43 +1,16 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use rapidhash::fast::RandomState;
 
+use crate::model::cancel::CancelSignal;
 use crate::model::session::SessionId;
 
-/// A lightweight cancellation token backed by an atomic flag.
+/// The actor-facing name for the shared [`CancelSignal`] primitive.
 ///
-/// Cheaply cloned — all clones share the same underlying flag.
-#[derive(Clone)]
-pub struct CancellationToken {
-    cancelled: Arc<AtomicBool>,
-}
-
-impl CancellationToken {
-    pub fn new() -> Self {
-        Self {
-            cancelled: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
-    }
-
-    fn same_instance(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.cancelled, &other.cancelled)
-    }
-}
-
-impl Default for CancellationToken {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// Tokens are armed per session by [`CancelMap`] and handed to spawned tasks.
+/// The primitive lives in `model` so the provider layer can observe it without
+/// depending on `actors`.
+pub type CancellationToken = CancelSignal;
 
 /// Per-session cancellation map used by long-running actors.
 ///

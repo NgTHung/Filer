@@ -150,7 +150,11 @@ impl FsProvider for MockProvider {
         }
     }
 
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(
+        &self,
+        path: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<FileNode>, CoreError> {
         // Check if this path should fail
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::not_found(path.to_path_buf()));
@@ -178,19 +182,29 @@ impl FsProvider for MockProvider {
             .unwrap_or_default())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn read_range(&self, _path: &Path, _start: u64, _len: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        _path: &Path,
+        _start: u64,
+        _len: u64,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(true)
     }
 
-    async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(
+        &self,
+        path: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }
@@ -290,6 +304,67 @@ fn spawn_searcher(
     });
 
     (cmd_tx, evt_rx)
+}
+
+fn spawn_searcher_with_timeout(
+    provider: MockProvider,
+    registry: NodeRegistry,
+    search_timeout: Duration,
+) -> (flume::Sender<SearchCommand>, Receiver<Event>) {
+    let (cmd_tx, cmd_rx) = flume::unbounded::<SearchCommand>();
+    let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+    let mut searcher = Searcher::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+    searcher.set_search_timeout(Some(search_timeout));
+    tokio::spawn(async move {
+        searcher.run().await;
+    });
+
+    (cmd_tx, evt_rx)
+}
+
+#[cfg(test)]
+mod searcher_timeout_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_search_times_out_with_provider_context() {
+        let provider = MockProvider::new();
+        provider.add_dir("/slow", vec![MockProvider::make_file("a.txt", "/slow", 1)]);
+        // Far longer than the search timeout, so the deadline must fire first.
+        provider.set_delay_ms(10_000);
+        let registry = NodeRegistry::new();
+        let (cmd_tx, evt_rx) =
+            spawn_searcher_with_timeout(provider, registry, Duration::from_millis(20));
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        cmd_tx
+            .send(SearchCommand::SearchPath {
+                query: SearchQuery::parse("a").unwrap(),
+                root: PathBuf::from("/slow"),
+                session,
+                request,
+            })
+            .unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        let error = loop {
+            match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+                Ok(Ok(Event::Error {
+                    code,
+                    target,
+                    session: s,
+                    ..
+                })) if s == session => break (code, target),
+                Ok(Ok(_)) => {}
+                _ => panic!("timed out waiting for a search error event"),
+            }
+        };
+
+        assert_eq!(error.0, ErrorCode::TimedOut);
+        assert_eq!(error.1, Some(ErrorTarget::Provider("mock".to_string())));
+    }
 }
 
 #[cfg(test)]

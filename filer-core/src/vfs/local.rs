@@ -9,6 +9,7 @@ use crate::model::directory::{
 };
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{
     Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging, ReadSeek,
     parse_offset_cursor, validate_page_limit,
@@ -48,7 +49,7 @@ impl FsProvider for LocalFs {
     ///
     /// `FileNode` fields that require stat (`size`, timestamps, permissions) are
     /// left at zero/default. Use `list_with_meta` when those fields are needed.
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError> {
         let mut dir = tokio::fs::read_dir(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -76,9 +77,10 @@ impl FsProvider for LocalFs {
         &self,
         path: &Path,
         options: ListingOptions,
+        cx: &ProviderCx<'_>,
     ) -> Result<Vec<FileNode>, CoreError> {
         match options.detail {
-            ListingDetail::Fast => self.list(path).await,
+            ListingDetail::Fast => self.list(path, cx).await,
             ListingDetail::Metadata => self.list_with_meta(path).await,
         }
     }
@@ -87,6 +89,7 @@ impl FsProvider for LocalFs {
         &self,
         path: &Path,
         request: DirectoryPageRequest,
+        _cx: &ProviderCx<'_>,
     ) -> Result<DirectoryPageResult, CoreError> {
         validate_page_limit(request.limit)?;
         let start = parse_offset_cursor(request.cursor.as_ref())?;
@@ -157,7 +160,7 @@ impl FsProvider for LocalFs {
         Ok(DirectoryPageResult { entries, state })
     }
 
-    async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         let mut f = File::open(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -168,7 +171,13 @@ impl FsProvider for LocalFs {
         Ok(buf)
     }
 
-    async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        path: &Path,
+        start: u64,
+        len: u64,
+        _cx: &ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         let mut f = File::open(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -186,13 +195,13 @@ impl FsProvider for LocalFs {
         Ok(buf)
     }
 
-    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<bool, CoreError> {
         tokio::fs::try_exists(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
     }
 
-    async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<FileNode, CoreError> {
         FileNode::from_path(path.to_path_buf(), Some(self.reg.clone()))
     }
 
@@ -200,7 +209,11 @@ impl FsProvider for LocalFs {
     ///
     /// `BufReader<File>` satisfies `Read + BufRead + Seek` — the `Seek` impl
     /// on `BufReader` delegates to the inner `File` and clears the buffer.
-    async fn open_reader(&self, path: &Path) -> Result<Box<dyn ReadSeek>, CoreError> {
+    async fn open_reader(
+        &self,
+        path: &Path,
+        _cx: &ProviderCx<'_>,
+    ) -> Result<Box<dyn ReadSeek>, CoreError> {
         let file = std::fs::File::open(path)
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         Ok(Box::new(std::io::BufReader::new(file)))
@@ -212,7 +225,12 @@ impl FsProvider for LocalFs {
     /// once without seeking. The fill loop tolerates short reads and returns
     /// the bytes actually available, so files smaller than `n_bytes` still get
     /// magic-byte detection instead of an `UnexpectedEof` error.
-    async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
+    async fn read_header(
+        &self,
+        path: &Path,
+        n_bytes: usize,
+        _cx: &ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         let mut f = File::open(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;

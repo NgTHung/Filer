@@ -1,7 +1,7 @@
 ---
 id: PROVIDER-001
 title: Propagate provider timeout context
-status: To Do
+status: In Progress
 priority: High
 type: Feature
 parent: CORE-001
@@ -11,7 +11,7 @@ rules: [PROVIDER-ACCESS, ACTOR-LONG-WORK]
 risk: High
 impact: "Touches provider calls, previews, search, operations, and cancellation behavior."
 tags: [provider, timeout, cancellation]
-last_updated: 2026-06-06
+last_updated: 2026-06-18
 ---
 
 ## Summary

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
-use crate::errors::CoreError;
+use crate::errors::{CoreError, ErrorCode};
 use crate::model::directory::{DirectoryLoadOptions, DirectoryPageResult};
 use crate::model::location::{LocationId, LocationRef, LocationRoute};
 use crate::model::node::NodeId;
@@ -19,6 +19,7 @@ use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig, effective_listing};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 use super::paging::{PageLoad, PagingSessions};
@@ -456,6 +457,8 @@ impl Scanner {
         )
         .await;
 
+        let cx = ProviderCx::with_cancel(cancel);
+
         if let Some(page_request) = load_options.page_request() {
             let first_page = page_request.cursor.is_none();
             let page = match paging
@@ -465,7 +468,7 @@ impl Scanner {
                     session,
                     page_request,
                     &pipeline_config,
-                    cancel,
+                    &cx,
                 )
                 .await
             {
@@ -577,8 +580,32 @@ impl Scanner {
             return;
         }
 
-        let entries = match provider.list_with_options(path, load_options.listing).await {
+        let entries = match cx
+            .race(
+                provider.scheme(),
+                provider.list_with_options(path, load_options.listing, &cx),
+            )
+            .await
+        {
             Ok(entries) => entries,
+            Err(e) if e.code() == ErrorCode::Cancelled => {
+                Self::emit_scan_progress(
+                    events,
+                    latest_scans,
+                    session,
+                    request,
+                    ProgressSnapshot::new(
+                        ProgressStatus::Cancelled,
+                        ProgressPhase::Loading,
+                        ProgressUnit::Entry,
+                        0,
+                        None,
+                        Self::scan_target(path, parent_location.as_ref()),
+                    ),
+                )
+                .await;
+                return;
+            }
             Err(e) => {
                 if Self::is_latest(latest_scans, session, request) {
                     Self::emit_scan_progress(

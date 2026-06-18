@@ -6,6 +6,7 @@ use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
 use crate::model::node::FileNode;
+use crate::vfs::context::ProviderCx;
 use serde::{Deserialize, Serialize};
 
 /// A combined `Read + BufRead + Seek` object trait used by extraction crates.
@@ -80,7 +81,7 @@ pub trait FsProvider: Send + Sync {
     }
 
     /// List contents of a directory
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError>;
+    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError>;
 
     /// List contents of a directory with explicit detail options.
     ///
@@ -91,8 +92,9 @@ pub trait FsProvider: Send + Sync {
         &self,
         path: &Path,
         _options: ListingOptions,
+        cx: &ProviderCx<'_>,
     ) -> Result<Vec<FileNode>, CoreError> {
-        self.list(path).await
+        self.list(path, cx).await
     }
 
     /// List a provider-owned page of directory entries.
@@ -104,9 +106,10 @@ pub trait FsProvider: Send + Sync {
         &self,
         path: &Path,
         request: DirectoryPageRequest,
+        cx: &ProviderCx<'_>,
     ) -> Result<DirectoryPageResult, CoreError> {
         validate_page_limit(request.limit)?;
-        let entries = self.list_with_options(path, request.listing).await?;
+        let entries = self.list_with_options(path, request.listing, cx).await?;
         let start = parse_offset_cursor(request.cursor.as_ref())?;
         let end = start.saturating_add(request.limit).min(entries.len());
         let page_entries = if start < entries.len() {
@@ -130,16 +133,22 @@ pub trait FsProvider: Send + Sync {
     }
 
     /// Read file contents
-    async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError>;
+    async fn read(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError>;
 
     /// Read partial file contents
-    async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError>;
+    async fn read_range(
+        &self,
+        path: &Path,
+        start: u64,
+        len: u64,
+        cx: &ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError>;
 
     /// Check if path exists
-    async fn exists(&self, path: &Path) -> Result<bool, CoreError>;
+    async fn exists(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<bool, CoreError>;
 
     /// Get metadata for a path
-    async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError>;
+    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<FileNode, CoreError>;
 
     /// Read the first `n_bytes` of a file for MIME magic-byte detection.
     ///
@@ -150,8 +159,13 @@ pub trait FsProvider: Send + Sync {
     /// Remote providers (S3, WebDAV, SFTP) should return `Err` to signal that
     /// magic-byte detection is unavailable — callers will then fall back to
     /// extension-only detection regardless of the requested `DetectionStrategy`.
-    async fn read_header(&self, path: &Path, n_bytes: usize) -> Result<Vec<u8>, CoreError> {
-        self.read_range(path, 0, n_bytes as u64).await
+    async fn read_header(
+        &self,
+        path: &Path,
+        n_bytes: usize,
+        cx: &ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
+        self.read_range(path, 0, n_bytes as u64, cx).await
     }
 
     /// Open a file as a synchronous `Read + Seek` reader.
@@ -164,8 +178,12 @@ pub trait FsProvider: Send + Sync {
     /// **Local provider**: override to return `std::fs::File` — zero extra allocation.
     /// **Remote providers**: the default implementation fetches all bytes via
     /// `read()` and wraps them in `Cursor<Vec<u8>>`, which is seekable.
-    async fn open_reader(&self, path: &Path) -> Result<Box<dyn ReadSeek>, CoreError> {
-        let bytes = self.read(path).await?;
+    async fn open_reader(
+        &self,
+        path: &Path,
+        cx: &ProviderCx<'_>,
+    ) -> Result<Box<dyn ReadSeek>, CoreError> {
+        let bytes = self.read(path, cx).await?;
         Ok(Box::new(std::io::Cursor::new(bytes)))
     }
 

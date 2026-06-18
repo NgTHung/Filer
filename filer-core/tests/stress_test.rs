@@ -78,26 +78,36 @@ impl FsProvider for MockFs {
         }
     }
 
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(
+        &self,
+        path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<FileNode>, CoreError> {
         // Yield between listings so cancellation tokens are processed
         tokio::task::yield_now().await;
         let guard = self.dirs.lock().unwrap();
         Ok(guard.get(path).cloned().unwrap_or_default())
     }
 
-    async fn read(&self, _path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn read_range(&self, _path: &Path, _s: u64, _l: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        _path: &Path,
+        _s: u64,
+        _l: u64,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(true)
     }
 
-    async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }
@@ -194,21 +204,31 @@ impl FsProvider for LazyTreeFs {
         }
     }
 
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(
+        &self,
+        path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<FileNode>, CoreError> {
         tokio::task::yield_now().await;
         Ok(self.children_of(path))
     }
 
-    async fn read(&self, _p: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, _p: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
-    async fn read_range(&self, _p: &Path, _s: u64, _l: u64) -> Result<Vec<u8>, CoreError> {
+    async fn read_range(
+        &self,
+        _p: &Path,
+        _s: u64,
+        _l: u64,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
-    async fn exists(&self, _p: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, _p: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(true)
     }
-    async fn metadata(&self, p: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, p: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(p.to_path_buf()))
     }
 }

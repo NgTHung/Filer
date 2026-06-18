@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use flume::{Receiver, Sender};
 use rapidhash::fast::RandomState;
@@ -8,7 +9,7 @@ use rapidhash::fast::RandomState;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
-use crate::errors::CoreError;
+use crate::errors::{CoreError, ErrorCode};
 use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::query::SearchQuery;
@@ -16,6 +17,7 @@ use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::utils::channel::send_or_warn;
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 const DEFAULT_BATCH_SIZE: usize = 50;
@@ -53,6 +55,7 @@ pub struct Searcher {
     registry: NodeRegistry,
     active_search: CancelMap,
     latest_searches: Arc<scc::HashMap<SessionId, RequestId, RandomState>>,
+    search_timeout: Option<Duration>,
 }
 
 impl Searcher {
@@ -69,7 +72,16 @@ impl Searcher {
             registry,
             active_search: CancelMap::new(),
             latest_searches: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            search_timeout: None,
         }
+    }
+
+    /// Bound each provider listing during a walk to `timeout`.
+    ///
+    /// `None` leaves listings unbounded. A breached deadline ends the walk with
+    /// a `TimedOut` error instead of skipping the directory.
+    pub fn set_search_timeout(&mut self, timeout: Option<Duration>) {
+        self.search_timeout = timeout;
     }
     pub fn dispatch_search(
         &self,
@@ -97,6 +109,7 @@ impl Searcher {
         let _ = self.latest_searches.remove_sync(&session);
         let _ = self.latest_searches.insert_sync(session, request);
         let cancel = self.active_search.arm(session);
+        let deadline = self.search_timeout.map(|timeout| Instant::now() + timeout);
 
         tokio::spawn(async move {
             Self::search(
@@ -106,6 +119,7 @@ impl Searcher {
                 request,
                 &provider,
                 &cancel,
+                deadline,
                 &event,
                 &latest_searches,
                 &registry,
@@ -116,6 +130,7 @@ impl Searcher {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn search(
         query: SearchQuery,
         path: PathBuf,
@@ -123,11 +138,16 @@ impl Searcher {
         request: RequestId,
         provider: &Arc<dyn FsProvider>,
         cancel: &CancellationToken,
+        deadline: Option<Instant>,
         event: &Sender<Event>,
         latest_searches: &scc::HashMap<SessionId, RequestId, RandomState>,
         registry: &NodeRegistry,
         location_output: bool,
     ) {
+        let mut cx = ProviderCx::with_cancel(cancel);
+        if let Some(deadline) = deadline {
+            cx = cx.with_deadline(deadline);
+        }
         let mut queue = VecDeque::new();
         let mut batch = vec![];
         let mut total_found = 0;
@@ -136,12 +156,21 @@ impl Searcher {
             if cancel.is_cancelled() {
                 break;
             }
-            let Ok(entries) = provider.list(&dir).await else {
-                continue;
+            let entries = match cx.race(provider.scheme(), provider.list(&dir, &cx)).await {
+                Ok(entries) => entries,
+                Err(e) if e.code() == ErrorCode::Cancelled => break,
+                Err(e) if e.code() == ErrorCode::TimedOut => {
+                    if Self::is_latest(latest_searches, session, request) {
+                        send_or_warn(
+                            event,
+                            Event::from_request_error(e, session, request),
+                            "search timed out",
+                        );
+                    }
+                    break;
+                }
+                Err(_) => continue,
             };
-            if cancel.is_cancelled() {
-                break;
-            }
             for entry in entries {
                 if !query.options.include_hidden && entry.meta.hidden {
                     continue;

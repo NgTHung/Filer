@@ -1,3 +1,4 @@
+pub mod cancel;
 pub mod capability;
 pub mod directory;
 pub mod fs_change;

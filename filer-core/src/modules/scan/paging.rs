@@ -6,7 +6,7 @@
 //!
 //! ```ignore
 //! let sessions = PagingSessions::new();
-//! let page = sessions.load_provider(provider, path, session, request, pipeline, cancel).await?;
+//! let page = sessions.load_provider(provider, path, session, request, pipeline, &cx).await?;
 //! ```
 
 use std::collections::HashMap;
@@ -14,8 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 
-use crate::actors::cancel::CancellationToken;
-use crate::errors::CoreError;
+use crate::errors::{CoreError, ErrorCode};
 use crate::model::directory::{
     DEFAULT_DIRECTORY_PAGE_SIZE, DirectoryCursor, DirectoryPageRequest, DirectoryPageResult,
     DirectoryPageState,
@@ -23,6 +22,7 @@ use crate::model::directory::{
 use crate::model::node::FileNode;
 use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig, compare_nodes, effective_listing};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{FsProvider, ProviderPaging, validate_page_limit};
 
 const CURSOR_PREFIX: &str = "paging:v1:";
@@ -67,7 +67,7 @@ impl PagingSessions {
         owner: SessionId,
         request: DirectoryPageRequest,
         pipeline_config: &PipelineConfig,
-        cancel: &CancellationToken,
+        cx: &ProviderCx<'_>,
     ) -> Result<PageLoad, CoreError> {
         validate_page_limit(request.limit)?;
         let effective_request = DirectoryPageRequest {
@@ -87,33 +87,43 @@ impl PagingSessions {
 
         match provider.paging() {
             ProviderPaging::Fallback => {
-                let entries = provider
-                    .list_with_options(path, effective_request.listing)
-                    .await?;
-                if cancel.is_cancelled() {
-                    return Ok(PageLoad::Cancelled);
-                }
+                let entries = match cx
+                    .race(
+                        provider.scheme(),
+                        provider.list_with_options(path, effective_request.listing, cx),
+                    )
+                    .await
+                {
+                    Ok(entries) => entries,
+                    Err(e) if e.code() == ErrorCode::Cancelled => return Ok(PageLoad::Cancelled),
+                    Err(e) => return Err(e),
+                };
                 selection.extend(entries);
             }
             ProviderPaging::Native => {
                 let mut provider_cursor = None;
                 loop {
-                    if cancel.is_cancelled() {
-                        return Ok(PageLoad::Cancelled);
-                    }
-                    let raw_page = provider
-                        .list_page(
-                            path,
-                            DirectoryPageRequest {
-                                listing: effective_request.listing,
-                                limit: DEFAULT_DIRECTORY_PAGE_SIZE,
-                                cursor: provider_cursor,
-                            },
+                    let raw_page = match cx
+                        .race(
+                            provider.scheme(),
+                            provider.list_page(
+                                path,
+                                DirectoryPageRequest {
+                                    listing: effective_request.listing,
+                                    limit: DEFAULT_DIRECTORY_PAGE_SIZE,
+                                    cursor: provider_cursor,
+                                },
+                                cx,
+                            ),
                         )
-                        .await?;
-                    if cancel.is_cancelled() {
-                        return Ok(PageLoad::Cancelled);
-                    }
+                        .await
+                    {
+                        Ok(page) => page,
+                        Err(e) if e.code() == ErrorCode::Cancelled => {
+                            return Ok(PageLoad::Cancelled);
+                        }
+                        Err(e) => return Err(e),
+                    };
                     let complete = raw_page.state.complete;
                     provider_cursor = raw_page.state.next_cursor;
                     let page_count = raw_page.entries.len();

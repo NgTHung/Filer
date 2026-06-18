@@ -56,7 +56,7 @@ impl VideoExtractor {
 
         // read_mp4 requires T: Sized, so we can't pass a trait object directly.
         // Buffer the file and wrap in Cursor for a concrete Sized type.
-        let bytes = provider.read(path).await?;
+        let bytes = provider.read(path, &crate::ProviderCx::none()).await?;
         let mut cursor = std::io::Cursor::new(bytes);
         let context = read_mp4(&mut cursor)
             .map_err(|e| CoreError::invalid_data(format!("Cannot parse MP4: {e:?}")))?;

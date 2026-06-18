@@ -1,3 +1,4 @@
+mod cancel_test;
 mod capability_test;
 mod directory_test;
 mod location_test;

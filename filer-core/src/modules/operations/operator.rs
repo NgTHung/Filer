@@ -283,7 +283,7 @@ impl Operator {
                     return;
                 }
 
-                let Ok(meta) = fs.metadata(&src_path).await else {
+                let Ok(meta) = fs.metadata(&src_path, &crate::ProviderCx::none()).await else {
                     send_or_warn_async(
                         &events,
                         Event::from_operation_error(
@@ -747,7 +747,11 @@ impl Operator {
         let cache = self.cache.clone();
 
         tokio::spawn(async move {
-            if fs.exists(&new_path).await.unwrap_or(true) {
+            if fs
+                .exists(&new_path, &crate::ProviderCx::none())
+                .await
+                .unwrap_or(true)
+            {
                 send_or_warn_async(
                     &events,
                     Event::from_operation_error(
@@ -840,7 +844,11 @@ impl Operator {
 
         tokio::spawn(async move {
             let full_path = path.join(name);
-            if fs.exists(&full_path).await.unwrap_or(true) {
+            if fs
+                .exists(&full_path, &crate::ProviderCx::none())
+                .await
+                .unwrap_or(true)
+            {
                 send_or_warn_async(
                     &events,
                     Event::from_operation_error(
@@ -930,7 +938,11 @@ impl Operator {
 
         tokio::spawn(async move {
             let full_path = path.join(name);
-            if fs.exists(&full_path).await.unwrap_or(true) {
+            if fs
+                .exists(&full_path, &crate::ProviderCx::none())
+                .await
+                .unwrap_or(true)
+            {
                 send_or_warn_async(
                     &events,
                     Event::from_operation_error(
@@ -1050,7 +1062,7 @@ async fn copy_dir_recursive(
     items_done: &mut usize,
 ) -> Result<(), CoreError> {
     fs.mkdir(dst).await?;
-    let entries = fs.list(src).await?;
+    let entries = fs.list(src, &crate::ProviderCx::none()).await?;
     for entry in entries {
         if cancel.is_cancelled() {
             return Err(CoreError::cancelled());

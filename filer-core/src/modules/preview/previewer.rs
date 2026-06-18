@@ -466,7 +466,10 @@ impl Previewer {
                 if ext_info.confidence == crate::services::mime::DetectionConfidence::Definitive {
                     ext_info
                 } else {
-                    let header = provider.read_header(&path, MAGIC_BYTE_WINDOW).await.ok();
+                    let header = provider
+                        .read_header(&path, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+                        .await
+                        .ok();
                     MimeDetector::detect_with_strategy(
                         &path,
                         header.as_deref(),
@@ -546,7 +549,10 @@ impl Previewer {
                 if ext_info.confidence == crate::services::mime::DetectionConfidence::Definitive {
                     ext_info
                 } else {
-                    let header = provider.read_header(&path, MAGIC_BYTE_WINDOW).await.ok();
+                    let header = provider
+                        .read_header(&path, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+                        .await
+                        .ok();
                     MimeDetector::detect_with_strategy(
                         &path,
                         header.as_deref(),

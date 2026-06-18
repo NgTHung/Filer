@@ -1,7 +1,7 @@
 ---
 id: MODULES-001
 title: Define semantic extension data plane
-status: To Do
+status: Deferred
 priority: High
 type: Feature
 parent: CORE-001
@@ -11,7 +11,7 @@ rules: [WIRE-SAFE-EXTENSIONS, SEMANTIC-EXTENSION-OUTPUT, SESSION-BOUNDARY]
 risk: High
 impact: "Defines extension output consumed by desktop and future transport clients."
 tags: [extensions, events, semantic-output]
-last_updated: 2026-06-06
+last_updated: 2026-06-18
 ---
 
 ## Summary
@@ -26,3 +26,7 @@ Add wire-safe extension envelopes, semantic row output, and scoped core context 
 - [ ] A trusted core host consumes validated manifests and maps permissions to sessions and provider capabilities.
 - [ ] Scoped filesystem calls, contribution registration, tracing, and recoverable failures remain core-authoritative.
 - [ ] The bridge depends on filer-ecosystem only when live host contracts require it.
+
+## Rationale
+
+Premature: filer-ecosystem has zero consumers workspace-wide and the data plane should be designed against a real consumer (MODULES-002 git decorations) rather than as a speculative wire contract. Defer until extensions are a near-term need.

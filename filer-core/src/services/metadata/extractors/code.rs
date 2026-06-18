@@ -56,7 +56,10 @@ impl MetadataExtractor for CodeExtractor {
             _ => "Text",
         };
 
-        let s = provider.read(path).await.unwrap_or_default();
+        let s = provider
+            .read(path, &crate::ProviderCx::none())
+            .await
+            .unwrap_or_default();
         let lines = s.iter().filter(|v| **v == b'\n').count();
 
         Ok(ExtendedMetadata::Code(CodeMetadata {

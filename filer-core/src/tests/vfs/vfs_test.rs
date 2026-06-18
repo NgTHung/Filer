@@ -46,7 +46,7 @@ async fn test_local_fs_list() {
 
     // Test listing the filer-core/src directory
     let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let result = fs.list(&src_dir).await;
+    let result = fs.list(&src_dir, &crate::ProviderCx::none()).await;
     assert!(result.is_ok());
 
     let files = result.unwrap();
@@ -60,7 +60,7 @@ async fn test_local_fs_list() {
 async fn test_local_fs_list_empty_directory() {
     let (fs, dir) = local_fs();
 
-    let result = fs.list(dir.path()).await;
+    let result = fs.list(dir.path(), &crate::ProviderCx::none()).await;
     assert!(result.is_ok());
 
     let files = result.unwrap();
@@ -74,7 +74,7 @@ async fn test_local_fs_fast_listing_omits_stat_metadata() {
     std::fs::write(&path, b"hello").unwrap();
 
     let nodes = fs
-        .list_with_options(dir.path(), ListingOptions::fast())
+        .list_with_options(dir.path(), ListingOptions::fast(), &crate::ProviderCx::none())
         .await
         .unwrap();
     let node = nodes.iter().find(|node| node.name == "fast.txt").unwrap();
@@ -92,7 +92,7 @@ async fn test_local_fs_metadata_listing_populates_stat_metadata() {
     std::fs::write(&path, b"hello").unwrap();
 
     let nodes = fs
-        .list_with_options(dir.path(), ListingOptions::metadata())
+        .list_with_options(dir.path(), ListingOptions::metadata(), &crate::ProviderCx::none())
         .await
         .unwrap();
     let node = nodes
@@ -111,7 +111,7 @@ async fn test_local_fs_list_with_meta_matches_metadata_listing() {
     std::fs::write(&path, b"hello").unwrap();
 
     let from_options = fs
-        .list_with_options(dir.path(), ListingOptions::metadata())
+        .list_with_options(dir.path(), ListingOptions::metadata(), &crate::ProviderCx::none())
         .await
         .unwrap();
     let from_compat = fs.list_with_meta(dir.path()).await.unwrap();
@@ -146,6 +146,7 @@ async fn test_local_fs_list_page_returns_limit_and_cursor() {
                 limit: 2,
                 cursor: None,
             },
+            &crate::ProviderCx::none(),
         )
         .await
         .unwrap();
@@ -172,6 +173,7 @@ async fn test_local_fs_list_page_cursor_returns_later_entries() {
                 limit: 2,
                 cursor: None,
             },
+            &crate::ProviderCx::none(),
         )
         .await
         .unwrap();
@@ -183,6 +185,7 @@ async fn test_local_fs_list_page_cursor_returns_later_entries() {
                 limit: 2,
                 cursor: first.state.next_cursor,
             },
+            &crate::ProviderCx::none(),
         )
         .await
         .unwrap();
@@ -205,6 +208,7 @@ async fn test_local_fs_list_page_metadata_populates_stat_metadata() {
                 limit: 1,
                 cursor: None,
             },
+            &crate::ProviderCx::none(),
         )
         .await
         .unwrap();
@@ -225,6 +229,7 @@ async fn test_local_fs_list_page_rejects_invalid_cursor() {
                 limit: 1,
                 cursor: Some(DirectoryCursor("not-a-cursor".into())),
             },
+            &crate::ProviderCx::none(),
         )
         .await;
 
@@ -243,6 +248,7 @@ async fn test_local_fs_list_page_rejects_zero_limit() {
                 limit: 0,
                 cursor: None,
             },
+            &crate::ProviderCx::none(),
         )
         .await;
 
@@ -253,7 +259,12 @@ async fn test_local_fs_list_page_rejects_zero_limit() {
 async fn test_local_fs_list_not_found() {
     let reg = NodeRegistry::new();
     let fs = LocalFs::new(reg);
-    let result = fs.list(Path::new("/nonexistent/directory/path")).await;
+    let result = fs
+        .list(
+            Path::new("/nonexistent/directory/path"),
+            &crate::ProviderCx::none(),
+        )
+        .await;
 
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
@@ -268,7 +279,7 @@ async fn test_local_fs_read() {
     let content = b"Hello, World!";
     std::fs::write(&temp_file, content).unwrap();
 
-    let result = fs.read(&temp_file).await;
+    let result = fs.read(&temp_file, &crate::ProviderCx::none()).await;
     assert!(result.is_ok());
 
     let data = result.unwrap();
@@ -279,7 +290,9 @@ async fn test_local_fs_read() {
 async fn test_local_fs_read_not_found() {
     let reg = NodeRegistry::new();
     let fs = LocalFs::new(reg);
-    let result = fs.read(Path::new("/nonexistent/file.txt")).await;
+    let result = fs
+        .read(Path::new("/nonexistent/file.txt"), &crate::ProviderCx::none())
+        .await;
 
     assert!(result.is_err());
     print!("{:?}", result);
@@ -296,7 +309,9 @@ async fn test_local_fs_read_range() {
     std::fs::write(&temp_file, content).unwrap();
 
     // Read bytes 5-9 (5 bytes starting at position 5)
-    let result = fs.read_range(&temp_file, 5, 5).await;
+    let result = fs
+        .read_range(&temp_file, 5, 5, &crate::ProviderCx::none())
+        .await;
     assert!(result.is_ok());
 
     let data = result.unwrap();
@@ -313,7 +328,9 @@ async fn test_local_fs_read_range_full() {
     std::fs::write(&temp_file, content).unwrap();
 
     // Read entire file
-    let result = fs.read_range(&temp_file, 0, content.len() as u64).await;
+    let result = fs
+        .read_range(&temp_file, 0, content.len() as u64, &crate::ProviderCx::none())
+        .await;
     assert!(result.is_ok());
 
     let data = result.unwrap();
@@ -330,7 +347,9 @@ async fn test_local_fs_read_range_beyond_end() {
     std::fs::write(&temp_file, content).unwrap();
 
     // Try to read beyond file size
-    let result = fs.read_range(&temp_file, 0, 100).await;
+    let result = fs
+        .read_range(&temp_file, 0, 100, &crate::ProviderCx::none())
+        .await;
     assert!(result.is_ok());
 
     // Should return only available content
@@ -347,7 +366,9 @@ async fn test_local_fs_read_header_smaller_than_window() {
     let content = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
     std::fs::write(&temp_file, &content).unwrap();
 
-    let result = fs.read_header(&temp_file, MAGIC_BYTE_WINDOW).await;
+    let result = fs
+        .read_header(&temp_file, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+        .await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), content);
 }
@@ -359,7 +380,9 @@ async fn test_local_fs_read_header_empty_file() {
     let temp_file = dir.path().join("filer_test_header_empty.bin");
     std::fs::write(&temp_file, b"").unwrap();
 
-    let result = fs.read_header(&temp_file, MAGIC_BYTE_WINDOW).await;
+    let result = fs
+        .read_header(&temp_file, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+        .await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), Vec::<u8>::new());
 }
@@ -374,7 +397,10 @@ async fn test_small_file_magic_detection() {
     let png_signature = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
     std::fs::write(&temp_file, &png_signature).unwrap();
 
-    let header = fs.read_header(&temp_file, MAGIC_BYTE_WINDOW).await.unwrap();
+    let header = fs
+        .read_header(&temp_file, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+        .await
+        .unwrap();
     let info = MimeDetector::detect(&temp_file, &header);
     assert_eq!(info.category, MimeCategory::Image);
     assert_eq!(info.confidence, DetectionConfidence::Definitive);
@@ -388,11 +414,11 @@ async fn test_local_fs_exists() {
     let temp_file = dir.path().join("filer_test_exists.txt");
     std::fs::write(&temp_file, b"test").unwrap();
 
-    assert!(fs.exists(&temp_file).await.unwrap());
+    assert!(fs.exists(&temp_file, &crate::ProviderCx::none()).await.unwrap());
 
     // Cleanup and test non-existing file
     std::fs::remove_file(&temp_file).unwrap();
-    assert!(!fs.exists(&temp_file).await.unwrap());
+    assert!(!fs.exists(&temp_file, &crate::ProviderCx::none()).await.unwrap());
 }
 
 #[tokio::test]
@@ -402,10 +428,10 @@ async fn test_local_fs_exists_directory() {
     let temp_dir = dir.path().join("filer_test_exists_dir");
     std::fs::create_dir(&temp_dir).unwrap();
 
-    assert!(fs.exists(&temp_dir).await.unwrap());
+    assert!(fs.exists(&temp_dir, &crate::ProviderCx::none()).await.unwrap());
 
     std::fs::remove_dir(&temp_dir).unwrap();
-    assert!(!fs.exists(&temp_dir).await.unwrap());
+    assert!(!fs.exists(&temp_dir, &crate::ProviderCx::none()).await.unwrap());
 }
 
 #[tokio::test]
@@ -417,7 +443,7 @@ async fn test_local_fs_metadata() {
     let content = b"Hello, World!";
     std::fs::write(&temp_file, content).unwrap();
 
-    let result = fs.metadata(&temp_file).await;
+    let result = fs.metadata(&temp_file, &crate::ProviderCx::none()).await;
     assert!(result.is_ok());
 
     let node = result.unwrap();
@@ -434,7 +460,7 @@ async fn test_local_fs_metadata_directory() {
     let temp_dir = dir.path().join("filer_test_metadata_dir");
     std::fs::create_dir(&temp_dir).unwrap();
 
-    let result = fs.metadata(&temp_dir).await;
+    let result = fs.metadata(&temp_dir, &crate::ProviderCx::none()).await;
     assert!(result.is_ok());
 
     let node = result.unwrap();
@@ -446,7 +472,9 @@ async fn test_local_fs_metadata_directory() {
 async fn test_local_fs_metadata_not_found() {
     let reg = NodeRegistry::new();
     let fs = LocalFs::new(reg);
-    let result = fs.metadata(Path::new("/nonexistent/file.txt")).await;
+    let result = fs
+        .metadata(Path::new("/nonexistent/file.txt"), &crate::ProviderCx::none())
+        .await;
 
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
@@ -489,7 +517,11 @@ impl FsProvider for MockFs {
         }
     }
 
-    async fn list(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(
+        &self,
+        path: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<FileNode>, CoreError> {
         if !self.directories.contains(&path.to_path_buf()) {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
@@ -516,15 +548,21 @@ impl FsProvider for MockFs {
         Ok(nodes)
     }
 
-    async fn read(&self, path: &Path) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         self.files
             .get(path)
             .cloned()
             .ok_or_else(|| CoreError::not_found(path.to_path_buf()))
     }
 
-    async fn read_range(&self, path: &Path, start: u64, len: u64) -> Result<Vec<u8>, CoreError> {
-        let content = self.read(path).await?;
+    async fn read_range(
+        &self,
+        path: &Path,
+        start: u64,
+        len: u64,
+        cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
+        let content = self.read(path, cx).await?;
         let start = start as usize;
         let end = (start + len as usize).min(content.len());
 
@@ -535,11 +573,15 @@ impl FsProvider for MockFs {
         Ok(content[start..end].to_vec())
     }
 
-    async fn exists(&self, path: &Path) -> Result<bool, CoreError> {
+    async fn exists(&self, path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(self.files.contains_key(path) || self.directories.contains(&path.to_path_buf()))
     }
 
-    async fn metadata(&self, path: &Path) -> Result<FileNode, CoreError> {
+    async fn metadata(
+        &self,
+        path: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<FileNode, CoreError> {
         if self.files.contains_key(path) || self.directories.contains(&path.to_path_buf()) {
             FileNode::from_path(path.to_path_buf(), None)
         } else {
@@ -573,7 +615,7 @@ async fn test_mock_fs_read() {
 
     fs.add_file(path.clone(), content.clone());
 
-    let result = fs.read(&path).await;
+    let result = fs.read(&path, &crate::ProviderCx::none()).await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), content);
 }
@@ -581,7 +623,9 @@ async fn test_mock_fs_read() {
 #[tokio::test]
 async fn test_mock_fs_read_not_found() {
     let fs = MockFs::new();
-    let result = fs.read(Path::new("/nonexistent.txt")).await;
+    let result = fs
+        .read(Path::new("/nonexistent.txt"), &crate::ProviderCx::none())
+        .await;
 
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
@@ -595,7 +639,9 @@ async fn test_mock_fs_read_range() {
 
     fs.add_file(path.clone(), content);
 
-    let result = fs.read_range(&path, 3, 4).await;
+    let result = fs
+        .read_range(&path, 3, 4, &crate::ProviderCx::none())
+        .await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), b"3456");
 }
@@ -605,10 +651,10 @@ async fn test_mock_fs_exists() {
     let mut fs = MockFs::new();
     let path = PathBuf::from("/test/file.txt");
 
-    assert!(!fs.exists(&path).await.unwrap());
+    assert!(!fs.exists(&path, &crate::ProviderCx::none()).await.unwrap());
 
     fs.add_file(path.clone(), b"test".to_vec());
-    assert!(fs.exists(&path).await.unwrap());
+    assert!(fs.exists(&path, &crate::ProviderCx::none()).await.unwrap());
 }
 
 #[tokio::test]
@@ -620,7 +666,9 @@ async fn test_mock_fs_trait_usage() {
     let provider: &dyn FsProvider = &fs;
     assert_eq!(provider.scheme(), "mock");
 
-    let result = provider.read(Path::new("/test.txt")).await;
+    let result = provider
+        .read(Path::new("/test.txt"), &crate::ProviderCx::none())
+        .await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), b"content");
 }

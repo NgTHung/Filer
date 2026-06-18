@@ -28,7 +28,7 @@ impl ImageExtractor {
         provider: &dyn FsProvider,
     ) -> Result<(u32, u32, String), CoreError> {
         use imagesize::{ImageSize, blob_size};
-        let data = provider.read(path).await?;
+        let data = provider.read(path, &crate::ProviderCx::none()).await?;
         let res = blob_size(data.as_slice()).unwrap_or(ImageSize {
             height: 0,
             width: 0,
@@ -66,7 +66,7 @@ impl ImageExtractor {
     ) -> Result<(ExifData, Option<String>, Option<u8>), CoreError> {
         use exif::{In, Reader, Tag, Value};
         let reader = Reader::new();
-        let mut io = provider.open_reader(path).await?;
+        let mut io = provider.open_reader(path, &crate::ProviderCx::none()).await?;
         let source = reader
             .read_from_container(&mut io)
             .map_err(|e| CoreError::invalid_data(format!("Unable to parse data: {}", e)))?;
