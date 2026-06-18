@@ -14,6 +14,8 @@ Core filesystem workflows should go through provider contracts. Direct local fil
 
 Commands and events that belong to user activity must carry session identity or stay explicitly scoped to one session.
 
+See `state-ownership.md` for how `CORE-LIBRARY` and `SESSION-BOUNDARY` divide state across `filer-app`, `filer-core`, and `filer-ecosystem`.
+
 ## ACTOR-LONG-WORK
 
 Navigation, search, preview, operations, and watcher flows should keep long-running work behind actors or actor-like modules with cancellation and structured events.

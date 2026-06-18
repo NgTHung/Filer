@@ -1,7 +1,7 @@
 ---
 id: CORE-002
 title: Document state ownership boundaries
-status: To Do
+status: Done
 priority: High
 type: Docs
 parent: CORE-001
@@ -10,7 +10,7 @@ rules: [CORE-LIBRARY, SESSION-BOUNDARY]
 risk: Low
 impact: "Prevents app configuration and portable profile state from becoming coupled."
 tags: [state, profiles, sessions]
-last_updated: 2026-06-06
+last_updated: 2026-06-18
 ---
 
 ## Summary
@@ -19,7 +19,7 @@ Define ownership for app configuration, core sessions, provider references, exte
 
 ## Acceptance Criteria
 
-- [ ] App-local UI configuration is explicitly app-owned.
-- [ ] Core session snapshots and provider profile references have defined boundaries.
-- [ ] Portable profile state excludes provider secrets.
-- [ ] Future sync ownership is documented without moving UI persistence into core.
+- [x] App-local UI configuration is explicitly app-owned.
+- [x] Core session snapshots and provider profile references have defined boundaries.
+- [x] Portable profile state excludes provider secrets.
+- [x] Future sync ownership is documented without moving UI persistence into core.
