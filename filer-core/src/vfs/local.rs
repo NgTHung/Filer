@@ -24,6 +24,13 @@ impl LocalFs {
     pub fn new(register: NodeRegistry) -> Self {
         Self { reg: register }
     }
+
+    fn check_cancel(cx: &ProviderCx<'_>) -> Result<(), CoreError> {
+        if cx.cancel.is_some_and(crate::CancelSignal::is_cancelled) {
+            return Err(CoreError::cancelled());
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -49,7 +56,8 @@ impl FsProvider for LocalFs {
     ///
     /// `FileNode` fields that require stat (`size`, timestamps, permissions) are
     /// left at zero/default. Use `list_with_meta` when those fields are needed.
-    async fn list(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError> {
+        Self::check_cancel(cx)?;
         let mut dir = tokio::fs::read_dir(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -59,6 +67,7 @@ impl FsProvider for LocalFs {
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
         {
+            Self::check_cancel(cx)?;
             match entry.file_type().await {
                 Ok(ft) => res.push(FileNode::from_dir_entry(
                     entry.path(),
@@ -81,7 +90,7 @@ impl FsProvider for LocalFs {
     ) -> Result<Vec<FileNode>, CoreError> {
         match options.detail {
             ListingDetail::Fast => self.list(path, cx).await,
-            ListingDetail::Metadata => self.list_with_meta(path).await,
+            ListingDetail::Metadata => self.list_with_meta(path, cx).await,
         }
     }
 
@@ -89,8 +98,9 @@ impl FsProvider for LocalFs {
         &self,
         path: &Path,
         request: DirectoryPageRequest,
-        _cx: &ProviderCx<'_>,
+        cx: &ProviderCx<'_>,
     ) -> Result<DirectoryPageResult, CoreError> {
+        Self::check_cancel(cx)?;
         validate_page_limit(request.limit)?;
         let start = parse_offset_cursor(request.cursor.as_ref())?;
         let mut dir = tokio::fs::read_dir(path)
@@ -105,6 +115,7 @@ impl FsProvider for LocalFs {
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
         {
+            Self::check_cancel(cx)?;
             if seen < start {
                 seen += 1;
                 continue;
@@ -160,7 +171,8 @@ impl FsProvider for LocalFs {
         Ok(DirectoryPageResult { entries, state })
     }
 
-    async fn read(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
+    async fn read(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
+        Self::check_cancel(cx)?;
         let mut f = File::open(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -168,6 +180,7 @@ impl FsProvider for LocalFs {
         f.read_to_end(&mut buf)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        Self::check_cancel(cx)?;
         Ok(buf)
     }
 
@@ -176,8 +189,9 @@ impl FsProvider for LocalFs {
         path: &Path,
         start: u64,
         len: u64,
-        _cx: &ProviderCx<'_>,
+        cx: &ProviderCx<'_>,
     ) -> Result<Vec<u8>, CoreError> {
+        Self::check_cancel(cx)?;
         let mut f = File::open(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -192,16 +206,19 @@ impl FsProvider for LocalFs {
         if size != (len as usize) {
             buf.resize(size, 0);
         }
+        Self::check_cancel(cx)?;
         Ok(buf)
     }
 
-    async fn exists(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<bool, CoreError> {
+    async fn exists(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<bool, CoreError> {
+        Self::check_cancel(cx)?;
         tokio::fs::try_exists(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
     }
 
-    async fn metadata(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<FileNode, CoreError> {
+        Self::check_cancel(cx)?;
         FileNode::from_path(path.to_path_buf(), Some(self.reg.clone()))
     }
 
@@ -212,8 +229,9 @@ impl FsProvider for LocalFs {
     async fn open_reader(
         &self,
         path: &Path,
-        _cx: &ProviderCx<'_>,
+        cx: &ProviderCx<'_>,
     ) -> Result<Box<dyn ReadSeek>, CoreError> {
+        Self::check_cancel(cx)?;
         let file = std::fs::File::open(path)
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
         Ok(Box::new(std::io::BufReader::new(file)))
@@ -229,8 +247,9 @@ impl FsProvider for LocalFs {
         &self,
         path: &Path,
         n_bytes: usize,
-        _cx: &ProviderCx<'_>,
+        cx: &ProviderCx<'_>,
     ) -> Result<Vec<u8>, CoreError> {
+        Self::check_cancel(cx)?;
         let mut f = File::open(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -245,31 +264,36 @@ impl FsProvider for LocalFs {
                 break;
             }
             filled += n;
+            Self::check_cancel(cx)?;
         }
         buf.truncate(filled);
         Ok(buf)
     }
 
-    async fn write(&self, path: &Path, data: &[u8]) -> Result<(), CoreError> {
+    async fn write(&self, path: &Path, data: &[u8], cx: &ProviderCx<'_>) -> Result<(), CoreError> {
+        Self::check_cancel(cx)?;
         tokio::fs::write(path, data)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
     }
 
-    async fn copy(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
+    async fn copy(&self, src: &Path, dst: &Path, cx: &ProviderCx<'_>) -> Result<(), CoreError> {
+        Self::check_cancel(cx)?;
         tokio::fs::copy(src, dst)
             .await
             .map(|_| ())
             .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))
     }
 
-    async fn rename(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
+    async fn rename(&self, src: &Path, dst: &Path, cx: &ProviderCx<'_>) -> Result<(), CoreError> {
+        Self::check_cancel(cx)?;
         tokio::fs::rename(src, dst)
             .await
             .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))
     }
 
-    async fn delete(&self, path: &Path) -> Result<(), CoreError> {
+    async fn delete(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<(), CoreError> {
+        Self::check_cancel(cx)?;
         // Try file first (common case, no stat needed). Fall back to dir removal
         // if it fails — covers directories and edge cases like non-empty dirs.
         match tokio::fs::remove_file(path).await {
@@ -280,7 +304,8 @@ impl FsProvider for LocalFs {
         }
     }
 
-    async fn mkdir(&self, path: &Path) -> Result<(), CoreError> {
+    async fn mkdir(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<(), CoreError> {
+        Self::check_cancel(cx)?;
         tokio::fs::create_dir_all(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
@@ -292,7 +317,12 @@ impl LocalFs {
     /// More expensive than `list()` — uses `entry.metadata()` which issues a
     /// stat syscall per entry. Use this when the UI needs to display file sizes
     /// or timestamps, not for internal walks (copy, delete, etc.).
-    pub async fn list_with_meta(&self, path: &Path) -> Result<Vec<FileNode>, CoreError> {
+    pub async fn list_with_meta(
+        &self,
+        path: &Path,
+        cx: &ProviderCx<'_>,
+    ) -> Result<Vec<FileNode>, CoreError> {
+        Self::check_cancel(cx)?;
         let mut dir = tokio::fs::read_dir(path)
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
@@ -302,6 +332,7 @@ impl LocalFs {
             .await
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
         {
+            Self::check_cancel(cx)?;
             let entry_path = entry.path();
             match entry.metadata().await {
                 Ok(meta) => {

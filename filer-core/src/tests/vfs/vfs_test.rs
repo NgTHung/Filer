@@ -114,7 +114,10 @@ async fn test_local_fs_list_with_meta_matches_metadata_listing() {
         .list_with_options(dir.path(), ListingOptions::metadata(), &crate::ProviderCx::none())
         .await
         .unwrap();
-    let from_compat = fs.list_with_meta(dir.path()).await.unwrap();
+    let from_compat = fs
+        .list_with_meta(dir.path(), &crate::ProviderCx::none())
+        .await
+        .unwrap();
 
     let option_node = from_options
         .iter()
@@ -682,10 +685,12 @@ mod write_tests {
 
     #[tokio::test]
     async fn test_write_creates_new_file() {
-        let (fs, dir) = fs();
+        let (fs, dir) = local_fs();
         let path = dir.path().join("file.txt");
 
-        fs.write(&path, b"hello").await.unwrap();
+        fs.write(&path, b"hello", &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         let content = tokio::fs::read(&path).await.unwrap();
         assert_eq!(content, b"hello");
@@ -693,11 +698,15 @@ mod write_tests {
 
     #[tokio::test]
     async fn test_write_overwrites_existing_file() {
-        let (fs, dir) = fs();
+        let (fs, dir) = local_fs();
         let path = dir.path().join("file.txt");
 
-        fs.write(&path, b"first").await.unwrap();
-        fs.write(&path, b"second").await.unwrap();
+        fs.write(&path, b"first", &crate::ProviderCx::none())
+            .await
+            .unwrap();
+        fs.write(&path, b"second", &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         let content = tokio::fs::read(&path).await.unwrap();
         assert_eq!(content, b"second");
@@ -705,10 +714,10 @@ mod write_tests {
 
     #[tokio::test]
     async fn test_write_returns_err_for_nonexistent_parent() {
-        let (fs, dir) = fs();
+        let (fs, dir) = local_fs();
         let path = dir.path().join("nonexistent").join("file.txt");
 
-        let result = fs.write(&path, b"data").await;
+        let result = fs.write(&path, b"data", &crate::ProviderCx::none()).await;
         assert!(result.is_err());
     }
 
@@ -718,8 +727,12 @@ mod write_tests {
         let src = dir.path().join("src.txt");
         let dst = dir.path().join("dst.txt");
 
-        fs.write(&src, b"data").await.unwrap();
-        fs.copy(&src, &dst).await.unwrap();
+        fs.write(&src, b"data", &crate::ProviderCx::none())
+            .await
+            .unwrap();
+        fs.copy(&src, &dst, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         assert!(dst.exists());
     }
@@ -730,8 +743,12 @@ mod write_tests {
         let src = dir.path().join("src.txt");
         let dst = dir.path().join("dst.txt");
 
-        fs.write(&src, b"exact content").await.unwrap();
-        fs.copy(&src, &dst).await.unwrap();
+        fs.write(&src, b"exact content", &crate::ProviderCx::none())
+            .await
+            .unwrap();
+        fs.copy(&src, &dst, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         let content = tokio::fs::read(&dst).await.unwrap();
         assert_eq!(content, b"exact content");
@@ -743,7 +760,7 @@ mod write_tests {
         let src = dir.path().join("nonexistent.txt");
         let dst = dir.path().join("dst.txt");
 
-        let result = fs.copy(&src, &dst).await;
+        let result = fs.copy(&src, &dst, &crate::ProviderCx::none()).await;
         assert!(result.is_err());
     }
 
@@ -753,8 +770,12 @@ mod write_tests {
         let src = dir.path().join("src.txt");
         let dst = dir.path().join("dst.txt");
 
-        fs.write(&src, b"x").await.unwrap();
-        fs.rename(&src, &dst).await.unwrap();
+        fs.write(&src, b"x", &crate::ProviderCx::none())
+            .await
+            .unwrap();
+        fs.rename(&src, &dst, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         assert!(dst.exists());
         assert!(!src.exists());
@@ -767,7 +788,9 @@ mod write_tests {
         let dst = dir.path().join("dir_b");
 
         tokio::fs::create_dir(&src).await.unwrap();
-        fs.rename(&src, &dst).await.unwrap();
+        fs.rename(&src, &dst, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         assert!(dst.exists());
         assert!(!src.exists());
@@ -779,7 +802,7 @@ mod write_tests {
         let src = dir.path().join("nonexistent");
         let dst = dir.path().join("dst");
 
-        let result = fs.rename(&src, &dst).await;
+        let result = fs.rename(&src, &dst, &crate::ProviderCx::none()).await;
         assert!(result.is_err());
     }
 
@@ -788,8 +811,12 @@ mod write_tests {
         let (fs, dir) = fs();
         let path = dir.path().join("file.txt");
 
-        fs.write(&path, b"data").await.unwrap();
-        fs.delete(&path).await.unwrap();
+        fs.write(&path, b"data", &crate::ProviderCx::none())
+            .await
+            .unwrap();
+        fs.delete(&path, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         assert!(!path.exists());
     }
@@ -805,7 +832,9 @@ mod write_tests {
             .await
             .unwrap();
 
-        fs.delete(&root).await.unwrap();
+        fs.delete(&root, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         assert!(!root.exists());
     }
@@ -815,7 +844,7 @@ mod write_tests {
         let (fs, dir) = fs();
         let path = dir.path().join("nonexistent.txt");
 
-        let result = fs.delete(&path).await;
+        let result = fs.delete(&path, &crate::ProviderCx::none()).await;
         assert_eq!(result.unwrap_err().code(), ErrorCode::PathNotFound);
     }
 
@@ -824,7 +853,9 @@ mod write_tests {
         let (fs, dir) = fs();
         let path = dir.path().join("new_dir");
 
-        fs.mkdir(&path).await.unwrap();
+        fs.mkdir(&path, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         assert!(path.exists());
         assert!(path.is_dir());
@@ -835,7 +866,9 @@ mod write_tests {
         let (fs, dir) = fs();
         let path = dir.path().join("a").join("b").join("c");
 
-        fs.mkdir(&path).await.unwrap();
+        fs.mkdir(&path, &crate::ProviderCx::none())
+            .await
+            .unwrap();
 
         assert!(path.exists());
         assert!(path.is_dir());
@@ -847,8 +880,54 @@ mod write_tests {
         let path = dir.path().join("existing");
 
         tokio::fs::create_dir(&path).await.unwrap();
-        let result = fs.mkdir(&path).await;
+        let result = fs.mkdir(&path, &crate::ProviderCx::none()).await;
 
         assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod context_cancellation_tests {
+    use super::*;
+
+    fn cancelled_cx() -> (crate::CancelSignal, crate::ProviderCx<'static>) {
+        let cancel = crate::CancelSignal::new();
+        cancel.cancel();
+        let leaked = Box::leak(Box::new(cancel.clone()));
+        (cancel, crate::ProviderCx::with_cancel(leaked))
+    }
+
+    #[tokio::test]
+    async fn test_local_fs_list_rejects_pre_cancelled_context() {
+        let (fs, dir) = local_fs();
+        let (_cancel, cx) = cancelled_cx();
+
+        let result = fs.list(dir.path(), &cx).await;
+
+        assert_eq!(result.unwrap_err().code(), ErrorCode::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn test_local_fs_read_header_rejects_pre_cancelled_context() {
+        let (fs, dir) = local_fs();
+        let path = dir.path().join("file.txt");
+        tokio::fs::write(&path, b"hello").await.unwrap();
+        let (_cancel, cx) = cancelled_cx();
+
+        let result = fs.read_header(&path, MAGIC_BYTE_WINDOW, &cx).await;
+
+        assert_eq!(result.unwrap_err().code(), ErrorCode::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn test_local_fs_write_rejects_pre_cancelled_context() {
+        let (fs, dir) = local_fs();
+        let path = dir.path().join("file.txt");
+        let (_cancel, cx) = cancelled_cx();
+
+        let result = fs.write(&path, b"hello", &cx).await;
+
+        assert_eq!(result.unwrap_err().code(), ErrorCode::Cancelled);
+        assert!(!path.exists());
     }
 }

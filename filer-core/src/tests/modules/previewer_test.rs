@@ -68,6 +68,86 @@ impl FsProvider for NullProvider {
     }
 }
 
+struct RecordingProvider {
+    read_header_saw_cancel: Arc<Mutex<bool>>,
+    metadata_calls: Arc<Mutex<usize>>,
+    block_reads: bool,
+}
+
+#[async_trait]
+impl FsProvider for RecordingProvider {
+    fn scheme(&self) -> &'static str {
+        "recording"
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: false,
+        }
+    }
+
+    async fn list(
+        &self,
+        _: &Path,
+        _: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<crate::model::node::FileNode>, CoreError> {
+        Ok(vec![])
+    }
+
+    async fn read(&self, path: &Path, cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
+        if self.block_reads {
+            cx.race(self.scheme(), std::future::pending::<Result<Vec<u8>, CoreError>>())
+                .await
+        } else {
+            Err(CoreError::not_found(path.to_path_buf()))
+        }
+    }
+
+    async fn read_range(
+        &self,
+        path: &Path,
+        _: u64,
+        _: u64,
+        _: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::not_found(path.to_path_buf()))
+    }
+
+    async fn read_header(
+        &self,
+        _: &Path,
+        _: usize,
+        cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
+        *self.read_header_saw_cancel.lock().unwrap() = cx.cancel.is_some();
+        if self.block_reads {
+            cx.race(self.scheme(), std::future::pending::<Result<Vec<u8>, CoreError>>())
+                .await
+        } else {
+            Ok(b"hello".to_vec())
+        }
+    }
+
+    async fn exists(&self, _: &Path, _: &crate::ProviderCx<'_>) -> Result<bool, CoreError> {
+        Ok(true)
+    }
+
+    async fn metadata(
+        &self,
+        path: &Path,
+        _: &crate::ProviderCx<'_>,
+    ) -> Result<crate::model::node::FileNode, CoreError> {
+        *self.metadata_calls.lock().unwrap() += 1;
+        Ok(crate::model::node::FileNode::from_path(
+            path.to_path_buf(),
+            None,
+        )?)
+    }
+}
+
 #[derive(Clone)]
 struct MockPreviewProvider {
     result: PreviewData,
@@ -159,6 +239,27 @@ fn spawn_previewer(
     );
     tokio::spawn(async move { previewer.run().await });
 
+    (cmd_tx, evt_rx, cache)
+}
+
+fn spawn_previewer_with_provider(
+    provider: Arc<dyn FsProvider>,
+    preview_reg: Arc<PreviewRegistry>,
+    registry: NodeRegistry,
+) -> (
+    flume::Sender<PreviewCommand>,
+    Receiver<Event>,
+    Arc<Mutex<PreviewCache>>,
+) {
+    let (cmd_tx, cmd_rx) = flume::unbounded();
+    let (evt_tx, evt_rx) = flume::unbounded();
+    let cache = Arc::new(Mutex::new(PreviewCache::new(
+        64 * 1024 * 1024,
+        Duration::from_secs(300),
+    )));
+    let previewer =
+        Previewer::with_components(cmd_rx, evt_tx, provider, registry, preview_reg, cache.clone());
+    tokio::spawn(async move { previewer.run().await });
     (cmd_tx, evt_rx, cache)
 }
 
@@ -390,6 +491,133 @@ mod cancel_tests {
             session_events.is_empty(),
             "Cancelled Location preview should not emit PreviewReadyCompat or PreviewFailedCompat"
         );
+    }
+
+    #[tokio::test]
+    async fn test_generate_passes_cancel_context_to_mime_fallback() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let path = PathBuf::from("/tmp/context-preview.txt");
+        let node_id = registry.clone().register(path);
+
+        let saw_cancel = Arc::new(Mutex::new(false));
+        let provider = Arc::new(RecordingProvider {
+            read_header_saw_cancel: saw_cancel.clone(),
+            metadata_calls: Arc::new(Mutex::new(0)),
+            block_reads: false,
+        });
+        let mut preview_reg = PreviewRegistry::new();
+        preview_reg.register(Box::new(MockPreviewProvider::instant(text_preview())));
+        let (cmd_tx, evt_rx, _cache) =
+            spawn_previewer_with_provider(provider, Arc::new(preview_reg), registry);
+
+        cmd_tx
+            .send(PreviewCommand::Generate {
+                path: node_id,
+                options: None,
+                session,
+                request: RequestId::new(),
+            })
+            .unwrap();
+
+        let event = wait_for_preview(&evt_rx, session).await;
+        assert!(matches!(event, Event::PreviewReadyCompat { .. }));
+        assert!(
+            *saw_cancel.lock().unwrap(),
+            "preview MIME fallback must receive a cancel-aware ProviderCx"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cancel_extended_metadata_interrupts_blocked_provider_read() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let path = PathBuf::from("/tmp/context-metadata.txt");
+        let node_id = registry.clone().register(path);
+
+        let provider = Arc::new(RecordingProvider {
+            read_header_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_calls: Arc::new(Mutex::new(0)),
+            block_reads: true,
+        });
+        let (cmd_tx, evt_rx, _cache) = spawn_previewer_with_provider(
+            provider,
+            Arc::new(PreviewRegistry::new()),
+            registry,
+        );
+
+        cmd_tx
+            .send(PreviewCommand::LoadExtendedMetadata(
+                node_id,
+                session,
+                RequestId::new(),
+            ))
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            match event {
+                Event::ExtendedMetadataLoadedCompat { session: s, .. }
+                | Event::ExtendedMetadataLoaded { session: s, .. }
+                | Event::Error { session: s, .. }
+                    if s == session =>
+                {
+                    panic!("cancelled extended metadata emitted event: {event:?}");
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod metadata_provider_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_basic_metadata_uses_provider_metadata() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let path = file.path().to_path_buf();
+        let node_id = registry.clone().register(path);
+
+        let metadata_calls = Arc::new(Mutex::new(0));
+        let provider = Arc::new(RecordingProvider {
+            read_header_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_calls: metadata_calls.clone(),
+            block_reads: false,
+        });
+        let (cmd_tx, evt_rx, _cache) = spawn_previewer_with_provider(
+            provider,
+            Arc::new(PreviewRegistry::new()),
+            registry,
+        );
+
+        cmd_tx
+            .send(PreviewCommand::LoadMetadata(
+                node_id,
+                session,
+                RequestId::new(),
+            ))
+            .unwrap();
+
+        let deadline = tokio::time::Instant::now() + TIMEOUT;
+        loop {
+            match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+                Ok(Ok(Event::MetadataLoadedCompat { session: s, .. })) if s == session => break,
+                Ok(Ok(Event::Error { session: s, .. })) if s == session => {
+                    panic!("metadata load failed")
+                }
+                Ok(Ok(_)) => {}
+                Ok(Err(_)) => panic!("event channel closed"),
+                Err(_) => panic!("timed out waiting for metadata event"),
+            }
+        }
+
+        assert_eq!(*metadata_calls.lock().unwrap(), 1);
     }
 }
 

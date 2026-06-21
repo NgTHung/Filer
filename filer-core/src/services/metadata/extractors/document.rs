@@ -5,6 +5,7 @@ use crate::errors::CoreError;
 use crate::services::metadata::extended::{DocumentMetadata, ExtendedMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 /// Document metadata extractor.
@@ -26,8 +27,9 @@ impl DocumentExtractor {
         &self,
         path: &Path,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<DocumentMetadata, CoreError> {
-        let reader = provider.open_reader(path, &crate::ProviderCx::none()).await?;
+        let reader = provider.open_reader(path, cx).await?;
         let meta = lopdf::Document::load_metadata_from(reader)
             .map_err(|e| CoreError::invalid_data(format!("Cannot parse PDF: {e}")))?;
 
@@ -53,6 +55,7 @@ impl MetadataExtractor for DocumentExtractor {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-document"))]
         return Ok(ExtendedMetadata::Unavailable);
@@ -60,7 +63,7 @@ impl MetadataExtractor for DocumentExtractor {
         #[cfg(feature = "metadata-document")]
         {
             let meta = match &*mime.mime_type {
-                "application/pdf" => self.extract_pdf(path, provider).await?,
+                "application/pdf" => self.extract_pdf(path, provider, cx).await?,
 
                 // Office / e-book formats: lopdf cannot read these.
                 // Return a stub — add a dedicated crate (e.g. docx-rs) to fill fields.

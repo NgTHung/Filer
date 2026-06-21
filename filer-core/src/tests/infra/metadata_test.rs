@@ -34,7 +34,6 @@ fn mime(mime_type: &str, category: MimeCategory) -> MimeInfo {
         confidence: DetectionConfidence::Definitive,
     }
 }
-
 fn local_provider() -> LocalFs {
     LocalFs::new(NodeRegistry::new())
 }
@@ -228,7 +227,7 @@ mod registry_tests {
         let reg = MetadataRegistry::with_defaults();
         let info = mime("application/x-custom", MimeCategory::Unknown);
         let result = reg
-            .extract(std::path::Path::new("/dev/null"), &info, &local_provider())
+            .extract(std::path::Path::new("/dev/null"), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Unavailable));
@@ -273,7 +272,7 @@ mod image_extractor_tests {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Image(_)));
@@ -284,7 +283,7 @@ mod image_extractor_tests {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
         let ExtendedMetadata::Image(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -299,7 +298,7 @@ mod image_extractor_tests {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
         let ExtendedMetadata::Image(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -313,7 +312,7 @@ mod image_extractor_tests {
         let f = temp_file_with(&png_1x1(), ".png");
         let info = mime("image/png", MimeCategory::Image);
         let ExtendedMetadata::Image(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -328,7 +327,7 @@ mod image_extractor_tests {
         let f = temp_file_with(&jpeg_minimal(), ".jpg");
         let info = mime("image/jpeg", MimeCategory::Image);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Image(_)));
@@ -339,7 +338,7 @@ mod image_extractor_tests {
         let f = temp_file_with(&jpeg_minimal(), ".jpg");
         let info = mime("image/jpeg", MimeCategory::Image);
         let ExtendedMetadata::Image(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -381,7 +380,7 @@ mod audio_extractor_tests {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Audio(_)));
@@ -392,7 +391,7 @@ mod audio_extractor_tests {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
         let ExtendedMetadata::Audio(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -406,7 +405,7 @@ mod audio_extractor_tests {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
         let ExtendedMetadata::Audio(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -420,7 +419,7 @@ mod audio_extractor_tests {
         let f = temp_file_with(&ogg_capture(), ".ogg");
         let info = mime("audio/ogg", MimeCategory::Audio);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Audio(_)));
@@ -432,7 +431,7 @@ mod audio_extractor_tests {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
         let info = mime("audio/mpeg", MimeCategory::Audio);
         let ExtendedMetadata::Audio(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -471,7 +470,7 @@ mod video_extractor_tests {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Video(_)));
@@ -482,7 +481,7 @@ mod video_extractor_tests {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
         let ExtendedMetadata::Video(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -496,7 +495,7 @@ mod video_extractor_tests {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
         let ExtendedMetadata::Video(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -511,7 +510,7 @@ mod video_extractor_tests {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
         let info = mime("video/mp4", MimeCategory::Video);
         let ExtendedMetadata::Video(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -549,7 +548,7 @@ mod document_extractor_tests {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
         let info = mime("application/pdf", MimeCategory::Document);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Document(_)));
@@ -560,7 +559,7 @@ mod document_extractor_tests {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
         let info = mime("application/pdf", MimeCategory::Document);
         let ExtendedMetadata::Document(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -574,7 +573,7 @@ mod document_extractor_tests {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
         let info = mime("application/pdf", MimeCategory::Document);
         let ExtendedMetadata::Document(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -612,7 +611,7 @@ mod archive_extractor_tests {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Archive(_)));
@@ -623,7 +622,7 @@ mod archive_extractor_tests {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
         let ExtendedMetadata::Archive(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -638,7 +637,7 @@ mod archive_extractor_tests {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
         let ExtendedMetadata::Archive(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -652,7 +651,7 @@ mod archive_extractor_tests {
         let f = temp_file_with(&zip_empty(), ".zip");
         let info = mime("application/zip", MimeCategory::Archive);
         let ExtendedMetadata::Archive(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -690,7 +689,7 @@ mod code_extractor_tests {
         let f = temp_file_with(src, ".rs");
         let info = mime("text/x-rust", MimeCategory::Text);
         let result = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap();
         assert!(matches!(result, ExtendedMetadata::Code(_)));
@@ -702,7 +701,7 @@ mod code_extractor_tests {
         let f = temp_file_with(src, ".rs");
         let info = mime("text/x-rust", MimeCategory::Text);
         let ExtendedMetadata::Code(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -717,7 +716,7 @@ mod code_extractor_tests {
         let f = temp_file_with(src, ".py");
         let info = mime("text/x-python", MimeCategory::Text);
         let ExtendedMetadata::Code(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -732,7 +731,7 @@ mod code_extractor_tests {
         let f = temp_file_with(src, ".txt");
         let info = mime("text/plain", MimeCategory::Text);
         let ExtendedMetadata::Code(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -752,7 +751,7 @@ mod code_extractor_tests {
         let f = temp_file_with(src, ".txt");
         let info = mime("text/plain", MimeCategory::Text);
         let ExtendedMetadata::Code(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {
@@ -766,7 +765,7 @@ mod code_extractor_tests {
         let f = temp_file_with(b"", ".txt");
         let info = mime("text/plain", MimeCategory::Text);
         let ExtendedMetadata::Code(meta) = extractor()
-            .extract(f.path(), &info, &local_provider())
+            .extract(f.path(), &info, &local_provider(), &crate::ProviderCx::none())
             .await
             .unwrap()
         else {

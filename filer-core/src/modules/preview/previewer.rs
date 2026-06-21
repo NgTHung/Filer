@@ -9,13 +9,14 @@ use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::model::location::{LocationRef, LocationRoute};
-use crate::model::node::{FileNode, NodeId};
+use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::mime::{MAGIC_BYTE_WINDOW, MimeDetector};
 use crate::services::preview::PreviewCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 use crate::{CoreError, MetadataRegistry, PreviewOptions, PreviewRegistry};
 
@@ -160,8 +161,9 @@ impl Previewer {
                 return;
             }
 
+            let cx = ProviderCx::with_cancel(&cancel);
             let result = preview_registry
-                .generate_with_options(&path, &opts, provider.as_ref())
+                .generate_with_options(&path, &opts, provider.as_ref(), &cx)
                 .await;
 
             if cancel.is_cancelled() {
@@ -204,7 +206,7 @@ impl Previewer {
                 }
             }
 
-            active.remove(session).await;
+            active.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -255,8 +257,9 @@ impl Previewer {
                 return;
             }
 
+            let cx = ProviderCx::with_cancel(&cancel);
             let result = preview_registry
-                .generate_with_options(&path, &opts, provider.as_ref())
+                .generate_with_options(&path, &opts, provider.as_ref(), &cx)
                 .await;
 
             if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
@@ -295,7 +298,7 @@ impl Previewer {
                 }
             }
 
-            active.remove(session).await;
+            active.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -349,14 +352,14 @@ impl Previewer {
         };
 
         let events = self.events.clone();
-        let registry = self.registry.clone();
+        let provider = self.provider.clone();
         let latest = self.latest.clone();
 
         tokio::spawn(async move {
             if !Self::is_latest(&latest, session, request) {
                 return;
             }
-            match FileNode::from_path(path, Some(registry)) {
+            match provider.metadata(&path, &ProviderCx::none()).await {
                 Ok(file_node) => {
                     send_or_warn_async(
                         &events,
@@ -399,14 +402,14 @@ impl Previewer {
         };
 
         let events = self.events.clone();
-        let registry = self.registry.clone();
+        let provider = self.provider.clone();
         let latest = self.latest.clone();
 
         tokio::spawn(async move {
             if !Self::is_latest(&latest, session, request) {
                 return;
             }
-            match FileNode::from_path(path, Some(registry)) {
+            match provider.metadata(&path, &ProviderCx::none()).await {
                 Ok(file_node) => {
                     send_or_warn_async(
                         &events,
@@ -459,6 +462,7 @@ impl Previewer {
                 return;
             }
 
+            let cx = ProviderCx::with_cancel(&cancel);
             // Tier 1: extension-based MIME detection (zero I/O).
             // Upgrade to magic bytes if extension is ambiguous.
             let mime = {
@@ -467,7 +471,7 @@ impl Previewer {
                     ext_info
                 } else {
                     let header = provider
-                        .read_header(&path, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+                        .read_header(&path, MAGIC_BYTE_WINDOW, &cx)
                         .await
                         .ok();
                     MimeDetector::detect_with_strategy(
@@ -486,7 +490,7 @@ impl Previewer {
             }
 
             match metadata_registry
-                .extract(&path, &mime, provider.as_ref())
+                .extract(&path, &mime, provider.as_ref(), &cx)
                 .await
             {
                 Ok(extended) => {
@@ -512,7 +516,7 @@ impl Previewer {
                 }
             }
 
-            active.remove(session).await;
+            active.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -544,13 +548,14 @@ impl Previewer {
                 return;
             }
 
+            let cx = ProviderCx::with_cancel(&cancel);
             let mime = {
                 let ext_info = MimeDetector::detect_from_path(&path);
                 if ext_info.confidence == crate::services::mime::DetectionConfidence::Definitive {
                     ext_info
                 } else {
                     let header = provider
-                        .read_header(&path, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+                        .read_header(&path, MAGIC_BYTE_WINDOW, &cx)
                         .await
                         .ok();
                     MimeDetector::detect_with_strategy(
@@ -566,7 +571,7 @@ impl Previewer {
             }
 
             match metadata_registry
-                .extract(&path, &mime, provider.as_ref())
+                .extract(&path, &mime, provider.as_ref(), &cx)
                 .await
             {
                 Ok(extended) => {
@@ -592,7 +597,7 @@ impl Previewer {
                 }
             }
 
-            active.remove(session).await;
+            active.remove_if_current(session, &cancel).await;
         });
     }
 

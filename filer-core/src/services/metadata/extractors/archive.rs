@@ -6,6 +6,7 @@ use crate::errors::CoreError;
 use crate::services::metadata::extended::{ArchiveEntry, ArchiveMetadata, ExtendedMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 /// Archive metadata extractor (file count, sizes, compression ratio, entry listing).
@@ -163,6 +164,7 @@ impl MetadataExtractor for ArchiveExtractor {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-archive"))]
         return Ok(ExtendedMetadata::Unavailable);
@@ -184,22 +186,22 @@ impl MetadataExtractor for ArchiveExtractor {
 
             let meta = match &*mime.mime_type {
                 "application/zip" => {
-                    let entries = Self::parse_zip(provider.open_reader(path, &crate::ProviderCx::none()).await?)?;
+                    let entries = Self::parse_zip(provider.open_reader(path, cx).await?)?;
                     Self::build("ZIP", entries, 0)
                 }
 
                 "application/x-tar" => {
-                    let entries = Self::parse_tar(provider.open_reader(path, &crate::ProviderCx::none()).await?)?;
+                    let entries = Self::parse_tar(provider.open_reader(path, cx).await?)?;
                     Self::build("TAR", entries, 0)
                 }
 
                 "application/gzip" if tarball => {
                     let entries =
-                        Self::parse_tar(GzDecoder::new(provider.open_reader(path, &crate::ProviderCx::none()).await?))?;
+                        Self::parse_tar(GzDecoder::new(provider.open_reader(path, cx).await?))?;
                     Self::build("TAR+GZ", entries, 0)
                 }
                 "application/gzip" => {
-                    let compressed = provider.read(path, &crate::ProviderCx::none()).await?;
+                    let compressed = provider.read(path, cx).await?;
                     let compressed_size = compressed.len() as u64;
                     let (size, name) = Self::count_decompressed(
                         GzDecoder::new(std::io::Cursor::new(compressed)),
@@ -219,11 +221,11 @@ impl MetadataExtractor for ArchiveExtractor {
 
                 "application/x-bzip2" if tarball => {
                     let entries =
-                        Self::parse_tar(BzDecoder::new(provider.open_reader(path, &crate::ProviderCx::none()).await?))?;
+                        Self::parse_tar(BzDecoder::new(provider.open_reader(path, cx).await?))?;
                     Self::build("TAR+BZ2", entries, 0)
                 }
                 "application/x-bzip2" => {
-                    let compressed = provider.read(path, &crate::ProviderCx::none()).await?;
+                    let compressed = provider.read(path, cx).await?;
                     let compressed_size = compressed.len() as u64;
                     let (size, name) = Self::count_decompressed(
                         BzDecoder::new(std::io::Cursor::new(compressed)),
@@ -243,11 +245,11 @@ impl MetadataExtractor for ArchiveExtractor {
 
                 "application/x-xz" if tarball => {
                     let entries =
-                        Self::parse_tar(XzDecoder::new(provider.open_reader(path, &crate::ProviderCx::none()).await?))?;
+                        Self::parse_tar(XzDecoder::new(provider.open_reader(path, cx).await?))?;
                     Self::build("TAR+XZ", entries, 0)
                 }
                 "application/x-xz" => {
-                    let compressed = provider.read(path, &crate::ProviderCx::none()).await?;
+                    let compressed = provider.read(path, cx).await?;
                     let compressed_size = compressed.len() as u64;
                     let (size, name) = Self::count_decompressed(
                         XzDecoder::new(std::io::Cursor::new(compressed)),
@@ -267,13 +269,13 @@ impl MetadataExtractor for ArchiveExtractor {
 
                 "application/zstd" if tarball => {
                     let decoder =
-                        zstd::stream::read::Decoder::new(provider.open_reader(path, &crate::ProviderCx::none()).await?)
+                        zstd::stream::read::Decoder::new(provider.open_reader(path, cx).await?)
                             .map_err(|e| CoreError::invalid_data(format!("ZSTD: {e}")))?;
                     let entries = Self::parse_tar(decoder)?;
                     Self::build("TAR+ZSTD", entries, 0)
                 }
                 "application/zstd" => {
-                    let compressed = provider.read(path, &crate::ProviderCx::none()).await?;
+                    let compressed = provider.read(path, cx).await?;
                     let compressed_size = compressed.len() as u64;
                     let decoder =
                         zstd::stream::read::Decoder::new(std::io::Cursor::new(compressed))
@@ -292,7 +294,7 @@ impl MetadataExtractor for ArchiveExtractor {
                 }
 
                 "application/x-7z-compressed" => {
-                    let entries = Self::parse_7z(provider.open_reader(path, &crate::ProviderCx::none()).await?)?;
+                    let entries = Self::parse_7z(provider.open_reader(path, cx).await?)?;
                     Self::build("7Z", entries, 0)
                 }
 

@@ -55,6 +55,8 @@ struct MockOpsProvider {
     /// If true, rename returns a cross-device error
     fail_rename_cross_device: Arc<Mutex<bool>>,
     write_supported: Arc<Mutex<bool>>,
+    /// Artificial delay applied inside `copy`, for deterministic timeout tests.
+    copy_delay_ms: Arc<Mutex<u64>>,
 
     copy_calls: Arc<Mutex<Vec<(PathBuf, PathBuf)>>>,
     rename_calls: Arc<Mutex<Vec<(PathBuf, PathBuf)>>>,
@@ -73,6 +75,7 @@ impl MockOpsProvider {
             fail_paths: Arc::new(Mutex::new(Vec::new())),
             fail_rename_cross_device: Arc::new(Mutex::new(false)),
             write_supported: Arc::new(Mutex::new(true)),
+            copy_delay_ms: Arc::new(Mutex::new(0)),
             copy_calls: Arc::new(Mutex::new(Vec::new())),
             rename_calls: Arc::new(Mutex::new(Vec::new())),
             delete_calls: Arc::new(Mutex::new(Vec::new())),
@@ -110,6 +113,10 @@ impl MockOpsProvider {
 
     fn set_write_supported(&self, supported: bool) {
         *self.write_supported.lock().unwrap() = supported;
+    }
+
+    fn set_copy_delay_ms(&self, delay_ms: u64) {
+        *self.copy_delay_ms.lock().unwrap() = delay_ms;
     }
 
     fn get_copy_calls(&self) -> Vec<(PathBuf, PathBuf)> {
@@ -245,7 +252,12 @@ impl FsProvider for MockOpsProvider {
             .ok_or_else(|| CoreError::not_found(path.to_path_buf()))
     }
 
-    async fn write(&self, path: &Path, data: &[u8]) -> Result<(), CoreError> {
+    async fn write(
+        &self,
+        path: &Path,
+        data: &[u8],
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::permission_denied(path.to_path_buf()));
         }
@@ -256,11 +268,21 @@ impl FsProvider for MockOpsProvider {
         Ok(())
     }
 
-    async fn copy(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
+    async fn copy(
+        &self,
+        src: &Path,
+        dst: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == src) {
             return Err(CoreError::permission_denied(src.to_path_buf()));
         }
-        tokio::task::yield_now().await;
+        let delay_ms = *self.copy_delay_ms.lock().unwrap();
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        } else {
+            tokio::task::yield_now().await;
+        }
         self.copy_calls
             .lock()
             .unwrap()
@@ -268,7 +290,12 @@ impl FsProvider for MockOpsProvider {
         Ok(())
     }
 
-    async fn rename(&self, src: &Path, dst: &Path) -> Result<(), CoreError> {
+    async fn rename(
+        &self,
+        src: &Path,
+        dst: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<(), CoreError> {
         if *self.fail_rename_cross_device.lock().unwrap() {
             return Err(CoreError::io(
                 src.to_path_buf(),
@@ -285,7 +312,7 @@ impl FsProvider for MockOpsProvider {
         Ok(())
     }
 
-    async fn delete(&self, path: &Path) -> Result<(), CoreError> {
+    async fn delete(&self, path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::permission_denied(path.to_path_buf()));
         }
@@ -293,7 +320,7 @@ impl FsProvider for MockOpsProvider {
         Ok(())
     }
 
-    async fn mkdir(&self, path: &Path) -> Result<(), CoreError> {
+    async fn mkdir(&self, path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::permission_denied(path.to_path_buf()));
         }
@@ -340,6 +367,29 @@ fn spawn_operator_with_trash(
     let (evt_tx, evt_rx) = flume::unbounded::<Event>();
 
     let operator = Operator::with_trash_fn(cmd_rx, evt_tx, Arc::new(provider), registry, trash_fn);
+    tokio::spawn(async move {
+        operator.run().await;
+    });
+
+    (cmd_tx, evt_rx)
+}
+
+fn spawn_operator_with_timeout(
+    provider: MockOpsProvider,
+    registry: NodeRegistry,
+    timeout: Duration,
+) -> (flume::Sender<OpsCommand>, Receiver<Event>) {
+    let (cmd_tx, cmd_rx) = flume::unbounded::<OpsCommand>();
+    let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+    let mut operator = Operator::with_trash_fn(
+        cmd_rx,
+        evt_tx,
+        Arc::new(provider),
+        registry,
+        noop_trash_fn(),
+    );
+    operator.set_operation_timeout(Some(timeout));
     tokio::spawn(async move {
         operator.run().await;
     });
@@ -2030,5 +2080,56 @@ mod cancel_tests {
             "Session destroy should cancel in-flight operation (copied {})",
             copies.len()
         );
+    }
+}
+
+#[cfg(test)]
+mod operator_timeout_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_copy_times_out_with_provider_context() {
+        let provider = MockOpsProvider::new();
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+
+        let src_path = PathBuf::from("/home/user/doc.txt");
+        let dst_path = PathBuf::from("/home/user/backup");
+        let src_id = register(&registry, &src_path);
+        let dst_id = register(&registry, &dst_path);
+        provider.add_metadata(
+            &src_path,
+            MockOpsProvider::make_file("doc.txt", "/home/user", 1024),
+        );
+        // Far longer than the operation timeout, so the deadline fires first.
+        provider.set_copy_delay_ms(10_000);
+
+        let (cmd_tx, evt_rx) =
+            spawn_operator_with_timeout(provider, registry, Duration::from_millis(20));
+        let operation_id = OperationId::new();
+        cmd_tx
+            .send(OpsCommand::Copy {
+                sources: vec![src_id],
+                destination: dst_id,
+                session,
+                request: RequestId::new(),
+                operation: operation_id,
+            })
+            .unwrap();
+
+        let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
+        match final_event {
+            Event::Error {
+                code,
+                target,
+                session: s,
+                ..
+            } => {
+                assert_eq!(code, ErrorCode::TimedOut);
+                assert_eq!(target, Some(ErrorTarget::Provider("mock".to_string())));
+                assert_eq!(s, session);
+            }
+            other => panic!("Expected TimedOut error, got: {other:?}"),
+        }
     }
 }

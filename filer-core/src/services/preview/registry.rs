@@ -4,6 +4,7 @@ use crate::errors::CoreError;
 use crate::services::mime::{
     DetectionConfidence, DetectionStrategy, MAGIC_BYTE_WINDOW, MimeDetector, MimeInfo,
 };
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 use super::provider::{PreviewData, PreviewOptions, PreviewProvider};
@@ -51,8 +52,9 @@ impl PreviewRegistry {
         &self,
         path: &Path,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<PreviewData, CoreError> {
-        self.generate_with_options(path, &self.default_options, provider)
+        self.generate_with_options(path, &self.default_options, provider, cx)
             .await
     }
 
@@ -79,8 +81,9 @@ impl PreviewRegistry {
         path: &Path,
         options: &PreviewOptions,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<PreviewData, CoreError> {
-        let mime = self.detect_mime(path, options, provider).await;
+        let mime = self.detect_mime(path, options, provider, cx).await;
         match self.get_provider(&mime) {
             Some(p) => p.generate(path, &mime, options).await,
             None => Ok(PreviewData::Unsupported {
@@ -103,6 +106,7 @@ impl PreviewRegistry {
         path: &Path,
         options: &PreviewOptions,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> MimeInfo {
         // Tier 1 — extension
         let ext_info = MimeDetector::detect_from_path(path);
@@ -121,7 +125,7 @@ impl PreviewRegistry {
         // Tier 2 — magic bytes. The provider read keeps detection consistent
         // with the rest of the VFS; failures fall back to the Tier 1 result.
         let header = provider
-            .read_header(path, MAGIC_BYTE_WINDOW, &crate::ProviderCx::none())
+            .read_header(path, MAGIC_BYTE_WINDOW, cx)
             .await
             .ok();
         MimeDetector::detect_with_strategy(path, header.as_deref(), options.detection_strategy)

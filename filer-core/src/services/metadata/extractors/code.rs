@@ -6,6 +6,7 @@ use crate::services::metadata::CodeMetadata;
 use crate::services::metadata::extended::ExtendedMetadata;
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 /// Code/text metadata extractor (language, line count)
@@ -28,6 +29,7 @@ impl MetadataExtractor for CodeExtractor {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         if mime.category != MimeCategory::Text {
             return Err(CoreError::invalid_data(
@@ -56,10 +58,7 @@ impl MetadataExtractor for CodeExtractor {
             _ => "Text",
         };
 
-        let s = provider
-            .read(path, &crate::ProviderCx::none())
-            .await
-            .unwrap_or_default();
+        let s = provider.read(path, cx).await.unwrap_or_default();
         let lines = s.iter().filter(|v| **v == b'\n').count();
 
         Ok(ExtendedMetadata::Code(CodeMetadata {

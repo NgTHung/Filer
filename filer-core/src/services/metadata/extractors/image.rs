@@ -6,6 +6,7 @@ use crate::services::metadata::ImageMetadata;
 use crate::services::metadata::extended::ExtendedMetadata;
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 #[cfg(feature = "metadata-image")]
@@ -26,9 +27,10 @@ impl ImageExtractor {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<(u32, u32, String), CoreError> {
         use imagesize::{ImageSize, blob_size};
-        let data = provider.read(path, &crate::ProviderCx::none()).await?;
+        let data = provider.read(path, cx).await?;
         let res = blob_size(data.as_slice()).unwrap_or(ImageSize {
             height: 0,
             width: 0,
@@ -63,10 +65,11 @@ impl ImageExtractor {
         &self,
         path: &Path,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<(ExifData, Option<String>, Option<u8>), CoreError> {
         use exif::{In, Reader, Tag, Value};
         let reader = Reader::new();
-        let mut io = provider.open_reader(path, &crate::ProviderCx::none()).await?;
+        let mut io = provider.open_reader(path, cx).await?;
         let source = reader
             .read_from_container(&mut io)
             .map_err(|e| CoreError::invalid_data(format!("Unable to parse data: {}", e)))?;
@@ -157,15 +160,16 @@ impl MetadataExtractor for ImageExtractor {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-image"))]
         return Ok(ExtendedMetadata::Unavailable);
 
         #[cfg(feature = "metadata-image")]
         {
-            let (width, height, format) = self.extract_dimensions(path, mime, provider).await?;
+            let (width, height, format) = self.extract_dimensions(path, mime, provider, cx).await?;
             // EXIF is optional — missing or unreadable EXIF is not an error.
-            let (exif, color_space, bit_depth) = match self.extract_exif(path, provider).await.ok()
+            let (exif, color_space, bit_depth) = match self.extract_exif(path, provider, cx).await.ok()
             {
                 Some((exif, cs, bd)) => (Some(exif), cs, bd),
                 None => (None, None, None),

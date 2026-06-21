@@ -5,6 +5,7 @@ use crate::errors::CoreError;
 use crate::services::metadata::extended::{ExtendedMetadata, VideoMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 /// Video metadata extractor (dimensions, duration, codecs).
@@ -51,12 +52,13 @@ impl VideoExtractor {
         path: &Path,
         provider: &dyn FsProvider,
         format: &str,
+        cx: &ProviderCx<'_>,
     ) -> Result<VideoMetadata, CoreError> {
         use mp4parse::{SampleEntry, TrackType, read_mp4};
 
         // read_mp4 requires T: Sized, so we can't pass a trait object directly.
         // Buffer the file and wrap in Cursor for a concrete Sized type.
-        let bytes = provider.read(path, &crate::ProviderCx::none()).await?;
+        let bytes = provider.read(path, cx).await?;
         let mut cursor = std::io::Cursor::new(bytes);
         let context = read_mp4(&mut cursor)
             .map_err(|e| CoreError::invalid_data(format!("Cannot parse MP4: {e:?}")))?;
@@ -130,6 +132,7 @@ impl MetadataExtractor for VideoExtractor {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-video"))]
         return Ok(ExtendedMetadata::Unavailable);
@@ -152,7 +155,7 @@ impl MetadataExtractor for VideoExtractor {
 
             // Non-MP4 containers won't parse; return zeroed metadata rather than error.
             let metadata = self
-                .parse_mp4(path, provider, format)
+                .parse_mp4(path, provider, format, cx)
                 .await
                 .unwrap_or(VideoMetadata {
                     width: 0,

@@ -1,13 +1,15 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 
 use crate::errors::CoreError;
-use crate::services::mime::{DetectionConfidence, MimeCategory, MimeInfo};
+use crate::services::mime::{DetectionConfidence, DetectionStrategy, MimeCategory, MimeInfo};
 use crate::services::preview::{
     PreviewCache, PreviewData, PreviewOptions, PreviewProvider, PreviewRegistry,
 };
+use crate::vfs::provider::{Capabilities, FsProvider};
 
 fn text_preview(content: &str) -> PreviewData {
     PreviewData::Text {
@@ -50,6 +52,70 @@ impl PreviewProvider for StubProvider {
     }
     fn name(&self) -> &'static str {
         self.name
+    }
+}
+
+struct HeaderRecordingProvider {
+    saw_cancel: Arc<Mutex<bool>>,
+}
+
+#[async_trait]
+impl FsProvider for HeaderRecordingProvider {
+    fn scheme(&self) -> &'static str {
+        "recording"
+    }
+
+    fn capabilities(&self) -> Capabilities {
+        Capabilities {
+            read: true,
+            write: false,
+            watch: false,
+            search: false,
+        }
+    }
+
+    async fn list(
+        &self,
+        _: &Path,
+        _: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<crate::FileNode>, CoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn read(&self, path: &Path, _: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::not_found(path.to_path_buf()))
+    }
+
+    async fn read_range(
+        &self,
+        path: &Path,
+        _: u64,
+        _: u64,
+        _: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
+        Err(CoreError::not_found(path.to_path_buf()))
+    }
+
+    async fn read_header(
+        &self,
+        _: &Path,
+        _: usize,
+        cx: &crate::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
+        *self.saw_cancel.lock().unwrap() = cx.cancel.is_some();
+        Ok(b"hello".to_vec())
+    }
+
+    async fn exists(&self, _: &Path, _: &crate::ProviderCx<'_>) -> Result<bool, CoreError> {
+        Ok(true)
+    }
+
+    async fn metadata(
+        &self,
+        path: &Path,
+        _: &crate::ProviderCx<'_>,
+    ) -> Result<crate::FileNode, CoreError> {
+        Err(CoreError::not_found(path.to_path_buf()))
     }
 }
 
@@ -164,6 +230,35 @@ mod registry_tests {
             name: "image",
         }));
         assert!(reg.get_provider_pub(&mime(MimeCategory::Audio)).is_none());
+    }
+
+    #[tokio::test]
+    async fn generate_with_options_passes_context_to_mime_header_read() {
+        let mut reg = PreviewRegistry::new();
+        reg.register(Box::new(StubProvider {
+            categories: &[MimeCategory::Text],
+            priority: 100,
+            name: "text",
+        }));
+        let saw_cancel = Arc::new(Mutex::new(false));
+        let provider = HeaderRecordingProvider {
+            saw_cancel: saw_cancel.clone(),
+        };
+        let cancel = crate::CancelSignal::new();
+        let cx = crate::ProviderCx::with_cancel(&cancel);
+        let mut options = PreviewOptions::default();
+        options.detection_strategy = DetectionStrategy::MagicBytes;
+
+        let result = reg
+            .generate_with_options(Path::new("ambiguous.txt"), &options, &provider, &cx)
+            .await
+            .unwrap();
+
+        assert!(matches!(result, PreviewData::Text { .. }));
+        assert!(
+            *saw_cancel.lock().unwrap(),
+            "MIME fallback read must receive the preview ProviderCx"
+        );
     }
 }
 

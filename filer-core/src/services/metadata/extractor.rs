@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 use super::extended::ExtendedMetadata;
@@ -34,6 +35,7 @@ pub trait MetadataExtractor: Send + Sync {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError>;
 
     /// Extractor name for logging and debugging.
@@ -106,9 +108,10 @@ impl MetadataRegistry {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         match self.get(mime) {
-            Some(extractor) => extractor.extract(path, mime, provider).await,
+            Some(extractor) => extractor.extract(path, mime, provider, cx).await,
             None => Ok(ExtendedMetadata::Unavailable),
         }
     }

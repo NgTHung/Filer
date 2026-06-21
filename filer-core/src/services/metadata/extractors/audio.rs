@@ -5,6 +5,7 @@ use crate::errors::CoreError;
 use crate::services::metadata::extended::{AudioMetadata, ExtendedMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
+use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 #[cfg(feature = "metadata-audio")]
@@ -27,10 +28,15 @@ impl AudioExtractor {
     ///
     /// `(duration_secs, sample_rate, channels, bit_rate, tags)`
     #[cfg(feature = "metadata-audio")]
-    async fn read_tag(&self, path: &Path, provider: &dyn FsProvider) -> Option<(f64, AudioTags)> {
+    async fn read_tag(
+        &self,
+        path: &Path,
+        provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
+    ) -> Option<(f64, AudioTags)> {
         use id3::TagLike;
 
-        let mut reader = provider.open_reader(path, &crate::ProviderCx::none()).await.ok()?;
+        let mut reader = provider.open_reader(path, cx).await.ok()?;
         let tag = id3::Tag::read_from2(&mut *reader).ok()?;
 
         let duration_secs = tag.duration().map(|d| d as f64).unwrap_or(0.0);
@@ -66,6 +72,7 @@ impl MetadataExtractor for AudioExtractor {
         path: &Path,
         mime: &MimeInfo,
         provider: &dyn FsProvider,
+        cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-audio"))]
         return Ok(ExtendedMetadata::Unavailable);
@@ -86,7 +93,7 @@ impl MetadataExtractor for AudioExtractor {
             };
 
             let (duration_secs, tags) = self
-                .read_tag(path, provider)
+                .read_tag(path, provider, cx)
                 .await
                 .unwrap_or((0.0, AudioTags::default()));
 

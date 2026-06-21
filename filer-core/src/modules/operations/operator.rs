@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use flume::{Receiver, Sender};
 use rapidhash::fast::RandomState;
@@ -19,9 +20,20 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
-use crate::{CoreError, ErrorCode, ErrorTarget, FsProvider};
+use crate::{CoreError, ErrorCode, ErrorTarget, FsProvider, ProviderCx};
 
 type TrashFn = Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>;
+
+/// Build the provider context for an operation from its cancel token and an
+/// optional deadline. Every operator provider call goes through `cx.race`, so
+/// a cancel or breached deadline interrupts the in-flight call.
+fn operation_cx(cancel: &CancellationToken, deadline: Option<Instant>) -> ProviderCx<'_> {
+    let cx = ProviderCx::with_cancel(cancel);
+    match deadline {
+        Some(deadline) => cx.with_deadline(deadline),
+        None => cx,
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum OpsCommand {
@@ -131,6 +143,7 @@ pub struct Operator {
     active_operation_ids: Arc<scc::HashMap<SessionId, OperationId, RandomState>>,
     trash_fn: TrashFn,
     cache: Option<SharedDirCache>,
+    default_timeout: Option<Duration>,
 }
 
 impl Operator {
@@ -167,7 +180,16 @@ impl Operator {
             active_operation_ids: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             trash_fn,
             cache: None,
+            default_timeout: None,
         }
+    }
+
+    /// Bound each provider call during an operation to `timeout`.
+    ///
+    /// `None` leaves operations unbounded. A breached deadline ends the
+    /// operation with a `TimedOut` error carrying provider context.
+    pub fn set_operation_timeout(&mut self, timeout: Option<Duration>) {
+        self.default_timeout = timeout;
     }
 
     pub fn with_cache(
@@ -251,6 +273,7 @@ impl Operator {
         }
 
         let cancel = self.arm_operation(session, operation);
+        let deadline = self.default_timeout.map(|t| Instant::now() + t);
         let active = self.active_ops.clone();
         let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
@@ -259,6 +282,7 @@ impl Operator {
         let cache = self.cache.clone();
 
         tokio::spawn(async move {
+            let cx = operation_cx(&cancel, deadline);
             let mut affected = Vec::new();
             let mut items_done = 0usize;
 
@@ -283,22 +307,17 @@ impl Operator {
                     return;
                 }
 
-                let Ok(meta) = fs.metadata(&src_path, &crate::ProviderCx::none()).await else {
-                    send_or_warn_async(
-                        &events,
-                        Event::from_operation_error(
-                            CoreError::io(
-                                src_path.clone(),
-                                format!("Cannot stat {}", src_path.display()),
-                            ),
-                            session,
-                            request,
-                            operation,
-                        ),
-                        "operator: copy stat",
-                    )
-                    .await;
-                    return;
+                let meta = match cx.race(fs.scheme(), fs.metadata(&src_path, &cx)).await {
+                    Ok(meta) => meta,
+                    Err(e) => {
+                        send_or_warn_async(
+                            &events,
+                            operation_error(e, session, request, operation),
+                            "operator: copy stat",
+                        )
+                        .await;
+                        return;
+                    }
                 };
 
                 let file_name = src_path.file_name().unwrap_or_default();
@@ -309,7 +328,7 @@ impl Operator {
                         &fs,
                         &src_path,
                         &dst_sub,
-                        &cancel,
+                        &cx,
                         &events,
                         &registry,
                         session,
@@ -353,7 +372,10 @@ impl Operator {
                     affected.push(registry.clone().register(dst_sub));
                 } else {
                     let dst_file = dst_path.join(file_name);
-                    if let Err(e) = fs.copy(&src_path, &dst_file).await {
+                    if let Err(e) = cx
+                        .race(fs.scheme(), fs.copy(&src_path, &dst_file, &cx))
+                        .await
+                    {
                         send_or_warn_async(
                             &events,
                             operation_error(e, session, request, operation),
@@ -444,6 +466,7 @@ impl Operator {
         }
 
         let cancel = self.arm_operation(session, operation);
+        let deadline = self.default_timeout.map(|t| Instant::now() + t);
         let active = self.active_ops.clone();
         let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
@@ -452,6 +475,7 @@ impl Operator {
         let cache = self.cache.clone();
 
         tokio::spawn(async move {
+            let cx = operation_cx(&cancel, deadline);
             let mut affected = Vec::new();
 
             for src_path in src_paths {
@@ -478,7 +502,7 @@ impl Operator {
                 let file_name = src_path.file_name().unwrap_or_default();
                 let dst_file = dst_path.join(file_name);
 
-                match fs.rename(&src_path, &dst_file).await {
+                match cx.race(fs.scheme(), fs.rename(&src_path, &dst_file, &cx)).await {
                     Ok(()) => {
                         invalidate_parent_cache(&cache, &src_path);
                         invalidate_parent_cache(&cache, &dst_file);
@@ -486,7 +510,10 @@ impl Operator {
                         affected.push(registry.clone().register(dst_file));
                     }
                     Err(e) if is_cross_device(&e) => {
-                        if let Err(e) = fs.copy(&src_path, &dst_file).await {
+                        if let Err(e) = cx
+                            .race(fs.scheme(), fs.copy(&src_path, &dst_file, &cx))
+                            .await
+                        {
                             send_or_warn_async(
                                 &events,
                                 operation_error(e, session, request, operation),
@@ -495,7 +522,7 @@ impl Operator {
                             .await;
                             return;
                         }
-                        if let Err(e) = fs.delete(&src_path).await {
+                        if let Err(e) = cx.race(fs.scheme(), fs.delete(&src_path, &cx)).await {
                             send_or_warn_async(
                                 &events,
                                 operation_error(e, session, request, operation),
@@ -583,6 +610,7 @@ impl Operator {
         }
 
         let cancel = self.arm_operation(session, operation);
+        let deadline = self.default_timeout.map(|t| Instant::now() + t);
         let active = self.active_ops.clone();
         let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
@@ -593,6 +621,7 @@ impl Operator {
         let total = paths.len();
 
         tokio::spawn(async move {
+            let cx = operation_cx(&cancel, deadline);
             let mut affected = Vec::new();
             let mut items_done = 0usize;
 
@@ -624,7 +653,7 @@ impl Operator {
                         .await
                         .unwrap_or_else(|e| Err(CoreError::actor("operator", e.to_string())))
                 } else {
-                    fs.delete(&path).await
+                    cx.race(fs.scheme(), fs.delete(&path, &cx)).await
                 };
 
                 match result {
@@ -741,35 +770,51 @@ impl Operator {
         };
 
         let new_path = parent.join(&new_name);
+        let cancel = self.arm_operation(session, operation);
+        let deadline = self.default_timeout.map(|t| Instant::now() + t);
+        let active = self.active_ops.clone();
+        let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
 
         tokio::spawn(async move {
-            if fs
-                .exists(&new_path, &crate::ProviderCx::none())
-                .await
-                .unwrap_or(true)
-            {
-                send_or_warn_async(
-                    &events,
-                    Event::from_operation_error(
-                        CoreError::collision(
-                            ErrorTarget::Path(src_path.clone()),
-                            ErrorTarget::Path(new_path.clone()),
+            let cx = operation_cx(&cancel, deadline);
+            match cx.race(fs.scheme(), fs.exists(&new_path, &cx)).await {
+                Ok(true) => {
+                    send_or_warn_async(
+                        &events,
+                        Event::from_operation_error(
+                            CoreError::collision(
+                                ErrorTarget::Path(src_path.clone()),
+                                ErrorTarget::Path(new_path.clone()),
+                            ),
+                            session,
+                            request,
+                            operation,
                         ),
-                        session,
-                        request,
-                        operation,
-                    ),
-                    "operator: rename collision",
-                )
-                .await;
-                return;
+                        "operator: rename collision",
+                    )
+                    .await;
+                    return;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    send_or_warn_async(
+                        &events,
+                        operation_error(e, session, request, operation),
+                        "operator: rename exists",
+                    )
+                    .await;
+                    return;
+                }
             }
 
-            if let Err(e) = fs.rename(&src_path, &new_path).await {
+            if let Err(e) = cx
+                .race(fs.scheme(), fs.rename(&src_path, &new_path, &cx))
+                .await
+            {
                 send_or_warn_async(
                     &events,
                     operation_error(e, session, request, operation),
@@ -811,6 +856,8 @@ impl Operator {
                 "operator: rename complete",
             )
             .await;
+            active.remove_if_current(session, &cancel).await;
+            remove_operation_if_current(active_operation_ids, session, operation).await;
         });
     }
 
@@ -837,35 +884,51 @@ impl Operator {
             return;
         };
 
+        let cancel = self.arm_operation(session, operation);
+        let deadline = self.default_timeout.map(|t| Instant::now() + t);
+        let active = self.active_ops.clone();
+        let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
 
         tokio::spawn(async move {
+            let cx = operation_cx(&cancel, deadline);
             let full_path = path.join(name);
-            if fs
-                .exists(&full_path, &crate::ProviderCx::none())
-                .await
-                .unwrap_or(true)
-            {
-                send_or_warn_async(
-                    &events,
-                    Event::from_operation_error(
-                        CoreError::collision(
-                            ErrorTarget::Path(path.clone()),
-                            ErrorTarget::Path(full_path.clone()),
+            match cx.race(fs.scheme(), fs.exists(&full_path, &cx)).await {
+                Ok(true) => {
+                    send_or_warn_async(
+                        &events,
+                        Event::from_operation_error(
+                            CoreError::collision(
+                                ErrorTarget::Path(path.clone()),
+                                ErrorTarget::Path(full_path.clone()),
+                            ),
+                            session,
+                            request,
+                            operation,
                         ),
-                        session,
-                        request,
-                        operation,
-                    ),
-                    "operator: create_file exists",
-                )
-                .await;
-                return;
+                        "operator: create_file exists",
+                    )
+                    .await;
+                    return;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    send_or_warn_async(
+                        &events,
+                        operation_error(e, session, request, operation),
+                        "operator: create_file exists",
+                    )
+                    .await;
+                    return;
+                }
             }
-            if let Err(e) = fs.write(&full_path, &[]).await {
+            if let Err(e) = cx
+                .race(fs.scheme(), fs.write(&full_path, &[], &cx))
+                .await
+            {
                 send_or_warn_async(
                     &events,
                     operation_error(e, session, request, operation),
@@ -905,6 +968,8 @@ impl Operator {
                 "operator: create_file complete",
             )
             .await;
+            active.remove_if_current(session, &cancel).await;
+            remove_operation_if_current(active_operation_ids, session, operation).await;
         });
     }
 
@@ -931,35 +996,48 @@ impl Operator {
             return;
         };
 
+        let cancel = self.arm_operation(session, operation);
+        let deadline = self.default_timeout.map(|t| Instant::now() + t);
+        let active = self.active_ops.clone();
+        let active_operation_ids = self.active_operation_ids.clone();
         let events = self.events.clone();
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
 
         tokio::spawn(async move {
+            let cx = operation_cx(&cancel, deadline);
             let full_path = path.join(name);
-            if fs
-                .exists(&full_path, &crate::ProviderCx::none())
-                .await
-                .unwrap_or(true)
-            {
-                send_or_warn_async(
-                    &events,
-                    Event::from_operation_error(
-                        CoreError::collision(
-                            ErrorTarget::Path(path.clone()),
-                            ErrorTarget::Path(full_path.clone()),
+            match cx.race(fs.scheme(), fs.exists(&full_path, &cx)).await {
+                Ok(true) => {
+                    send_or_warn_async(
+                        &events,
+                        Event::from_operation_error(
+                            CoreError::collision(
+                                ErrorTarget::Path(path.clone()),
+                                ErrorTarget::Path(full_path.clone()),
+                            ),
+                            session,
+                            request,
+                            operation,
                         ),
-                        session,
-                        request,
-                        operation,
-                    ),
-                    "operator: create_folder exists",
-                )
-                .await;
-                return;
+                        "operator: create_folder exists",
+                    )
+                    .await;
+                    return;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    send_or_warn_async(
+                        &events,
+                        operation_error(e, session, request, operation),
+                        "operator: create_folder exists",
+                    )
+                    .await;
+                    return;
+                }
             }
-            if let Err(e) = fs.mkdir(&full_path).await {
+            if let Err(e) = cx.race(fs.scheme(), fs.mkdir(&full_path, &cx)).await {
                 send_or_warn_async(
                     &events,
                     operation_error(e, session, request, operation),
@@ -999,6 +1077,8 @@ impl Operator {
                 "operator: create_folder complete",
             )
             .await;
+            active.remove_if_current(session, &cancel).await;
+            remove_operation_if_current(active_operation_ids, session, operation).await;
         });
     }
 
@@ -1053,7 +1133,7 @@ async fn copy_dir_recursive(
     fs: &Arc<dyn FsProvider>,
     src: &Path,
     dst: &Path,
-    cancel: &CancellationToken,
+    cx: &ProviderCx<'_>,
     events: &Sender<Event>,
     registry: &NodeRegistry,
     session: SessionId,
@@ -1061,22 +1141,22 @@ async fn copy_dir_recursive(
     request: RequestId,
     items_done: &mut usize,
 ) -> Result<(), CoreError> {
-    fs.mkdir(dst).await?;
-    let entries = fs.list(src, &crate::ProviderCx::none()).await?;
+    cx.race(fs.scheme(), fs.mkdir(dst, cx)).await?;
+    let entries = cx.race(fs.scheme(), fs.list(src, cx)).await?;
     for entry in entries {
-        if cancel.is_cancelled() {
+        if cx.cancel.is_some_and(crate::CancelSignal::is_cancelled) {
             return Err(CoreError::cancelled());
         }
         let src_child = src.join(&entry.name);
         let dst_child = dst.join(&entry.name);
         if entry.is_dir() {
             Box::pin(copy_dir_recursive(
-                fs, &src_child, &dst_child, cancel, events, registry, session, operation, request,
+                fs, &src_child, &dst_child, cx, events, registry, session, operation, request,
                 items_done,
             ))
             .await?;
         } else {
-            fs.copy(&src_child, &dst_child).await?;
+            cx.race(fs.scheme(), fs.copy(&src_child, &dst_child, cx)).await?;
             *items_done += 1;
             let id = registry.clone().register(dst_child);
             send_or_warn_async(
