@@ -1838,6 +1838,60 @@ mod scanner_cache_tests {
     }
 
     #[tokio::test]
+    async fn test_same_folder_scan_serves_cached_listing() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("before.txt", "/tmp/same-folder-cache", 10, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner =
+            Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = PathBuf::from("/tmp/same-folder-cache");
+        let first_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: first_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let first_groups = wait_for_dir_loaded(&evt_rx, first_session).await;
+        assert_eq!(first_groups.total_count, 1);
+
+        provider.add_file(make_file("after.txt", "/tmp/same-folder-cache", 20, false));
+
+        let second_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path,
+                session: second_session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let second_groups = wait_for_dir_loaded(&evt_rx, second_session).await;
+
+        assert_eq!(
+            provider.get_list_calls().len(),
+            1,
+            "same-folder scans should reuse the complete cached listing"
+        );
+        assert_eq!(
+            second_groups.total_count, 1,
+            "same-folder scans should emit the cached listing until refreshed"
+        );
+        assert_eq!(second_groups.groups[0].nodes[0].name, "before.txt");
+    }
+
+    #[tokio::test]
     async fn test_scanner_forwards_listing_options_to_provider() {
         let provider = MockProvider::new();
         provider.add_file(make_file("metadata.txt", "/tmp/dir", 10, false));

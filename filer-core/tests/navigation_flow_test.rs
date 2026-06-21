@@ -18,6 +18,7 @@ use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::modules::navigation::NavigationModule;
 use filer_core::modules::scan::ScanModule;
+use filer_core::services::dir_cache::DirCache;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
@@ -49,6 +50,16 @@ impl MockProvider {
             .lock()
             .unwrap()
             .push((dir.into(), children));
+    }
+
+    fn set_dir(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
+        let dir = dir.into();
+        let mut files = self.files_by_path.lock().unwrap();
+        if let Some((_, existing)) = files.iter_mut().find(|(path, _)| *path == dir) {
+            *existing = children;
+        } else {
+            files.push((dir, children));
+        }
     }
 
     fn list_calls(&self) -> Vec<PathBuf> {
@@ -155,7 +166,8 @@ impl FsProvider for MockProvider {
 
 /// Build a wired-up FilerCore with Navigation + Scan modules backed by `provider`.
 fn build_core(provider: MockProvider) -> FilerCore {
-    let scan = ScanModule::new(Arc::new(provider));
+    let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+    let scan = ScanModule::with_cache(Arc::new(provider), cache);
     let nav = NavigationModule::new(scan.sender());
 
     let core = FilerCore::new();
@@ -538,6 +550,53 @@ mod navigation_flow_tests {
         assert!(
             calls_after_refresh > calls_after_nav,
             "Refresh should trigger an additional provider list() call",
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refresh_bypasses_stale_directory_cache() {
+        let provider = MockProvider::new();
+        provider.add_dir(
+            "/fresh",
+            vec![MockProvider::make_file("before.txt", "/fresh", 1)],
+        );
+
+        let core = build_core(provider.clone());
+        let session = create_session(&core).await;
+
+        core.send(Command::NavigatePathCompat {
+            path: PathBuf::from("/fresh"),
+            session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
+        let (_, initial_count) = wait_for_directory_loaded(&core, session).await;
+        assert_eq!(initial_count, 1);
+
+        provider.set_dir(
+            "/fresh",
+            vec![
+                MockProvider::make_file("before.txt", "/fresh", 1),
+                MockProvider::make_file("after.txt", "/fresh", 2),
+            ],
+        );
+
+        core.send(Command::Refresh {
+            session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
+        let (path, refreshed_count) = wait_for_directory_loaded(&core, session).await;
+
+        assert_eq!(path, PathBuf::from("/fresh"));
+        assert_eq!(
+            refreshed_count, 2,
+            "Refresh should emit the provider listing after cache invalidation"
+        );
+        assert_eq!(
+            provider.list_calls().len(),
+            2,
+            "Refresh should bypass the stale cached listing"
         );
     }
 

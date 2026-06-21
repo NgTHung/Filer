@@ -1,7 +1,7 @@
 ---
 id: REL-003
 title: Add cache freshness regression tests
-status: To Do
+status: Done
 priority: High
 type: TestDebt
 parent: CORE-001
@@ -10,7 +10,7 @@ rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY, CORE-MECHANICS-BUILTIN]
 risk: Medium
 impact: "Proves stale directory listings cannot be served after a change or manual refresh."
 tags: [reliability, testing, cache]
-last_updated: 2026-06-17
+last_updated: 2026-06-21
 ---
 
 ## Summary
@@ -19,5 +19,5 @@ Add regression tests proving manual refresh bypasses stale DirCache entries and 
 
 ## Acceptance Criteria
 
-- [ ] A test caches a directory, mutates the filesystem, triggers Refresh, and asserts the fresh listing is returned (stale entry bypassed).
-- [ ] A test asserts same-folder navigation serves the cached listing without re-listing the provider.
+- [x] A test caches a directory, mutates the filesystem, triggers Refresh, and asserts the fresh listing is returned (stale entry bypassed).
+- [x] A test asserts same-folder navigation serves the cached listing without re-listing the provider.
