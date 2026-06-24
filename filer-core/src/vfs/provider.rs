@@ -20,7 +20,7 @@ pub trait ReadSeek: std::io::Read + std::io::BufRead + std::io::Seek + Send {}
 impl<T: std::io::Read + std::io::BufRead + std::io::Seek + Send> ReadSeek for T {}
 
 /// Capabilities of a filesystem provider
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capabilities {
     pub read: bool,
     pub write: bool,

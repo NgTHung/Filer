@@ -1,7 +1,7 @@
 ---
 id: PROVIDER-002
 title: Stabilize provider registry and VFS contracts
-status: In Progress
+status: Done
 priority: Medium
 type: Epic
 depends_on: [VFS-001, CORE-002]
@@ -18,9 +18,9 @@ Stabilize canonical provider addressing and extension-friendly provider contract
 
 ## Exit Criteria
 
-- [ ] Provider profiles and configuration are serializable without portable secrets.
-- [ ] Location is canonical across local, archive, segmented archive, virtual, and extension-backed providers.
-- [ ] Provider connection management uses profile identifiers and capability contracts.
-- [ ] Archive and segmented providers remain provider-backed without requiring remote-provider stubs.
-- [ ] Non-local providers can ship later as extensions without app-specific integration.
+- [x] Provider profiles and configuration are serializable without portable secrets.
+- [x] Location is canonical across local, archive, segmented archive, virtual, and extension-backed providers.
+- [x] Provider connection management uses profile identifiers and capability contracts.
+- [x] Archive and segmented providers remain provider-backed without requiring remote-provider stubs.
+- [x] Non-local providers can ship later as extensions without app-specific integration.
 - [x] S3, WebDAV, SFTP, encrypted providers, FUSE or WinFsp mount adapters, Kubernetes, sync, and cloud-placeholder behavior are deferred until their contracts fit file-manager scope.

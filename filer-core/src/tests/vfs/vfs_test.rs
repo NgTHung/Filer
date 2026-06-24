@@ -983,7 +983,7 @@ mod segmented_location_tests {
     }
 
     #[tokio::test]
-    async fn segmented_resolver_lists_nested_zip_layers_in_order() {
+    async fn segmented_resolver_rejects_nested_zip_layers_until_member_reads_exist() {
         let (fs, dir) = local_fs();
         let archive = dir.path().join("outer.zip");
         let inner = nested_zip_bytes(&[("inner.txt", b"inside")]);
@@ -992,21 +992,12 @@ mod segmented_location_tests {
             .archive_member("nested.zip")
             .archive_member("");
 
-        let entries = SegmentedLocationResolver::new(&fs)
+        let error = SegmentedLocationResolver::new(&fs)
             .list(&location, &crate::ProviderCx::none())
             .await
-            .unwrap();
+            .unwrap_err();
 
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].name, "inner.txt");
-        assert_eq!(
-            entries[0].location.descriptor(),
-            Some(
-                &LocationDescriptor::local(&archive)
-                    .archive_member("nested.zip")
-                    .archive_member("inner.txt")
-            )
-        );
+        assert_eq!(error.code(), ErrorCode::LocationSegmentedUnsupported);
     }
 
     #[tokio::test]
