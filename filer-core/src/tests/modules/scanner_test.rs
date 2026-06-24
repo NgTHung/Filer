@@ -272,6 +272,8 @@ mod scanner_cache_tests {
     use crate::pipeline::{FilterConfig, GroupBy, PipelineConfig};
     use crate::services::dir_cache::DirCache;
     use flume::Receiver;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
 
     const SCAN_TIMEOUT: Duration = Duration::from_millis(2000);
 
@@ -429,6 +431,17 @@ mod scanner_cache_tests {
             events.push(event);
         }
         events
+    }
+
+    fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        for (name, bytes) in entries {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap();
     }
 
     #[tokio::test]
@@ -597,6 +610,108 @@ mod scanner_cache_tests {
                     && snapshot.status == ProgressStatus::Completed
             )
         }));
+    }
+
+    #[tokio::test]
+    async fn test_scan_location_segmented_zip_emits_directory_entries_loaded() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("bundle.zip");
+        write_zip(
+            &archive,
+            &[("src/lib.rs", b"pub fn lib() {}"), ("README.md", b"readme")],
+        );
+
+        let registry = NodeRegistry::new();
+        let provider = crate::LocalFs::new(registry.clone());
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        let descriptor = crate::LocationDescriptor::local(&archive).archive_member("");
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::descriptor_only(descriptor.clone()),
+                session,
+                pipeline: default_pipeline(),
+                load: snapshot_load(),
+                request,
+            })
+            .unwrap();
+
+        let groups = wait_for_location_dir_loaded(&evt_rx, session).await;
+
+        assert_eq!(groups.total_count, 2);
+        let nodes = &groups.groups[0].nodes;
+        let src = nodes.iter().find(|node| node.name == "src").unwrap();
+        assert!(src.capabilities.navigate);
+        assert_eq!(
+            src.location.descriptor(),
+            Some(&crate::LocationDescriptor::local(&archive).archive_member("src"))
+        );
+        let readme = nodes.iter().find(|node| node.name == "README.md").unwrap();
+        assert!(!readme.capabilities.navigate);
+        assert_eq!(
+            readme.location.descriptor(),
+            Some(&crate::LocationDescriptor::local(&archive).archive_member("README.md"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scan_location_segmented_zip_applies_pipeline_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("bundle.zip");
+        write_zip(
+            &archive,
+            &[
+                ("src/lib.rs", b"pub fn lib() {}"),
+                ("main.rs", b"fn main() {}"),
+                ("README.md", b"readme"),
+            ],
+        );
+
+        let registry = NodeRegistry::new();
+        let provider = crate::LocalFs::new(registry.clone());
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let session = SessionId::new();
+        let request = RequestId::new();
+        let descriptor = crate::LocationDescriptor::local(&archive).archive_member("");
+        cmd_tx
+            .send(ScanCommand::ScanLocation {
+                location: LocationRef::descriptor_only(descriptor),
+                session,
+                pipeline: PipelineConfig::default()
+                    .filter(FilterConfig {
+                        show_hidden: true,
+                        ..FilterConfig::only_extensions(vec!["rs".into()])
+                    })
+                    .group_by(GroupBy::Extension),
+                load: snapshot_load(),
+                request,
+            })
+            .unwrap();
+
+        let groups = wait_for_location_dir_loaded(&evt_rx, session).await;
+
+        assert_eq!(groups.total_count, 1);
+        assert_eq!(groups.groups.len(), 1);
+        assert_eq!(groups.groups[0].label, "rs");
+        let nodes = &groups.groups[0].nodes;
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].name, "main.rs");
+        assert!(nodes[0].capabilities.read);
+        assert_eq!(
+            nodes[0].location.descriptor(),
+            Some(&crate::LocationDescriptor::local(&archive).archive_member("main.rs"))
+        );
     }
 
     #[tokio::test]

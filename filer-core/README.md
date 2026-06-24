@@ -69,7 +69,7 @@ Still open:
 
 - canonical command naming for Location-native commands versus path/NodeId
   compatibility commands
-- segmented provider/archive execution
+- non-archive segmented provider execution
 - provider profiles and non-local provider routing
 - mutation-stable cursor sessions for large directories
 - provider-context timeout propagation across provider calls and long-running
@@ -202,9 +202,10 @@ Location-native result events use the canonical event names:
 explicit compatibility variants such as `DirectoryLoadedCompat`,
 `SearchResultsCompat`, `FsChangedCompat`, and `OperationCompleteCompat`.
 
-Segmented and unsupported-provider routes are represented and reported, but not
-executed yet. Nested archives are modeled as a provider root plus ordered
-segments, preserving each VFS boundary for later archive/provider traversal.
+Local ZIP segmented routes execute for navigation and scan. Nested archives are
+resolved in descriptor segment order, and listed archive members carry display,
+target, read, and navigation metadata. Non-archive segments, virtual segments,
+and unsupported providers return structured provider errors.
 
 ### NodeId Surfaces
 

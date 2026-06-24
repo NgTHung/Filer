@@ -624,6 +624,59 @@ mod navigator_actor_tests {
     }
 
     #[tokio::test]
+    async fn test_navigator_segmented_location_navigation_emits_scan_location_and_snapshot() {
+        let (cmd_tx, cmd_rx) = flume::unbounded();
+        let (event_tx, event_rx) = flume::unbounded();
+        let (scanner_tx, scanner_rx) = flume::unbounded();
+        let reg = NodeRegistry::new();
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+
+        tokio::spawn(async move {
+            navigator.run().await;
+        });
+
+        let session = session(1);
+        let descriptor = LocationDescriptor::local("/tmp/bundle.zip").archive_member("src");
+
+        cmd_tx
+            .send(NavCommand::NavigateToLocation {
+                session,
+                location: LocationRef::descriptor_only(descriptor.clone()),
+                request: crate::model::request::RequestId::new(),
+            })
+            .unwrap();
+
+        let scan_cmd = timeout(Duration::from_millis(100), scanner_rx.recv_async())
+            .await
+            .expect("segmented navigation should trigger scan")
+            .expect("scanner channel should not be closed");
+
+        match scan_cmd {
+            ScanCommand::ScanLocation { location, .. } => {
+                assert_eq!(location.descriptor(), Some(&descriptor));
+            }
+            other => panic!("Expected ScanLocation, got {other:?}"),
+        }
+
+        let snapshot = timeout(Duration::from_millis(100), event_rx.recv_async())
+            .await
+            .expect("Should receive nav state snapshot")
+            .expect("Channel should not be closed");
+
+        match snapshot {
+            Event::CurrentNavigateState { state, session: s } => {
+                assert_eq!(s, session);
+                assert_eq!(
+                    state.current_location.as_ref().and_then(|r| r.descriptor()),
+                    Some(&descriptor)
+                );
+                assert!(state.current.is_some());
+            }
+            other => panic!("Expected CurrentNavigateState, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_navigator_refresh_after_location_navigation_uses_refresh_location() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();

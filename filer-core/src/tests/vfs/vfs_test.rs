@@ -4,11 +4,10 @@ use crate::errors::{CoreError, ErrorCode};
 use crate::model::directory::{DirectoryCursor, DirectoryPageRequest};
 use crate::model::node::FileNode;
 use crate::model::registry::NodeRegistry;
-use crate::services::mime::{
-    DetectionConfidence, MimeCategory, MimeDetector, MAGIC_BYTE_WINDOW,
-};
+use crate::services::mime::{DetectionConfidence, MAGIC_BYTE_WINDOW, MimeCategory, MimeDetector};
 use crate::vfs::local::LocalFs;
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
+use crate::vfs::segmented::SegmentedLocationResolver;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -74,7 +73,11 @@ async fn test_local_fs_fast_listing_omits_stat_metadata() {
     std::fs::write(&path, b"hello").unwrap();
 
     let nodes = fs
-        .list_with_options(dir.path(), ListingOptions::fast(), &crate::ProviderCx::none())
+        .list_with_options(
+            dir.path(),
+            ListingOptions::fast(),
+            &crate::ProviderCx::none(),
+        )
         .await
         .unwrap();
     let node = nodes.iter().find(|node| node.name == "fast.txt").unwrap();
@@ -92,7 +95,11 @@ async fn test_local_fs_metadata_listing_populates_stat_metadata() {
     std::fs::write(&path, b"hello").unwrap();
 
     let nodes = fs
-        .list_with_options(dir.path(), ListingOptions::metadata(), &crate::ProviderCx::none())
+        .list_with_options(
+            dir.path(),
+            ListingOptions::metadata(),
+            &crate::ProviderCx::none(),
+        )
         .await
         .unwrap();
     let node = nodes
@@ -111,7 +118,11 @@ async fn test_local_fs_list_with_meta_matches_metadata_listing() {
     std::fs::write(&path, b"hello").unwrap();
 
     let from_options = fs
-        .list_with_options(dir.path(), ListingOptions::metadata(), &crate::ProviderCx::none())
+        .list_with_options(
+            dir.path(),
+            ListingOptions::metadata(),
+            &crate::ProviderCx::none(),
+        )
         .await
         .unwrap();
     let from_compat = fs
@@ -294,7 +305,10 @@ async fn test_local_fs_read_not_found() {
     let reg = NodeRegistry::new();
     let fs = LocalFs::new(reg);
     let result = fs
-        .read(Path::new("/nonexistent/file.txt"), &crate::ProviderCx::none())
+        .read(
+            Path::new("/nonexistent/file.txt"),
+            &crate::ProviderCx::none(),
+        )
         .await;
 
     assert!(result.is_err());
@@ -332,7 +346,12 @@ async fn test_local_fs_read_range_full() {
 
     // Read entire file
     let result = fs
-        .read_range(&temp_file, 0, content.len() as u64, &crate::ProviderCx::none())
+        .read_range(
+            &temp_file,
+            0,
+            content.len() as u64,
+            &crate::ProviderCx::none(),
+        )
         .await;
     assert!(result.is_ok());
 
@@ -417,11 +436,19 @@ async fn test_local_fs_exists() {
     let temp_file = dir.path().join("filer_test_exists.txt");
     std::fs::write(&temp_file, b"test").unwrap();
 
-    assert!(fs.exists(&temp_file, &crate::ProviderCx::none()).await.unwrap());
+    assert!(
+        fs.exists(&temp_file, &crate::ProviderCx::none())
+            .await
+            .unwrap()
+    );
 
     // Cleanup and test non-existing file
     std::fs::remove_file(&temp_file).unwrap();
-    assert!(!fs.exists(&temp_file, &crate::ProviderCx::none()).await.unwrap());
+    assert!(
+        !fs.exists(&temp_file, &crate::ProviderCx::none())
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -431,10 +458,18 @@ async fn test_local_fs_exists_directory() {
     let temp_dir = dir.path().join("filer_test_exists_dir");
     std::fs::create_dir(&temp_dir).unwrap();
 
-    assert!(fs.exists(&temp_dir, &crate::ProviderCx::none()).await.unwrap());
+    assert!(
+        fs.exists(&temp_dir, &crate::ProviderCx::none())
+            .await
+            .unwrap()
+    );
 
     std::fs::remove_dir(&temp_dir).unwrap();
-    assert!(!fs.exists(&temp_dir, &crate::ProviderCx::none()).await.unwrap());
+    assert!(
+        !fs.exists(&temp_dir, &crate::ProviderCx::none())
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -476,7 +511,10 @@ async fn test_local_fs_metadata_not_found() {
     let reg = NodeRegistry::new();
     let fs = LocalFs::new(reg);
     let result = fs
-        .metadata(Path::new("/nonexistent/file.txt"), &crate::ProviderCx::none())
+        .metadata(
+            Path::new("/nonexistent/file.txt"),
+            &crate::ProviderCx::none(),
+        )
         .await;
 
     assert!(result.is_err());
@@ -642,9 +680,7 @@ async fn test_mock_fs_read_range() {
 
     fs.add_file(path.clone(), content);
 
-    let result = fs
-        .read_range(&path, 3, 4, &crate::ProviderCx::none())
-        .await;
+    let result = fs.read_range(&path, 3, 4, &crate::ProviderCx::none()).await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), b"3456");
 }
@@ -814,9 +850,7 @@ mod write_tests {
         fs.write(&path, b"data", &crate::ProviderCx::none())
             .await
             .unwrap();
-        fs.delete(&path, &crate::ProviderCx::none())
-            .await
-            .unwrap();
+        fs.delete(&path, &crate::ProviderCx::none()).await.unwrap();
 
         assert!(!path.exists());
     }
@@ -832,9 +866,7 @@ mod write_tests {
             .await
             .unwrap();
 
-        fs.delete(&root, &crate::ProviderCx::none())
-            .await
-            .unwrap();
+        fs.delete(&root, &crate::ProviderCx::none()).await.unwrap();
 
         assert!(!root.exists());
     }
@@ -853,9 +885,7 @@ mod write_tests {
         let (fs, dir) = fs();
         let path = dir.path().join("new_dir");
 
-        fs.mkdir(&path, &crate::ProviderCx::none())
-            .await
-            .unwrap();
+        fs.mkdir(&path, &crate::ProviderCx::none()).await.unwrap();
 
         assert!(path.exists());
         assert!(path.is_dir());
@@ -866,9 +896,7 @@ mod write_tests {
         let (fs, dir) = fs();
         let path = dir.path().join("a").join("b").join("c");
 
-        fs.mkdir(&path, &crate::ProviderCx::none())
-            .await
-            .unwrap();
+        fs.mkdir(&path, &crate::ProviderCx::none()).await.unwrap();
 
         assert!(path.exists());
         assert!(path.is_dir());
@@ -883,6 +911,134 @@ mod write_tests {
         let result = fs.mkdir(&path, &crate::ProviderCx::none()).await;
 
         assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod segmented_location_tests {
+    use super::*;
+    use crate::model::location::{LocationDescriptor, LocationSegment};
+    use crate::model::node::NodeKind;
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        for (name, bytes) in entries {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    fn nested_zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = zip::ZipWriter::new(cursor);
+        let options = SimpleFileOptions::default();
+        for (name, bytes) in entries {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    #[tokio::test]
+    async fn segmented_resolver_lists_zip_root_with_target_locations() {
+        let (fs, dir) = local_fs();
+        let archive = dir.path().join("bundle.zip");
+        write_zip(
+            &archive,
+            &[("src/main.rs", b"fn main() {}"), ("README.md", b"readme")],
+        );
+        let location = LocationDescriptor::local(&archive).archive_member("");
+
+        let entries = SegmentedLocationResolver::new(&fs)
+            .list(&location, &crate::ProviderCx::none())
+            .await
+            .unwrap();
+
+        assert_eq!(entries.len(), 2);
+        let src = entries.iter().find(|entry| entry.name == "src").unwrap();
+        assert!(matches!(src.kind, NodeKind::Directory { .. }));
+        assert!(src.capabilities.read);
+        assert!(src.capabilities.navigate);
+        assert_eq!(
+            src.location.descriptor(),
+            Some(&LocationDescriptor::local(&archive).archive_member("src"))
+        );
+
+        let readme = entries
+            .iter()
+            .find(|entry| entry.name == "README.md")
+            .unwrap();
+        assert!(matches!(readme.kind, NodeKind::File { .. }));
+        assert!(readme.capabilities.read);
+        assert!(!readme.capabilities.navigate);
+        assert_eq!(
+            readme.location.descriptor(),
+            Some(&LocationDescriptor::local(&archive).archive_member("README.md"))
+        );
+    }
+
+    #[tokio::test]
+    async fn segmented_resolver_lists_nested_zip_layers_in_order() {
+        let (fs, dir) = local_fs();
+        let archive = dir.path().join("outer.zip");
+        let inner = nested_zip_bytes(&[("inner.txt", b"inside")]);
+        write_zip(&archive, &[("nested.zip", &inner)]);
+        let location = LocationDescriptor::local(&archive)
+            .archive_member("nested.zip")
+            .archive_member("");
+
+        let entries = SegmentedLocationResolver::new(&fs)
+            .list(&location, &crate::ProviderCx::none())
+            .await
+            .unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "inner.txt");
+        assert_eq!(
+            entries[0].location.descriptor(),
+            Some(
+                &LocationDescriptor::local(&archive)
+                    .archive_member("nested.zip")
+                    .archive_member("inner.txt")
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn segmented_resolver_rejects_virtual_segments_as_structured_error() {
+        let (fs, dir) = local_fs();
+        let archive = dir.path().join("bundle.zip");
+        write_zip(&archive, &[("README.md", b"readme")]);
+        let location = LocationDescriptor::local(&archive).with_segment(LocationSegment::Virtual {
+            scheme: "git".to_string(),
+            path: PathBuf::from("HEAD"),
+        });
+
+        let error = SegmentedLocationResolver::new(&fs)
+            .list(&location, &crate::ProviderCx::none())
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code(), ErrorCode::LocationSegmentedUnsupported);
+    }
+
+    #[tokio::test]
+    async fn segmented_resolver_rejects_non_local_provider_as_structured_error() {
+        let fs = MockFs::new();
+        let location = LocationDescriptor::provider_profile("s3", "assets", "bucket/archive.zip")
+            .archive_member("");
+
+        let error = SegmentedLocationResolver::new(&fs)
+            .list(&location, &crate::ProviderCx::none())
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.code(), ErrorCode::UnsupportedProvider);
     }
 }
 

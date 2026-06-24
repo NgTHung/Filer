@@ -1,5 +1,6 @@
 use flume::{Receiver, Sender};
 use rapidhash::fast::RandomState;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -7,8 +8,10 @@ use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
 use crate::errors::{CoreError, ErrorCode};
+use crate::model::directory::DirectoryLoadState;
 use crate::model::directory::{DirectoryLoadOptions, DirectoryPageResult};
 use crate::model::location::{LocationId, LocationRef, LocationRoute};
+use crate::model::node::NodeEntry;
 use crate::model::node::NodeId;
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
@@ -16,11 +19,13 @@ use crate::model::progress::{
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
+use crate::pipeline::{EntryGroup, GroupedEntries, GroupedNodes};
 use crate::pipeline::{Pipeline, PipelineConfig, effective_listing};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
+use crate::vfs::segmented::SegmentedLocationResolver;
 
 use super::paging::{PageLoad, PagingSessions};
 
@@ -211,7 +216,18 @@ impl Scanner {
         let route = location.route();
         let path = match &route {
             LocationRoute::DirectPath { path } => path.clone(),
-            LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => {
+            LocationRoute::Segmented { .. } => {
+                self.dispatch_segmented_location_scan(
+                    location,
+                    session,
+                    pipeline_config,
+                    load_options,
+                    invalidate_cache,
+                    request,
+                );
+                return;
+            }
+            LocationRoute::UnsupportedProvider { .. } => {
                 let error = route.require_direct_path().unwrap_err();
                 send_or_warn(
                     &self.events_sender,
@@ -231,6 +247,43 @@ impl Scanner {
             Some(LocationRef::from_location(&location)),
             Some(location.id()),
         );
+    }
+
+    fn dispatch_segmented_location_scan(
+        &self,
+        location: crate::Location,
+        session: SessionId,
+        pipeline_config: PipelineConfig,
+        load_options: DirectoryLoadOptions,
+        _invalidate_cache: bool,
+        request: RequestId,
+    ) {
+        let provider = self.provider.clone();
+        let events = self.events_sender.clone();
+        let active_scans = self.active_scans.clone();
+        let latest_scans = self.latest_scans.clone();
+        let descriptor = location.descriptor().clone();
+        let parent = LocationRef::from_location(&location);
+
+        let _ = self.latest_scans.remove_sync(&session);
+        let _ = self.latest_scans.insert_sync(session, request);
+        let cancel = active_scans.arm(session);
+        tokio::spawn(async move {
+            Self::scan_segmented_location(
+                &provider,
+                &events,
+                descriptor,
+                parent,
+                session,
+                pipeline_config,
+                load_options,
+                &cancel,
+                request,
+                &latest_scans,
+            )
+            .await;
+            active_scans.remove_if_current(session, &cancel).await;
+        });
     }
 
     async fn scan_directory(
@@ -791,6 +844,126 @@ impl Scanner {
         .await;
     }
 
+    async fn scan_segmented_location(
+        provider: &Arc<dyn FsProvider>,
+        events: &Sender<Event>,
+        descriptor: crate::LocationDescriptor,
+        parent: LocationRef,
+        session: SessionId,
+        pipeline_config: PipelineConfig,
+        load_options: DirectoryLoadOptions,
+        cancel: &CancellationToken,
+        request: RequestId,
+        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
+    ) {
+        let target_path = descriptor.display_path();
+        let target = std::path::Path::new(&target_path);
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Started,
+                ProgressPhase::Loading,
+                ProgressUnit::Step,
+                0,
+                None,
+                Self::scan_target(target, Some(&parent)),
+            ),
+        )
+        .await;
+
+        let cx = ProviderCx::with_cancel(cancel);
+        let entries = match cx
+            .race(
+                provider.scheme(),
+                SegmentedLocationResolver::new(provider.as_ref()).list(&descriptor, &cx),
+            )
+            .await
+        {
+            Ok(entries) => entries,
+            Err(e) if e.code() == ErrorCode::Cancelled => {
+                Self::emit_scan_progress(
+                    events,
+                    latest_scans,
+                    session,
+                    request,
+                    ProgressSnapshot::new(
+                        ProgressStatus::Cancelled,
+                        ProgressPhase::Loading,
+                        ProgressUnit::Entry,
+                        0,
+                        None,
+                        Self::scan_target(target, Some(&parent)),
+                    ),
+                )
+                .await;
+                return;
+            }
+            Err(e) => {
+                if Self::is_latest(latest_scans, session, request) {
+                    Self::emit_scan_progress(
+                        events,
+                        latest_scans,
+                        session,
+                        request,
+                        ProgressSnapshot::new(
+                            ProgressStatus::Failed,
+                            ProgressPhase::Loading,
+                            ProgressUnit::Entry,
+                            0,
+                            None,
+                            Self::scan_target(target, Some(&parent)),
+                        ),
+                    )
+                    .await;
+                    send_or_warn_async(
+                        events,
+                        Event::from_request_error(e, session, request),
+                        "scan segmented error",
+                    )
+                    .await;
+                }
+                return;
+            }
+        };
+
+        if cancel.is_cancelled() || !Self::is_latest(latest_scans, session, request) {
+            return;
+        }
+
+        let groups = grouped_entries(entries, &pipeline_config);
+        let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
+        send_or_warn_async(
+            events,
+            Event::DirectoryLoaded {
+                parent,
+                groups,
+                load,
+                session,
+                request,
+            },
+            "scan segmented result",
+        )
+        .await;
+        Self::emit_scan_progress(
+            events,
+            latest_scans,
+            session,
+            request,
+            ProgressSnapshot::new(
+                ProgressStatus::Completed,
+                ProgressPhase::Finalizing,
+                ProgressUnit::Entry,
+                load.loaded_count,
+                load.total_count,
+                Self::scan_target(target, None),
+            ),
+        )
+        .await;
+    }
+
     async fn emit_page_result(
         events: &Sender<Event>,
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
@@ -927,6 +1100,77 @@ impl Scanner {
         self.active_scans.cancel(session);
         self.paging.clear_session(session);
     }
+}
+
+fn grouped_entries(entries: Vec<NodeEntry>, pipeline_config: &PipelineConfig) -> GroupedEntries {
+    let mut by_node = HashMap::<NodeId, VecDeque<NodeEntry>>::new();
+    let nodes = entries
+        .into_iter()
+        .map(|entry| {
+            let node = entry.to_file_node();
+            by_node.entry(entry.id).or_default().push_back(entry);
+            node
+        })
+        .collect();
+    let grouped = Pipeline::from_config(pipeline_config).execute_grouped(nodes);
+    entries_from_grouped_nodes(grouped, by_node)
+}
+
+fn entries_from_grouped_nodes(
+    grouped: GroupedNodes,
+    mut by_node: HashMap<NodeId, VecDeque<NodeEntry>>,
+) -> GroupedEntries {
+    let total_count = grouped.total_count;
+    GroupedEntries {
+        groups: grouped
+            .groups
+            .into_iter()
+            .map(|group| EntryGroup {
+                label: group.label,
+                nodes: group
+                    .nodes
+                    .into_iter()
+                    .filter_map(|node| by_node.get_mut(&node.id).and_then(VecDeque::pop_front))
+                    .collect(),
+                order: group.order,
+            })
+            .collect(),
+        total_count,
+    }
+}
+
+fn limited_entries(
+    mut grouped: GroupedEntries,
+    limit: Option<usize>,
+) -> (GroupedEntries, DirectoryLoadState) {
+    let total_count = grouped.total_count;
+    let Some(limit) = limit else {
+        return (grouped, DirectoryLoadState::complete(total_count));
+    };
+
+    let mut remaining = limit;
+    let mut loaded_count = 0;
+    let mut groups = Vec::new();
+    for mut group in grouped.groups {
+        if remaining == 0 {
+            break;
+        }
+        if group.nodes.len() > remaining {
+            group.nodes.truncate(remaining);
+        }
+        let group_count = group.nodes.len();
+        if group_count > 0 {
+            loaded_count += group_count;
+            remaining -= group_count;
+            groups.push(group);
+        }
+    }
+    grouped.groups = groups;
+    grouped.total_count = loaded_count;
+    (
+        grouped,
+        DirectoryLoadState::from_counts(loaded_count, total_count),
+    )
 }
 
 impl Actor for Scanner {

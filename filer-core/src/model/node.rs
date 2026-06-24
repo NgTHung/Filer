@@ -48,6 +48,8 @@ pub struct FileNode {
 pub struct NodeEntry {
     pub id: NodeId,
     pub location: LocationRef,
+    pub display_path: Option<String>,
+    pub capabilities: NodeEntryCapabilities,
     pub name: String,
     pub kind: NodeKind,
     pub size: u64,
@@ -55,6 +57,12 @@ pub struct NodeEntry {
     pub created: Option<SystemTime>,
     pub accessed: Option<SystemTime>,
     pub meta: NodeMeta,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NodeEntryCapabilities {
+    pub read: bool,
+    pub navigate: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -374,6 +382,11 @@ impl NodeEntry {
         Self {
             id: node.id,
             location,
+            display_path: None,
+            capabilities: NodeEntryCapabilities {
+                read: true,
+                navigate: node.is_dir(),
+            },
             name: node.name,
             kind: node.kind,
             size: node.size,
@@ -388,6 +401,21 @@ impl NodeEntry {
         Self::from_file_node_with_location(node, LocationRef::from_location(&location))
     }
 
+    pub fn with_display_path(mut self, display_path: impl Into<String>) -> Self {
+        self.display_path = Some(display_path.into());
+        self
+    }
+
+    pub fn with_readable(mut self, readable: bool) -> Self {
+        self.capabilities.read = readable;
+        self
+    }
+
+    pub fn with_navigable(mut self, navigable: bool) -> Self {
+        self.capabilities.navigate = navigable;
+        self
+    }
+
     pub fn is_dir(&self) -> bool {
         matches!(self.kind, NodeKind::Directory { .. })
     }
@@ -400,6 +428,24 @@ impl NodeEntry {
         match &self.kind {
             NodeKind::File { extension } => extension.as_deref(),
             _ => None,
+        }
+    }
+
+    pub(crate) fn to_file_node(&self) -> FileNode {
+        FileNode {
+            id: self.id,
+            name: self.name.clone(),
+            path: self
+                .display_path
+                .as_ref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(self.name.clone())),
+            kind: self.kind.clone(),
+            size: self.size,
+            modified: self.modified,
+            created: self.created,
+            accessed: self.accessed,
+            meta: self.meta.clone(),
         }
     }
 }

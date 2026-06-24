@@ -387,25 +387,29 @@ impl Navigator {
                     }
                 };
                 let route = location.route();
-                let path = match &route {
-                    LocationRoute::DirectPath { path } => path.clone(),
-                    LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => {
+                let node = match &route {
+                    LocationRoute::DirectPath { .. } => {
+                        match self.register.register_location_node(location.clone()) {
+                            Ok(node) => node,
+                            Err(error) => {
+                                send_or_warn(
+                                    &self.events,
+                                    Event::from_request_error(error, session, request),
+                                    "navigate register",
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    LocationRoute::Segmented { .. } => self
+                        .register
+                        .register_segmented_location_node(location.clone()),
+                    LocationRoute::UnsupportedProvider { .. } => {
                         let error = route.require_direct_path().unwrap_err();
                         send_or_warn(
                             &self.events,
                             Event::from_request_error(error, session, request),
                             "navigate route",
-                        );
-                        return;
-                    }
-                };
-                let node = match self.register.register_location_node(location.clone()) {
-                    Ok(node) => node,
-                    Err(error) => {
-                        send_or_warn(
-                            &self.events,
-                            Event::from_request_error(error, session, request),
-                            "navigate register",
                         );
                         return;
                     }
@@ -427,7 +431,9 @@ impl Navigator {
                         );
                     })
                     .await;
-                self.register.clone().register(path);
+                if let LocationRoute::DirectPath { path } = route {
+                    self.register.clone().register(path);
+                }
                 self.emit_snapshot(session);
             }
             NavCommand::Back(session_id, request) => {

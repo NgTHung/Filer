@@ -27,7 +27,7 @@ pub use model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
     ProviderRef,
 };
-pub use model::node::{FileNode, NodeEntry, NodeMeta};
+pub use model::node::{FileNode, NodeEntry, NodeEntryCapabilities, NodeMeta};
 pub use model::operation::{
     OperationConflictPolicy, OperationConflictResolution, OperationId, OperationKind,
     OperationProviderGuarantee, OperationUndoMode, OperationUndoRecord,
@@ -47,6 +47,7 @@ pub use services::preview::{ArchivePreviewEntry, PreviewData, PreviewOptions, Pr
 pub use vfs::context::ProviderCx;
 pub use vfs::local::LocalFs;
 pub use vfs::provider::{Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging};
+pub use vfs::segmented::SegmentedLocationResolver;
 
 // Actor infrastructure
 pub use actors::Actor;

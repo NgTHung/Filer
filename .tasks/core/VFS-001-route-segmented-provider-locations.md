@@ -1,7 +1,7 @@
 ---
 id: VFS-001
 title: Route segmented provider locations
-status: To Do
+status: Done
 priority: High
 type: Feature
 parent: CORE-001
@@ -10,7 +10,7 @@ rules: [PROVIDER-ACCESS, SESSION-BOUNDARY]
 risk: High
 impact: "Extends navigation across archives and layered provider locations."
 tags: [vfs, location, archive]
-last_updated: 2026-06-06
+last_updated: 2026-06-24
 ---
 
 ## Summary
@@ -19,7 +19,7 @@ Build provider routing and navigation over ordered Location segments.
 
 ## Acceptance Criteria
 
-- [ ] Segmented descriptors carry capability, display, and target metadata.
-- [ ] Archive members are navigable provider locations rather than preview-only entries.
-- [ ] Nested archive and provider layers resolve in order.
-- [ ] Unsupported routes return structured provider errors.
+- [x] Segmented descriptors carry capability, display, and target metadata.
+- [x] Archive members are navigable provider locations rather than preview-only entries.
+- [x] Nested archive and provider layers resolve in order.
+- [x] Unsupported routes return structured provider errors.

@@ -167,6 +167,14 @@ impl NodeRegistry {
         Ok(id)
     }
 
+    pub fn register_segmented_location_node(&self, location: Location) -> NodeId {
+        let id = NodeId::from_path(Path::new(&location.descriptor().display_path()));
+        let descriptor = location.descriptor().clone();
+        self.register_location(location);
+        let _ = self.id_to_node_location.insert_sync(id, descriptor);
+        id
+    }
+
     pub fn resolve_location(&self, id: LocationId) -> Option<LocationDescriptor> {
         self.id_to_location.read_sync(&id, |_, v| v.clone())
     }

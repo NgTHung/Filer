@@ -527,3 +527,34 @@ fn segmented_descriptor_round_trips_through_serde() {
         LocationId::from_descriptor(&descriptor)
     );
 }
+
+#[test]
+fn node_entry_can_carry_segmented_display_and_navigation_metadata() {
+    let descriptor = LocationDescriptor::local("/tmp/bundle.zip")
+        .archive_member("src")
+        .with_display_path("/tmp/bundle.zip!/src");
+    let location = Location::new(descriptor.clone());
+    let node = FileNode {
+        id: NodeId(42),
+        name: "src".to_string(),
+        path: PathBuf::from("/tmp/bundle.zip!/src"),
+        kind: NodeKind::Directory {
+            children_count: None,
+        },
+        size: 0,
+        modified: None,
+        created: None,
+        accessed: None,
+        meta: NodeMeta::default(),
+    };
+
+    let entry = NodeEntry::from_location(location, node)
+        .with_display_path("/tmp/bundle.zip!/src")
+        .with_readable(true)
+        .with_navigable(true);
+
+    assert_eq!(entry.display_path.as_deref(), Some("/tmp/bundle.zip!/src"));
+    assert!(entry.capabilities.read);
+    assert!(entry.capabilities.navigate);
+    assert_eq!(entry.location.descriptor(), Some(&descriptor));
+}

@@ -1,7 +1,7 @@
 ---
 id: PROVIDER-002
 title: Expand provider and virtual filesystem support
-status: To Do
+status: In Progress
 priority: Medium
 type: Epic
 depends_on: [VFS-001, CORE-002]
@@ -9,7 +9,7 @@ rules: [PROVIDER-ACCESS, CORE-LIBRARY]
 risk: High
 impact: "Adds persistent remote, archive, encrypted, and virtual provider capabilities."
 tags: [provider, vfs, remote]
-last_updated: 2026-06-06
+last_updated: 2026-06-24
 ---
 
 ## Summary
