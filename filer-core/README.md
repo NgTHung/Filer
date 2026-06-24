@@ -26,9 +26,9 @@ semantic outputs. Clients decide how to render those outputs.
 |---|---|
 | `api/` | Public commands, events, and handle |
 | `model/` | Shared data types |
-| `actors/` | Scanner, searcher, watcher, previewer, and operation workers |
-| `bus/` | Message routing |
-| `vfs/` | Provider and filesystem abstraction |
+| `actors/` | Shared actor infrastructure |
+| `modules/` | Navigation, scan, search, watch, preview, operation, and extension workers |
+| `vfs/` | Provider contracts, local filesystem access, watching, and segmented archive routing |
 | `pipeline/` | Filter, sort, group, and paging policy |
 | `services/` | MIME, metadata, preview, and cache services |
 | `utils/` | Shared helpers |
@@ -40,9 +40,9 @@ app rewrite or full extension runtime.
 
 Completed:
 
-- request ids and stale-result guards for ScanPathCompat, SearchNodeCompat, preview, metadata, and
+- request ids and stale-result guards for scan, search, preview, metadata, and
   refresh flows
-- operation ids for CopyNodeCompat, MoveNodeCompat, DeleteNodeCompat, RenameNodeCompat, create file, and create folder
+- operation ids for copy, move, delete, rename, create file, and create folder
 - structured app-facing errors with stable `ErrorCode`, optional `ErrorTarget`,
   request/operation correlation, and `tracing` emission
 - explicit cancellation commands: `CancelSearch`, `CancelScan`, `CancelPreview`,
@@ -50,9 +50,9 @@ Completed:
 - `Cancelled` and `TimedOut` error codes for client branching
 - provider-aware `Location` primitives: `LocationId`, `LocationDescriptor`,
   `LocationRef`, `LocationRoute`, `LocationSegment`, and `ProviderRef`
-- Location-aware navigation, ScanPathCompat, SearchNodeCompat, preview, metadata, cache reuse, and
+- Location-aware navigation, scan, search, preview, metadata, cache reuse, and
   refresh paths for direct local providers
-- Location-native result events for directory listings, pages, SearchNodeCompat results,
+- Location-native result events for directory listings, pages, search results,
   watcher changes, operation completion, preview results, and metadata results
 - directory load contracts through `ListingOptions`, `DirectoryLoadOptions`,
   `DirectoryLoadState`, provider pages, cursors, and page result events
@@ -61,21 +61,23 @@ Completed:
 - write-operation cache invalidation for affected parents and stale directory
   subtrees
 - Location-native direct-local watcher and write commands/events
-- capability checks for Location-native WatchNodeCompat and write routing
+- capability checks for Location-native watch and write routing
 - explicit `*Compat` event variants for legacy `NodeId` and `FileNode` result
   surfaces
 
 Still open:
 
-- canonical command naming for Location-native commands versus path/NodeId
-  compatibility commands
-- non-archive segmented provider execution
+- provider registry and profile-backed provider resolution
 - provider profiles and non-local provider routing
 - mutation-stable cursor sessions for large directories
-- provider-context timeout propagation across provider calls and long-running
-  tasks
 - extension output envelopes and a first git decoration prototype
 - versioned protocol envelopes, events, and server transport
+
+Deferred:
+
+- concrete S3, WebDAV, SFTP, encrypted, Kubernetes, sync, and cloud-placeholder providers
+- OS mount adapters such as FUSE or WinFsp
+- non-archive virtual segment execution beyond the current structured errors
 
 ## Directory Loading
 
@@ -122,9 +124,9 @@ Invalidation rules:
 - subtree invalidation removes the exact path, cached descendants, and their
   Location aliases
 - create file/folder invalidates the parent
-- CopyNodeCompat invalidates the destination parent
-- MoveNodeCompat invalidates source and destination parents
-- directory MoveNodeCompat, DeleteNodeCompat, and RenameNodeCompat also invalidate the old subtree
+- copy invalidates the destination parent
+- move invalidates source and destination parents
+- directory move, delete, and rename also invalidate the old subtree
 
 Only complete snapshots are cached as complete listings. Partial pages are not
 cached as complete directory listings, though later pages may be served from an
@@ -138,11 +140,11 @@ it.
 ## Request And Operation IDs
 
 `RequestId` tracks async user intent for navigation-driven scans, refresh,
-SearchNodeCompat, preview, metadata, and extended metadata. Matching events echo the id.
+search, preview, metadata, and extended metadata. Matching events echo the id.
 Actors suppress stale result events when an older request finishes after a newer
 one for the same session.
 
-`OperationId` tracks file operations. CopyNodeCompat, MoveNodeCompat, DeleteNodeCompat, RenameNodeCompat, create file,
+`OperationId` tracks file operations. Copy, move, delete, rename, create file,
 and create folder echo the operation id on progress, completion, and
 operation-scoped errors.
 
@@ -177,7 +179,7 @@ Important types:
 - `LocationRoute`: routing classification for direct local, segmented, or
   unsupported provider routes
 - `NodeEntry`: preferred public row shape for Location-native listing and
-  SearchNodeCompat results
+  search results
 
 Transport rule:
 
@@ -205,7 +207,9 @@ explicit compatibility variants such as `DirectoryLoadedCompat`,
 Local ZIP segmented routes execute for navigation and scan. Nested archives are
 resolved in descriptor segment order, and listed archive members carry display,
 target, read, and navigation metadata. Non-archive segments, virtual segments,
-and unsupported providers return structured provider errors.
+and unsupported providers return structured provider errors. Concrete remote
+providers, encrypted providers, Kubernetes, sync, cloud-placeholder providers,
+and OS mount adapters are not part of the current `filer-core` provider surface.
 
 ### NodeId Surfaces
 
@@ -280,7 +284,7 @@ return `LocationSegmentedUnsupported`; unsupported provider references return
 Long-running work reports `Event::ProgressUpdated` with a `ProgressScope` and
 `ProgressSnapshot`.
 
-- ScanPathCompat progress is request-scoped
+- scan progress is request-scoped
 - operation progress is request- and operation-scoped
 - page completion is described by `DirectoryPageState`
 - snapshot completeness is described by `DirectoryLoadState`

@@ -26,7 +26,7 @@ Per-session view settings also live in core as `PipelineConfig` (`filer-core/src
 
 A location names its provider through `ProviderRef` in `filer-core/src/model/location.rs`. It has three forms. `Local` is the operating system filesystem. `Profile(name)` points at a named provider profile resolved at runtime. `Ephemeral(name)` is a session-local identity that is valid only for runtime lookup and must not be persisted unless its descriptor can be rebuilt next session.
 
-Provider secrets live only in `filer-core` runtime configs and only while a session runs. The configs in `filer-core/src/vfs/` hold credential fields directly: `secret_key`, `session_token`, and `access_key` in `s3.rs`, `password` and `bearer_token` in `webdav.rs`, `password` and `private_key` in `ftp.rs`, and `password` in `remote.rs`. You construct these per session from a credential source. They are runtime state, not portable state.
+Provider secrets live only in `filer-core` runtime configs and only while a session runs. Future provider implementations must resolve credentials from a runtime credential source, then keep those values out of portable profile state and sync state. Runtime provider configs may hold credentials in memory while a session needs them, but they must not become the durable identity for a profile.
 
 The rule that protects users: a secret must never enter portable or sync state. The portable side references a provider by id only, never by credential. When you add a provider or a new credential field, resolve the secret at runtime and keep it out of anything that serializes to disk for sync.
 

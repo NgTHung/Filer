@@ -8,7 +8,7 @@ Current milestone: `0.3.0`.
 
 ```
 filer/
-├── filer-core/         # Core library (actors, VFS, SearchNodeCompat, preview)
+├── filer-core/         # Core library (actors, VFS, search, preview)
 ├── filer-app/          # Iced-based GUI application
 └── filer-ecosystem/    # Extension contracts, packages, profile sync
 ```
@@ -17,7 +17,7 @@ filer/
 
 - **Actor-based**: Independent workers communicate via message passing
 - **Async-first**: Non-blocking operations, streaming results
-- **Abstracted VFS**: Support for local files, archives, and more
+- **Abstracted VFS**: Local files and archive segments behind provider contracts
 - **Extension-aware**: Extensions can enrich core results with semantic data
   such as git status, file decorations, metadata, commands, previews, and
   provider capabilities.
@@ -26,7 +26,7 @@ filer/
 
 Filer's extension system is meant to improve the file-manager mechanics, not
 replace the core product. `filer-core` remains responsible for dependable
-navigation, scanning, SearchNodeCompat, file operations, provider access, sessions,
+navigation, scanning, search, file operations, provider access, sessions,
 pipeline state, and event routing.
 
 Extensions run through core-controlled contracts and produce structured,
@@ -38,7 +38,7 @@ UI framework.
 
 The near-term priority is core contract stabilization, not a full plugin
 platform or app rewrite. Request identity and stale-event guards are now in
-place for ScanPathCompat, SearchNodeCompat, preview, refresh, and their direct-path `Location`
+place for scan, search, preview, refresh, and their direct-path `Location`
 entrypoints, and file operations now emit correlated operation progress,
 completion, and error events. App-facing errors now carry `ErrorKind`, stable
 `ErrorCode`, optional `ErrorTarget`, and a recoverability flag derived from the
@@ -56,7 +56,7 @@ ordered `LocationSegment` layers. `LocationId` hashes the root plus ordered
 segments, but not display text. `LocationRoute` now classifies descriptors as
 direct local paths, segmented locations, or unsupported provider routes, with a
 derived route cache in the registry. Direct local `Location` commands are wired
-through API routing for navigation, ScanPathCompat, SearchNodeCompat, preview, metadata, and
+through API routing for navigation, scan, search, preview, metadata, and
 extended metadata, and the actor tests now check cancellation, stale-result
 suppression, cache reuse, and refresh behavior for those paths. Local file
 listing now has explicit load options: default scans request a fast provider
@@ -69,15 +69,16 @@ Filter-only page requests for hidden-file and extension include/exclude filters
 now stay incremental instead of forcing full directory materialization. The
 default core composition now routes watcher events for watched roots into
 navigation invalidation, so current directory refreshes bypass stale scanner
-cache after external file changes. Location-native read, WatchNodeCompat, write, preview,
+cache after external file changes. Location-native read, watch, write, preview,
 and metadata result events now occupy the canonical event names; legacy
 `PathBuf`, `NodeId`, and `FileNode` result events remain as explicit
 compatibility variants. Command names have not fully caught up yet. The intent
-is for `Location` to become the bridge across local files, remote providers,
-virtual providers, extension-backed providers, and archives. Nested archive
-addresses can now be modeled as a provider root plus archive/member segments
-instead of forcing every layer into one path string. Archive navigation and
-wire-safe transport envelopes remain future work.
+is for `Location` to become the bridge across local files, archives, virtual
+providers, and future extension-backed providers. Nested archive addresses can
+now be modeled as a provider root plus archive/member segments instead of
+forcing every layer into one path string. Concrete remote providers, mount
+adapters, Kubernetes, sync, and cloud-placeholder behavior are deferred until
+their contracts fit file-manager scope.
 
 Extensions should be introduced through one complete vertical slice before the
 platform grows wider. The reference slice is git file decorations: core exposes

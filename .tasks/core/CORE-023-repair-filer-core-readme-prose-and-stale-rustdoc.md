@@ -1,14 +1,14 @@
 ---
 id: CORE-023
 title: Repair filer-core README prose and stale rustdoc
-status: To Do
+status: Done
 priority: Medium
 type: Docs
 parent: CORE-004
 risk: Low
 impact: "The READMEs are the first thing a contributor reads and currently read as machine noise."
 tags: [core, audit, remediation, docs]
-last_updated: 2026-06-13
+last_updated: 2026-06-24
 ---
 
 ## Summary
@@ -17,6 +17,6 @@ A command-rename find-and-replace pass corrupted README prose, replacing ordinar
 
 ## Acceptance Criteria
 
-- [ ] README.md and filer-core/README.md prose use plain verbs; *Compat names remain only where a sentence genuinely names a command variant, and the command tables are untouched.
-- [ ] The filer-core/README.md Modules table drops bus/, adds modules/, and places the workers under modules/ with actors/ as infrastructure.
-- [ ] The stale # TODO rustdoc section on vfs/local.rs:214 is removed or replaced with a one-line WHY note.
+- [x] README.md and filer-core/README.md prose use plain verbs; *Compat names remain only where a sentence genuinely names a command variant, and the command tables are untouched.
+- [x] The filer-core/README.md Modules table drops bus/, adds modules/, and places the workers under modules/ with actors/ as infrastructure.
+- [x] The stale # TODO rustdoc section on vfs/local.rs:214 is removed or replaced with a one-line WHY note.

@@ -4,6 +4,10 @@ This directory holds the filer-core architecture and code-quality audit reports 
 epic `CORE-004`, plus later review-only backlog reports. These documents do not change
 production code. Concrete fixes stay in tracked follow-up tasks.
 
+The reports are historical evidence. Some findings now have follow-up changes in the
+codebase and tasks. For current behavior, read `filer-core/README.md`, the active task
+files, and the source.
+
 ## Convention
 
 One markdown report per review pass. Each report ranks findings by severity and lists

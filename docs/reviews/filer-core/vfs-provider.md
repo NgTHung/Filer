@@ -1,5 +1,10 @@
 # VFS and Provider Abstraction Review (CORE-009)
 
+Status note, 2026-06-24: this report is historical. The incomplete S3, WebDAV, FTP/SFTP,
+FUSE, Kubernetes, and `RemoteProvider` stubs it describes were removed from `filer-core`.
+`PROVIDER-002` now tracks provider registry and VFS contract stabilization before any
+concrete remote or mount adapter is added.
+
 Does the `FsProvider` trait surface, its capability model, and its paging strategies form a
 foundation that can carry remote, archive, and timeout-bound access without forcing a core-wide
 rewrite when the second provider ships? This report evaluates the trait, the native-vs-fallback
@@ -225,6 +230,10 @@ not a present bug.
 
 ## Unimplemented providers panic instead of degrading
 
+Superseded, 2026-06-24: the incomplete feature-gated providers were deleted instead of
+rewritten as unsupported stubs. This section remains as audit evidence for why the old surface
+was removed.
+
 `S3Fs`, `WebDavFs`, `FtpFs`, and `K8sFs` implement every `FsProvider` and `RemoteProvider` method
 as `todo!()` (`vfs/s3.rs:83-118`, `vfs/webdav.rs:94-129`, `vfs/ftp.rs:102-137`,
 `vfs/kubernetes.rs:139-174`), and `FuseFs::mount`/`unmount` are `todo!()` (`vfs/fuse.rs:45-52`).
@@ -258,7 +267,7 @@ only so the secret-handling decision is made when those configs become serializa
 | `RemoteProvider` lifecycle | `&mut self` unreachable through `Arc<dyn FsProvider>` wiring | High (PROVIDER-002) |
 | Segmented/archive routing | Model ready; path-only trait cannot express layering | Medium (VFS-001) |
 | PROVIDER-ACCESS in previews | Renderers bypass the provider and open local paths | Medium→High (PREVIEW-001) |
-| Unimplemented providers | `todo!()` panics instead of structured errors | Low (feature-gated) |
+| Unimplemented providers | Superseded. Incomplete feature-gated providers were removed on 2026-06-24. | Closed |
 
 ## Follow-up task candidates
 
@@ -285,8 +294,7 @@ that already owns the outcome where one exists.
 - Resolve the keyset-vs-provider cursor non-composition so a "next page" does not rewalk the whole
   directory (cached materialized order, or pipeline-ordered provider paging). Joint with CORE-008
   and CORE-010. Severity: Medium for the large-directory target.
-- Replace the `todo!()` bodies in the feature-gated remote providers with
-  `Err(unsupported_operation(...))` so an enabled-but-incomplete provider degrades instead of
-  panicking. Severity: Low.
+- Incomplete feature-gated remote and mount providers were removed on 2026-06-24. Future
+  providers should start from the stabilized registry and capability contracts.
 - Document the expectation that remote providers override `open_reader`/`read_header` rather than
   inherit the full-buffering default. Pairs with PROVIDER-001. Severity: Low.

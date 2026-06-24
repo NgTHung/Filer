@@ -1,5 +1,10 @@
 # filer-core Audit Verdict (CORE-013)
 
+Status note, 2026-06-24: this verdict is historical. The incomplete feature-gated S3,
+WebDAV, FTP/SFTP, FUSE, Kubernetes, and `RemoteProvider` stubs referenced below were removed.
+`PROVIDER-002` now tracks provider registry and VFS contract stabilization before concrete
+remote or mount providers return.
+
 This rolls up the eight review passes of epic CORE-004 into one decision and one prioritized
 remediation backlog. It answers a single question: does the current filer-core design support
 the project's stated ambitions, or must it be reworked before more features land? It then
@@ -93,8 +98,8 @@ touched and do not warrant their own task. They are recorded here so they are no
 
 - `code.rs:61` theme fallback ends in `unwrap` on an undocumented library invariant; prefer an
   unstyled fallback. Folded into CORE-024.
-- Feature-gated remote providers use `todo!()` bodies that panic instead of returning
-  `unsupported_operation`. Folded into CORE-024.
+- Feature-gated remote providers used `todo!()` bodies. The stubs were removed on 2026-06-24,
+  and CORE-024 now records that cleanup.
 - `operations/mod.rs:61` panic message names the wrong module ("ScanModule"). Folded into CORE-024.
 - `navigator.rs` split (state machine vs actor, clean seam) and `EXT_TABLE` compression. The split
   is folded into CORE-019. The table compression is deferred pending SERVICES-003, which may

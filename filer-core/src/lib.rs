@@ -55,20 +55,5 @@ pub use actors::Actor;
 // Pipeline types
 pub use pipeline::{GroupedEntries, PipelineConfig, SortConfig};
 
-#[cfg(feature = "s3")]
-pub use vfs::s3::{S3Config, S3Fs};
-
-#[cfg(feature = "webdav")]
-pub use vfs::webdav::{WebDavConfig, WebDavFs};
-
-#[cfg(any(feature = "ftp", feature = "sftp"))]
-pub use vfs::ftp::{FtpConfig, FtpFs};
-
-#[cfg(feature = "fuse")]
-pub use vfs::fuse::{FuseConfig, FuseFs};
-
-#[cfg(feature = "kubernetes")]
-pub use vfs::kubernetes::{K8sConfig, K8sFs};
-
 #[cfg(test)]
 mod tests;
