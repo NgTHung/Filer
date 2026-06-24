@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::CoreError;
 use crate::model::location::{Location, LocationRef};
-use crate::model::operation::OperationKind;
+use crate::model::operation::{
+    OperationConflictPolicy, OperationKind, OperationProviderGuarantee, OperationUndoMode,
+};
 use crate::model::registry::NodeRegistry;
 use crate::vfs::provider::Capabilities;
 
@@ -31,26 +33,16 @@ pub struct LocationWatchCapability {
     pub unsupported: Option<LocationCapabilityError>,
 }
 
-/// Conflict behavior exposed by the current coarse operation capability model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LocationConflictPolicy {
-    FailIfExists,
-}
-
-/// Cross-provider behavior exposed by the current coarse operation capability model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LocationCrossProviderPolicy {
-    Unsupported,
-}
-
 /// Write/operation contract for a resolved Location.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocationOperationCapability {
     pub location: LocationRef,
     pub operation: OperationKind,
     pub supported: bool,
-    pub conflict: LocationConflictPolicy,
-    pub cross_provider: LocationCrossProviderPolicy,
+    pub conflict: OperationConflictPolicy,
+    pub provider_guarantee: OperationProviderGuarantee,
+    pub cross_provider: OperationProviderGuarantee,
+    pub undo: OperationUndoMode,
     pub reports_affected_locations: bool,
     pub unsupported: Option<LocationCapabilityError>,
 }
@@ -74,14 +66,25 @@ impl LocationOperationCapability {
         operation: OperationKind,
         capabilities: Capabilities,
     ) -> Self {
+        let supported = capabilities.write;
         Self {
             location,
             operation,
-            supported: capabilities.write,
-            conflict: LocationConflictPolicy::FailIfExists,
-            cross_provider: LocationCrossProviderPolicy::Unsupported,
-            reports_affected_locations: capabilities.write,
-            unsupported: (!capabilities.write).then_some(LocationCapabilityError::WriteUnsupported),
+            supported,
+            conflict: OperationConflictPolicy::default(),
+            provider_guarantee: if supported {
+                OperationProviderGuarantee::BestEffort
+            } else {
+                OperationProviderGuarantee::Unsupported
+            },
+            cross_provider: OperationProviderGuarantee::Unsupported,
+            undo: if supported {
+                OperationUndoMode::BestEffort
+            } else {
+                OperationUndoMode::Unavailable
+            },
+            reports_affected_locations: supported,
+            unsupported: (!supported).then_some(LocationCapabilityError::WriteUnsupported),
         }
     }
 }

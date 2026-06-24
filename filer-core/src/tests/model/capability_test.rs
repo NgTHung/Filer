@@ -2,11 +2,14 @@ use std::path::PathBuf;
 
 use crate::errors::ErrorCode;
 use crate::model::capability::{
-    LocationCapabilityError, LocationConflictPolicy, LocationCrossProviderPolicy,
-    LocationWatchReliability, operation_capability_for_location, watch_capability_for_location,
+    LocationCapabilityError, LocationWatchReliability, operation_capability_for_location,
+    watch_capability_for_location,
 };
 use crate::model::location::{Location, LocationDescriptor, LocationId, LocationRef};
-use crate::model::operation::OperationKind;
+use crate::model::operation::{
+    OperationConflictPolicy, OperationConflictResolution, OperationKind,
+    OperationProviderGuarantee, OperationUndoMode,
+};
 use crate::model::registry::NodeRegistry;
 use crate::vfs::provider::Capabilities;
 
@@ -74,11 +77,20 @@ fn direct_local_operation_supported_when_provider_can_write() {
 
     assert!(capability.supported);
     assert_eq!(capability.operation, OperationKind::CreateFile);
-    assert_eq!(capability.conflict, LocationConflictPolicy::FailIfExists);
+    assert_eq!(capability.conflict, OperationConflictPolicy::default());
+    assert_eq!(
+        capability.conflict.file_resolution(),
+        OperationConflictResolution::Fail
+    );
+    assert_eq!(
+        capability.provider_guarantee,
+        OperationProviderGuarantee::BestEffort
+    );
     assert_eq!(
         capability.cross_provider,
-        LocationCrossProviderPolicy::Unsupported
+        OperationProviderGuarantee::Unsupported
     );
+    assert_eq!(capability.undo, OperationUndoMode::BestEffort);
     assert!(capability.reports_affected_locations);
     assert_eq!(capability.unsupported, None);
 }
@@ -98,6 +110,11 @@ fn direct_local_operation_reports_unsupported_when_provider_cannot_write() {
 
     assert!(!capability.supported);
     assert!(!capability.reports_affected_locations);
+    assert_eq!(capability.undo, OperationUndoMode::Unavailable);
+    assert_eq!(
+        capability.provider_guarantee,
+        OperationProviderGuarantee::Unsupported
+    );
     assert_eq!(
         capability.unsupported,
         Some(LocationCapabilityError::WriteUnsupported)

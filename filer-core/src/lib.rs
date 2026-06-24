@@ -16,9 +16,8 @@ pub use api::{commands::Command, events::Event, handle::FilerCore};
 pub use errors::{CoreError, ErrorCode, ErrorContext, ErrorKind, ErrorTarget};
 pub use model::cancel::CancelSignal;
 pub use model::capability::{
-    LocationCapabilityError, LocationConflictPolicy, LocationCrossProviderPolicy,
-    LocationOperationCapability, LocationWatchCapability, LocationWatchReliability,
-    operation_capability_for_location, watch_capability_for_location,
+    LocationCapabilityError, LocationOperationCapability, LocationWatchCapability,
+    LocationWatchReliability, operation_capability_for_location, watch_capability_for_location,
 };
 pub use model::directory::{
     DEFAULT_DIRECTORY_PAGE_SIZE, DirectoryCursor, DirectoryLoadMode, DirectoryLoadOptions,
@@ -29,7 +28,10 @@ pub use model::location::{
     ProviderRef,
 };
 pub use model::node::{FileNode, NodeEntry, NodeMeta};
-pub use model::operation::{OperationId, OperationKind};
+pub use model::operation::{
+    OperationConflictPolicy, OperationConflictResolution, OperationId, OperationKind,
+    OperationProviderGuarantee, OperationUndoMode, OperationUndoRecord,
+};
 pub use model::progress::{
     ProgressKind, ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget,
     ProgressUnit,
@@ -42,8 +44,8 @@ pub use services::mime::{MimeCategory, MimeDetector, MimeInfo};
 pub use services::preview::{ArchivePreviewEntry, PreviewData, PreviewOptions, PreviewRegistry};
 
 // VFS providers
-pub use vfs::local::LocalFs;
 pub use vfs::context::ProviderCx;
+pub use vfs::local::LocalFs;
 pub use vfs::provider::{Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging};
 
 // Actor infrastructure
