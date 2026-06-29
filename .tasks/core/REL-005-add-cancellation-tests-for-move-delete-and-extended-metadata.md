@@ -1,7 +1,7 @@
 ---
 id: REL-005
 title: Add cancellation tests and review metadata-load cancellation
-status: To Do
+status: Done
 priority: Medium
 type: TestDebt
 parent: CORE-001
@@ -10,7 +10,7 @@ rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: Medium
 impact: "Closes cancellation test gaps and proves whether metadata-load can stay non-cancellable without becoming a DOS surface."
 tags: [reliability, testing, cancellation]
-last_updated: 2026-06-21
+last_updated: 2026-06-29
 ---
 
 ## Summary
@@ -21,9 +21,11 @@ The prior REL-005 wording treated metadata-load as non-cancellable by design. Th
 
 Review whether that assumption still holds. Treat the current non-cancellable behavior as unproven until the task records the reason, the boundedness assumptions, and the DOS risk. If the behavior is not defensible, bring metadata-load cancellation into this task or create a follow-up bug before marking the criteria complete. Out of scope: rename, create-file, and create-folder. Provider-call timeout is owned by PROVIDER-001.
 
+Decision: the non-cancellable LoadMetadata and LoadMetadataLocation path is not defensible for remote or slow providers. Basic metadata dispatch should arm the previewer cancellation token, pass a cancel-aware ProviderCx to provider.metadata, and suppress cancelled or stale events like preview and extended-metadata dispatch.
+
 ## Acceptance Criteria
 
-- [ ] A test cancels a Move mid-flight and asserts it stops without a success event.
-- [ ] A test cancels a Delete mid-flight and asserts it stops without a success event.
-- [ ] A test cancels an Extended-Metadata load mid-flight and asserts no stale metadata event is emitted.
-- [ ] LoadMetadata and LoadMetadataLocation cancellation behavior is reviewed against DOS risk, with the reason for keeping or changing the current ProviderCx::none path documented in the task or implementation notes.
+- [x] A test cancels a Move mid-flight and asserts it stops without a success event.
+- [x] A test cancels a Delete mid-flight and asserts it stops without a success event.
+- [x] A test cancels an Extended-Metadata load mid-flight and asserts no stale metadata event is emitted.
+- [x] LoadMetadata and LoadMetadataLocation cancellation behavior is reviewed against DOS risk, with the reason for keeping or changing the current ProviderCx::none path documented in the task or implementation notes.

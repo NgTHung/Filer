@@ -70,8 +70,10 @@ impl FsProvider for NullProvider {
 
 struct RecordingProvider {
     read_header_saw_cancel: Arc<Mutex<bool>>,
+    metadata_saw_cancel: Arc<Mutex<bool>>,
     metadata_calls: Arc<Mutex<usize>>,
     block_reads: bool,
+    block_metadata: bool,
 }
 
 #[async_trait]
@@ -138,9 +140,18 @@ impl FsProvider for RecordingProvider {
     async fn metadata(
         &self,
         path: &Path,
-        _: &crate::ProviderCx<'_>,
+        cx: &crate::ProviderCx<'_>,
     ) -> Result<crate::model::node::FileNode, CoreError> {
+        *self.metadata_saw_cancel.lock().unwrap() = cx.cancel.is_some();
         *self.metadata_calls.lock().unwrap() += 1;
+        if self.block_metadata {
+            return cx
+                .race(
+                    self.scheme(),
+                    std::future::pending::<Result<crate::model::node::FileNode, CoreError>>(),
+                )
+                .await;
+        }
         Ok(crate::model::node::FileNode::from_path(
             path.to_path_buf(),
             None,
@@ -503,8 +514,10 @@ mod cancel_tests {
         let saw_cancel = Arc::new(Mutex::new(false));
         let provider = Arc::new(RecordingProvider {
             read_header_saw_cancel: saw_cancel.clone(),
+            metadata_saw_cancel: Arc::new(Mutex::new(false)),
             metadata_calls: Arc::new(Mutex::new(0)),
             block_reads: false,
+            block_metadata: false,
         });
         let mut preview_reg = PreviewRegistry::new();
         preview_reg.register(Box::new(MockPreviewProvider::instant(text_preview())));
@@ -537,8 +550,10 @@ mod cancel_tests {
 
         let provider = Arc::new(RecordingProvider {
             read_header_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_saw_cancel: Arc::new(Mutex::new(false)),
             metadata_calls: Arc::new(Mutex::new(0)),
             block_reads: true,
+            block_metadata: false,
         });
         let (cmd_tx, evt_rx, _cache) = spawn_previewer_with_provider(
             provider,
@@ -570,6 +585,147 @@ mod cancel_tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn test_cancel_extended_metadata_location_interrupts_blocked_provider_read() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let location = Location::local("/tmp/context-location-metadata.txt");
+
+        let provider = Arc::new(RecordingProvider {
+            read_header_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_calls: Arc::new(Mutex::new(0)),
+            block_reads: true,
+            block_metadata: false,
+        });
+        let (cmd_tx, evt_rx, _cache) = spawn_previewer_with_provider(
+            provider,
+            Arc::new(PreviewRegistry::new()),
+            registry,
+        );
+
+        cmd_tx
+            .send(PreviewCommand::LoadExtendedMetadataLocation(
+                LocationRef::from_location(&location),
+                session,
+                RequestId::new(),
+            ))
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            match event {
+                Event::ExtendedMetadataLoadedCompat { session: s, .. }
+                | Event::ExtendedMetadataLoaded { session: s, .. }
+                | Event::Error { session: s, .. }
+                    if s == session =>
+                {
+                    panic!("cancelled location extended metadata emitted event: {event:?}");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cancel_metadata_interrupts_blocked_provider_metadata() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let path = PathBuf::from("/tmp/basic-metadata.txt");
+        let node_id = registry.clone().register(path);
+        let metadata_saw_cancel = Arc::new(Mutex::new(false));
+
+        let provider = Arc::new(RecordingProvider {
+            read_header_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_saw_cancel: metadata_saw_cancel.clone(),
+            metadata_calls: Arc::new(Mutex::new(0)),
+            block_reads: false,
+            block_metadata: true,
+        });
+        let (cmd_tx, evt_rx, _cache) = spawn_previewer_with_provider(
+            provider,
+            Arc::new(PreviewRegistry::new()),
+            registry,
+        );
+
+        cmd_tx
+            .send(PreviewCommand::LoadMetadata(
+                node_id,
+                session,
+                RequestId::new(),
+            ))
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            match event {
+                Event::MetadataLoadedCompat { session: s, .. } | Event::Error { session: s, .. }
+                    if s == session =>
+                {
+                    panic!("cancelled metadata emitted event: {event:?}");
+                }
+                _ => {}
+            }
+        }
+
+        assert!(
+            *metadata_saw_cancel.lock().unwrap(),
+            "metadata provider call must receive a cancel-aware ProviderCx"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_cancel_metadata_location_interrupts_blocked_provider_metadata() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let location = Location::local("/tmp/basic-location-metadata.txt");
+        let metadata_saw_cancel = Arc::new(Mutex::new(false));
+
+        let provider = Arc::new(RecordingProvider {
+            read_header_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_saw_cancel: metadata_saw_cancel.clone(),
+            metadata_calls: Arc::new(Mutex::new(0)),
+            block_reads: false,
+            block_metadata: true,
+        });
+        let (cmd_tx, evt_rx, _cache) = spawn_previewer_with_provider(
+            provider,
+            Arc::new(PreviewRegistry::new()),
+            registry,
+        );
+
+        cmd_tx
+            .send(PreviewCommand::LoadMetadataLocation(
+                LocationRef::from_location(&location),
+                session,
+                RequestId::new(),
+            ))
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            match event {
+                Event::MetadataLoaded { session: s, .. } | Event::Error { session: s, .. }
+                    if s == session =>
+                {
+                    panic!("cancelled metadata location emitted event: {event:?}");
+                }
+                _ => {}
+            }
+        }
+
+        assert!(
+            *metadata_saw_cancel.lock().unwrap(),
+            "metadata location provider call must receive a cancel-aware ProviderCx"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -587,8 +743,10 @@ mod metadata_provider_tests {
         let metadata_calls = Arc::new(Mutex::new(0));
         let provider = Arc::new(RecordingProvider {
             read_header_saw_cancel: Arc::new(Mutex::new(false)),
+            metadata_saw_cancel: Arc::new(Mutex::new(false)),
             metadata_calls: metadata_calls.clone(),
             block_reads: false,
+            block_metadata: false,
         });
         let (cmd_tx, evt_rx, _cache) = spawn_previewer_with_provider(
             provider,

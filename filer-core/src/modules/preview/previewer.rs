@@ -354,13 +354,22 @@ impl Previewer {
         let events = self.events.clone();
         let provider = self.provider.clone();
         let latest = self.latest.clone();
+        let cancel = self.arm_cancel(session);
+        let active = self.active.clone();
 
         tokio::spawn(async move {
-            if !Self::is_latest(&latest, session, request) {
+            if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
                 return;
             }
-            match provider.metadata(&path, &ProviderCx::none()).await {
+            let cx = ProviderCx::with_cancel(&cancel);
+            match cx
+                .race(provider.scheme(), provider.metadata(&path, &cx))
+                .await
+            {
                 Ok(file_node) => {
+                    if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
+                        return;
+                    }
                     send_or_warn_async(
                         &events,
                         Event::MetadataLoadedCompat {
@@ -374,6 +383,9 @@ impl Previewer {
                     .await;
                 }
                 Err(e) => {
+                    if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
+                        return;
+                    }
                     send_or_warn_async(
                         &events,
                         Event::from_request_error(e, session, request),
@@ -382,6 +394,7 @@ impl Previewer {
                     .await;
                 }
             }
+            active.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -404,13 +417,22 @@ impl Previewer {
         let events = self.events.clone();
         let provider = self.provider.clone();
         let latest = self.latest.clone();
+        let cancel = self.arm_cancel(session);
+        let active = self.active.clone();
 
         tokio::spawn(async move {
-            if !Self::is_latest(&latest, session, request) {
+            if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
                 return;
             }
-            match provider.metadata(&path, &ProviderCx::none()).await {
+            let cx = ProviderCx::with_cancel(&cancel);
+            match cx
+                .race(provider.scheme(), provider.metadata(&path, &cx))
+                .await
+            {
                 Ok(file_node) => {
+                    if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
+                        return;
+                    }
                     send_or_warn_async(
                         &events,
                         Event::MetadataLoaded {
@@ -424,6 +446,9 @@ impl Previewer {
                     .await;
                 }
                 Err(e) => {
+                    if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
+                        return;
+                    }
                     send_or_warn_async(
                         &events,
                         Event::from_request_error(e, session, request),
@@ -432,6 +457,7 @@ impl Previewer {
                     .await;
                 }
             }
+            active.remove_if_current(session, &cancel).await;
         });
     }
 

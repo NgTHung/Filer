@@ -57,6 +57,8 @@ struct MockOpsProvider {
     write_supported: Arc<Mutex<bool>>,
     /// Artificial delay applied inside `copy`, for deterministic timeout tests.
     copy_delay_ms: Arc<Mutex<u64>>,
+    rename_delay_ms: Arc<Mutex<u64>>,
+    delete_delay_ms: Arc<Mutex<u64>>,
 
     copy_calls: Arc<Mutex<Vec<(PathBuf, PathBuf)>>>,
     rename_calls: Arc<Mutex<Vec<(PathBuf, PathBuf)>>>,
@@ -76,6 +78,8 @@ impl MockOpsProvider {
             fail_rename_cross_device: Arc::new(Mutex::new(false)),
             write_supported: Arc::new(Mutex::new(true)),
             copy_delay_ms: Arc::new(Mutex::new(0)),
+            rename_delay_ms: Arc::new(Mutex::new(0)),
+            delete_delay_ms: Arc::new(Mutex::new(0)),
             copy_calls: Arc::new(Mutex::new(Vec::new())),
             rename_calls: Arc::new(Mutex::new(Vec::new())),
             delete_calls: Arc::new(Mutex::new(Vec::new())),
@@ -117,6 +121,14 @@ impl MockOpsProvider {
 
     fn set_copy_delay_ms(&self, delay_ms: u64) {
         *self.copy_delay_ms.lock().unwrap() = delay_ms;
+    }
+
+    fn set_rename_delay_ms(&self, delay_ms: u64) {
+        *self.rename_delay_ms.lock().unwrap() = delay_ms;
+    }
+
+    fn set_delete_delay_ms(&self, delay_ms: u64) {
+        *self.delete_delay_ms.lock().unwrap() = delay_ms;
     }
 
     fn get_copy_calls(&self) -> Vec<(PathBuf, PathBuf)> {
@@ -305,6 +317,12 @@ impl FsProvider for MockOpsProvider {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == src) {
             return Err(CoreError::permission_denied(src.to_path_buf()));
         }
+        let delay_ms = *self.rename_delay_ms.lock().unwrap();
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        } else {
+            tokio::task::yield_now().await;
+        }
         self.rename_calls
             .lock()
             .unwrap()
@@ -315,6 +333,12 @@ impl FsProvider for MockOpsProvider {
     async fn delete(&self, path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<(), CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::permission_denied(path.to_path_buf()));
+        }
+        let delay_ms = *self.delete_delay_ms.lock().unwrap();
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        } else {
+            tokio::task::yield_now().await;
         }
         self.delete_calls.lock().unwrap().push(path.to_path_buf());
         Ok(())
@@ -1965,6 +1989,96 @@ mod cancel_tests {
             copies.len() < 50,
             "Cancel should stop before all files are copied (copied {})",
             copies.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_move_cancel_midway() {
+        let provider = MockOpsProvider::new();
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+
+        let src_path = PathBuf::from("/home/user/doc.txt");
+        let dst_path = PathBuf::from("/home/user/backup");
+        let src_id = register(&registry, &src_path);
+        let dst_id = register(&registry, &dst_path);
+        provider.set_rename_delay_ms(200);
+
+        let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let operation = OperationId::new();
+        cmd_tx
+            .send(OpsCommand::Move {
+                sources: vec![src_id],
+                destination: dst_id,
+                session,
+                request: RequestId::new(),
+                operation,
+            })
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        cmd_tx.send(OpsCommand::Cancel(session)).unwrap();
+
+        let events = collect_events_for(&evt_rx, Duration::from_millis(300)).await;
+        let has_successful_complete = events.iter().any(|event| {
+            matches!(
+                event,
+                Event::OperationCompleteCompat {
+                    operation_id,
+                    success: true,
+                    session: s,
+                    ..
+                } if *s == session && *operation_id == operation
+            )
+        });
+
+        assert!(
+            !has_successful_complete,
+            "Cancelled move should not emit OperationCompleteCompat with success"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_delete_cancel_midway() {
+        let provider = MockOpsProvider::new();
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+
+        let path = PathBuf::from("/home/user/doc.txt");
+        let node_id = register(&registry, &path);
+        provider.set_delete_delay_ms(200);
+
+        let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
+        let operation = OperationId::new();
+        cmd_tx
+            .send(OpsCommand::Delete {
+                targets: vec![node_id],
+                trash: false,
+                session,
+                request: RequestId::new(),
+                operation,
+            })
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        cmd_tx.send(OpsCommand::Cancel(session)).unwrap();
+
+        let events = collect_events_for(&evt_rx, Duration::from_millis(300)).await;
+        let has_successful_complete = events.iter().any(|event| {
+            matches!(
+                event,
+                Event::OperationCompleteCompat {
+                    operation_id,
+                    success: true,
+                    session: s,
+                    ..
+                } if *s == session && *operation_id == operation
+            )
+        });
+
+        assert!(
+            !has_successful_complete,
+            "Cancelled delete should not emit OperationCompleteCompat with success"
         );
     }
 
