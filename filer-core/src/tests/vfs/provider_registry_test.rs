@@ -27,11 +27,16 @@ fn profile() -> ProviderProfile {
 #[test]
 fn provider_profile_round_trips_without_secrets() {
     let encoded = serde_json::to_string(&profile()).unwrap();
+    let debug = format!("{:?}", profile());
 
     assert!(!encoded.contains("credential"));
     assert!(!encoded.contains("password"));
     assert!(!encoded.contains("secret"));
     assert!(!encoded.contains("token"));
+    assert!(!debug.contains("credential"));
+    assert!(!debug.contains("password"));
+    assert!(!debug.contains("secret"));
+    assert!(!debug.contains("token"));
 
     let decoded: ProviderProfile = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded, profile());

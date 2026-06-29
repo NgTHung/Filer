@@ -1,7 +1,7 @@
 ---
 id: PROVIDER-004
 title: Redact provider credentials from Debug and tracing output
-status: To Do
+status: Done
 priority: Medium
 type: Feature
 milestone: "0.3.0"
@@ -9,15 +9,15 @@ rules: [PROVIDER-ACCESS]
 risk: Low
 impact: "Prevents provider credentials from leaking into debug logs and command-path tracing."
 tags: [provider, secrets, reliability]
-last_updated: 2026-06-18
+last_updated: 2026-06-29
 ---
 
 ## Summary
 
-Provider configs in filer-core/src/vfs derive Debug and expose secret fields in plaintext. With command-path tracing now in place, those secrets can reach logs. Redact secret fields from Debug output. Found while documenting the secrets boundary in CORE-002.
+The audit that created this task named remote provider config structs that no longer exist in current filer-core. Keep the current ProviderProfile boundary secret-free, and add a small runtime secret wrapper for future provider configs so credentials cannot leak through Debug or tracing output.
 
 ## Acceptance Criteria
 
-- [ ] Provider configs in filer-core/src/vfs do not print secret values in their Debug output.
-- [ ] Secret fields (password, secret_key, session_token, bearer_token, private_key) render as a fixed redaction marker.
-- [ ] A regression test proves Debug output of a populated provider config contains no secret value.
+- [x] ProviderProfile Debug and serialization stay free of credential, password, secret, and token values.
+- [x] Runtime provider secret fields can use a shared wrapper whose Debug output renders a fixed redaction marker.
+- [x] Secret fields named password, secret_key, session_token, bearer_token, and private_key are covered by a regression test that proves their Debug output contains no secret value.

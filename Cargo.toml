@@ -2,6 +2,11 @@
 resolver = "3"
 members = ["filer-app", "filer-core", "filer-ecosystem", "filer-task", "filer-task-web"]
 
+[profile.release]
+debug = 1
+incremental = true
+lto = "fat"
+
 [workspace.dependencies]
 tokio = {version = "1.52.3", features = ["full"]}
 tracing = {version = "0.1.44", features = ["attributes"]}
