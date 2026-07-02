@@ -1,7 +1,7 @@
 ---
 id: CORE-026
 title: Split oversized filer-core test files
-status: To Do
+status: Done
 priority: Medium
 type: TestDebt
 parent: CORE-001
@@ -10,7 +10,7 @@ rules: [CORE-LIBRARY]
 risk: Medium
 impact: "Keeps core tests reviewable and prevents large inline test modules from growing production files."
 tags: [core, tests, maintainability]
-last_updated: 2026-06-24
+last_updated: 2026-07-02
 ---
 
 ## Summary
@@ -19,7 +19,7 @@ Split oversized filer-core test files by behavior seam and move inline tests out
 
 ## Acceptance Criteria
 
-- [ ] command_router_test.rs, scanner_test.rs, operator_test.rs, search_test.rs, pipeline_test.rs, navigator_test.rs, vfs_test.rs, and metadata_test.rs are split so each resulting test module follows the project size guidance.
-- [ ] Inline #[cfg(test)] test modules in production code are moved into filer-core/src/tests unless a short inline unit test has a documented locality reason.
-- [ ] Shared fixtures, builders, mock providers, and async event wait helpers are reused instead of copied across the new test files.
-- [ ] The split preserves test coverage and behavior; cargo test -p filer-core passes.
+- [x] command_router_test.rs, scanner_test.rs, operator_test.rs, search_test.rs, pipeline_test.rs, navigator_test.rs, vfs_test.rs, and metadata_test.rs are split so each resulting test module follows the project size guidance.
+- [x] Inline #[cfg(test)] test modules in production code are moved into filer-core/src/tests unless a short inline unit test has a documented locality reason.
+- [x] Shared fixtures, builders, mock providers, and async event wait helpers are reused instead of copied across the new test files.
+- [x] The split preserves test coverage and behavior; cargo test -p filer-core passes.

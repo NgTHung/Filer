@@ -16,7 +16,12 @@
 //! core.load(scan);
 //! ```
 
+#[cfg(not(test))]
 mod paging;
+#[cfg(test)]
+pub(crate) mod paging;
+#[cfg(test)]
+pub(crate) use paging::PageSelection;
 pub mod scanner;
 
 use std::sync::Arc;

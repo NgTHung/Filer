@@ -273,28 +273,32 @@ impl PagingSessions {
     }
 }
 
-struct PageSelection<'a> {
+pub(crate) struct PageSelection<'a> {
+    pub(crate) entries: Vec<FileNode>,
+    pub(crate) total_matches: usize,
     limit: usize,
     after: Option<FileNode>,
     pipeline_config: &'a PipelineConfig,
     pipeline: Pipeline,
-    entries: Vec<FileNode>,
-    total_matches: usize,
 }
 
 impl<'a> PageSelection<'a> {
-    fn new(limit: usize, after: Option<FileNode>, pipeline_config: &'a PipelineConfig) -> Self {
+    pub(crate) fn new(
+        limit: usize,
+        after: Option<FileNode>,
+        pipeline_config: &'a PipelineConfig,
+    ) -> Self {
         Self {
+            entries: Vec::with_capacity(limit.saturating_add(1)),
+            total_matches: 0,
             limit,
             after,
             pipeline_config,
             pipeline: Pipeline::from_config(pipeline_config),
-            entries: Vec::with_capacity(limit.saturating_add(1)),
-            total_matches: 0,
         }
     }
 
-    fn extend(&mut self, entries: Vec<FileNode>) {
+    pub(crate) fn extend(&mut self, entries: Vec<FileNode>) {
         for entry in entries {
             let mut filtered = self.pipeline.execute_flat(vec![entry]);
             let Some(entry) = filtered.pop() else {
@@ -328,39 +332,4 @@ fn next_cursor() -> DirectoryCursor {
         "{CURSOR_PREFIX}{}",
         COUNTER.fetch_add(1, AtomicOrdering::Relaxed)
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use super::PageSelection;
-    use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
-    use crate::pipeline::PipelineConfig;
-
-    #[test]
-    fn selection_retains_only_page_size_plus_lookahead() {
-        let config = PipelineConfig::default();
-        let mut selection = PageSelection::new(10, None, &config);
-        let entries = (0..10_000)
-            .map(|index| FileNode {
-                id: NodeId(index),
-                name: format!("{index:05}.txt"),
-                path: PathBuf::from(format!("/tmp/{index:05}.txt")),
-                kind: NodeKind::File {
-                    extension: Some("txt".into()),
-                },
-                size: index,
-                modified: None,
-                created: None,
-                accessed: None,
-                meta: NodeMeta::default(),
-            })
-            .collect();
-
-        selection.extend(entries);
-
-        assert_eq!(selection.total_matches, 10_000);
-        assert_eq!(selection.entries.len(), 11);
-    }
 }
