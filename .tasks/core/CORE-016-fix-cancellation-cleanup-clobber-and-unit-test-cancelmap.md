@@ -1,16 +1,16 @@
 ---
 id: CORE-016
 title: Fix cancellation cleanup clobber and unit-test CancelMap
-status: To Do
+status: Done
 priority: High
 type: Bug
-parent: CORE-004
+parent: CORE-001
 milestone: "0.3.0"
 rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: High
 impact: "A stale task deletes the live cancel entry, so rapid re-issue and session destroy leave uncancellable orphaned work."
 tags: [core, audit, remediation, cancellation]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary
@@ -19,6 +19,6 @@ Searcher and previewer clean up with the unconditional CancelMap::remove instead
 
 ## Acceptance Criteria
 
-- [ ] Searcher (searcher.rs:115) and previewer (previewer.rs:204, :292, :507, :584) use remove_if_current(session, &cancel) instead of remove.
-- [ ] A direct CancelMap unit test arms a session twice and asserts a stale task's removal preserves the live token, failing against the old remove behavior.
-- [ ] A rapid re-issue then cancel test for search and preview asserts the latest in-flight task is actually cancelled.
+- [x] Searcher (searcher.rs:115) and previewer (previewer.rs:204, :292, :507, :584) use remove_if_current(session, &cancel) instead of remove.
+- [x] A direct CancelMap unit test arms a session twice and asserts a stale task's removal preserves the live token, failing against the old remove behavior.
+- [x] A rapid re-issue then cancel test for search and preview asserts the latest in-flight task is actually cancelled.

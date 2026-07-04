@@ -3,6 +3,73 @@ mod searcher_cancellation_tests {
     use super::*;
     use crate::model::location::{Location, LocationRef};
 
+    #[derive(Clone)]
+    struct CleanupInterleavingProvider;
+
+    #[async_trait]
+    impl FsProvider for CleanupInterleavingProvider {
+        fn scheme(&self) -> &'static str {
+            "cleanup-interleaving"
+        }
+
+        fn capabilities(&self) -> Capabilities {
+            Capabilities {
+                read: true,
+                write: false,
+                watch: false,
+                search: true,
+            }
+        }
+
+        async fn list(
+            &self,
+            path: &Path,
+            _cx: &crate::ProviderCx<'_>,
+        ) -> Result<Vec<FileNode>, CoreError> {
+            match path.to_str() {
+                Some("/stale") => {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    Ok(vec![MockProvider::make_file("stale.txt", "/stale", 1)])
+                }
+                Some("/fresh") => {
+                    tokio::time::sleep(Duration::from_millis(120)).await;
+                    Ok(vec![MockProvider::make_file("fresh.txt", "/fresh", 1)])
+                }
+                _ => Ok(vec![]),
+            }
+        }
+
+        async fn read(
+            &self,
+            _path: &Path,
+            _cx: &crate::ProviderCx<'_>,
+        ) -> Result<Vec<u8>, CoreError> {
+            Ok(vec![])
+        }
+
+        async fn read_range(
+            &self,
+            _path: &Path,
+            _start: u64,
+            _len: u64,
+            _cx: &crate::ProviderCx<'_>,
+        ) -> Result<Vec<u8>, CoreError> {
+            Ok(vec![])
+        }
+
+        async fn exists(&self, _path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<bool, CoreError> {
+            Ok(true)
+        }
+
+        async fn metadata(
+            &self,
+            path: &Path,
+            _cx: &crate::ProviderCx<'_>,
+        ) -> Result<FileNode, CoreError> {
+            Err(CoreError::not_found(path.to_path_buf()))
+        }
+    }
+
     #[tokio::test]
     async fn test_search_cancel_stops_search() {
         // Create a deep tree so search takes time
@@ -123,6 +190,114 @@ mod searcher_cancellation_tests {
             total_matches < 10,
             "cancel should stop SearchLocation well before all 20 files (found {})",
             total_matches
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_rapid_reissue_then_cancel_cancels_fresh_search() {
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<SearchCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let searcher = Searcher::new(
+            cmd_rx,
+            evt_tx,
+            Arc::new(CleanupInterleavingProvider),
+            registry,
+        );
+        tokio::spawn(async move {
+            searcher.run().await;
+        });
+
+        let session = SessionId::new();
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+
+        cmd_tx
+            .send(SearchCommand::SearchPath {
+                query: SearchQuery::parse("stale").unwrap(),
+                root: PathBuf::from("/stale"),
+                session,
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(SearchCommand::SearchPath {
+                query: SearchQuery::parse("fresh").unwrap(),
+                root: PathBuf::from("/fresh"),
+                session,
+                request: fresh_request,
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        cmd_tx.send(SearchCommand::Cancel(session)).unwrap();
+
+        let events = collect_events_for(&evt_rx, Duration::from_millis(180)).await;
+        assert!(
+            events.iter().all(|event| !matches!(
+                event,
+                Event::SearchResultsCompat {
+                    session: s,
+                    request,
+                    complete: true,
+                    ..
+                } if *s == session && *request == fresh_request
+            )),
+            "fresh search completed after rapid reissue cancellation: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_search_location_rapid_reissue_then_cancel_cancels_fresh_search() {
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<SearchCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let searcher = Searcher::new(
+            cmd_rx,
+            evt_tx,
+            Arc::new(CleanupInterleavingProvider),
+            registry,
+        );
+        tokio::spawn(async move {
+            searcher.run().await;
+        });
+
+        let session = SessionId::new();
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+
+        cmd_tx
+            .send(SearchCommand::SearchLocation {
+                query: SearchQuery::parse("stale").unwrap(),
+                root: LocationRef::from_location(&Location::local("/stale")),
+                session,
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(SearchCommand::SearchLocation {
+                query: SearchQuery::parse("fresh").unwrap(),
+                root: LocationRef::from_location(&Location::local("/fresh")),
+                session,
+                request: fresh_request,
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        cmd_tx.send(SearchCommand::Cancel(session)).unwrap();
+
+        let events = collect_events_for(&evt_rx, Duration::from_millis(180)).await;
+        assert!(
+            events.iter().all(|event| !matches!(
+                event,
+                Event::SearchResults {
+                    session: s,
+                    request,
+                    complete: true,
+                    ..
+                } if *s == session && *request == fresh_request
+            )),
+            "fresh SearchLocation completed after rapid reissue cancellation: {events:?}"
         );
     }
 

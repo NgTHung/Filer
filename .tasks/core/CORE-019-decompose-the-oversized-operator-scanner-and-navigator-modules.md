@@ -4,11 +4,11 @@ title: Decompose the oversized operator, scanner, and navigator modules
 status: To Do
 priority: Medium
 type: Refactor
-parent: CORE-004
+parent: CORE-001
 risk: Medium
 impact: "Three core hotspots breach the size limits at real seams, raising the cost of every future change."
 tags: [core, audit, remediation, refactor]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary

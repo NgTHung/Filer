@@ -4,12 +4,12 @@ title: Cut pipeline hot-path allocation on the large-directory scan
 status: To Do
 priority: Medium
 type: Refactor
-parent: CORE-004
+parent: CORE-001
 rules: [PIPELINE-TRANSFORMS]
 risk: Low
 impact: "Per-row allocation and dead stage work on the scan hot path tax the performance-first priority."
 tags: [core, audit, remediation, performance]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary

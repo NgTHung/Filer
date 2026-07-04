@@ -28,7 +28,7 @@ pub type CancellationToken = CancelSignal;
 ///     // ... do work ...
 ///     if cancel.is_cancelled() { return; }
 ///     // ... emit result ...
-///     cancels.remove(session).await;
+///     cancels.remove_if_current(session, &cancel).await;
 /// });
 ///
 /// // To cancel from the actor loop:
@@ -66,11 +66,6 @@ impl CancelMap {
         if let Some((_, token)) = self.inner.remove_sync(&session) {
             token.cancel();
         }
-    }
-
-    /// Remove the entry for `session` once its task has finished.
-    pub async fn remove(&self, session: SessionId) {
-        let _ = self.inner.remove_async(&session).await;
     }
 
     /// Remove the entry only if it still belongs to the finishing task.

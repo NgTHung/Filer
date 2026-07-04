@@ -4,11 +4,11 @@ title: Consolidate test fixtures and stabilize async test synchronization
 status: To Do
 priority: Medium
 type: TestDebt
-parent: CORE-004
+parent: CORE-001
 risk: Low
 impact: "Conflicting fixtures and timing-based synchronization make the suite hard to read and flaky under load."
 tags: [core, audit, remediation, testing]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary

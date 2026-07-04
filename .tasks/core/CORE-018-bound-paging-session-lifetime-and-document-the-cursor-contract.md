@@ -4,13 +4,13 @@ title: Bound paging session lifetime and document the cursor contract
 status: To Do
 priority: Medium
 type: Bug
-parent: CORE-004
+parent: CORE-001
 depends_on: [CORE-015]
 rules: [PIPELINE-TRANSFORMS]
 risk: Medium
 impact: "Abandoned pagination grows memory without limit and the cursor's mutation behavior is undocumented."
 tags: [core, audit, remediation, pipeline]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary

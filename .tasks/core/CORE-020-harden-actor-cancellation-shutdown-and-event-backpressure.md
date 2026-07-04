@@ -4,12 +4,12 @@ title: Harden actor cancellation, shutdown, and event backpressure
 status: To Do
 priority: Medium
 type: Bug
-parent: CORE-004
+parent: CORE-001
 rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: Medium
 impact: "Shutdown can return while work continues, a fallback scan ignores cancel, and unbounded event streams can grow without limit."
 tags: [core, audit, remediation, async]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary

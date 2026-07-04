@@ -1,4 +1,5 @@
 mod actor_test;
+mod cancel_map_test;
 mod dir_cache_test;
 mod error_test;
 mod metadata_test;

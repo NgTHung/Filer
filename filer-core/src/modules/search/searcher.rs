@@ -126,7 +126,7 @@ impl Searcher {
                 location_output,
             )
             .await;
-            active_search.remove(session).await;
+            active_search.remove_if_current(session, &cancel).await;
         });
     }
 
@@ -154,11 +154,11 @@ impl Searcher {
         queue.push_back((path, 0));
         'outer: while let Some((dir, depth)) = queue.pop_front() {
             if cancel.is_cancelled() {
-                break;
+                return;
             }
             let entries = match cx.race(provider.scheme(), provider.list(&dir, &cx)).await {
                 Ok(entries) => entries,
-                Err(e) if e.code() == ErrorCode::Cancelled => break,
+                Err(e) if e.code() == ErrorCode::Cancelled => return,
                 Err(e) if e.code() == ErrorCode::TimedOut => {
                     if Self::is_latest(latest_searches, session, request) {
                         send_or_warn(

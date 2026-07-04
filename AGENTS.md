@@ -41,6 +41,7 @@ Prefer borrowing when practical.
 Do not add dependencies unless needed.
 Keep code simple and idomatic.
 Do not use comment to dividing sections of code(`-------\nABC\n------`). 
+Write test in the tests folder instead of inline it.
 
 ### Documentation rules
 Core principle: Explain WHY, not WHAT. Keep comments as short as possible. One sentence explaining rationale beats a paragraph restating code.

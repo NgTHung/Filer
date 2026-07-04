@@ -4,13 +4,13 @@ title: Unify directory listing and group ordering on one comparator
 status: To Do
 priority: High
 type: Bug
-parent: CORE-004
+parent: CORE-001
 milestone: "0.3.0"
 rules: [PIPELINE-TRANSFORMS]
 risk: Medium
 impact: "Two disagreeing order authorities break cursor stability and show the same directory in different orders."
 tags: [core, audit, remediation, pipeline]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary

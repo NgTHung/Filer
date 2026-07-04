@@ -4,13 +4,13 @@ title: Move actor internals to LocationRef
 status: To Do
 priority: High
 type: Refactor
-parent: PROVIDER-002
+parent: CORE-001
 milestone: "0.3.0"
 rules: [PROVIDER-ACCESS, SESSION-BOUNDARY, ACTOR-LONG-WORK]
 risk: High
 impact: "Moves actor routing authority from transient node identity to canonical location identity."
 tags: [core, actors, location, nodeid]
-last_updated: 2026-06-24
+last_updated: 2026-07-04
 ---
 
 ## Summary

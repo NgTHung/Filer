@@ -4,12 +4,12 @@ title: Fix NodeId hashing panic on non-UTF-8 paths
 status: To Do
 priority: High
 type: Bug
-parent: CORE-004
+parent: CORE-001
 milestone: "0.3.0"
 risk: High
 impact: "Removes a panic on valid filesystem input that sits on the main scan path."
 tags: [core, audit, remediation, reliability]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary

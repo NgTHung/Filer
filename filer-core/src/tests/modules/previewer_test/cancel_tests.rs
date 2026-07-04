@@ -2,6 +2,49 @@
 mod cancel_tests {
     use super::*;
 
+    struct SequencedPreviewProvider {
+        result: PreviewData,
+        delays: Mutex<Vec<Duration>>,
+    }
+
+    impl SequencedPreviewProvider {
+        fn new(result: PreviewData, delays: Vec<Duration>) -> Self {
+            Self {
+                result,
+                delays: Mutex::new(delays),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl PreviewProvider for SequencedPreviewProvider {
+        fn supported_categories(&self) -> &[MimeCategory] {
+            &[MimeCategory::Text]
+        }
+
+        async fn generate(
+            &self,
+            _path: &Path,
+            _mime: &MimeInfo,
+            _options: &PreviewOptions,
+        ) -> Result<PreviewData, CoreError> {
+            let delay = self
+                .delays
+                .lock()
+                .unwrap()
+                .pop()
+                .unwrap_or(Duration::ZERO);
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            Ok(self.result.clone())
+        }
+
+        fn name(&self) -> &'static str {
+            "sequenced"
+        }
+    }
+
     #[tokio::test]
     async fn test_cancel_prevents_event_emission() {
         let registry = NodeRegistry::new();
@@ -91,6 +134,121 @@ mod cancel_tests {
             session_events.is_empty(),
             "Cancelled Location preview should not emit PreviewReadyCompat or PreviewFailedCompat"
         );
+    }
+
+    #[tokio::test]
+    async fn test_generate_rapid_reissue_then_cancel_cancels_fresh_preview() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let path = PathBuf::from("/tmp/rapid-preview.txt");
+        let node_id = registry.clone().register(path);
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+
+        let mut preview_reg = PreviewRegistry::new();
+        preview_reg.register(Box::new(SequencedPreviewProvider::new(
+            text_preview(),
+            vec![Duration::from_millis(120), Duration::from_millis(10)],
+        )));
+        let (cmd_tx, evt_rx, _cache) =
+            spawn_previewer_with_provider(Arc::new(NullProvider), Arc::new(preview_reg), registry);
+
+        cmd_tx
+            .send(PreviewCommand::Generate {
+                path: node_id,
+                options: None,
+                session,
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(PreviewCommand::Generate {
+                path: node_id,
+                options: None,
+                session,
+                request: fresh_request,
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(180);
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            match event {
+                Event::PreviewReadyCompat {
+                    session: s,
+                    request,
+                    ..
+                }
+                | Event::PreviewFailedCompat {
+                    session: s,
+                    request,
+                    ..
+                } if s == session && request == fresh_request => {
+                    panic!("fresh preview emitted after rapid reissue cancellation: {event:?}");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_generate_location_rapid_reissue_then_cancel_cancels_fresh_preview() {
+        let registry = NodeRegistry::new();
+        let session = SessionId::new();
+        let location = Location::local("/tmp/rapid-location-preview.txt");
+        let stale_request = RequestId::new();
+        let fresh_request = RequestId::new();
+
+        let mut preview_reg = PreviewRegistry::new();
+        preview_reg.register(Box::new(SequencedPreviewProvider::new(
+            text_preview(),
+            vec![Duration::from_millis(120), Duration::from_millis(10)],
+        )));
+        let (cmd_tx, evt_rx, _cache) =
+            spawn_previewer_with_provider(Arc::new(NullProvider), Arc::new(preview_reg), registry);
+
+        cmd_tx
+            .send(PreviewCommand::GenerateLocation {
+                location: LocationRef::from_location(&location),
+                options: None,
+                session,
+                request: stale_request,
+            })
+            .unwrap();
+        tokio::task::yield_now().await;
+        cmd_tx
+            .send(PreviewCommand::GenerateLocation {
+                location: LocationRef::from_location(&location),
+                options: None,
+                session,
+                request: fresh_request,
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
+
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(180);
+        while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            match event {
+                Event::PreviewReady {
+                    session: s,
+                    request,
+                    ..
+                }
+                | Event::PreviewFailed {
+                    session: s,
+                    request,
+                    ..
+                } if s == session && request == fresh_request => {
+                    panic!(
+                        "fresh location preview emitted after rapid reissue cancellation: {event:?}"
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     #[tokio::test]

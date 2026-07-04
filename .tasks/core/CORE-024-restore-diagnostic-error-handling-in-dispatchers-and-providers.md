@@ -4,11 +4,11 @@ title: Restore diagnostic error handling in dispatchers and providers
 status: To Do
 priority: Medium
 type: Refactor
-parent: CORE-004
+parent: CORE-001
 risk: Low
 impact: "Silently dropped commands and panic-on-call providers erode the diagnostic trail and the no-panic rule."
 tags: [core, audit, remediation, reliability]
-last_updated: 2026-06-24
+last_updated: 2026-07-04
 ---
 
 ## Summary

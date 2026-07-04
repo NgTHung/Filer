@@ -4,12 +4,12 @@ title: Honor or remove the pipeline filter and hidden-file contracts
 status: To Do
 priority: Medium
 type: Bug
-parent: CORE-004
+parent: CORE-001
 rules: [PIPELINE-TRANSFORMS]
 risk: Medium
 impact: "The pipeline charges for filters it never applies and hides the wrong files on Windows."
 tags: [core, audit, remediation, pipeline]
-last_updated: 2026-06-13
+last_updated: 2026-07-04
 ---
 
 ## Summary
