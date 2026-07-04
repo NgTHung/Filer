@@ -457,7 +457,7 @@ impl NodeId {
             use rapidhash::fast::RapidHasher;
             use std::hash::Hasher;
             let mut h = RapidHasher::default();
-            h.write(path.to_str().unwrap().as_bytes());
+            h.write(path.as_os_str().as_encoded_bytes());
             h.finish()
         })
     }

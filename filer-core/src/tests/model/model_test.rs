@@ -4,6 +4,24 @@ use crate::model::node::{FileNode, NodeId};
 use crate::model::registry::NodeRegistry;
 use std::path::PathBuf;
 
+#[cfg(unix)]
+fn non_utf8_path() -> PathBuf {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    PathBuf::from(OsString::from_vec(b"bad-\xFF-name.txt".to_vec()))
+}
+
+#[cfg(windows)]
+fn non_utf8_path() -> PathBuf {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+
+    PathBuf::from(OsString::from_wide(&[
+        0x0062, 0x0061, 0x0064, 0x002D, 0xD800, 0x002E, 0x0074, 0x0078, 0x0074,
+    ]))
+}
+
 #[test]
 fn test_node_id_from_path() {
     let path = PathBuf::from("/home/user/test.txt");
@@ -12,6 +30,41 @@ fn test_node_id_from_path() {
     // Same path should produce same ID
     let id2 = NodeId::from_path(&path);
     assert_eq!(id, id2);
+}
+
+#[test]
+fn test_node_id_from_non_utf8_path_is_stable() {
+    let path = non_utf8_path();
+    assert!(path.to_str().is_none());
+
+    let id = NodeId::from_path(&path);
+    let id2 = NodeId::from_path(&path);
+
+    assert_eq!(id, id2);
+}
+
+#[test]
+fn test_file_node_from_metadata_accepts_non_utf8_path() {
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let metadata = std::fs::metadata(source).unwrap();
+    let path = non_utf8_path();
+
+    let node = FileNode::from_metadata(metadata, path.clone(), None).unwrap();
+
+    assert_eq!(node.id, NodeId::from_path(&path));
+    assert_eq!(node.path, path);
+}
+
+#[test]
+fn test_file_node_from_dir_entry_accepts_non_utf8_path() {
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let file_type = std::fs::metadata(source).unwrap().file_type();
+    let path = non_utf8_path();
+
+    let node = FileNode::from_dir_entry(path.clone(), file_type, None);
+
+    assert_eq!(node.id, NodeId::from_path(&path));
+    assert_eq!(node.path, path);
 }
 
 #[test]
