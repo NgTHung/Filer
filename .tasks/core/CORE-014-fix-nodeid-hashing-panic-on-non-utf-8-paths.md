@@ -1,7 +1,7 @@
 ---
 id: CORE-014
 title: Fix NodeId hashing panic on non-UTF-8 paths
-status: To Do
+status: Done
 priority: High
 type: Bug
 parent: CORE-001
@@ -18,6 +18,6 @@ NodeId::from_path hashes path.to_str().unwrap(), which panics on any non-UTF-8 p
 
 ## Acceptance Criteria
 
-- [ ] NodeId::from_path hashes OS path bytes instead of the UTF-8 view and no longer calls unwrap.
-- [ ] A test builds a NodeId from a non-UTF-8 path (or an OsStr from invalid bytes) and asserts it does not panic and produces a stable id.
-- [ ] from_metadata and from_dir_entry, which share the same id path, are covered by the non-UTF-8 case.
+- [x] NodeId::from_path hashes OS path bytes instead of the UTF-8 view and no longer calls unwrap.
+- [x] A test builds a NodeId from a non-UTF-8 path (or an OsStr from invalid bytes) and asserts it does not panic and produces a stable id.
+- [x] from_metadata and from_dir_entry, which share the same id path, are covered by the non-UTF-8 case.
