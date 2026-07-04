@@ -38,6 +38,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/tasks/{id}/done", post(routes::transitions::done))
         .route("/api/tasks/{id}/block", post(routes::transitions::block))
         .route("/api/tasks/{id}/defer", post(routes::transitions::defer))
-        .route("/api/tasks/{id}/obsolete", post(routes::transitions::obsolete))
+        .route(
+            "/api/tasks/{id}/obsolete",
+            post(routes::transitions::obsolete),
+        )
         .with_state(state)
 }

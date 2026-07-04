@@ -28,7 +28,10 @@ async fn test_cancelled_resolves_after_cancel() {
     signal.cancel();
 
     let joined = tokio::time::timeout(Duration::from_secs(1), task).await;
-    assert!(joined.is_ok(), "cancelled() should resolve once cancel fires");
+    assert!(
+        joined.is_ok(),
+        "cancelled() should resolve once cancel fires"
+    );
     joined.unwrap().unwrap();
 }
 
@@ -38,12 +41,18 @@ async fn test_cancelled_returns_immediately_when_already_cancelled() {
     signal.cancel();
 
     let joined = tokio::time::timeout(Duration::from_secs(1), signal.cancelled()).await;
-    assert!(joined.is_ok(), "cancelled() must not block when already cancelled");
+    assert!(
+        joined.is_ok(),
+        "cancelled() must not block when already cancelled"
+    );
 }
 
 #[tokio::test]
 async fn test_cancelled_pending_until_cancel() {
     let signal = CancelSignal::new();
     let joined = tokio::time::timeout(Duration::from_millis(50), signal.cancelled()).await;
-    assert!(joined.is_err(), "cancelled() should block until cancel fires");
+    assert!(
+        joined.is_err(),
+        "cancelled() should block until cancel fires"
+    );
 }

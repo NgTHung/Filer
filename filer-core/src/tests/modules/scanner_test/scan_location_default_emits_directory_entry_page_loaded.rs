@@ -428,6 +428,101 @@
     }
 
     #[tokio::test]
+    async fn test_snapshot_and_paged_loads_share_pipeline_order() {
+        let provider = MockProvider::new();
+        provider.add_file(make_file("z.txt", "/tmp/shared-order", 30, false));
+        provider.add_file(_make_file_with_ext(
+            "Makefile",
+            "/tmp/shared-order",
+            None,
+            20,
+        ));
+        provider.add_file(make_file("a.txt", "/tmp/shared-order", 10, false));
+        provider.add_file(make_file("same.rs", "/tmp/shared-order/b", 40, false));
+        provider.add_file(make_file("same.rs", "/tmp/shared-order/a", 50, false));
+
+        let registry = NodeRegistry::new();
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider), registry);
+        tokio::spawn(async move { scanner.run().await });
+
+        let path = PathBuf::from("/tmp/shared-order");
+        let pipeline =
+            PipelineConfig::default().sort(SortField::Extension, SortOrder::Ascending, false);
+
+        let snapshot_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: snapshot_session,
+                pipeline: pipeline.clone(),
+                load: snapshot_load(),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let snapshot = wait_for_dir_loaded(&evt_rx, snapshot_session).await;
+        let snapshot_names = snapshot.groups[0]
+            .nodes
+            .iter()
+            .map(|node| node.path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        let paged_session = SessionId::new();
+        cmd_tx
+            .send(ScanCommand::Scan {
+                path: path.clone(),
+                session: paged_session,
+                pipeline: pipeline.clone(),
+                load: crate::DirectoryLoadOptions::page(2),
+                request: RequestId::new(),
+            })
+            .unwrap();
+        let (first, state) = wait_for_dir_page_loaded(&evt_rx, paged_session).await;
+        let mut paged_names = first.groups[0]
+            .nodes
+            .iter()
+            .map(|node| node.path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let mut next_cursor = state.next_cursor.clone();
+
+        let mut state = state;
+        while let Some(cursor) = next_cursor {
+            cmd_tx
+                .send(ScanCommand::Scan {
+                    path: path.clone(),
+                    session: paged_session,
+                    pipeline: pipeline.clone(),
+                    load: crate::DirectoryLoadOptions::page_after(2, cursor),
+                    request: RequestId::new(),
+                })
+                .unwrap();
+            let (page, page_state) = wait_for_dir_page_loaded(&evt_rx, paged_session).await;
+            paged_names.extend(
+                page.groups[0]
+                    .nodes
+                    .iter()
+                    .map(|node| node.path.to_string_lossy().into_owned()),
+            );
+            next_cursor = page_state.next_cursor.clone();
+            state = page_state;
+        }
+
+        assert!(state.complete);
+        assert_eq!(snapshot_names, paged_names);
+        assert_eq!(
+            snapshot_names,
+            vec![
+                "/tmp/shared-order/Makefile",
+                "/tmp/shared-order/a/same.rs",
+                "/tmp/shared-order/b/same.rs",
+                "/tmp/shared-order/a.txt",
+                "/tmp/shared-order/z.txt"
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn test_fallback_provider_materializes_once_per_page_request() {
         let provider = MockProvider::fallback();
         provider.add_file(make_file("c.txt", "/tmp/fallback-page", 30, false));

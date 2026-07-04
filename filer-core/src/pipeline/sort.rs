@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::node::FileNode;
-use crate::pipeline::{PipelineData, Stage};
+use crate::pipeline::{PipelineConfig, PipelineData, SortConfig, Stage, compare_nodes};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,51 +24,28 @@ pub enum SortOrder {
 }
 
 pub struct SortBy {
-    field: SortField,
-    order: SortOrder,
-    directories_first: bool,
+    config: PipelineConfig,
 }
 
 impl SortBy {
     pub fn new(field: SortField, order: SortOrder, directories_first: bool) -> Self {
-        Self {
-            field,
-            order,
-            directories_first,
-        }
+        Self::from_config(PipelineConfig {
+            sort: Some(SortConfig {
+                field,
+                order,
+                directories_first,
+            }),
+            filter: None,
+            group: None,
+        })
     }
 
-    fn handle_order(&self, ord: std::cmp::Ordering) -> std::cmp::Ordering {
-        match self.order {
-            SortOrder::Ascending => ord,
-            SortOrder::Descending => ord.reverse(),
-        }
+    pub(crate) fn from_config(config: PipelineConfig) -> Self {
+        Self { config }
     }
 
     fn sort_nodes(&self, mut nodes: Vec<FileNode>) -> Vec<FileNode> {
-        nodes.sort_by(|a, b| {
-            if self.directories_first && a.is_dir() != b.is_dir() {
-                if a.is_dir() {
-                    std::cmp::Ordering::Less
-                } else {
-                    std::cmp::Ordering::Greater
-                }
-            } else {
-                match self.field {
-                    SortField::Name => self.handle_order(a.name.cmp(&b.name)),
-                    SortField::Size => self.handle_order(a.size.cmp(&b.size)),
-                    SortField::Modified => self.handle_order(a.modified.cmp(&b.modified)),
-                    SortField::Created => self.handle_order(a.created.cmp(&b.created)),
-                    SortField::Extension => match (a.extension(), b.extension()) {
-                        (Some(exta), Some(extb)) => self.handle_order(exta.cmp(extb)),
-                        (Some(_), None) => self.handle_order(std::cmp::Ordering::Less),
-                        (None, Some(_)) => self.handle_order(std::cmp::Ordering::Greater),
-                        (None, None) => std::cmp::Ordering::Equal,
-                    },
-                    SortField::Type => self.handle_order(a.name.cmp(&b.name)),
-                }
-            }
-        });
+        nodes.sort_by(|a, b| compare_nodes(&self.config, a, b));
         nodes
     }
 }
@@ -78,9 +55,8 @@ impl Stage for SortBy {
         match input {
             PipelineData::Flat(nodes) => PipelineData::Flat(self.sort_nodes(nodes)),
             PipelineData::Grouped(mut grouped) => {
-                // Sort within each group
                 for group in &mut grouped.groups {
-                    group.nodes = self.sort_nodes(group.nodes.clone());
+                    group.nodes = self.sort_nodes(std::mem::take(&mut group.nodes));
                 }
                 PipelineData::Grouped(grouped)
             }

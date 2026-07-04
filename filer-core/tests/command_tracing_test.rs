@@ -15,7 +15,7 @@
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use tokio::time::{timeout, Instant};
+use tokio::time::{Instant, timeout};
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
@@ -105,8 +105,7 @@ fn capture_buffer() -> Buffer {
     BUFFER
         .get_or_init(|| {
             let buf: Buffer = Arc::new(Mutex::new(Vec::new()));
-            let subscriber =
-                tracing_subscriber::registry().with(CaptureLayer { buf: buf.clone() });
+            let subscriber = tracing_subscriber::registry().with(CaptureLayer { buf: buf.clone() });
             let _ = tracing::subscriber::set_global_default(subscriber);
             buf
         })
@@ -209,7 +208,10 @@ async fn every_drivable_command_family_emits_a_trace_record() {
         .iter()
         .filter(|r| r.session == Some(sid_num) || r.key == "session.handshake")
         .collect();
-    assert!(!mine.is_empty(), "expected captured records for this session");
+    assert!(
+        !mine.is_empty(),
+        "expected captured records for this session"
+    );
 
     // Handshake and DestroySession are sessionless at the command level
     // (Command::session_id returns None); the rest carry this test's session id.
@@ -218,7 +220,11 @@ async fn every_drivable_command_family_emits_a_trace_record() {
     assert!(has(&records, "scan.path.compat", Some(sid_num)));
     assert!(has(&records, "search.path.compat", Some(sid_num)));
     assert!(has(&records, "preview.load.node.compat", Some(sid_num)));
-    assert!(has(&records, "ops.create_folder.node.compat", Some(sid_num)));
+    assert!(has(
+        &records,
+        "ops.create_folder.node.compat",
+        Some(sid_num)
+    ));
     assert!(has(&records, "watch.node.compat", Some(sid_num)));
     assert!(has(&records, "session.destroy", None));
 

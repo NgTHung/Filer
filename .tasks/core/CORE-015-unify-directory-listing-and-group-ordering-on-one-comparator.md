@@ -1,7 +1,7 @@
 ---
 id: CORE-015
 title: Unify directory listing and group ordering on one comparator
-status: To Do
+status: Done
 priority: High
 type: Bug
 parent: CORE-001
@@ -19,6 +19,6 @@ Listing order is defined twice. The snapshot path orders through SortBy::sort_no
 
 ## Acceptance Criteria
 
-- [ ] The SortBy stage and the paged path both order through compare_nodes; SortBy no longer carries independent ordering logic.
-- [ ] Extension and tie-break ordering is identical between a snapshot load and a paged load of the same directory and config, pinned by a test.
-- [ ] Date and size groups order by TimeGroup::sort_order and SizeGroup::sort_order in both group.rs and the compare_nodes group key, pinned by a test.
+- [x] The SortBy stage and the paged path both order through compare_nodes; SortBy no longer carries independent ordering logic.
+- [x] Extension and tie-break ordering is identical between a snapshot load and a paged load of the same directory and config, pinned by a test.
+- [x] Date and size groups order by TimeGroup::sort_order and SizeGroup::sort_order in both group.rs and the compare_nodes group key, pinned by a test.

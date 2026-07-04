@@ -89,7 +89,11 @@ impl FsProvider for MockFs {
         Ok(guard.get(path).cloned().unwrap_or_default())
     }
 
-    async fn read(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
+    async fn read(
+        &self,
+        _path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
@@ -103,11 +107,19 @@ impl FsProvider for MockFs {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<bool, CoreError> {
+    async fn exists(
+        &self,
+        _path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<bool, CoreError> {
         Ok(true)
     }
 
-    async fn metadata(&self, path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<FileNode, CoreError> {
+    async fn metadata(
+        &self,
+        path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }
@@ -213,7 +225,11 @@ impl FsProvider for LazyTreeFs {
         Ok(self.children_of(path))
     }
 
-    async fn read(&self, _p: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
+    async fn read(
+        &self,
+        _p: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
     async fn read_range(
@@ -228,7 +244,11 @@ impl FsProvider for LazyTreeFs {
     async fn exists(&self, _p: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<bool, CoreError> {
         Ok(true)
     }
-    async fn metadata(&self, p: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<FileNode, CoreError> {
+    async fn metadata(
+        &self,
+        p: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(p.to_path_buf()))
     }
 }

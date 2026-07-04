@@ -137,7 +137,10 @@ impl ProviderRegistry {
         provider: Arc<dyn FsProvider>,
     ) -> Option<Arc<dyn FsProvider>> {
         let id = id.into();
-        let old = self.ephemeral.remove_sync(&id).map(|(_, provider)| provider);
+        let old = self
+            .ephemeral
+            .remove_sync(&id)
+            .map(|(_, provider)| provider);
         let _ = self.ephemeral.insert_sync(id, provider);
         old
     }

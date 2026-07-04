@@ -42,9 +42,11 @@ impl IntoResponse for WebError {
                 format!("project {name} is not registered"),
                 Vec::new(),
             ),
-            Self::Task(TaskError::NotFound { id }) => {
-                (StatusCode::NOT_FOUND, format!("task {id} does not exist"), Vec::new())
-            }
+            Self::Task(TaskError::NotFound { id }) => (
+                StatusCode::NOT_FOUND,
+                format!("task {id} does not exist"),
+                Vec::new(),
+            ),
             Self::Task(TaskError::Validation(errors)) => {
                 let details = errors
                     .into_iter()
@@ -67,9 +69,11 @@ impl IntoResponse for WebError {
             Self::Task(TaskError::Json(error)) => {
                 (StatusCode::BAD_REQUEST, error.to_string(), Vec::new())
             }
-            Self::Task(error @ (TaskError::Io { .. } | TaskError::MissingRepoRoot { .. })) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), Vec::new())
-            }
+            Self::Task(error @ (TaskError::Io { .. } | TaskError::MissingRepoRoot { .. })) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error.to_string(),
+                Vec::new(),
+            ),
         };
         (status, Json(ErrorBody { error, details })).into_response()
     }

@@ -101,8 +101,11 @@ impl FsProvider for RecordingProvider {
 
     async fn read(&self, path: &Path, cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         if self.block_reads {
-            cx.race(self.scheme(), std::future::pending::<Result<Vec<u8>, CoreError>>())
-                .await
+            cx.race(
+                self.scheme(),
+                std::future::pending::<Result<Vec<u8>, CoreError>>(),
+            )
+            .await
         } else {
             Err(CoreError::not_found(path.to_path_buf()))
         }
@@ -126,8 +129,11 @@ impl FsProvider for RecordingProvider {
     ) -> Result<Vec<u8>, CoreError> {
         *self.read_header_saw_cancel.lock().unwrap() = cx.cancel.is_some();
         if self.block_reads {
-            cx.race(self.scheme(), std::future::pending::<Result<Vec<u8>, CoreError>>())
-                .await
+            cx.race(
+                self.scheme(),
+                std::future::pending::<Result<Vec<u8>, CoreError>>(),
+            )
+            .await
         } else {
             Ok(b"hello".to_vec())
         }
@@ -268,8 +274,14 @@ fn spawn_previewer_with_provider(
         64 * 1024 * 1024,
         Duration::from_secs(300),
     )));
-    let previewer =
-        Previewer::with_components(cmd_rx, evt_tx, provider, registry, preview_reg, cache.clone());
+    let previewer = Previewer::with_components(
+        cmd_rx,
+        evt_tx,
+        provider,
+        registry,
+        preview_reg,
+        cache.clone(),
+    );
     tokio::spawn(async move { previewer.run().await });
     (cmd_tx, evt_rx, cache)
 }

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 
@@ -213,10 +213,10 @@ fn provider_registry_reports_unknown_refs_as_unsupported_provider() {
 #[cfg(feature = "metadata-archive")]
 mod archive_provider_tests {
     use super::*;
-    use crate::{LocationDescriptor, SegmentedLocationResolver};
     use crate::LocalFs;
-    use crate::vfs::provider::ReadSeek;
     use crate::model::registry::NodeRegistry;
+    use crate::vfs::provider::ReadSeek;
+    use crate::{LocationDescriptor, SegmentedLocationResolver};
     use std::io::Write;
     use zip::write::SimpleFileOptions;
 
@@ -248,12 +248,18 @@ mod archive_provider_tests {
         let provider = Arc::new(LocalFs::new(NodeRegistry::new()));
         let fs = ArchiveFs::zip(archive, provider);
 
-        let entries = fs.list(std::path::Path::new(""), &ProviderCx::none()).await.unwrap();
+        let entries = fs
+            .list(std::path::Path::new(""), &ProviderCx::none())
+            .await
+            .unwrap();
 
         assert_eq!(entries.len(), 2);
         let src = entries.iter().find(|entry| entry.name == "src").unwrap();
         assert!(src.is_dir());
-        let readme = entries.iter().find(|entry| entry.name == "README.md").unwrap();
+        let readme = entries
+            .iter()
+            .find(|entry| entry.name == "README.md")
+            .unwrap();
         assert!(readme.is_file());
         assert_eq!(readme.size, 6);
     }

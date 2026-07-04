@@ -79,7 +79,9 @@ fn build_filter(query: &TaskQuery) -> Result<TaskFilter, WebError> {
     })
 }
 
-fn parse_opt<T: std::str::FromStr<Err = String>>(value: Option<&str>) -> Result<Option<T>, WebError> {
+fn parse_opt<T: std::str::FromStr<Err = String>>(
+    value: Option<&str>,
+) -> Result<Option<T>, WebError> {
     match value {
         Some(raw) => raw.parse::<T>().map(Some).map_err(WebError::BadRequest),
         None => Ok(None),

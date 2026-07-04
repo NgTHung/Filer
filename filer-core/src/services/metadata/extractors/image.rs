@@ -169,11 +169,11 @@ impl MetadataExtractor for ImageExtractor {
         {
             let (width, height, format) = self.extract_dimensions(path, mime, provider, cx).await?;
             // EXIF is optional — missing or unreadable EXIF is not an error.
-            let (exif, color_space, bit_depth) = match self.extract_exif(path, provider, cx).await.ok()
-            {
-                Some((exif, cs, bd)) => (Some(exif), cs, bd),
-                None => (None, None, None),
-            };
+            let (exif, color_space, bit_depth) =
+                match self.extract_exif(path, provider, cx).await.ok() {
+                    Some((exif, cs, bd)) => (Some(exif), cs, bd),
+                    None => (None, None, None),
+                };
             Ok(ExtendedMetadata::Image(ImageMetadata {
                 width,
                 height,

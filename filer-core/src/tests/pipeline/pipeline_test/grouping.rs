@@ -60,3 +60,68 @@ fn test_group_by_empty_input() {
     }
 }
 
+#[test]
+fn test_group_by_date_orders_by_time_group_sort_order() {
+    let group = GroupBy::new(GroupField::Date);
+    let now = SystemTime::now();
+    let mut yesterday = make_file("yesterday.txt", 10, false);
+    yesterday.modified = Some(now - Duration::from_secs(36 * 60 * 60));
+    let mut older = make_file("older.txt", 20, false);
+    older.modified = Some(now - Duration::from_secs(11 * 365 * 24 * 60 * 60));
+    let mut recent = make_file("recent.txt", 30, false);
+    recent.modified = Some(now - Duration::from_secs(5 * 60));
+
+    let output = group.process(PipelineData::Flat(vec![yesterday, older, recent]));
+    if let PipelineData::Grouped(groups) = output {
+        assert_eq!(
+            groups
+                .groups
+                .iter()
+                .map(|group| group.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Last hour", "Yesterday", "Older"]
+        );
+        assert_eq!(
+            groups
+                .groups
+                .iter()
+                .map(|group| group.order)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+    } else {
+        panic!("Expected Grouped output");
+    }
+}
+
+#[test]
+fn test_group_by_size_orders_by_size_group_sort_order() {
+    let group = GroupBy::new(GroupField::Size);
+
+    let output = group.process(PipelineData::Flat(vec![
+        make_file("huge.bin", 2 * 1024 * 1024 * 1024, false),
+        make_file("empty.bin", 0, false),
+        make_file("tiny.bin", 1024, false),
+    ]));
+    if let PipelineData::Grouped(groups) = output {
+        assert_eq!(
+            groups
+                .groups
+                .iter()
+                .map(|group| group.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Empty", "Tiny (< 10 KB)", "Huge (1 GB - 10 GB)"]
+        );
+        assert_eq!(
+            groups
+                .groups
+                .iter()
+                .map(|group| group.order)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+    } else {
+        panic!("Expected Grouped output");
+    }
+}
+

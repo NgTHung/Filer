@@ -154,18 +154,18 @@ impl MetadataExtractor for VideoExtractor {
             };
 
             // Non-MP4 containers won't parse; return zeroed metadata rather than error.
-            let metadata = self
-                .parse_mp4(path, provider, format, cx)
-                .await
-                .unwrap_or(VideoMetadata {
-                    width: 0,
-                    height: 0,
-                    duration_secs: 0.0,
-                    frame_rate: None,
-                    video_codec: None,
-                    audio_codec: None,
-                    format: format.to_string(),
-                });
+            let metadata =
+                self.parse_mp4(path, provider, format, cx)
+                    .await
+                    .unwrap_or(VideoMetadata {
+                        width: 0,
+                        height: 0,
+                        duration_secs: 0.0,
+                        frame_rate: None,
+                        video_codec: None,
+                        audio_codec: None,
+                        format: format.to_string(),
+                    });
 
             Ok(ExtendedMetadata::Video(metadata))
         }

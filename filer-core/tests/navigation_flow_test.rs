@@ -141,7 +141,11 @@ impl FsProvider for MockProvider {
             .unwrap_or_default())
     }
 
-    async fn read(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
+    async fn read(
+        &self,
+        _path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<Vec<u8>, CoreError> {
         Ok(vec![])
     }
 
@@ -155,11 +159,19 @@ impl FsProvider for MockProvider {
         Ok(vec![])
     }
 
-    async fn exists(&self, _path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<bool, CoreError> {
+    async fn exists(
+        &self,
+        _path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<bool, CoreError> {
         Ok(true)
     }
 
-    async fn metadata(&self, path: &Path, _cx: &filer_core::ProviderCx<'_>) -> Result<FileNode, CoreError> {
+    async fn metadata(
+        &self,
+        path: &Path,
+        _cx: &filer_core::ProviderCx<'_>,
+    ) -> Result<FileNode, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }

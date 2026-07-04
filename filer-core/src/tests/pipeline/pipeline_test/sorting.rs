@@ -95,6 +95,32 @@ fn test_sort_by_size_equal_sizes() {
     let output = sort.process(PipelineData::Flat(input));
     if let PipelineData::Flat(nodes) = output {
         assert_eq!(nodes.len(), 3);
+        assert_eq!(
+            nodes.iter().map(|node| node.name.as_str()).collect::<Vec<_>>(),
+            vec!["a.txt", "b.txt", "c.txt"]
+        );
+    } else {
+        panic!("Expected Flat output");
+    }
+}
+
+#[test]
+fn test_sort_by_size_ties_by_path_after_name() {
+    let sort = SortBy::new(SortField::Size, SortOrder::Ascending, false);
+    let mut later = make_file("same.txt", 100, false);
+    later.path = PathBuf::from("/test/b/same.txt");
+    let mut earlier = make_file("same.txt", 100, false);
+    earlier.path = PathBuf::from("/test/a/same.txt");
+
+    let output = sort.process(PipelineData::Flat(vec![later, earlier]));
+    if let PipelineData::Flat(nodes) = output {
+        assert_eq!(
+            nodes
+                .iter()
+                .map(|node| node.path.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["/test/a/same.txt", "/test/b/same.txt"]
+        );
     } else {
         panic!("Expected Flat output");
     }
@@ -177,11 +203,16 @@ fn test_sort_by_extension_with_no_extension() {
     let output = sort.process(PipelineData::Flat(input));
     if let PipelineData::Flat(output) = output {
         assert_eq!(output.len(), 3);
+        assert_eq!(
+            output
+                .iter()
+                .map(|node| node.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Makefile", "file.rs", "file.txt"]
+        );
     } else {
         panic!("Expected Flat output");
     }
-
-    // Files without extension should sort first or last
 }
 
 #[test]

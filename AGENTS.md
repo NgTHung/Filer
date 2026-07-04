@@ -21,6 +21,7 @@ Filer-core is the heart of this project.
 This is a TDD project, you shouldn't write the implement blindly without the test written throughly/correctly.
 Follow existing code style. ALWAYS read and copy the style of similar tests when adding new cases.
 All changes must be tested.
+You can modify main branch.
 Avoid large module:
 - Prefer adding new modules instead growing existing ones.
 - Target Rust modules under 700 LoCs.

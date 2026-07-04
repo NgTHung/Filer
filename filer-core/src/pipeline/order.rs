@@ -14,7 +14,6 @@
 //! ```
 
 use std::cmp::Ordering;
-use std::time::SystemTime;
 
 use crate::model::node::FileNode;
 use crate::pipeline::config::{GroupBy, PipelineConfig};
@@ -22,8 +21,14 @@ use crate::pipeline::sort::{SortField, SortOrder};
 use crate::utils;
 use crate::vfs::provider::{ListingDetail, ListingOptions};
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum GroupSortKey {
+    Order(u8),
+    Label(String),
+}
+
 pub fn compare_nodes(config: &PipelineConfig, left: &FileNode, right: &FileNode) -> Ordering {
-    let group_order = group_label(config, left).cmp(&group_label(config, right));
+    let group_order = group_sort_key(config, left).cmp(&group_sort_key(config, right));
     if group_order != Ordering::Equal {
         return group_order;
     }
@@ -64,9 +69,9 @@ pub fn group_label(config: &PipelineConfig, node: &FileNode) -> String {
         GroupBy::Extension | GroupBy::Type => {
             node.extension().unwrap_or("No extension").to_string()
         }
-        GroupBy::Date => {
-            utils::time_group_name(node.modified.unwrap_or(SystemTime::UNIX_EPOCH)).to_string()
-        }
+        GroupBy::Date => utils::time_group_opt(node.modified)
+            .display_name()
+            .to_string(),
         GroupBy::Size => utils::size_group_name(node.size).to_string(),
         GroupBy::FirstLetter => node
             .name
@@ -75,6 +80,17 @@ pub fn group_label(config: &PipelineConfig, node: &FileNode) -> String {
             .unwrap_or('#')
             .to_uppercase()
             .to_string(),
+    }
+}
+
+pub(crate) fn group_sort_key(config: &PipelineConfig, node: &FileNode) -> GroupSortKey {
+    match config.group.map(|group| group.by).unwrap_or(GroupBy::None) {
+        GroupBy::None => GroupSortKey::Label(String::new()),
+        GroupBy::Extension | GroupBy::Type | GroupBy::FirstLetter => {
+            GroupSortKey::Label(group_label(config, node))
+        }
+        GroupBy::Date => GroupSortKey::Order(utils::time_group_opt(node.modified).sort_order()),
+        GroupBy::Size => GroupSortKey::Order(utils::size_group(node.size).sort_order()),
     }
 }
 

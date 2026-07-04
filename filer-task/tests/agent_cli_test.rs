@@ -42,7 +42,10 @@ fn show_returns_structured_task_body_and_complete_human_metadata() {
     );
 
     let task = &json["detail"]["task"];
-    assert!(task.get("parent").is_none(), "absent parent should be omitted");
+    assert!(
+        task.get("parent").is_none(),
+        "absent parent should be omitted"
+    );
     assert!(
         task.get("milestone").is_none(),
         "absent milestone should be omitted"

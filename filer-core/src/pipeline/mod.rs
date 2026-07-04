@@ -168,13 +168,9 @@ impl Pipeline {
             // - name_pattern
         }
 
-        // Add sort stage
-        if let Some(sort_config) = &config.sort {
-            pipeline = pipeline.add(sort::SortBy::new(
-                sort_config.field,
-                sort_config.order,
-                sort_config.directories_first,
-            ));
+        // Add order stage
+        if config.sort.is_some() || config.group.is_some() {
+            pipeline = pipeline.add(sort::SortBy::from_config(config.clone()));
         }
 
         // Add group stage

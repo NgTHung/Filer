@@ -28,7 +28,10 @@ async fn test_race_times_out_with_provider_context() {
 
     assert_eq!(err.code(), ErrorCode::TimedOut);
     assert_eq!(err.kind(), ErrorKind::Timeout);
-    assert_eq!(err.target(), Some(&ErrorTarget::Provider("mock".to_string())));
+    assert_eq!(
+        err.target(),
+        Some(&ErrorTarget::Provider("mock".to_string()))
+    );
     assert!(matches!(
         err.context(),
         Some(ErrorContext::Timeout { provider }) if provider == "mock"

@@ -502,7 +502,10 @@ impl Operator {
                 let file_name = src_path.file_name().unwrap_or_default();
                 let dst_file = dst_path.join(file_name);
 
-                match cx.race(fs.scheme(), fs.rename(&src_path, &dst_file, &cx)).await {
+                match cx
+                    .race(fs.scheme(), fs.rename(&src_path, &dst_file, &cx))
+                    .await
+                {
                     Ok(()) => {
                         invalidate_parent_cache(&cache, &src_path);
                         invalidate_parent_cache(&cache, &dst_file);
@@ -925,10 +928,7 @@ impl Operator {
                     return;
                 }
             }
-            if let Err(e) = cx
-                .race(fs.scheme(), fs.write(&full_path, &[], &cx))
-                .await
-            {
+            if let Err(e) = cx.race(fs.scheme(), fs.write(&full_path, &[], &cx)).await {
                 send_or_warn_async(
                     &events,
                     operation_error(e, session, request, operation),
@@ -1156,7 +1156,8 @@ async fn copy_dir_recursive(
             ))
             .await?;
         } else {
-            cx.race(fs.scheme(), fs.copy(&src_child, &dst_child, cx)).await?;
+            cx.race(fs.scheme(), fs.copy(&src_child, &dst_child, cx))
+                .await?;
             *items_done += 1;
             let id = registry.clone().register(dst_child);
             send_or_warn_async(

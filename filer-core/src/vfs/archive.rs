@@ -139,7 +139,10 @@ impl FsProvider for ArchiveFs {
 
     async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<FileNode, CoreError> {
         let parent = path.parent().unwrap_or_else(|| Path::new(""));
-        let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
         let children = self.list_children(parent, cx).await?;
         let child = children
             .into_iter()
@@ -194,12 +197,14 @@ fn list_zip_directory<R: Read + Seek>(
         };
         let is_dir = rest.contains('/') || entry.is_dir();
         let size = if is_dir { 0 } else { entry.size() };
-        children.entry(child_name.to_string()).or_insert(ArchiveChild {
-            name: child_name.to_string(),
-            path: child_path,
-            is_dir,
-            size,
-        });
+        children
+            .entry(child_name.to_string())
+            .or_insert(ArchiveChild {
+                name: child_name.to_string(),
+                path: child_path,
+                is_dir,
+                size,
+            });
     }
 
     if children.is_empty() {

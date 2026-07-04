@@ -124,10 +124,7 @@ impl PreviewRegistry {
 
         // Tier 2 — magic bytes. The provider read keeps detection consistent
         // with the rest of the VFS; failures fall back to the Tier 1 result.
-        let header = provider
-            .read_header(path, MAGIC_BYTE_WINDOW, cx)
-            .await
-            .ok();
+        let header = provider.read_header(path, MAGIC_BYTE_WINDOW, cx).await.ok();
         MimeDetector::detect_with_strategy(path, header.as_deref(), options.detection_strategy)
     }
 

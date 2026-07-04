@@ -211,8 +211,7 @@ async fn send(repo: &TempDir, request: Request<Body>) -> (StatusCode, Value) {
 fn task_repo() -> TempDir {
     let temp = tempfile::tempdir().expect("temp dir created");
     for domain in ["core", "app", "ecosystem"] {
-        fs::create_dir_all(temp.path().join(".tasks").join(domain))
-            .expect("domain dir created");
+        fs::create_dir_all(temp.path().join(".tasks").join(domain)).expect("domain dir created");
     }
     fs::write(temp.path().join(".tasks/task.schema.json"), "{}").expect("schema written");
     temp
