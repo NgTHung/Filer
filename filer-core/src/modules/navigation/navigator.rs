@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::actors::Actor;
 use crate::api::events;
 use crate::model::directory::DirectoryLoadOptions;
-use crate::model::location::{LocationRef, LocationRoute};
+use crate::model::location::{Location, LocationRef, LocationRoute};
 use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -611,10 +611,19 @@ impl Navigator {
         scanner_tx: Sender<ScanCommand>,
         request: RequestId,
     ) {
+        let location = state.register.resolve_node_location(node).or_else(|| {
+            state
+                .register
+                .resolve(node)
+                .map(|path| LocationRef::from_location(&Location::local(path)))
+        });
+        let Some(location) = location else {
+            return;
+        };
         send_or_warn(
             &scanner_tx,
-            ScanCommand::ScanNode {
-                node,
+            ScanCommand::ScanCompat {
+                location,
                 session,
                 pipeline: state.pipeline_config.clone(),
                 load: DirectoryLoadOptions::default(),
@@ -661,10 +670,19 @@ impl Navigator {
         scanner_tx: Sender<ScanCommand>,
         request: RequestId,
     ) {
+        let location = state.register.resolve_node_location(node).or_else(|| {
+            state
+                .register
+                .resolve(node)
+                .map(|path| LocationRef::from_location(&Location::local(path)))
+        });
+        let Some(location) = location else {
+            return;
+        };
         send_or_warn(
             &scanner_tx,
-            ScanCommand::RefreshNode {
-                node,
+            ScanCommand::RefreshCompat {
+                location,
                 session,
                 pipeline: state.pipeline_config.clone(),
                 load: DirectoryLoadOptions::default(),

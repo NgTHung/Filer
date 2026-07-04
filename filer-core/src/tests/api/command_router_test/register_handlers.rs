@@ -210,8 +210,9 @@
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(ScanCommand::Scan {
-                            path,
+                        let location = crate::Location::local(path);
+                        let _ = tx.send(ScanCommand::ScanCompat {
+                            location: crate::LocationRef::from_location(&location),
                             session,
                             pipeline,
                             load,
@@ -243,7 +244,7 @@
             }
             {
                 let tx = scan_tx.clone();
-                handlers.on("scan.node.compat", move |cmd, _ctx| {
+                handlers.on("scan.node.compat", move |cmd, ctx| {
                     if let Command::ScanNodeCompat {
                         node,
                         session,
@@ -252,8 +253,11 @@
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(ScanCommand::ScanNode {
-                            node,
+                        let Some(location) = ctx.registry.resolve_node_location(node) else {
+                            return;
+                        };
+                        let _ = tx.send(ScanCommand::ScanCompat {
+                            location,
                             session,
                             pipeline,
                             load,

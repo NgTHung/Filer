@@ -201,8 +201,8 @@
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/progress"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/progress")),
                 session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -255,8 +255,8 @@
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/progress-cancel"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/progress-cancel")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -471,8 +471,8 @@
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/progress-fail"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/progress-fail")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -523,8 +523,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/page"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/page")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -555,8 +555,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/page-cursor"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/page-cursor")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page(2),
@@ -567,8 +567,8 @@
         let next_cursor = first_page.next_cursor.expect("first page should continue");
 
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/page-cursor"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/page-cursor")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page_after(2, next_cursor),

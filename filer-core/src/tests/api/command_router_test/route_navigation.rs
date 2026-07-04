@@ -370,20 +370,23 @@
             .expect("Timed out waiting for path ScanCommand")
             .expect("ScanCommand channel closed")
         {
-            ScanCommand::Scan {
-                path: routed_path,
+            ScanCommand::ScanCompat {
+                location,
                 session: routed_session,
                 pipeline: routed_pipeline,
                 load: routed_load,
                 request,
             } => {
-                assert_eq!(routed_path, path);
+                assert_eq!(
+                    location,
+                    LocationRef::from_location(&Location::local(path.clone()))
+                );
                 assert_eq!(routed_session, session);
                 assert_eq!(routed_pipeline, pipeline);
                 assert_eq!(routed_load, load);
                 assert_eq!(request, path_request);
             }
-            other => panic!("Expected ScanCommand::Scan, got {other:?}"),
+            other => panic!("Expected ScanCommand::ScanCompat, got {other:?}"),
         }
 
         harness
@@ -401,20 +404,20 @@
             .expect("Timed out waiting for node ScanCommand")
             .expect("ScanCommand channel closed")
         {
-            ScanCommand::ScanNode {
-                node: routed_node,
+            ScanCommand::ScanCompat {
+                location,
                 session: routed_session,
                 pipeline: routed_pipeline,
                 load: routed_load,
                 request,
             } => {
-                assert_eq!(routed_node, node);
+                assert_eq!(location, harness.registry.resolve_node_location(node).unwrap());
                 assert_eq!(routed_session, session);
                 assert_eq!(routed_pipeline, pipeline);
                 assert_eq!(routed_load, load);
                 assert_eq!(request, node_request);
             }
-            other => panic!("Expected ScanCommand::ScanNode, got {other:?}"),
+            other => panic!("Expected ScanCommand::ScanCompat, got {other:?}"),
         }
     }
 

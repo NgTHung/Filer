@@ -4,6 +4,8 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, _scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
+        let first = reg.clone().register("/tmp/session-one".into());
+        let second = reg.clone().register("/tmp/session-two".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
 
         tokio::spawn(async move {
@@ -17,14 +19,14 @@
         cmd_tx
             .send(NavCommand::Navigate {
                 session: session1,
-                node: node(100),
+                node: first,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
             .send(NavCommand::Navigate {
                 session: session2,
-                node: node(200),
+                node: second,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -78,7 +80,10 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+        let first = reg.clone().register("/tmp/order-one".into());
+        let second = reg.clone().register("/tmp/order-two".into());
+        let third = reg.clone().register("/tmp/order-three".into());
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
             navigator.run().await;
@@ -90,35 +95,39 @@
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
-                node: node(100),
+                node: first,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
-                node: node(200),
+                node: second,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
-                node: node(300),
+                node: third,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
         // Should receive scan commands in order
-        for expected_node in [node(100), node(200), node(300)] {
+        for expected_node in [first, second, third] {
             let scan_cmd = timeout(Duration::from_millis(100), scanner_rx.recv_async())
                 .await
                 .expect("Should receive scan command")
                 .expect("Channel should not be closed");
 
             match scan_cmd {
-                ScanCommand::ScanNode { node: n, .. } => {
-                    assert_eq!(n, expected_node, "Commands should be processed in order");
+                ScanCommand::ScanCompat { location, .. } => {
+                    assert_eq!(
+                        location,
+                        reg.resolve_node_location(expected_node).unwrap(),
+                        "Commands should be processed in order"
+                    );
                 }
                 _ => panic!("Expected Scan command"),
             }

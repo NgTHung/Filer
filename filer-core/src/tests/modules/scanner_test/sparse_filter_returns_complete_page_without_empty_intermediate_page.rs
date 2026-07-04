@@ -27,8 +27,8 @@
             PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-empty-continue"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-empty-continue")),
                 session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::page(1),
@@ -65,8 +65,8 @@
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-cancel"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-cancel")),
                 session,
                 pipeline: PipelineConfig::default()
                     .filter(FilterConfig::only_extensions(vec!["rs".into()])),
@@ -123,8 +123,8 @@
             PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-mutation"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-mutation")),
                 session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::page(1),
@@ -138,8 +138,8 @@
         provider.insert_file(0, make_file("new.rs", "/tmp/filter-mutation", 5, false));
 
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-mutation"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-mutation")),
                 session,
                 pipeline,
                 load: crate::DirectoryLoadOptions::page_after(1, cursor),
@@ -174,8 +174,8 @@
             PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
         let first_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-mismatch"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-mismatch")),
                 session: first_session,
                 pipeline: first_pipeline,
                 load: crate::DirectoryLoadOptions::page(1),
@@ -188,8 +188,8 @@
         let second_session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-mismatch"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-mismatch")),
                 session: second_session,
                 pipeline: PipelineConfig::default()
                     .filter(FilterConfig::exclude_extensions(vec!["tmp".into()])),
@@ -229,8 +229,8 @@
 
         let snapshot_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-cache"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-cache")),
                 session: snapshot_session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -241,8 +241,8 @@
 
         let filter_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: PathBuf::from("/tmp/filter-cache"),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(PathBuf::from("/tmp/filter-cache")),
                 session: filter_session,
                 pipeline: PipelineConfig::default()
                     .filter(FilterConfig::only_extensions(vec!["rs".into()])),
@@ -479,8 +479,8 @@
         let s2 = SessionId::new();
 
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: path.clone(),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path.clone()),
                 session: s1,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -490,8 +490,8 @@
         wait_for_dir_loaded(&evt_rx, s1).await;
 
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: path.clone(),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path.clone()),
                 session: s2,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -525,8 +525,8 @@
         let path = PathBuf::from("/tmp/same-folder-cache");
         let first_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: path.clone(),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path.clone()),
                 session: first_session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -540,8 +540,8 @@
 
         let second_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::Scan {
-                path,
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path),
                 session: second_session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),

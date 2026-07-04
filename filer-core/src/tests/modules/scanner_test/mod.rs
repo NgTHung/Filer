@@ -2,6 +2,7 @@ use crate::errors::CoreError;
 use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
+use crate::model::location::{Location, LocationRef};
 use crate::model::node::FileNode;
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions, ProviderPaging};
 use crate::{
@@ -34,6 +35,10 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
             ..Default::default()
         },
     }
+}
+
+fn compat_location(path: impl Into<PathBuf>) -> LocationRef {
+    LocationRef::from_location(&Location::local(path))
 }
 
 fn _make_file_with_ext(name: &str, path: &str, ext: Option<&str>, size: u64) -> FileNode {

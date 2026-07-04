@@ -14,7 +14,10 @@ use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
-use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
+use filer_core::{
+    Actor, Capabilities, CoreError, Event, FsProvider, Location, LocationRef, PipelineConfig,
+    SortConfig,
+};
 
 fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
     let extension = PathBuf::from(name)
@@ -36,6 +39,10 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
         },
         accessed: None,
     }
+}
+
+fn compat_location(path: impl Into<PathBuf>) -> LocationRef {
+    LocationRef::from_location(&Location::local(path))
 }
 
 #[derive(Clone)]
@@ -168,8 +175,8 @@ async fn test_scanner_processes_scan_command() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: PathBuf::from("/test"),
+        .send(ScanCommand::ScanCompat {
+            location: compat_location(PathBuf::from("/test")),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -217,8 +224,8 @@ async fn test_scanner_handles_cancellation() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: PathBuf::from("/test"),
+        .send(ScanCommand::ScanCompat {
+            location: compat_location(PathBuf::from("/test")),
             pipeline: PipelineConfig {
                 sort: Some(SortConfig {
                     ..Default::default()
@@ -256,8 +263,8 @@ async fn test_scanner_handles_multiple_scans() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: PathBuf::from("/dir1"),
+        .send(ScanCommand::ScanCompat {
+            location: compat_location(PathBuf::from("/dir1")),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -270,8 +277,8 @@ async fn test_scanner_handles_multiple_scans() {
         .unwrap();
 
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: PathBuf::from("/dir2"),
+        .send(ScanCommand::ScanCompat {
+            location: compat_location(PathBuf::from("/dir2")),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -306,8 +313,8 @@ async fn test_scanner_handles_provider_errors() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: PathBuf::from("/nonexistent"),
+        .send(ScanCommand::ScanCompat {
+            location: compat_location(PathBuf::from("/nonexistent")),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -344,8 +351,8 @@ async fn test_scanner_depth_limiting() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: PathBuf::from("/test"),
+        .send(ScanCommand::ScanCompat {
+            location: compat_location(PathBuf::from("/test")),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -379,8 +386,8 @@ async fn test_scanner_emits_progress_events() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: PathBuf::from("/test"),
+        .send(ScanCommand::ScanCompat {
+            location: compat_location(PathBuf::from("/test")),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,

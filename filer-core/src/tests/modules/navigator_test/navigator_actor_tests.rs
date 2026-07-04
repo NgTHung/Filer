@@ -41,15 +41,14 @@
         let (event_tx, event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+        let target_node = reg.clone().register("/tmp/nav-target".into());
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
             navigator.run().await;
         });
 
         let session = session(1);
-        let target_node = node(100);
-
         // Send navigate command
         cmd_tx
             .send(NavCommand::Navigate {
@@ -66,13 +65,13 @@
             .expect("Channel should not be closed");
 
         match scan_cmd {
-            ScanCommand::ScanNode {
+            ScanCommand::ScanCompat {
                 session: s,
-                node: n,
+                location,
                 ..
             } => {
                 assert_eq!(s, session);
-                assert_eq!(n, target_node);
+                assert_eq!(location, reg.resolve_node_location(target_node).unwrap());
             }
             _ => panic!("Expected Scan command"),
         }
@@ -301,6 +300,8 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, _scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
+        let current = reg.clone().register("/tmp/back-current".into());
+        let next = reg.clone().register("/tmp/back-next".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
 
         tokio::spawn(async move {
@@ -313,7 +314,7 @@
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
-                node: node(100),
+                node: current,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -323,7 +324,7 @@
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
-                node: node(200),
+                node: next,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -458,6 +459,7 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
+        let current = reg.clone().register("/tmp/refresh-current".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
 
         tokio::spawn(async move {
@@ -470,7 +472,7 @@
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
-                node: node(100),
+                node: current,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -498,15 +500,14 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+        let current = reg.clone().register("/tmp/invalidate-current".into());
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
             navigator.run().await;
         });
 
         let session = session(1);
-        let current = node(100);
-
         cmd_tx
             .send(NavCommand::Navigate {
                 session,
@@ -530,11 +531,11 @@
         assert!(
             matches!(
                 refresh,
-                ScanCommand::RefreshNode {
-                    node,
+                ScanCommand::RefreshLocation {
+                    location,
                     session: s,
                     ..
-                } if node == current && s == session
+                } if location == reg.resolve_node_location(current).unwrap() && s == session
             ),
             "Invalidate should refresh the session currently displaying the node"
         );
@@ -546,7 +547,9 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+        let current = reg.clone().register("/tmp/invalidate-current-pipeline".into());
+        let other = reg.clone().register("/tmp/invalidate-other-pipeline".into());
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
             navigator.run().await;
@@ -554,8 +557,6 @@
 
         let current_session = session(1);
         let other_session = session(2);
-        let current = node(100);
-        let other = node(200);
         let pipeline = PipelineConfig::new();
 
         cmd_tx
@@ -597,17 +598,17 @@
             .expect("scanner channel should remain open");
 
         match refresh {
-            ScanCommand::RefreshNode {
-                node,
+            ScanCommand::RefreshLocation {
+                location,
                 session,
                 pipeline: refresh_pipeline,
                 ..
             } => {
-                assert_eq!(node, current);
+                assert_eq!(location, reg.resolve_node_location(current).unwrap());
                 assert_eq!(session, current_session);
                 assert_eq!(refresh_pipeline, pipeline);
             }
-            other => panic!("expected RefreshNode, got {other:?}"),
+            other => panic!("expected RefreshLocation, got {other:?}"),
         }
 
         assert!(

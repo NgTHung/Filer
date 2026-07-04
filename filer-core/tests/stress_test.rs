@@ -790,8 +790,8 @@ async fn stress_scanner_large_dir() {
 
     let session = SessionId::new();
     cmd_tx
-        .send(ScanCommand::Scan {
-            path: root,
+        .send(ScanCommand::ScanCompat {
+            location: filer_core::LocationRef::from_location(&filer_core::Location::local(root)),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,

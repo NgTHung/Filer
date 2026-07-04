@@ -29,7 +29,10 @@ use std::sync::Arc;
 use flume::Sender;
 
 use crate::api::commands::Command;
+use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
+use crate::errors::CoreError;
+use crate::model::location::{Location, LocationRef};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn;
 use crate::vfs::provider::FsProvider;
@@ -90,10 +93,11 @@ impl Module for ScanModule {
                 request,
             } = cmd
             {
+                let location = Location::local(path);
                 send_or_warn(
                     &tx,
-                    ScanCommand::Scan {
-                        path,
+                    ScanCommand::ScanCompat {
+                        location: LocationRef::from_location(&location),
                         session,
                         pipeline,
                         load,
@@ -129,7 +133,7 @@ impl Module for ScanModule {
         });
 
         let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan.node.compat", move |cmd, _ctx| {
+        ctx.handlers.on("scan.node.compat", move |cmd, ctx| {
             if let Command::ScanNodeCompat {
                 node,
                 session,
@@ -138,10 +142,22 @@ impl Module for ScanModule {
                 request,
             } = cmd
             {
+                let Some(location) = ctx.registry.resolve_node_location(node) else {
+                    send_or_warn(
+                        &ctx.events,
+                        Event::from_request_error(
+                            CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                            session,
+                            request,
+                        ),
+                        "scan.node.compat resolve",
+                    );
+                    return;
+                };
                 send_or_warn(
                     &tx,
-                    ScanCommand::ScanNode {
-                        node,
+                    ScanCommand::ScanCompat {
+                        location,
                         session,
                         pipeline,
                         load,

@@ -79,8 +79,8 @@
         let path = PathBuf::from("/tmp/stale");
 
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: path.clone(),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path.clone()),
                 session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -89,8 +89,8 @@
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(ScanCommand::Scan {
-                path,
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path),
                 session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -141,8 +141,8 @@
         let path = PathBuf::from("/tmp/stale-page");
 
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: path.clone(),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path.clone()),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -151,8 +151,8 @@
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(ScanCommand::Scan {
-                path,
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -206,8 +206,8 @@
             PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
 
         cmd_tx
-            .send(ScanCommand::Scan {
-                path: path.clone(),
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path.clone()),
                 session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -216,8 +216,8 @@
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(ScanCommand::Scan {
-                path,
+            .send(ScanCommand::ScanCompat {
+                location: compat_location(path),
                 session,
                 pipeline,
                 load: crate::DirectoryLoadOptions::default(),
