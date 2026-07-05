@@ -1,7 +1,7 @@
 ---
 id: ACTORS-002
 title: Migrate navigator state to LocationRef
-status: To Do
+status: Done
 priority: High
 type: Refactor
 parent: CORE-025
@@ -11,7 +11,7 @@ rules: [PROVIDER-ACCESS, SESSION-BOUNDARY, ACTOR-LONG-WORK]
 risk: High
 impact: "Changes navigation state authority and scan dispatch for session workflows."
 tags: [core, actors, navigation, location, nodeid]
-last_updated: 2026-07-04
+last_updated: 2026-07-05
 ---
 
 ## Summary
@@ -20,7 +20,7 @@ Move navigator state, history, and scan dispatch toward LocationRef while keepin
 
 ## Acceptance Criteria
 
-- [ ] Navigation state and history prefer LocationRef for the current provider-aware location.
-- [ ] NodeId navigation compatibility resolves once before scanner dispatch.
-- [ ] Back, forward, up, and refresh preserve session boundaries.
-- [ ] Navigation flow tests cover LocationRef and compatibility paths.
+- [x] Navigation state and history prefer LocationRef for the current provider-aware location.
+- [x] NodeId navigation compatibility resolves once before scanner dispatch.
+- [x] Back, forward, up, and refresh preserve session boundaries.
+- [x] Navigation flow tests cover LocationRef and compatibility paths.

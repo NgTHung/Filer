@@ -85,6 +85,54 @@
     }
 
     #[tokio::test]
+    async fn test_navigator_rejects_unresolved_node_before_scan_dispatch() {
+        let (cmd_tx, cmd_rx) = flume::unbounded();
+        let (event_tx, event_rx) = flume::unbounded();
+        let (scanner_tx, scanner_rx) = flume::unbounded();
+        let reg = NodeRegistry::new();
+        let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
+
+        tokio::spawn(async move {
+            navigator.run().await;
+        });
+
+        let session = session(1);
+        let request = crate::model::request::RequestId::new();
+
+        cmd_tx
+            .send(NavCommand::Navigate {
+                session,
+                node: node(999),
+                request,
+            })
+            .unwrap();
+
+        let event = timeout(Duration::from_millis(100), event_rx.recv_async())
+            .await
+            .expect("unresolved NodeId should emit an error")
+            .expect("event channel should remain open");
+
+        match event {
+            Event::Error {
+                session: s,
+                request: Some(r),
+                recoverable,
+                ..
+            } => {
+                assert_eq!(s, session);
+                assert_eq!(r, request);
+                assert!(recoverable);
+            }
+            other => panic!("Expected request error, got {other:?}"),
+        }
+
+        assert!(
+            scanner_rx.try_recv().is_err(),
+            "unresolved NodeId must not dispatch a scanner command"
+        );
+    }
+
+    #[tokio::test]
     async fn test_navigator_location_navigation_emits_scan_location_and_snapshot() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, event_rx) = flume::unbounded();

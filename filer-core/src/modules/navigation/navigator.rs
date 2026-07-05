@@ -108,6 +108,28 @@ impl Default for NavState {
     }
 }
 
+/// A single history item with provider-aware identity and optional compat data.
+#[derive(Debug)]
+pub struct NavigationEntry {
+    location: Option<LocationRef>,
+    compat_node: Option<NodeId>,
+}
+
+impl NavigationEntry {
+    fn new(location: Option<LocationRef>, compat_node: Option<NodeId>) -> Self {
+        Self {
+            location,
+            compat_node,
+        }
+    }
+}
+
+impl PartialEq<NodeId> for NavigationEntry {
+    fn eq(&self, other: &NodeId) -> bool {
+        self.compat_node == Some(*other)
+    }
+}
+
 /// Per-session navigator state
 #[derive(Debug)]
 pub struct NavigatorState {
@@ -115,10 +137,8 @@ pub struct NavigatorState {
     pub current: Option<NodeId>,
     /// Current provider-aware location, when known.
     pub current_location: Option<LocationRef>,
-    /// Navigation history stored as compatibility/cache `NodeId` handles.
-    pub history: VecDeque<NodeId>,
-    /// Location history aligned with `history`.
-    pub location_history: VecDeque<Option<LocationRef>>,
+    /// Navigation history stores provider-aware locations first.
+    pub history: VecDeque<NavigationEntry>,
     /// Current position in history (for back/forward)
     pub history_index: usize,
     /// Maximum history entries
@@ -141,7 +161,6 @@ impl NavigatorState {
             current: None,
             current_location: None,
             history: his,
-            location_history: VecDeque::new(),
             history_index: 0,
             pipeline_config: PipelineConfig {
                 sort: None,
@@ -162,7 +181,6 @@ impl NavigatorState {
             current: None,
             current_location: None,
             history: hs,
-            location_history: VecDeque::new(),
             history_index: 0,
             pipeline_config: PipelineConfig {
                 sort: None,
@@ -181,26 +199,40 @@ impl NavigatorState {
     /// Navigate to a new directory
     pub fn navigate(&mut self, node: NodeId) {
         let location = self.register.resolve_node_location(node);
-        self.navigate_with_location(node, location);
+        self.navigate_entry(location, Some(node));
     }
 
     /// Navigate to a new directory with a known provider-aware location.
     pub fn navigate_with_location(&mut self, node: NodeId, location: Option<LocationRef>) {
+        self.navigate_entry(location, Some(node));
+    }
+
+    pub fn navigate_location(&mut self, location: LocationRef, compat_node: Option<NodeId>) {
+        self.navigate_entry(Some(location), compat_node);
+    }
+
+    pub fn current_location(&self) -> Option<&LocationRef> {
+        self.current_location.as_ref()
+    }
+
+    pub fn current_compat_node(&self) -> Option<NodeId> {
+        self.current
+    }
+
+    fn navigate_entry(&mut self, location: Option<LocationRef>, compat_node: Option<NodeId>) {
         debug_assert!(self.history.len() >= self.history_index);
         if self.history_index != 0 {
             while self.history_index != 0 {
                 self.history_index -= 1;
                 self.history.pop_back();
-                self.location_history.pop_back();
             }
         }
         if self.history.len() == self.history_limit {
             self.history.pop_front();
-            self.location_history.pop_front();
         }
-        self.history.push_back(node);
-        self.location_history.push_back(location.clone());
-        self.current = Some(node);
+        self.history
+            .push_back(NavigationEntry::new(location.clone(), compat_node));
+        self.current = compat_node;
         self.current_location = location;
     }
 
@@ -210,15 +242,13 @@ impl NavigatorState {
             None
         } else if !self.history.is_empty() {
             self.history_index += nums;
-            self.current = self
+            if let Some(entry) = self
                 .history
                 .get(self.history.len() - self.history_index - 1)
-                .copied();
-            self.current_location = self
-                .location_history
-                .get(self.history.len() - self.history_index - 1)
-                .cloned()
-                .flatten();
+            {
+                self.current = entry.compat_node;
+                self.current_location = entry.location.clone();
+            }
             self.current
         } else {
             None
@@ -229,15 +259,13 @@ impl NavigatorState {
     pub fn forward(&mut self) -> Option<NodeId> {
         if self.history_index != 0 {
             self.history_index -= 1;
-            self.current = self
+            if let Some(entry) = self
                 .history
                 .get(self.history.len() - self.history_index - 1)
-                .copied();
-            self.current_location = self
-                .location_history
-                .get(self.history.len() - self.history_index - 1)
-                .cloned()
-                .flatten();
+            {
+                self.current = entry.compat_node;
+                self.current_location = entry.location.clone();
+            }
             self.current
         } else {
             None
@@ -344,11 +372,31 @@ impl Navigator {
                 request,
             } => {
                 self.get_or_init(session).await;
+                let Some(location) = self.register.resolve_node_location(node) else {
+                    send_or_warn(
+                        &self.events,
+                        Event::from_request_error(
+                            CoreError::navigation_unavailable(format!(
+                                "Can't navigate: unresolved node {node:?}"
+                            )),
+                            session,
+                            request,
+                        ),
+                        "navigate node resolve",
+                    );
+                    return;
+                };
                 let _ = self.path_cache.insert_async(node).await;
                 self.sessions
                     .update_async(&session, |_, v| {
-                        v.navigate(node);
-                        Self::trigger_scan(session, node, v, self.scanner_tx.clone(), request);
+                        v.navigate_location(location.clone(), Some(node));
+                        Self::trigger_compat_scan(
+                            session,
+                            location.clone(),
+                            v,
+                            self.scanner_tx.clone(),
+                            request,
+                        );
                     })
                     .await;
                 self.emit_snapshot(session);
@@ -360,11 +408,18 @@ impl Navigator {
             } => {
                 self.get_or_init(session).await;
                 let node = self.register.clone().register(path.clone());
+                let location = LocationRef::from_location(&Location::local(path));
                 let _ = self.path_cache.insert_async(node).await;
                 self.sessions
                     .update_async(&session, |_, v| {
-                        v.navigate(node);
-                        Self::trigger_scan(session, node, v, self.scanner_tx.clone(), request);
+                        v.navigate_location(location.clone(), Some(node));
+                        Self::trigger_compat_scan(
+                            session,
+                            location.clone(),
+                            v,
+                            self.scanner_tx.clone(),
+                            request,
+                        );
                     })
                     .await;
                 self.emit_snapshot(session);
@@ -441,7 +496,7 @@ impl Navigator {
                 self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_back() {
-                            v.back(1).unwrap();
+                            let _ = v.back(1);
                             Self::trigger_current_scan(
                                 session_id,
                                 v,
@@ -468,7 +523,7 @@ impl Navigator {
                 self.sessions
                     .update_async(&session_id, |_, v| {
                         if v.can_forward() {
-                            v.forward().unwrap();
+                            let _ = v.forward();
                             Self::trigger_current_scan(
                                 session_id,
                                 v,
@@ -496,10 +551,8 @@ impl Navigator {
                 self.get_or_init(session_id).await;
                 self.sessions
                     .update_async(&session_id, |_, v| {
-                        if let Some(par) = v.current.and_then(|f| self.register.clone().get_par(f))
-                        {
-                            let node = self.register.clone().register(par);
-                            v.navigate(node);
+                        if let Some((location, node)) = Self::parent_entry(v, &self.register) {
+                            v.navigate_location(location, node);
                             Self::trigger_current_scan(
                                 session_id,
                                 v,
@@ -603,23 +656,39 @@ impl Navigator {
         }
     }
 
-    /// Trigger a scan of the current directory
-    fn trigger_scan(
+    fn parent_entry(
+        state: &NavigatorState,
+        registry: &NodeRegistry,
+    ) -> Option<(LocationRef, Option<NodeId>)> {
+        if let Some(location_ref) = state.current_location() {
+            let location = registry.resolve_location_ref(location_ref).ok()?;
+            if let LocationRoute::DirectPath { path } = location.route() {
+                let parent = path.parent()?.to_path_buf();
+                let parent_location = Location::local(parent);
+                let node = registry
+                    .register_location_node(parent_location.clone())
+                    .ok();
+                return Some((LocationRef::from_location(&parent_location), node));
+            }
+        }
+
+        let parent = state
+            .current_compat_node()
+            .and_then(|node| registry.clone().get_par(node))?;
+        let parent_location = Location::local(parent);
+        let node = registry
+            .register_location_node(parent_location.clone())
+            .ok();
+        Some((LocationRef::from_location(&parent_location), node))
+    }
+
+    fn trigger_compat_scan(
         session: SessionId,
-        node: NodeId,
+        location: LocationRef,
         state: &NavigatorState,
         scanner_tx: Sender<ScanCommand>,
         request: RequestId,
     ) {
-        let location = state.register.resolve_node_location(node).or_else(|| {
-            state
-                .register
-                .resolve(node)
-                .map(|path| LocationRef::from_location(&Location::local(path)))
-        });
-        let Some(location) = location else {
-            return;
-        };
         send_or_warn(
             &scanner_tx,
             ScanCommand::ScanCompat {
@@ -654,7 +723,9 @@ impl Navigator {
                 "trigger location scan",
             );
         } else if let Some(node) = state.current {
-            Self::trigger_scan(session, node, state, scanner_tx, request);
+            if let Some(location) = state.register.resolve_node_location(node) {
+                Self::trigger_compat_scan(session, location, state, scanner_tx, request);
+            }
         }
     }
 

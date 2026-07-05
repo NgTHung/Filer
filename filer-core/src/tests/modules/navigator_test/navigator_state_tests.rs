@@ -307,9 +307,71 @@ mod navigator_state_tests {
         state.navigate_with_location(node(3), Some(replacement.clone()));
 
         assert_eq!(state.history.len(), 2);
-        assert_eq!(state.location_history.len(), 2);
         assert_eq!(state.current, Some(node(3)));
         assert_eq!(state.current_location, Some(replacement));
+        assert_eq!(state.forward(), None);
+    }
+
+    #[test]
+    fn test_location_navigation_can_store_without_compat_node() {
+        let reg = NodeRegistry::new();
+        let mut state = NavigatorState::new(reg);
+        let location = LocationRef::descriptor_only(
+            LocationDescriptor::local("/tmp/location-authority.zip").archive_member("src"),
+        );
+
+        state.navigate_location(location.clone(), None);
+
+        let snapshot = state.snapshot();
+        assert_eq!(state.current, None);
+        assert_eq!(snapshot.current, None);
+        assert_eq!(state.current_location(), Some(&location));
+        assert_eq!(snapshot.current_location, Some(location));
+    }
+
+    #[test]
+    fn test_location_history_restores_without_compat_nodes() {
+        let reg = NodeRegistry::new();
+        let mut state = NavigatorState::new(reg);
+        let first = LocationRef::descriptor_only(
+            LocationDescriptor::local("/tmp/location-history.zip").archive_member("first"),
+        );
+        let second = LocationRef::descriptor_only(
+            LocationDescriptor::local("/tmp/location-history.zip").archive_member("second"),
+        );
+
+        state.navigate_location(first.clone(), None);
+        state.navigate_location(second.clone(), None);
+
+        assert_eq!(state.back(1), None);
+        assert_eq!(state.current_location(), Some(&first));
+
+        assert_eq!(state.forward(), None);
+        assert_eq!(state.current_location(), Some(&second));
+    }
+
+    #[test]
+    fn test_location_navigation_after_back_clears_forward_history() {
+        let reg = NodeRegistry::new();
+        let mut state = NavigatorState::new(reg);
+        let first = LocationRef::descriptor_only(
+            LocationDescriptor::local("/tmp/location-clear.zip").archive_member("first"),
+        );
+        let second = LocationRef::descriptor_only(
+            LocationDescriptor::local("/tmp/location-clear.zip").archive_member("second"),
+        );
+        let replacement = LocationRef::descriptor_only(
+            LocationDescriptor::local("/tmp/location-clear.zip").archive_member("replacement"),
+        );
+
+        state.navigate_location(first, None);
+        state.navigate_location(second, None);
+        state.back(1);
+        state.navigate_location(replacement.clone(), None);
+
+        assert_eq!(state.history.len(), 2);
+        assert_eq!(state.current, None);
+        assert_eq!(state.current_location(), Some(&replacement));
         assert_eq!(state.forward(), None);
     }
 

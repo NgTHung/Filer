@@ -19,7 +19,7 @@ use filer_core::model::session::SessionId;
 use filer_core::modules::navigation::NavigationModule;
 use filer_core::modules::scan::ScanModule;
 use filer_core::services::dir_cache::DirCache;
-use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
+use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider, Location};
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
 
@@ -311,6 +311,74 @@ mod navigation_flow_tests {
             "path should match navigate target"
         );
         assert_eq!(count, 2, "should have received 2 files");
+    }
+
+    #[tokio::test]
+    async fn test_location_navigate_emits_directory_loaded_and_state_location() {
+        let provider = MockProvider::new();
+        provider.add_dir(
+            "/location/docs",
+            vec![MockProvider::make_file("readme.md", "/location/docs", 512)],
+        );
+
+        let core = build_core(provider);
+        let session = create_session(&core).await;
+        let location = Location::local("/location/docs");
+        let location_ref = LocationRef::from_location(&location);
+        let rx = core.event_receiver();
+
+        core.send(Command::Navigate {
+            location: location_ref,
+            session,
+            request: filer_core::RequestId::new(),
+        })
+        .unwrap();
+
+        let deadline = tokio::time::Instant::now() + TIMEOUT;
+        let mut loaded = false;
+        let mut state_location = false;
+
+        loop {
+            assert!(
+                tokio::time::Instant::now() <= deadline,
+                "timeout waiting for LocationRef navigation events"
+            );
+            match timeout(Duration::from_millis(100), rx.recv_async()).await {
+                Ok(Ok(Event::DirectoryPageLoaded {
+                    parent,
+                    groups,
+                    session: s,
+                    ..
+                })) if s == session => {
+                    assert_eq!(
+                        path_from_location_ref(&parent),
+                        Some(PathBuf::from("/location/docs"))
+                    );
+                    let count: usize = groups.groups.iter().map(|g| g.nodes.len()).sum();
+                    assert_eq!(count, 1);
+                    loaded = true;
+                }
+                Ok(Ok(Event::CurrentNavigateState { state, session: s })) if s == session => {
+                    if state.current_location.as_ref().and_then(|r| r.descriptor())
+                        == Some(location.descriptor())
+                    {
+                        state_location = true;
+                    }
+                }
+                Ok(Ok(Event::Error {
+                    message,
+                    session: s,
+                    ..
+                })) if s == session => {
+                    panic!("got Error instead of LocationRef navigation event: {message}");
+                }
+                _ => {}
+            }
+
+            if loaded && state_location {
+                break;
+            }
+        }
     }
 
     /// Navigate to an empty directory should still emit `DirectoryLoadedCompat`
