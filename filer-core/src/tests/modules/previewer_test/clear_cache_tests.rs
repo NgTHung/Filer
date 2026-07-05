@@ -13,7 +13,7 @@ mod clear_cache_tests {
         let (cmd_tx, evt_rx, cache) = spawn_previewer(mock.clone(), registry);
 
         // Pre-populate cache
-        cache.lock().unwrap().put(path, text_preview());
+        cache.lock().unwrap().put(path.clone(), text_preview());
 
         // Clear the cache
         cmd_tx.send(PreviewCommand::ClearCache).unwrap();
@@ -23,8 +23,9 @@ mod clear_cache_tests {
         let session2 = SessionId::new();
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path)),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session: session2,
                 request: crate::model::request::RequestId::new(),
             })

@@ -41,12 +41,18 @@
 
         match preview_cmd {
             PreviewCommand::Generate {
-                path: p,
+                location,
                 options,
+                event_mode,
                 session: s,
                 ..
             } => {
-                assert_eq!(p, node, "Preview NodeId must match request command");
+                assert_eq!(
+                    location,
+                    LocationRef::from_location(&Location::local(path)),
+                    "Preview location must resolve from request NodeId"
+                );
+                assert_eq!(event_mode, PreviewEventMode::Compat { node });
                 assert!(
                     options.is_none(),
                     "Options should be None when not provided"
@@ -80,18 +86,20 @@
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::GenerateLocation {
+            PreviewCommand::Generate {
                 location,
                 options,
+                event_mode,
                 session: s,
                 request: r,
             } => {
                 assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert_eq!(event_mode, PreviewEventMode::Location);
                 assert!(options.is_none(), "Options must be forwarded as None");
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(r, request, "RequestId must be forwarded");
             }
-            other => panic!("Expected PreviewCommand::GenerateLocation, got {:?}", other),
+            other => panic!("Expected PreviewCommand::Generate, got {:?}", other),
         }
     }
 
@@ -136,8 +144,18 @@
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::LoadMetadata(p, s, _) => {
-                assert_eq!(p, node, "Metadata NodeId must match request");
+            PreviewCommand::LoadMetadata {
+                location,
+                event_mode,
+                session: s,
+                ..
+            } => {
+                assert_eq!(
+                    location,
+                    LocationRef::from_location(&Location::local(path)),
+                    "Metadata location must resolve from request NodeId"
+                );
+                assert_eq!(event_mode, PreviewEventMode::Compat { node });
                 assert_eq!(s, session, "Load request session id must match the command");
             }
             other => panic!("Expected PreviewCommand::LoadMetadata, got {:?}", other),
@@ -166,15 +184,18 @@
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::LoadMetadataLocation(location, s, r) => {
+            PreviewCommand::LoadMetadata {
+                location,
+                event_mode,
+                session: s,
+                request: r,
+            } => {
                 assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert_eq!(event_mode, PreviewEventMode::Location);
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(r, request, "RequestId must be forwarded");
             }
-            other => panic!(
-                "Expected PreviewCommand::LoadMetadataLocation, got {:?}",
-                other
-            ),
+            other => panic!("Expected PreviewCommand::LoadMetadata, got {:?}", other),
         }
     }
 
@@ -199,8 +220,18 @@
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::LoadExtendedMetadata(p, s, _) => {
-                assert_eq!(p, node, "Extended metadata NodeId must match request");
+            PreviewCommand::LoadExtendedMetadata {
+                location,
+                event_mode,
+                session: s,
+                ..
+            } => {
+                assert_eq!(
+                    location,
+                    LocationRef::from_location(&Location::local(path)),
+                    "Extended metadata location must resolve from request NodeId"
+                );
+                assert_eq!(event_mode, PreviewEventMode::Compat { node });
                 assert_eq!(s, session, "Extended metadata session must match request");
             }
             other => panic!(
@@ -232,15 +263,18 @@
             .expect("PreviewCommand channel closed");
 
         match preview_cmd {
-            PreviewCommand::LoadExtendedMetadataLocation(location, s, r) => {
+            PreviewCommand::LoadExtendedMetadata {
+                location,
+                event_mode,
+                session: s,
+                request: r,
+            } => {
                 assert_eq!(location, location_ref, "LocationRef must be forwarded");
+                assert_eq!(event_mode, PreviewEventMode::Location);
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(r, request, "RequestId must be forwarded");
             }
-            other => panic!(
-                "Expected PreviewCommand::LoadExtendedMetadataLocation, got {:?}",
-                other
-            ),
+            other => panic!("Expected PreviewCommand::LoadExtendedMetadata, got {:?}", other),
         }
     }
 

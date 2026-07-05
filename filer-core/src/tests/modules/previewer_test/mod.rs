@@ -13,7 +13,7 @@ use crate::model::location::{Location, LocationRef};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::modules::preview::previewer::{PreviewCommand, Previewer};
+use crate::modules::preview::previewer::{PreviewCommand, PreviewEventMode, Previewer};
 use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::services::preview::{
     PreviewCache, PreviewData, PreviewOptions, PreviewProvider, PreviewRegistry,

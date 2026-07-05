@@ -8,7 +8,7 @@ mod metadata_provider_tests {
         let session = SessionId::new();
         let file = tempfile::NamedTempFile::new().unwrap();
         let path = file.path().to_path_buf();
-        let node_id = registry.clone().register(path);
+        let node_id = registry.clone().register(path.clone());
 
         let metadata_calls = Arc::new(Mutex::new(0));
         let provider = Arc::new(RecordingProvider {
@@ -25,11 +25,12 @@ mod metadata_provider_tests {
         );
 
         cmd_tx
-            .send(PreviewCommand::LoadMetadata(
-                node_id,
+            .send(PreviewCommand::LoadMetadata {
+                location: LocationRef::from_location(&Location::local(path)),
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
-                RequestId::new(),
-            ))
+                request: RequestId::new(),
+            })
             .unwrap();
 
         let deadline = tokio::time::Instant::now() + TIMEOUT;

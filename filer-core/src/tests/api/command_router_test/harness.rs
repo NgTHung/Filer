@@ -20,7 +20,7 @@
     use crate::model::session::SessionId;
     use crate::modules::navigation::navigator::NavCommand;
     use crate::modules::operations::operator::OpsCommand;
-    use crate::modules::preview::previewer::PreviewCommand;
+    use crate::modules::preview::previewer::{PreviewCommand, PreviewEventMode};
     use crate::modules::scan::scanner::ScanCommand;
     use crate::modules::search::searcher::SearchCommand;
     use crate::modules::watch::watcher::WatchCommand;

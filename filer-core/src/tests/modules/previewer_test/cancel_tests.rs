@@ -58,8 +58,9 @@ mod cancel_tests {
 
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path)),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -102,9 +103,10 @@ mod cancel_tests {
         let (cmd_tx, evt_rx, _cache) = spawn_previewer(mock, registry);
 
         cmd_tx
-            .send(PreviewCommand::GenerateLocation {
+            .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&location),
                 options: None,
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
@@ -141,7 +143,7 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/rapid-preview.txt");
-        let node_id = registry.clone().register(path);
+        let node_id = registry.clone().register(path.clone());
         let stale_request = RequestId::new();
         let fresh_request = RequestId::new();
 
@@ -155,8 +157,9 @@ mod cancel_tests {
 
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path.clone())),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: stale_request,
             })
@@ -164,8 +167,9 @@ mod cancel_tests {
         tokio::task::yield_now().await;
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path)),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: fresh_request,
             })
@@ -210,18 +214,20 @@ mod cancel_tests {
             spawn_previewer_with_provider(Arc::new(NullProvider), Arc::new(preview_reg), registry);
 
         cmd_tx
-            .send(PreviewCommand::GenerateLocation {
+            .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&location),
                 options: None,
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: stale_request,
             })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(PreviewCommand::GenerateLocation {
+            .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&location),
                 options: None,
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: fresh_request,
             })
@@ -256,7 +262,7 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/context-preview.txt");
-        let node_id = registry.clone().register(path);
+        let node_id = registry.clone().register(path.clone());
 
         let saw_cancel = Arc::new(Mutex::new(false));
         let provider = Arc::new(RecordingProvider {
@@ -273,8 +279,9 @@ mod cancel_tests {
 
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path)),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: RequestId::new(),
             })
@@ -293,7 +300,7 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/context-metadata.txt");
-        let node_id = registry.clone().register(path);
+        let node_id = registry.clone().register(path.clone());
 
         let provider = Arc::new(RecordingProvider {
             read_header_saw_cancel: Arc::new(Mutex::new(false)),
@@ -309,11 +316,12 @@ mod cancel_tests {
         );
 
         cmd_tx
-            .send(PreviewCommand::LoadExtendedMetadata(
-                node_id,
+            .send(PreviewCommand::LoadExtendedMetadata {
+                location: LocationRef::from_location(&Location::local(path)),
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
-                RequestId::new(),
-            ))
+                request: RequestId::new(),
+            })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
@@ -353,11 +361,12 @@ mod cancel_tests {
         );
 
         cmd_tx
-            .send(PreviewCommand::LoadExtendedMetadataLocation(
-                LocationRef::from_location(&location),
+            .send(PreviewCommand::LoadExtendedMetadata {
+                location: LocationRef::from_location(&location),
+                event_mode: PreviewEventMode::Location,
                 session,
-                RequestId::new(),
-            ))
+                request: RequestId::new(),
+            })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
@@ -382,7 +391,7 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/basic-metadata.txt");
-        let node_id = registry.clone().register(path);
+        let node_id = registry.clone().register(path.clone());
         let metadata_saw_cancel = Arc::new(Mutex::new(false));
 
         let provider = Arc::new(RecordingProvider {
@@ -399,11 +408,12 @@ mod cancel_tests {
         );
 
         cmd_tx
-            .send(PreviewCommand::LoadMetadata(
-                node_id,
+            .send(PreviewCommand::LoadMetadata {
+                location: LocationRef::from_location(&Location::local(path)),
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
-                RequestId::new(),
-            ))
+                request: RequestId::new(),
+            })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();
@@ -447,11 +457,12 @@ mod cancel_tests {
         );
 
         cmd_tx
-            .send(PreviewCommand::LoadMetadataLocation(
-                LocationRef::from_location(&location),
+            .send(PreviewCommand::LoadMetadata {
+                location: LocationRef::from_location(&location),
+                event_mode: PreviewEventMode::Location,
                 session,
-                RequestId::new(),
-            ))
+                request: RequestId::new(),
+            })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx.send(PreviewCommand::Cancel(session)).unwrap();

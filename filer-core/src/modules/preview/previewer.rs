@@ -18,34 +18,43 @@ use crate::services::preview::PreviewCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
-use crate::{CoreError, MetadataRegistry, PreviewOptions, PreviewRegistry};
+use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
 
 /// Commands for previewer actor
 #[derive(Debug, Clone)]
 pub enum PreviewCommand {
     /// Generate preview for a file
     Generate {
-        path: NodeId,
-        options: Option<PreviewOptions>,
-        session: SessionId,
-        request: RequestId,
-    },
-    GenerateLocation {
         location: LocationRef,
         options: Option<PreviewOptions>,
+        event_mode: PreviewEventMode,
         session: SessionId,
         request: RequestId,
     },
     /// Load basic metadata (NodeMeta) for a file
-    LoadMetadata(NodeId, SessionId, RequestId),
-    LoadMetadataLocation(LocationRef, SessionId, RequestId),
+    LoadMetadata {
+        location: LocationRef,
+        event_mode: PreviewEventMode,
+        session: SessionId,
+        request: RequestId,
+    },
     /// Load extended metadata (EXIF, ID3, page count…) for a file
-    LoadExtendedMetadata(NodeId, SessionId, RequestId),
-    LoadExtendedMetadataLocation(LocationRef, SessionId, RequestId),
+    LoadExtendedMetadata {
+        location: LocationRef,
+        event_mode: PreviewEventMode,
+        session: SessionId,
+        request: RequestId,
+    },
     /// Cancel all ongoing work for a session
     Cancel(SessionId),
     /// Drop all cached previews
     ClearCache,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewEventMode {
+    Location,
+    Compat { node: NodeId },
 }
 
 /// Previewer actor — generates file previews and extracts metadata.
@@ -111,38 +120,36 @@ impl Previewer {
 
     fn dispatch_preview(
         &self,
-        node: NodeId,
+        location_ref: LocationRef,
         options: Option<PreviewOptions>,
+        event_mode: PreviewEventMode,
         session: SessionId,
         request: RequestId,
     ) {
         self.mark_latest(session, request);
-        let Some(path) = self.registry.resolve(node) else {
-            send_or_warn(
-                &self.events,
-                Event::from_request_error(
-                    CoreError::invalid_input(format!("Cannot resolve node {node:?}")),
-                    session,
-                    request,
-                ),
-                "previewer: resolve",
-            );
+        let Some((location, path)) =
+            self.resolve_location_path(&location_ref, session, request, "previewer: resolve")
+        else {
             return;
         };
 
-        // Check cache first — no spawn needed on hit.
         if let Ok(cache) = self.cache.lock() {
             if let Some(preview) = cache.get(&path) {
-                send_or_warn(
-                    &self.events,
-                    Event::PreviewReadyCompat {
+                let event = match event_mode {
+                    PreviewEventMode::Location => Event::PreviewReady {
+                        location,
+                        preview,
+                        session,
+                        request,
+                    },
+                    PreviewEventMode::Compat { node } => Event::PreviewReadyCompat {
                         node,
                         preview,
                         session,
                         request,
                     },
-                    "previewer: cache hit",
-                );
+                };
+                send_or_warn(&self.events, event, "previewer: cache hit");
                 return;
             }
         }
@@ -175,126 +182,42 @@ impl Previewer {
 
             match result {
                 Ok(preview) => {
-                    // Store in cache before emitting.
                     if let Ok(mut c) = cache.lock() {
                         c.put(path, preview.clone());
                     }
-                    send_or_warn_async(
-                        &events,
-                        Event::PreviewReadyCompat {
-                            node,
-                            preview,
-                            session,
-                            request,
-                        },
-                        "preview ready",
-                    )
-                    .await;
-                }
-                Err(e) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::PreviewFailedCompat {
-                            node,
-                            reason: e.to_string(),
-                            session,
-                            request,
-                        },
-                        "preview failed",
-                    )
-                    .await;
-                }
-            }
-
-            active.remove_if_current(session, &cancel).await;
-        });
-    }
-
-    fn dispatch_preview_location(
-        &self,
-        location_ref: LocationRef,
-        options: Option<PreviewOptions>,
-        session: SessionId,
-        request: RequestId,
-    ) {
-        self.mark_latest(session, request);
-        let Some((location, path)) = self.resolve_location_path(
-            &location_ref,
-            session,
-            request,
-            "previewer: resolve location",
-        ) else {
-            return;
-        };
-
-        if let Ok(cache) = self.cache.lock() {
-            if let Some(preview) = cache.get(&path) {
-                send_or_warn(
-                    &self.events,
-                    Event::PreviewReady {
-                        location,
-                        preview,
-                        session,
-                        request,
-                    },
-                    "previewer: location cache hit",
-                );
-                return;
-            }
-        }
-
-        let cancel = self.arm_cancel(session);
-        let events = self.events.clone();
-        let preview_registry = self.preview_registry.clone();
-        let provider = self.provider.clone();
-        let cache = self.cache.clone();
-        let active = self.active.clone();
-        let latest = self.latest.clone();
-        let opts = options.unwrap_or_default();
-
-        tokio::spawn(async move {
-            if cancel.is_cancelled() {
-                return;
-            }
-
-            let cx = ProviderCx::with_cancel(&cancel);
-            let result = preview_registry
-                .generate_with_options(&path, &opts, provider.as_ref(), &cx)
-                .await;
-
-            if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
-                return;
-            }
-
-            match result {
-                Ok(preview) => {
-                    if let Ok(mut c) = cache.lock() {
-                        c.put(path, preview.clone());
-                    }
-                    send_or_warn_async(
-                        &events,
-                        Event::PreviewReady {
+                    let event = match event_mode {
+                        PreviewEventMode::Location => Event::PreviewReady {
                             location,
                             preview,
                             session,
                             request,
                         },
-                        "preview location ready",
-                    )
-                    .await;
-                }
-                Err(e) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::PreviewFailed {
-                            location,
-                            reason: e.to_string(),
+                        PreviewEventMode::Compat { node } => Event::PreviewReadyCompat {
+                            node,
+                            preview,
                             session,
                             request,
                         },
-                        "preview location failed",
-                    )
-                    .await;
+                    };
+                    send_or_warn_async(&events, event, "preview ready").await;
+                }
+                Err(e) => {
+                    let reason = e.to_string();
+                    let event = match event_mode {
+                        PreviewEventMode::Location => Event::PreviewFailed {
+                            location,
+                            reason,
+                            session,
+                            request,
+                        },
+                        PreviewEventMode::Compat { node } => Event::PreviewFailedCompat {
+                            node,
+                            reason,
+                            session,
+                            request,
+                        },
+                    };
+                    send_or_warn_async(&events, event, "preview failed").await;
                 }
             }
 
@@ -336,71 +259,10 @@ impl Previewer {
         }
     }
 
-    fn dispatch_metadata(&self, node: NodeId, session: SessionId, request: RequestId) {
-        self.mark_latest(session, request);
-        let Some(path) = self.registry.resolve(node) else {
-            send_or_warn(
-                &self.events,
-                Event::from_request_error(
-                    CoreError::invalid_input(format!("Cannot resolve node {node:?}")),
-                    session,
-                    request,
-                ),
-                "previewer: resolve",
-            );
-            return;
-        };
-
-        let events = self.events.clone();
-        let provider = self.provider.clone();
-        let latest = self.latest.clone();
-        let cancel = self.arm_cancel(session);
-        let active = self.active.clone();
-
-        tokio::spawn(async move {
-            if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
-                return;
-            }
-            let cx = ProviderCx::with_cancel(&cancel);
-            match cx
-                .race(provider.scheme(), provider.metadata(&path, &cx))
-                .await
-            {
-                Ok(file_node) => {
-                    if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
-                        return;
-                    }
-                    send_or_warn_async(
-                        &events,
-                        Event::MetadataLoadedCompat {
-                            node,
-                            meta: file_node.meta,
-                            session,
-                            request,
-                        },
-                        "metadata loaded",
-                    )
-                    .await;
-                }
-                Err(e) => {
-                    if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
-                        return;
-                    }
-                    send_or_warn_async(
-                        &events,
-                        Event::from_request_error(e, session, request),
-                        "metadata error",
-                    )
-                    .await;
-                }
-            }
-            active.remove_if_current(session, &cancel).await;
-        });
-    }
-
-    fn dispatch_metadata_location(
+    fn dispatch_metadata(
         &self,
         location_ref: LocationRef,
+        event_mode: PreviewEventMode,
         session: SessionId,
         request: RequestId,
     ) {
@@ -409,7 +271,7 @@ impl Previewer {
             &location_ref,
             session,
             request,
-            "previewer: resolve metadata location",
+            "previewer: resolve metadata",
         ) else {
             return;
         };
@@ -433,17 +295,21 @@ impl Previewer {
                     if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
                         return;
                     }
-                    send_or_warn_async(
-                        &events,
-                        Event::MetadataLoaded {
+                    let event = match event_mode {
+                        PreviewEventMode::Location => Event::MetadataLoaded {
                             location,
                             meta: file_node.meta,
                             session,
                             request,
                         },
-                        "metadata location loaded",
-                    )
-                    .await;
+                        PreviewEventMode::Compat { node } => Event::MetadataLoadedCompat {
+                            node,
+                            meta: file_node.meta,
+                            session,
+                            request,
+                        },
+                    };
+                    send_or_warn_async(&events, event, "metadata loaded").await;
                 }
                 Err(e) => {
                     if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
@@ -452,7 +318,7 @@ impl Previewer {
                     send_or_warn_async(
                         &events,
                         Event::from_request_error(e, session, request),
-                        "metadata location error",
+                        "metadata error",
                     )
                     .await;
                 }
@@ -461,18 +327,20 @@ impl Previewer {
         });
     }
 
-    fn dispatch_extended_metadata(&self, node: NodeId, session: SessionId, request: RequestId) {
+    fn dispatch_extended_metadata(
+        &self,
+        location_ref: LocationRef,
+        event_mode: PreviewEventMode,
+        session: SessionId,
+        request: RequestId,
+    ) {
         self.mark_latest(session, request);
-        let Some(path) = self.registry.resolve(node) else {
-            send_or_warn(
-                &self.events,
-                Event::from_request_error(
-                    CoreError::invalid_input(format!("Cannot resolve node {node:?}")),
-                    session,
-                    request,
-                ),
-                "previewer: resolve",
-            );
+        let Some((location, path)) = self.resolve_location_path(
+            &location_ref,
+            session,
+            request,
+            "previewer: resolve extended metadata",
+        ) else {
             return;
         };
 
@@ -520,104 +388,27 @@ impl Previewer {
                 .await
             {
                 Ok(extended) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::ExtendedMetadataLoadedCompat {
+                    let event = match event_mode {
+                        PreviewEventMode::Location => Event::ExtendedMetadataLoaded {
+                            location,
+                            extended,
+                            session,
+                            request,
+                        },
+                        PreviewEventMode::Compat { node } => Event::ExtendedMetadataLoadedCompat {
                             node,
                             extended,
                             session,
                             request,
                         },
-                        "extended metadata",
-                    )
-                    .await;
+                    };
+                    send_or_warn_async(&events, event, "extended metadata").await;
                 }
                 Err(e) => {
                     send_or_warn_async(
                         &events,
                         Event::from_request_error(e, session, request),
                         "extended metadata error",
-                    )
-                    .await;
-                }
-            }
-
-            active.remove_if_current(session, &cancel).await;
-        });
-    }
-
-    fn dispatch_extended_metadata_location(
-        &self,
-        location_ref: LocationRef,
-        session: SessionId,
-        request: RequestId,
-    ) {
-        self.mark_latest(session, request);
-        let Some((location, path)) = self.resolve_location_path(
-            &location_ref,
-            session,
-            request,
-            "previewer: resolve extended metadata location",
-        ) else {
-            return;
-        };
-
-        let cancel = self.arm_cancel(session);
-        let events = self.events.clone();
-        let metadata_registry = self.metadata_registry.clone();
-        let provider = self.provider.clone();
-        let active = self.active.clone();
-        let latest = self.latest.clone();
-
-        tokio::spawn(async move {
-            if cancel.is_cancelled() {
-                return;
-            }
-
-            let cx = ProviderCx::with_cancel(&cancel);
-            let mime = {
-                let ext_info = MimeDetector::detect_from_path(&path);
-                if ext_info.confidence == crate::services::mime::DetectionConfidence::Definitive {
-                    ext_info
-                } else {
-                    let header = provider
-                        .read_header(&path, MAGIC_BYTE_WINDOW, &cx)
-                        .await
-                        .ok();
-                    MimeDetector::detect_with_strategy(
-                        &path,
-                        header.as_deref(),
-                        crate::services::mime::DetectionStrategy::ExtensionWithFallback,
-                    )
-                }
-            };
-
-            if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
-                return;
-            }
-
-            match metadata_registry
-                .extract(&path, &mime, provider.as_ref(), &cx)
-                .await
-            {
-                Ok(extended) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::ExtendedMetadataLoaded {
-                            location,
-                            extended,
-                            session,
-                            request,
-                        },
-                        "extended metadata location",
-                    )
-                    .await;
-                }
-                Err(e) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::from_request_error(e, session, request),
-                        "extended metadata location error",
                     )
                     .await;
                 }
@@ -656,32 +447,29 @@ impl Actor for Previewer {
         loop {
             match self.commands.recv_async().await {
                 Ok(PreviewCommand::Generate {
-                    path,
-                    options,
-                    session,
-                    request,
-                }) => {
-                    self.dispatch_preview(path, options, session, request);
-                }
-                Ok(PreviewCommand::GenerateLocation {
                     location,
                     options,
+                    event_mode,
                     session,
                     request,
                 }) => {
-                    self.dispatch_preview_location(location, options, session, request);
+                    self.dispatch_preview(location, options, event_mode, session, request);
                 }
-                Ok(PreviewCommand::LoadMetadata(node, session, request)) => {
-                    self.dispatch_metadata(node, session, request);
+                Ok(PreviewCommand::LoadMetadata {
+                    location,
+                    event_mode,
+                    session,
+                    request,
+                }) => {
+                    self.dispatch_metadata(location, event_mode, session, request);
                 }
-                Ok(PreviewCommand::LoadMetadataLocation(location, session, request)) => {
-                    self.dispatch_metadata_location(location, session, request);
-                }
-                Ok(PreviewCommand::LoadExtendedMetadata(node, session, request)) => {
-                    self.dispatch_extended_metadata(node, session, request);
-                }
-                Ok(PreviewCommand::LoadExtendedMetadataLocation(location, session, request)) => {
-                    self.dispatch_extended_metadata_location(location, session, request);
+                Ok(PreviewCommand::LoadExtendedMetadata {
+                    location,
+                    event_mode,
+                    session,
+                    request,
+                }) => {
+                    self.dispatch_extended_metadata(location, event_mode, session, request);
                 }
                 Ok(PreviewCommand::Cancel(session)) => {
                     self.cancel(session);

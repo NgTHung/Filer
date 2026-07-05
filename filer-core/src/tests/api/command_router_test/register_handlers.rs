@@ -319,7 +319,7 @@
 
             {
                 let tx = preview_tx.clone();
-                handlers.on("preview.load.node.compat", move |cmd, _ctx| {
+                handlers.on("preview.load.node.compat", move |cmd, ctx| {
                     if let Command::LoadPreviewNodeCompat {
                         id,
                         options,
@@ -327,9 +327,18 @@
                         request,
                     } = cmd
                     {
+                        let Some(location) = ctx.registry.resolve_node_location(id) else {
+                            let _ = ctx.events.send(Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {id:?}")),
+                                session,
+                                request,
+                            ));
+                            return;
+                        };
                         let _ = tx.send(PreviewCommand::Generate {
-                            path: id,
+                            location,
                             options,
+                            event_mode: PreviewEventMode::Compat { node: id },
                             session,
                             request,
                         });
@@ -346,9 +355,10 @@
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(PreviewCommand::GenerateLocation {
+                        let _ = tx.send(PreviewCommand::Generate {
                             location,
                             options,
+                            event_mode: PreviewEventMode::Location,
                             session,
                             request,
                         });
@@ -365,14 +375,27 @@
             }
             {
                 let tx = preview_tx.clone();
-                handlers.on("metadata.load.node.compat", move |cmd, _ctx| {
+                handlers.on("metadata.load.node.compat", move |cmd, ctx| {
                     if let Command::LoadMetadataNodeCompat {
                         node,
                         session,
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(PreviewCommand::LoadMetadata(node, session, request));
+                        let Some(location) = ctx.registry.resolve_node_location(node) else {
+                            let _ = ctx.events.send(Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                                session,
+                                request,
+                            ));
+                            return;
+                        };
+                        let _ = tx.send(PreviewCommand::LoadMetadata {
+                            location,
+                            event_mode: PreviewEventMode::Compat { node },
+                            session,
+                            request,
+                        });
                     }
                 });
             }
@@ -385,23 +408,38 @@
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(PreviewCommand::LoadMetadataLocation(
-                            location, session, request,
-                        ));
+                        let _ = tx.send(PreviewCommand::LoadMetadata {
+                            location,
+                            event_mode: PreviewEventMode::Location,
+                            session,
+                            request,
+                        });
                     }
                 });
             }
             {
                 let tx = preview_tx.clone();
-                handlers.on("metadata.extended.node.compat", move |cmd, _ctx| {
+                handlers.on("metadata.extended.node.compat", move |cmd, ctx| {
                     if let Command::LoadExtendedMetadataNodeCompat {
                         node,
                         session,
                         request,
                     } = cmd
                     {
-                        let _ =
-                            tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
+                        let Some(location) = ctx.registry.resolve_node_location(node) else {
+                            let _ = ctx.events.send(Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                                session,
+                                request,
+                            ));
+                            return;
+                        };
+                        let _ = tx.send(PreviewCommand::LoadExtendedMetadata {
+                            location,
+                            event_mode: PreviewEventMode::Compat { node },
+                            session,
+                            request,
+                        });
                     }
                 });
             }
@@ -414,9 +452,12 @@
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(PreviewCommand::LoadExtendedMetadataLocation(
-                            location, session, request,
-                        ));
+                        let _ = tx.send(PreviewCommand::LoadExtendedMetadata {
+                            location,
+                            event_mode: PreviewEventMode::Location,
+                            session,
+                            request,
+                        });
                     }
                 });
             }

@@ -14,9 +14,12 @@ pub mod previewer;
 use std::sync::Arc;
 
 use crate::api::commands::Command;
+use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
+use crate::errors::CoreError;
+use crate::utils::channel::send_or_warn;
 use crate::vfs::provider::FsProvider;
-use previewer::{PreviewCommand, Previewer};
+use previewer::{PreviewCommand, PreviewEventMode, Previewer};
 
 /// Preview module — owns the Previewer actor.
 pub struct PreviewModule {
@@ -35,7 +38,7 @@ impl Module for PreviewModule {
 
         let tx = preview_tx.clone();
         ctx.handlers
-            .on("preview.load.node.compat", move |cmd, _ctx| {
+            .on("preview.load.node.compat", move |cmd, ctx| {
                 if let Command::LoadPreviewNodeCompat {
                     id,
                     options,
@@ -43,12 +46,29 @@ impl Module for PreviewModule {
                     request,
                 } = cmd
                 {
-                    let _ = tx.send(PreviewCommand::Generate {
-                        path: id,
-                        options,
-                        session,
-                        request,
-                    });
+                    let Some(location) = ctx.registry.resolve_node_location(id) else {
+                        send_or_warn(
+                            &ctx.events,
+                            Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {id:?}")),
+                                session,
+                                request,
+                            ),
+                            "preview.load.node.compat resolve",
+                        );
+                        return;
+                    };
+                    send_or_warn(
+                        &tx,
+                        PreviewCommand::Generate {
+                            location,
+                            options,
+                            event_mode: PreviewEventMode::Compat { node: id },
+                            session,
+                            request,
+                        },
+                        "preview.load.node.compat",
+                    );
                 }
             });
 
@@ -61,32 +81,58 @@ impl Module for PreviewModule {
                 request,
             } = cmd
             {
-                let _ = tx.send(PreviewCommand::GenerateLocation {
-                    location,
-                    options,
-                    session,
-                    request,
-                });
+                send_or_warn(
+                    &tx,
+                    PreviewCommand::Generate {
+                        location,
+                        options,
+                        event_mode: PreviewEventMode::Location,
+                        session,
+                        request,
+                    },
+                    "preview.load",
+                );
             }
         });
 
         let tx = preview_tx.clone();
         ctx.handlers.on("preview.cancel", move |cmd, _ctx| {
             if let Command::CancelPreview { session } = cmd {
-                let _ = tx.send(PreviewCommand::Cancel(session));
+                send_or_warn(&tx, PreviewCommand::Cancel(session), "preview.cancel");
             }
         });
 
         let tx = preview_tx.clone();
         ctx.handlers
-            .on("metadata.load.node.compat", move |cmd, _ctx| {
+            .on("metadata.load.node.compat", move |cmd, ctx| {
                 if let Command::LoadMetadataNodeCompat {
                     node,
                     session,
                     request,
                 } = cmd
                 {
-                    let _ = tx.send(PreviewCommand::LoadMetadata(node, session, request));
+                    let Some(location) = ctx.registry.resolve_node_location(node) else {
+                        send_or_warn(
+                            &ctx.events,
+                            Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                                session,
+                                request,
+                            ),
+                            "metadata.load.node.compat resolve",
+                        );
+                        return;
+                    };
+                    send_or_warn(
+                        &tx,
+                        PreviewCommand::LoadMetadata {
+                            location,
+                            event_mode: PreviewEventMode::Compat { node },
+                            session,
+                            request,
+                        },
+                        "metadata.load.node.compat",
+                    );
                 }
             });
 
@@ -98,22 +144,50 @@ impl Module for PreviewModule {
                 request,
             } = cmd
             {
-                let _ = tx.send(PreviewCommand::LoadMetadataLocation(
-                    location, session, request,
-                ));
+                send_or_warn(
+                    &tx,
+                    PreviewCommand::LoadMetadata {
+                        location,
+                        event_mode: PreviewEventMode::Location,
+                        session,
+                        request,
+                    },
+                    "metadata.load",
+                );
             }
         });
 
         let tx = preview_tx.clone();
         ctx.handlers
-            .on("metadata.extended.node.compat", move |cmd, _ctx| {
+            .on("metadata.extended.node.compat", move |cmd, ctx| {
                 if let Command::LoadExtendedMetadataNodeCompat {
                     node,
                     session,
                     request,
                 } = cmd
                 {
-                    let _ = tx.send(PreviewCommand::LoadExtendedMetadata(node, session, request));
+                    let Some(location) = ctx.registry.resolve_node_location(node) else {
+                        send_or_warn(
+                            &ctx.events,
+                            Event::from_request_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                                session,
+                                request,
+                            ),
+                            "metadata.extended.node.compat resolve",
+                        );
+                        return;
+                    };
+                    send_or_warn(
+                        &tx,
+                        PreviewCommand::LoadExtendedMetadata {
+                            location,
+                            event_mode: PreviewEventMode::Compat { node },
+                            session,
+                            request,
+                        },
+                        "metadata.extended.node.compat",
+                    );
                 }
             });
 
@@ -125,15 +199,26 @@ impl Module for PreviewModule {
                 request,
             } = cmd
             {
-                let _ = tx.send(PreviewCommand::LoadExtendedMetadataLocation(
-                    location, session, request,
-                ));
+                send_or_warn(
+                    &tx,
+                    PreviewCommand::LoadExtendedMetadata {
+                        location,
+                        event_mode: PreviewEventMode::Location,
+                        session,
+                        request,
+                    },
+                    "metadata.extended",
+                );
             }
         });
 
         let tx = preview_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
-            let _ = tx.send(PreviewCommand::Cancel(session));
+            send_or_warn(
+                &tx,
+                PreviewCommand::Cancel(session),
+                "preview session destroy",
+            );
         });
 
         let previewer = Previewer::new(

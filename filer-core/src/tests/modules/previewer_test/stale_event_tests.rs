@@ -7,7 +7,7 @@ mod stale_event_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/stale-preview.txt");
-        let node_id = registry.clone().register(path);
+        let node_id = registry.clone().register(path.clone());
 
         let mock = MockPreviewProvider::slow(text_preview(), 50);
         let (cmd_tx, evt_rx, _cache) = spawn_previewer(mock, registry);
@@ -16,8 +16,9 @@ mod stale_event_tests {
 
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path.clone())),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: stale_request,
             })
@@ -25,8 +26,9 @@ mod stale_event_tests {
         tokio::task::yield_now().await;
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path)),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: fresh_request,
             })
@@ -68,18 +70,20 @@ mod stale_event_tests {
         let fresh_request = RequestId::new();
 
         cmd_tx
-            .send(PreviewCommand::GenerateLocation {
+            .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&location),
                 options: None,
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: stale_request,
             })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(PreviewCommand::GenerateLocation {
+            .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&location),
                 options: None,
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: fresh_request,
             })

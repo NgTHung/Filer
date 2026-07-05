@@ -13,12 +13,13 @@ mod cache_tests {
         let (cmd_tx, evt_rx, cache) = spawn_previewer(mock.clone(), registry);
 
         // Pre-populate cache
-        cache.lock().unwrap().put(path, text_preview());
+        cache.lock().unwrap().put(path.clone(), text_preview());
 
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path.clone())),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -45,8 +46,9 @@ mod cache_tests {
 
         cmd_tx
             .send(PreviewCommand::Generate {
-                path: node_id,
+                location: LocationRef::from_location(&Location::local(path)),
                 options: None,
+                event_mode: PreviewEventMode::Compat { node: node_id },
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -67,12 +69,13 @@ mod cache_tests {
         let mock = MockPreviewProvider::instant(text_preview());
         let (cmd_tx, evt_rx, cache) = spawn_previewer(mock.clone(), registry);
 
-        cache.lock().unwrap().put(path, text_preview());
+        cache.lock().unwrap().put(path.clone(), text_preview());
 
         cmd_tx
-            .send(PreviewCommand::GenerateLocation {
+            .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&location),
                 options: None,
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
