@@ -25,12 +25,13 @@ use tokio::time::timeout;
 use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::errors::{CoreError, ErrorCode, ErrorTarget};
+use crate::model::location::{Location, LocationRef};
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::modules::search::searcher::{SearchCommand, Searcher};
+use crate::modules::search::searcher::{SearchCommand, SearchEventMode, Searcher};
 use crate::utils;
 use crate::vfs::provider::{Capabilities, FsProvider};
 

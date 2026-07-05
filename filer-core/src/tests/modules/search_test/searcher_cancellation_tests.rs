@@ -90,14 +90,15 @@ mod searcher_cancellation_tests {
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("file").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: root_id,
+                root: registry.resolve_node_location(root_id).unwrap(),
+                event_mode: SearchEventMode::Compat,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -155,14 +156,15 @@ mod searcher_cancellation_tests {
         }
 
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let location = Location::local("/root");
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("file").unwrap(),
                 root: LocationRef::from_location(&location),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
@@ -213,18 +215,20 @@ mod searcher_cancellation_tests {
         let fresh_request = RequestId::new();
 
         cmd_tx
-            .send(SearchCommand::SearchPath {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("stale").unwrap(),
-                root: PathBuf::from("/stale"),
+                root: LocationRef::from_location(&Location::local(PathBuf::from("/stale"))),
+                event_mode: SearchEventMode::Compat,
                 session,
                 request: stale_request,
             })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(SearchCommand::SearchPath {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("fresh").unwrap(),
-                root: PathBuf::from("/fresh"),
+                root: LocationRef::from_location(&Location::local(PathBuf::from("/fresh"))),
+                event_mode: SearchEventMode::Compat,
                 session,
                 request: fresh_request,
             })
@@ -267,18 +271,20 @@ mod searcher_cancellation_tests {
         let fresh_request = RequestId::new();
 
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("stale").unwrap(),
                 root: LocationRef::from_location(&Location::local("/stale")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: stale_request,
             })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("fresh").unwrap(),
                 root: LocationRef::from_location(&Location::local("/fresh")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: fresh_request,
             })
@@ -311,7 +317,7 @@ mod searcher_cancellation_tests {
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session1 = SessionId::new();
         let session2 = SessionId::new();
@@ -322,7 +328,8 @@ mod searcher_cancellation_tests {
         cmd_tx
             .send(SearchCommand::Search {
                 query: query1,
-                root: root_id,
+                root: registry.resolve_node_location(root_id).unwrap(),
+                event_mode: SearchEventMode::Compat,
                 session: session1,
                 request: crate::model::request::RequestId::new(),
             })
@@ -331,7 +338,8 @@ mod searcher_cancellation_tests {
         cmd_tx
             .send(SearchCommand::Search {
                 query: query2,
-                root: root_id,
+                root: registry.resolve_node_location(root_id).unwrap(),
+                event_mode: SearchEventMode::Compat,
                 session: session2,
                 request: crate::model::request::RequestId::new(),
             })
@@ -355,25 +363,27 @@ mod searcher_cancellation_tests {
         );
 
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session1 = SessionId::new();
         let session2 = SessionId::new();
         let location = Location::local("/root");
 
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("target").unwrap(),
                 root: LocationRef::from_location(&location),
+                event_mode: SearchEventMode::Location,
                 session: session1,
                 request: RequestId::new(),
             })
             .unwrap();
         cmd_tx.send(SearchCommand::Cancel(session1)).unwrap();
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("target").unwrap(),
                 root: LocationRef::from_location(&location),
+                event_mode: SearchEventMode::Location,
                 session: session2,
                 request: RequestId::new(),
             })
@@ -398,7 +408,7 @@ mod searcher_cancellation_tests {
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let stale_request = RequestId::new();
@@ -407,7 +417,8 @@ mod searcher_cancellation_tests {
         cmd_tx
             .send(SearchCommand::Search {
                 query: SearchQuery::parse("target").unwrap(),
-                root: root_id,
+                root: registry.resolve_node_location(root_id).unwrap(),
+                event_mode: SearchEventMode::Compat,
                 session,
                 request: stale_request,
             })
@@ -416,7 +427,8 @@ mod searcher_cancellation_tests {
         cmd_tx
             .send(SearchCommand::Search {
                 query: SearchQuery::parse("target").unwrap(),
-                root: root_id,
+                root: registry.resolve_node_location(root_id).unwrap(),
+                event_mode: SearchEventMode::Compat,
                 session,
                 request: fresh_request,
             })
@@ -457,7 +469,7 @@ mod searcher_cancellation_tests {
         );
 
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let stale_request = RequestId::new();
@@ -465,18 +477,20 @@ mod searcher_cancellation_tests {
         let location = Location::local("/root");
 
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("target").unwrap(),
                 root: LocationRef::from_location(&location),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: stale_request,
             })
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("target").unwrap(),
                 root: LocationRef::from_location(&location),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: fresh_request,
             })

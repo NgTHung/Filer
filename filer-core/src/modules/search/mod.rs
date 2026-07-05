@@ -14,9 +14,10 @@ use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
 use crate::errors::CoreError;
+use crate::model::location::{Location, LocationRef};
 use crate::model::query::SearchQuery;
 use crate::vfs::provider::FsProvider;
-use searcher::SearchCommand;
+use searcher::{SearchCommand, SearchEventMode};
 
 /// Search module — owns the Searcher actor.
 pub struct SearchModule {
@@ -37,16 +38,27 @@ impl Module for SearchModule {
         ctx.handlers.on("search.node.compat", move |cmd, ctx| {
             if let Command::SearchNodeCompat {
                 query,
-                root,
+                root: node_root,
                 session,
                 request,
             } = cmd
             {
                 match SearchQuery::parse(&query) {
                     Ok(query) => {
+                        let Some(root) = ctx.registry.resolve_node_location(node_root) else {
+                            let _ = ctx.events.send(Event::from_request_error(
+                                CoreError::invalid_input(format!(
+                                    "Unable to resolve ID: {node_root:?}"
+                                )),
+                                session,
+                                request,
+                            ));
+                            return;
+                        };
                         let _ = tx.send(SearchCommand::Search {
                             query,
                             root,
+                            event_mode: SearchEventMode::Compat,
                             session,
                             request,
                         });
@@ -67,9 +79,11 @@ impl Module for SearchModule {
             {
                 match SearchQuery::parse(&query) {
                     Ok(query) => {
-                        let _ = tx.send(SearchCommand::SearchPath {
+                        let location = Location::local(root);
+                        let _ = tx.send(SearchCommand::Search {
                             query,
-                            root,
+                            root: LocationRef::from_location(&location),
+                            event_mode: SearchEventMode::Compat,
                             session,
                             request,
                         });
@@ -90,9 +104,10 @@ impl Module for SearchModule {
             {
                 match SearchQuery::parse(&query) {
                     Ok(query) => {
-                        let _ = tx.send(SearchCommand::SearchLocation {
+                        let _ = tx.send(SearchCommand::Search {
                             query,
                             root,
+                            event_mode: SearchEventMode::Location,
                             session,
                             request,
                         });

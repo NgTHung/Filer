@@ -12,15 +12,16 @@ mod searcher_location_tests {
         );
 
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let request = RequestId::new();
         let location = Location::local("/root");
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("found").unwrap(),
                 root: LocationRef::from_location(&location),
+                event_mode: SearchEventMode::Location,
                 session,
                 request,
             })
@@ -45,13 +46,14 @@ mod searcher_location_tests {
         );
 
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("found").unwrap(),
                 root: LocationRef::descriptor_only(LocationDescriptor::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
@@ -66,15 +68,16 @@ mod searcher_location_tests {
     async fn test_search_location_id_only_without_registry_entry_emits_error() {
         let provider = MockProvider::new();
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let request = RequestId::new();
         let missing_id = LocationId(999);
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("found").unwrap(),
                 root: LocationRef::id_only(missing_id),
+                event_mode: SearchEventMode::Location,
                 session,
                 request,
             })
@@ -100,15 +103,16 @@ mod searcher_location_tests {
     async fn test_search_location_segmented_route_emits_error() {
         let provider = MockProvider::new();
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let request = RequestId::new();
         let descriptor = LocationDescriptor::local("/root.zip").archive_member("inside");
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("found").unwrap(),
                 root: LocationRef::descriptor_only(descriptor),
+                event_mode: SearchEventMode::Location,
                 session,
                 request,
             })
@@ -132,15 +136,16 @@ mod searcher_location_tests {
     async fn test_search_location_unsupported_provider_emits_error() {
         let provider = MockProvider::new();
         let registry = NodeRegistry::new();
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let request = RequestId::new();
         let descriptor = LocationDescriptor::provider_profile("sftp", "work", "/remote");
         cmd_tx
-            .send(SearchCommand::SearchLocation {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("found").unwrap(),
                 root: LocationRef::descriptor_only(descriptor),
+                event_mode: SearchEventMode::Location,
                 session,
                 request,
             })

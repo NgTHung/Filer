@@ -15,9 +15,10 @@ mod searcher_timeout_tests {
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(SearchCommand::SearchPath {
+            .send(SearchCommand::Search {
                 query: SearchQuery::parse("a").unwrap(),
-                root: PathBuf::from("/slow"),
+                root: LocationRef::from_location(&Location::local(PathBuf::from("/slow"))),
+                event_mode: SearchEventMode::Compat,
                 session,
                 request,
             })

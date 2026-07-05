@@ -12,14 +12,15 @@ mod searcher_session_tests {
 
         let registry = NodeRegistry::new();
         let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry);
+        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("file").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: root_id,
+                root: registry.resolve_node_location(root_id).unwrap(),
+                event_mode: SearchEventMode::Compat,
                 session,
                 request: crate::model::request::RequestId::new(),
             })

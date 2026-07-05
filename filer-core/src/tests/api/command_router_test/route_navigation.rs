@@ -172,11 +172,17 @@
             SearchCommand::Search {
                 query,
                 root: r,
+                event_mode,
                 session: s,
                 ..
             } => {
                 assert_eq!(query.text, "*.rs", "Query text must be forwarded");
-                assert_eq!(r, registered_id, "Root NodeId must be forwarded");
+                assert_eq!(
+                    r,
+                    harness.registry.resolve_node_location(registered_id).unwrap(),
+                    "Root NodeId must be translated to LocationRef"
+                );
+                assert_eq!(event_mode, SearchEventMode::Compat);
                 assert_eq!(s, session, "Session must be the same for both command");
             }
             other => panic!("Expected SearchCommand::Search, got {:?}", other),
@@ -205,18 +211,24 @@
             .expect("SearchCommand channel closed");
 
         match search_cmd {
-            SearchCommand::SearchPath {
+            SearchCommand::Search {
                 query,
                 root: r,
+                event_mode,
                 session: s,
                 request: req,
             } => {
                 assert_eq!(query.text, "*.rs", "Query text must be forwarded");
-                assert_eq!(r, root, "Root path must be forwarded");
+                assert_eq!(
+                    r,
+                    LocationRef::from_location(&Location::local(root)),
+                    "Root path must be translated to LocationRef"
+                );
+                assert_eq!(event_mode, SearchEventMode::Compat);
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(req, request, "RequestId must be forwarded");
             }
-            other => panic!("Expected SearchCommand::SearchPath, got {:?}", other),
+            other => panic!("Expected SearchCommand::Search, got {:?}", other),
         }
     }
 
@@ -243,18 +255,20 @@
             .expect("SearchCommand channel closed");
 
         match search_cmd {
-            SearchCommand::SearchLocation {
+            SearchCommand::Search {
                 query,
                 root,
+                event_mode,
                 session: s,
                 request: r,
             } => {
                 assert_eq!(query.text, "report", "Query text must be forwarded");
                 assert_eq!(root, location_ref, "LocationRef must be forwarded");
+                assert_eq!(event_mode, SearchEventMode::Location);
                 assert_eq!(s, session, "SessionId must be preserved");
                 assert_eq!(r, request, "RequestId must be forwarded");
             }
-            other => panic!("Expected SearchCommand::SearchLocation, got {:?}", other),
+            other => panic!("Expected SearchCommand::Search, got {:?}", other),
         }
     }
 

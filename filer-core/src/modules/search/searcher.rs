@@ -9,9 +9,8 @@ use rapidhash::fast::RandomState;
 use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::api::events::Event;
-use crate::errors::{CoreError, ErrorCode};
+use crate::errors::ErrorCode;
 use crate::model::location::{LocationRef, LocationRoute};
-use crate::model::node::NodeId;
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -22,24 +21,19 @@ use crate::vfs::provider::FsProvider;
 
 const DEFAULT_BATCH_SIZE: usize = 50;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchEventMode {
+    Compat,
+    Location,
+}
+
 /// Commands for searcher actor
 #[derive(Debug, Clone)]
 pub enum SearchCommand {
     Search {
         query: SearchQuery,
-        root: NodeId,
-        session: SessionId,
-        request: RequestId,
-    },
-    SearchPath {
-        query: SearchQuery,
-        root: PathBuf,
-        session: SessionId,
-        request: RequestId,
-    },
-    SearchLocation {
-        query: SearchQuery,
         root: LocationRef,
+        event_mode: SearchEventMode,
         session: SessionId,
         request: RequestId,
     },
@@ -86,20 +80,11 @@ impl Searcher {
     pub fn dispatch_search(
         &self,
         query: SearchQuery,
+        root: LocationRef,
         path: PathBuf,
+        event_mode: SearchEventMode,
         session: SessionId,
         request: RequestId,
-    ) {
-        self.dispatch_search_with_location(query, path, session, request, false);
-    }
-
-    pub fn dispatch_search_with_location(
-        &self,
-        query: SearchQuery,
-        path: PathBuf,
-        session: SessionId,
-        request: RequestId,
-        location_output: bool,
     ) {
         let provider = self.provider.clone();
         let active_search = self.active_search.clone();
@@ -114,6 +99,7 @@ impl Searcher {
         tokio::spawn(async move {
             Self::search(
                 query,
+                root,
                 path,
                 session,
                 request,
@@ -123,7 +109,7 @@ impl Searcher {
                 &event,
                 &latest_searches,
                 &registry,
-                location_output,
+                event_mode,
             )
             .await;
             active_search.remove_if_current(session, &cancel).await;
@@ -133,6 +119,7 @@ impl Searcher {
     #[allow(clippy::too_many_arguments)]
     async fn search(
         query: SearchQuery,
+        _root: LocationRef,
         path: PathBuf,
         session: SessionId,
         request: RequestId,
@@ -142,7 +129,7 @@ impl Searcher {
         event: &Sender<Event>,
         latest_searches: &scc::HashMap<SessionId, RequestId, RandomState>,
         registry: &NodeRegistry,
-        location_output: bool,
+        event_mode: SearchEventMode,
     ) {
         let mut cx = ProviderCx::with_cancel(cancel);
         if let Some(deadline) = deadline {
@@ -193,7 +180,7 @@ impl Searcher {
                                 session,
                                 request,
                                 registry,
-                                location_output,
+                                event_mode,
                             ),
                             "emit partial search result",
                         );
@@ -211,7 +198,7 @@ impl Searcher {
         if Self::is_latest(latest_searches, session, request) {
             send_or_warn(
                 event,
-                search_results_event(batch, true, session, request, registry, location_output),
+                search_results_event(batch, true, session, request, registry, event_mode),
                 "emit remaining files after search",
             );
         }
@@ -242,34 +229,7 @@ impl Actor for Searcher {
                 Ok(SearchCommand::Search {
                     query,
                     root,
-                    session,
-                    request,
-                }) => {
-                    let Some(path) = self.registry.resolve(root) else {
-                        send_or_warn(
-                            &self.events,
-                            Event::from_request_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {root:?}")),
-                                session,
-                                request,
-                            ),
-                            "search resolve error",
-                        );
-                        continue;
-                    };
-                    self.dispatch_search(query, path, session, request);
-                }
-                Ok(SearchCommand::SearchPath {
-                    query,
-                    root,
-                    session,
-                    request,
-                }) => {
-                    self.dispatch_search(query, root, session, request);
-                }
-                Ok(SearchCommand::SearchLocation {
-                    query,
-                    root,
+                    event_mode,
                     session,
                     request,
                 }) => {
@@ -298,7 +258,7 @@ impl Actor for Searcher {
                             continue;
                         }
                     };
-                    self.dispatch_search_with_location(query, path, session, request, true);
+                    self.dispatch_search(query, root, path, event_mode, session, request);
                 }
                 Err(_) | Ok(SearchCommand::Shutdown) => {
                     self.active_search.cancel_all().await;
@@ -319,10 +279,10 @@ fn search_results_event(
     session: SessionId,
     request: RequestId,
     registry: &NodeRegistry,
-    location_output: bool,
+    event_mode: SearchEventMode,
 ) -> Event {
-    if location_output {
-        Event::SearchResults {
+    match event_mode {
+        SearchEventMode::Location => Event::SearchResults {
             matches: matches
                 .into_iter()
                 .map(|node| crate::NodeEntry::from_file_node(node, registry))
@@ -330,13 +290,12 @@ fn search_results_event(
             complete,
             session,
             request,
-        }
-    } else {
-        Event::SearchResultsCompat {
+        },
+        SearchEventMode::Compat => Event::SearchResultsCompat {
             matches,
             complete,
             session,
             request,
-        }
+        },
     }
 }

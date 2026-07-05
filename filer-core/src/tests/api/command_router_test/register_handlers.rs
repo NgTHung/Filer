@@ -99,16 +99,28 @@
                 handlers.on("search.node.compat", move |cmd, ctx| {
                     if let Command::SearchNodeCompat {
                         query,
-                        root,
+                        root: node_root,
                         session,
                         request,
                     } = cmd
                     {
                         match crate::model::query::SearchQuery::parse(&query) {
                             Ok(query) => {
+                                let Some(root) = ctx.registry.resolve_node_location(node_root)
+                                else {
+                                    let _ = ctx.events.send(Event::from_request_error(
+                                        CoreError::invalid_input(format!(
+                                            "Unable to resolve ID: {node_root:?}"
+                                        )),
+                                        session,
+                                        request,
+                                    ));
+                                    return;
+                                };
                                 let _ = tx.send(SearchCommand::Search {
                                     query,
                                     root,
+                                    event_mode: SearchEventMode::Compat,
                                     session,
                                     request,
                                 });
@@ -138,9 +150,11 @@
                     {
                         match crate::model::query::SearchQuery::parse(&query) {
                             Ok(query) => {
-                                let _ = tx.send(SearchCommand::SearchPath {
+                                let location = crate::Location::local(root);
+                                let _ = tx.send(SearchCommand::Search {
                                     query,
-                                    root,
+                                    root: crate::LocationRef::from_location(&location),
+                                    event_mode: SearchEventMode::Compat,
                                     session,
                                     request,
                                 });
@@ -170,9 +184,10 @@
                     {
                         match crate::model::query::SearchQuery::parse(&query) {
                             Ok(query) => {
-                                let _ = tx.send(SearchCommand::SearchLocation {
+                                let _ = tx.send(SearchCommand::Search {
                                     query,
                                     root,
+                                    event_mode: SearchEventMode::Location,
                                     session,
                                     request,
                                 });
