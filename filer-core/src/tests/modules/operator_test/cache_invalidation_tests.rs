@@ -47,14 +47,15 @@ mod cache_invalidation_tests {
         let cache = new_cache();
         let session = SessionId::new();
         let parent = PathBuf::from("/home/user");
-        let parent_id = register(&registry, &parent);
+        let _parent_id = register(&registry, &parent);
         seed_cache(&cache, &parent);
 
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::CreateFile {
-                parent: parent_id,
+                parent: local_ref(&parent),
                 name: "new.txt".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -76,14 +77,15 @@ mod cache_invalidation_tests {
         let cache = new_cache();
         let session = SessionId::new();
         let parent = PathBuf::from("/home/user");
-        let parent_id = register(&registry, &parent);
+        let _parent_id = register(&registry, &parent);
         seed_cache(&cache, &parent);
 
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::CreateFolder {
-                parent: parent_id,
+                parent: local_ref(&parent),
                 name: "new-folder".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -107,8 +109,8 @@ mod cache_invalidation_tests {
         let src = PathBuf::from("/home/user/doc.txt");
         let src_parent = PathBuf::from("/home/user");
         let dst_parent = PathBuf::from("/home/user/backup");
-        let src_id = register(&registry, &src);
-        let dst_id = register(&registry, &dst_parent);
+        let _src_id = register(&registry, &src);
+        let _dst_id = register(&registry, &dst_parent);
         provider.add_metadata(&src, MockOpsProvider::make_file("doc.txt", "/home/user", 1));
         seed_cache(&cache, &src_parent);
         seed_cache(&cache, &dst_parent);
@@ -116,8 +118,9 @@ mod cache_invalidation_tests {
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src)],
+                destination: local_ref(&dst_parent),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -142,16 +145,17 @@ mod cache_invalidation_tests {
         let src = PathBuf::from("/home/user/doc.txt");
         let src_parent = PathBuf::from("/home/user");
         let dst_parent = PathBuf::from("/mnt/archive");
-        let src_id = register(&registry, &src);
-        let dst_id = register(&registry, &dst_parent);
+        let _src_id = register(&registry, &src);
+        let _dst_id = register(&registry, &dst_parent);
         seed_cache(&cache, &src_parent);
         seed_cache(&cache, &dst_parent);
 
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::Move {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src)],
+                destination: local_ref(&dst_parent),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -177,7 +181,7 @@ mod cache_invalidation_tests {
         let dir = PathBuf::from("/home/user/project");
         let child = PathBuf::from("/home/user/project/src");
         let sibling = PathBuf::from("/home/user/project-old");
-        let dir_id = register(&registry, &dir);
+        let _dir_id = register(&registry, &dir);
         seed_cache(&cache, &parent);
         seed_cache(&cache, &dir);
         seed_cache(&cache, &child);
@@ -186,8 +190,9 @@ mod cache_invalidation_tests {
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::Delete {
-                targets: vec![dir_id],
+                targets: vec![local_ref(&dir)],
                 trash: false,
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -215,8 +220,8 @@ mod cache_invalidation_tests {
         let dst_parent = PathBuf::from("/mnt/archive");
         let dir = PathBuf::from("/home/user/project");
         let child = PathBuf::from("/home/user/project/src");
-        let dir_id = register(&registry, &dir);
-        let dst_id = register(&registry, &dst_parent);
+        let _dir_id = register(&registry, &dir);
+        let _dst_id = register(&registry, &dst_parent);
         seed_cache(&cache, &src_parent);
         seed_cache(&cache, &dst_parent);
         seed_cache(&cache, &dir);
@@ -225,8 +230,9 @@ mod cache_invalidation_tests {
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::Move {
-                sources: vec![dir_id],
-                destination: dst_id,
+                sources: vec![local_ref(&dir)],
+                destination: local_ref(&dst_parent),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -253,7 +259,7 @@ mod cache_invalidation_tests {
         let parent = PathBuf::from("/home/user");
         let dir = PathBuf::from("/home/user/project");
         let child = PathBuf::from("/home/user/project/src");
-        let dir_id = register(&registry, &dir);
+        let _dir_id = register(&registry, &dir);
         seed_cache(&cache, &parent);
         seed_cache(&cache, &dir);
         seed_cache(&cache, &child);
@@ -261,8 +267,9 @@ mod cache_invalidation_tests {
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::Rename {
-                source: dir_id,
+                source: local_ref(&dir),
                 new_name: "renamed".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -287,15 +294,16 @@ mod cache_invalidation_tests {
         let session = SessionId::new();
         let parent = PathBuf::from("/home/user");
         let path = PathBuf::from("/home/user/protected.txt");
-        let id = register(&registry, &path);
+        let _id = register(&registry, &path);
         provider.add_fail_path(&path);
         seed_cache(&cache, &parent);
 
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
         cmd_tx
             .send(OpsCommand::Delete {
-                targets: vec![id],
+                targets: vec![local_ref(&path)],
                 trash: false,
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),

@@ -287,6 +287,8 @@
             .clone()
             .register(PathBuf::from("/a/file.txt"));
         let dst = harness.registry.clone().register(PathBuf::from("/b"));
+        let src_location = harness.registry.resolve_node_location(src).unwrap();
+        let dst_location = harness.registry.resolve_node_location(dst).unwrap();
         let request = RequestId::new();
         let operation = OperationId::new();
 
@@ -309,18 +311,64 @@
             OpsCommand::Copy {
                 sources,
                 destination,
+                event_mode,
                 session: s,
                 request: r,
                 operation: op,
             } => {
-                assert_eq!(sources, vec![src]);
-                assert_eq!(destination, dst);
+                assert_eq!(sources, vec![src_location]);
+                assert_eq!(destination, dst_location);
+                assert_eq!(event_mode, OperationEventMode::Compat);
                 assert_eq!(s, session);
                 assert_eq!(r, request);
                 assert_eq!(op, operation);
             }
             other => panic!("Expected OpsCommand::Copy, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_route_unresolved_copy_node_compat_emits_error() {
+        let harness = RouterTestHarness::new();
+        let session = harness.create_valid_session();
+        let missing = NodeId::from_path(&PathBuf::from("/missing/source.txt"));
+        let destination = harness.registry.clone().register(PathBuf::from("/b"));
+        let request = RequestId::new();
+        let operation = OperationId::new();
+
+        harness
+            .send(Command::CopyNodeCompat {
+                sources: vec![missing],
+                destination,
+                session,
+                request,
+                operation,
+            })
+            .await;
+
+        let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
+            .await
+            .expect("Timed out waiting for error event")
+            .expect("Event channel closed");
+
+        match event {
+            Event::Error {
+                session: s,
+                request: r,
+                operation: op,
+                ..
+            } => {
+                assert_eq!(s, session);
+                assert_eq!(r, Some(request));
+                assert_eq!(op, Some(operation));
+            }
+            other => panic!("Expected Event::Error, got {other:?}"),
+        }
+
+        assert!(
+            harness.ops_rx.try_recv().is_err(),
+            "unresolved compat nodes must not reach the operator"
+        );
     }
 
     #[tokio::test]
@@ -331,6 +379,7 @@
             .registry
             .clone()
             .register(PathBuf::from("/home/user"));
+        let parent_location = harness.registry.resolve_node_location(parent).unwrap();
         let request = RequestId::new();
         let operation = OperationId::new();
 
@@ -353,12 +402,14 @@
             OpsCommand::CreateFile {
                 parent: p,
                 name,
+                event_mode,
                 session: s,
                 request: r,
                 operation: op,
             } => {
-                assert_eq!(p, parent);
+                assert_eq!(p, parent_location);
                 assert_eq!(name, "notes.txt");
+                assert_eq!(event_mode, OperationEventMode::Compat);
                 assert_eq!(s, session);
                 assert_eq!(r, request);
                 assert_eq!(op, operation);
@@ -418,20 +469,22 @@
             .expect("Timed out waiting for OpsCommand")
             .expect("OpsCommand channel closed")
         {
-            OpsCommand::CopyLocation {
+            OpsCommand::Copy {
                 sources,
                 destination,
+                event_mode,
                 session: s,
                 request: r,
                 operation: op,
             } => {
                 assert_eq!(sources, vec![src]);
                 assert_eq!(destination, dst);
+                assert_eq!(event_mode, OperationEventMode::Location);
                 assert_eq!(s, session);
                 assert_eq!(r, request);
                 assert_eq!(op, operation);
             }
-            other => panic!("Expected OpsCommand::CopyLocation, got {:?}", other),
+            other => panic!("Expected OpsCommand::Copy, got {:?}", other),
         }
     }
 

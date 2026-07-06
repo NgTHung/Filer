@@ -11,8 +11,8 @@ mod move_tests {
         let src_path = PathBuf::from("/home/user/doc.txt");
         let dst_path = PathBuf::from("/home/user/archive");
 
-        let src_id = register(&registry, &src_path);
-        let dst_id = register(&registry, &dst_path);
+        let _src_id = register(&registry, &src_path);
+        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -23,8 +23,9 @@ mod move_tests {
 
         cmd_tx
             .send(OpsCommand::Move {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_path)],
+                destination: local_ref(&dst_path),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -84,8 +85,8 @@ mod move_tests {
         let src_path = PathBuf::from("/mnt/usb/doc.txt");
         let dst_path = PathBuf::from("/home/user/archive");
 
-        let src_id = register(&registry, &src_path);
-        let dst_id = register(&registry, &dst_path);
+        let _src_id = register(&registry, &src_path);
+        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -97,8 +98,9 @@ mod move_tests {
 
         cmd_tx
             .send(OpsCommand::Move {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_path)],
+                destination: local_ref(&dst_path),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -139,8 +141,8 @@ mod move_tests {
         let src_path = PathBuf::from("/home/user/locked.txt");
         let dst_path = PathBuf::from("/home/user/archive");
 
-        let src_id = register(&registry, &src_path);
-        let dst_id = register(&registry, &dst_path);
+        let _src_id = register(&registry, &src_path);
+        let _dst_id = register(&registry, &dst_path);
         provider.add_fail_path(&src_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
@@ -149,8 +151,9 @@ mod move_tests {
 
         cmd_tx
             .send(OpsCommand::Move {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_path)],
+                destination: local_ref(&dst_path),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: request_id,
                 operation: operation_id,

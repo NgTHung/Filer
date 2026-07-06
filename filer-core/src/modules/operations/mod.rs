@@ -16,15 +16,48 @@
 //! - `ops.cancel` — cancel a specific active operation
 
 pub mod operator;
+pub mod target;
 
 use std::sync::Arc;
 
+use crate::CoreError;
 use crate::FsProvider;
 use crate::api::commands::Command;
+use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
+use crate::model::location::LocationRef;
+use crate::model::node::NodeId;
+use crate::model::operation::OperationId;
+use crate::model::request::RequestId;
+use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
+use crate::utils::channel::send_or_warn;
 use flume::Sender;
-use operator::{Operator, OpsCommand};
+use operator::{OperationEventMode, Operator, OpsCommand};
+
+fn resolve_compat_node(
+    registry: &crate::model::registry::NodeRegistry,
+    node: NodeId,
+) -> Result<LocationRef, CoreError> {
+    registry
+        .resolve_node_location(node)
+        .ok_or_else(|| CoreError::invalid_input(format!("Cannot resolve node {node:?}")))
+}
+
+fn emit_compat_resolve_error(
+    events: &Sender<Event>,
+    error: CoreError,
+    session: SessionId,
+    request: RequestId,
+    operation: OperationId,
+    context: &'static str,
+) {
+    send_or_warn(
+        events,
+        Event::from_operation_error(error, session, request, operation),
+        context,
+    );
+}
 
 /// Operations module — owns the Operator actor.
 pub struct OperationsModule {
@@ -69,13 +102,34 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Copy {
-                    sources,
-                    destination,
-                    session,
-                    request,
-                    operation,
-                });
+                let resolved = sources
+                    .into_iter()
+                    .map(|source| resolve_compat_node(&_ctx.registry, source))
+                    .collect::<Result<Vec<_>, _>>()
+                    .and_then(|sources| {
+                        resolve_compat_node(&_ctx.registry, destination)
+                            .map(|destination| (sources, destination))
+                    });
+                match resolved {
+                    Ok((sources, destination)) => {
+                        let _ = tx.send(OpsCommand::Copy {
+                            sources,
+                            destination,
+                            event_mode: OperationEventMode::Compat,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                    Err(error) => emit_compat_resolve_error(
+                        &_ctx.events,
+                        error,
+                        session,
+                        request,
+                        operation,
+                        "operations: copy compat resolve",
+                    ),
+                }
             }
         });
 
@@ -89,9 +143,10 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::CopyLocation {
+                let _ = tx.send(OpsCommand::Copy {
                     sources,
                     destination,
+                    event_mode: OperationEventMode::Location,
                     session,
                     request,
                     operation,
@@ -109,13 +164,34 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Move {
-                    sources,
-                    destination,
-                    session,
-                    request,
-                    operation,
-                });
+                let resolved = sources
+                    .into_iter()
+                    .map(|source| resolve_compat_node(&_ctx.registry, source))
+                    .collect::<Result<Vec<_>, _>>()
+                    .and_then(|sources| {
+                        resolve_compat_node(&_ctx.registry, destination)
+                            .map(|destination| (sources, destination))
+                    });
+                match resolved {
+                    Ok((sources, destination)) => {
+                        let _ = tx.send(OpsCommand::Move {
+                            sources,
+                            destination,
+                            event_mode: OperationEventMode::Compat,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                    Err(error) => emit_compat_resolve_error(
+                        &_ctx.events,
+                        error,
+                        session,
+                        request,
+                        operation,
+                        "operations: move compat resolve",
+                    ),
+                }
             }
         });
 
@@ -129,9 +205,10 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::MoveLocation {
+                let _ = tx.send(OpsCommand::Move {
                     sources,
                     destination,
+                    event_mode: OperationEventMode::Location,
                     session,
                     request,
                     operation,
@@ -149,13 +226,30 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Delete {
-                    targets: nodes,
-                    trash,
-                    session,
-                    request,
-                    operation,
-                });
+                let resolved = nodes
+                    .into_iter()
+                    .map(|node| resolve_compat_node(&_ctx.registry, node))
+                    .collect::<Result<Vec<_>, _>>();
+                match resolved {
+                    Ok(targets) => {
+                        let _ = tx.send(OpsCommand::Delete {
+                            targets,
+                            trash,
+                            event_mode: OperationEventMode::Compat,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                    Err(error) => emit_compat_resolve_error(
+                        &_ctx.events,
+                        error,
+                        session,
+                        request,
+                        operation,
+                        "operations: delete compat resolve",
+                    ),
+                }
             }
         });
 
@@ -169,9 +263,10 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::DeleteLocation {
+                let _ = tx.send(OpsCommand::Delete {
                     targets: locations,
                     trash,
+                    event_mode: OperationEventMode::Location,
                     session,
                     request,
                     operation,
@@ -189,13 +284,26 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Rename {
-                    source: node,
-                    new_name,
-                    session,
-                    request,
-                    operation,
-                });
+                match resolve_compat_node(&_ctx.registry, node) {
+                    Ok(source) => {
+                        let _ = tx.send(OpsCommand::Rename {
+                            source,
+                            new_name,
+                            event_mode: OperationEventMode::Compat,
+                            session,
+                            request,
+                            operation,
+                        });
+                    }
+                    Err(error) => emit_compat_resolve_error(
+                        &_ctx.events,
+                        error,
+                        session,
+                        request,
+                        operation,
+                        "operations: rename compat resolve",
+                    ),
+                }
             }
         });
 
@@ -209,9 +317,10 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::RenameLocation {
+                let _ = tx.send(OpsCommand::Rename {
                     source: location,
                     new_name,
+                    event_mode: OperationEventMode::Location,
                     session,
                     request,
                     operation,
@@ -230,13 +339,26 @@ impl Module for OperationsModule {
                     operation,
                 } = cmd
                 {
-                    let _ = tx.send(OpsCommand::CreateFolder {
-                        parent,
-                        name,
-                        session,
-                        request,
-                        operation,
-                    });
+                    match resolve_compat_node(&_ctx.registry, parent) {
+                        Ok(parent) => {
+                            let _ = tx.send(OpsCommand::CreateFolder {
+                                parent,
+                                name,
+                                event_mode: OperationEventMode::Compat,
+                                session,
+                                request,
+                                operation,
+                            });
+                        }
+                        Err(error) => emit_compat_resolve_error(
+                            &_ctx.events,
+                            error,
+                            session,
+                            request,
+                            operation,
+                            "operations: create folder compat resolve",
+                        ),
+                    }
                 }
             });
 
@@ -250,9 +372,10 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::CreateFolderLocation {
+                let _ = tx.send(OpsCommand::CreateFolder {
                     parent,
                     name,
+                    event_mode: OperationEventMode::Location,
                     session,
                     request,
                     operation,
@@ -271,13 +394,26 @@ impl Module for OperationsModule {
                     operation,
                 } = cmd
                 {
-                    let _ = tx.send(OpsCommand::CreateFile {
-                        parent,
-                        name,
-                        session,
-                        request,
-                        operation,
-                    });
+                    match resolve_compat_node(&_ctx.registry, parent) {
+                        Ok(parent) => {
+                            let _ = tx.send(OpsCommand::CreateFile {
+                                parent,
+                                name,
+                                event_mode: OperationEventMode::Compat,
+                                session,
+                                request,
+                                operation,
+                            });
+                        }
+                        Err(error) => emit_compat_resolve_error(
+                            &_ctx.events,
+                            error,
+                            session,
+                            request,
+                            operation,
+                            "operations: create file compat resolve",
+                        ),
+                    }
                 }
             });
 
@@ -291,9 +427,10 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::CreateFileLocation {
+                let _ = tx.send(OpsCommand::CreateFile {
                     parent,
                     name,
+                    event_mode: OperationEventMode::Location,
                     session,
                     request,
                     operation,

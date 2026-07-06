@@ -11,8 +11,8 @@ mod copy_tests {
         let src_path = PathBuf::from("/home/user/doc.txt");
         let dst_path = PathBuf::from("/home/user/backup");
 
-        let src_id = register(&registry, &src_path);
-        let dst_id = register(&registry, &dst_path);
+        let _src_id = register(&registry, &src_path);
+        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -24,8 +24,9 @@ mod copy_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_path)],
+                destination: local_ref(&dst_path),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: operation_id,
@@ -67,8 +68,8 @@ mod copy_tests {
         let src_dir = PathBuf::from("/home/user/project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let src_id = register(&registry, &src_dir);
-        let dst_id = register(&registry, &dst_dir);
+        let _src_id = register(&registry, &src_dir);
+        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(&src_dir, MockOpsProvider::make_dir("project", "/home/user"));
 
@@ -86,8 +87,9 @@ mod copy_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_dir)],
+                destination: local_ref(&dst_dir),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: operation_id,
@@ -168,9 +170,9 @@ mod copy_tests {
         let src2 = PathBuf::from("/home/user/b.txt");
         let dst = PathBuf::from("/home/user/backup");
 
-        let src1_id = register(&registry, &src1);
-        let src2_id = register(&registry, &src2);
-        let dst_id = register(&registry, &dst);
+        let _src1_id = register(&registry, &src1);
+        let _src2_id = register(&registry, &src2);
+        let _dst_id = register(&registry, &dst);
 
         provider.add_metadata(
             &src1,
@@ -185,8 +187,9 @@ mod copy_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src1_id, src2_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src1), local_ref(&src2)],
+                destination: local_ref(&dst),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -218,8 +221,8 @@ mod copy_tests {
         let src_path = PathBuf::from("/home/user/locked.txt");
         let dst_path = PathBuf::from("/home/user/backup");
 
-        let src_id = register(&registry, &src_path);
-        let dst_id = register(&registry, &dst_path);
+        let _src_id = register(&registry, &src_path);
+        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -233,8 +236,9 @@ mod copy_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_path)],
+                destination: local_ref(&dst_path),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: request_id,
                 operation: operation_id,
@@ -266,9 +270,8 @@ mod copy_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
 
-        let fake_src = NodeId::from_path(&PathBuf::from("/nonexistent"));
         let dst_path = PathBuf::from("/home/user/backup");
-        let dst_id = register(&registry, &dst_path);
+        let _dst_id = register(&registry, &dst_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
         let request_id = RequestId::new();
@@ -276,8 +279,9 @@ mod copy_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![fake_src],
-                destination: dst_id,
+                sources: vec![LocationRef::id_only(LocationId(404))],
+                destination: local_ref(&dst_path),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: request_id,
                 operation: operation_id,

@@ -9,14 +9,15 @@ mod create_file_tests {
         let session = SessionId::new();
 
         let parent_path = PathBuf::from("/home/user");
-        let parent_id = register(&registry, &parent_path);
+        let _parent_id = register(&registry, &parent_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
         cmd_tx
             .send(OpsCommand::CreateFile {
-                parent: parent_id,
+                parent: local_ref(&parent_path),
                 name: "new_file.txt".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -54,7 +55,7 @@ mod create_file_tests {
         let session = SessionId::new();
 
         let parent_path = PathBuf::from("/home/user");
-        let parent_id = register(&registry, &parent_path);
+        let _parent_id = register(&registry, &parent_path);
 
         provider.add_existing(PathBuf::from("/home/user/exists.txt"));
 
@@ -64,8 +65,9 @@ mod create_file_tests {
 
         cmd_tx
             .send(OpsCommand::CreateFile {
-                parent: parent_id,
+                parent: local_ref(&parent_path),
                 name: "exists.txt".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: request_id,
                 operation: operation_id,

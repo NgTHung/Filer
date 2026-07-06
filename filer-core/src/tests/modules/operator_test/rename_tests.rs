@@ -9,14 +9,15 @@ mod rename_tests {
         let session = SessionId::new();
 
         let src_path = PathBuf::from("/home/user/old_name.txt");
-        let src_id = register(&registry, &src_path);
+        let _src_id = register(&registry, &src_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
         cmd_tx
             .send(OpsCommand::Rename {
-                source: src_id,
+                source: local_ref(&src_path),
                 new_name: "new_name.txt".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -52,14 +53,15 @@ mod rename_tests {
         let session = SessionId::new();
 
         let src_path = PathBuf::from("/home/user/old_dir");
-        let src_id = register(&registry, &src_path);
+        let _src_id = register(&registry, &src_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
         cmd_tx
             .send(OpsCommand::Rename {
-                source: src_id,
+                source: local_ref(&src_path),
                 new_name: "new_dir".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -89,7 +91,7 @@ mod rename_tests {
         let session = SessionId::new();
 
         let src_path = PathBuf::from("/home/user/file_a.txt");
-        let src_id = register(&registry, &src_path);
+        let _src_id = register(&registry, &src_path);
 
         let collision_path = PathBuf::from("/home/user/file_b.txt");
         provider.add_existing(&collision_path);
@@ -100,8 +102,9 @@ mod rename_tests {
 
         cmd_tx
             .send(OpsCommand::Rename {
-                source: src_id,
+                source: local_ref(&src_path),
                 new_name: "file_b.txt".to_string(),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: request_id,
                 operation: operation_id,

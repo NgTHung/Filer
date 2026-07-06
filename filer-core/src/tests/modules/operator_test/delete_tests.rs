@@ -9,14 +9,15 @@ mod delete_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/old.txt");
-        let node_id = register(&registry, &path);
+        let _node_id = register(&registry, &path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
         cmd_tx
             .send(OpsCommand::Delete {
-                targets: vec![node_id],
+                targets: vec![local_ref(&path)],
                 trash: false,
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -53,15 +54,16 @@ mod delete_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/old.txt");
-        let node_id = register(&registry, &path);
+        let _node_id = register(&registry, &path);
 
         let (trash_fn, trash_calls) = tracking_trash_fn();
         let (cmd_tx, evt_rx) = spawn_operator_with_trash(provider.clone(), registry, trash_fn);
 
         cmd_tx
             .send(OpsCommand::Delete {
-                targets: vec![node_id],
+                targets: vec![local_ref(&path)],
                 trash: true,
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -101,16 +103,17 @@ mod delete_tests {
         let p2 = PathBuf::from("/home/user/b.txt");
         let p3 = PathBuf::from("/home/user/c.txt");
 
-        let id1 = register(&registry, &p1);
-        let id2 = register(&registry, &p2);
-        let id3 = register(&registry, &p3);
+        let _id1 = register(&registry, &p1);
+        let _id2 = register(&registry, &p2);
+        let _id3 = register(&registry, &p3);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
         cmd_tx
             .send(OpsCommand::Delete {
-                targets: vec![id1, id2, id3],
+                targets: vec![local_ref(&p1), local_ref(&p2), local_ref(&p3)],
                 trash: false,
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -139,7 +142,7 @@ mod delete_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/protected.txt");
-        let node_id = register(&registry, &path);
+        let _node_id = register(&registry, &path);
 
         provider.add_fail_path(&path);
 
@@ -149,8 +152,9 @@ mod delete_tests {
 
         cmd_tx
             .send(OpsCommand::Delete {
-                targets: vec![node_id],
+                targets: vec![local_ref(&path)],
                 trash: false,
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: request_id,
                 operation: operation_id,

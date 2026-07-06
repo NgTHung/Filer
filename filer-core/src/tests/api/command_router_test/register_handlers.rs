@@ -479,7 +479,7 @@
 
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.copy.node.compat", move |cmd, _ctx| {
+                handlers.on("ops.copy.node.compat", move |cmd, ctx| {
                     if let Command::CopyNodeCompat {
                         sources,
                         destination,
@@ -488,9 +488,39 @@
                         operation,
                     } = cmd
                     {
+                        let sources = match sources
+                            .into_iter()
+                            .map(|source| {
+                                ctx.registry.resolve_node_location(source).ok_or(source)
+                            })
+                            .collect::<Result<Vec<_>, _>>()
+                        {
+                            Ok(sources) => sources,
+                            Err(source) => {
+                                let _ = ctx.events.send(Event::from_operation_error(
+                                    CoreError::invalid_input(format!(
+                                        "Cannot resolve node {source:?}"
+                                    )),
+                                    session,
+                                    request,
+                                    operation,
+                                ));
+                                return;
+                            }
+                        };
+                        let Some(destination) = ctx.registry.resolve_node_location(destination) else {
+                            let _ = ctx.events.send(Event::from_operation_error(
+                                CoreError::invalid_input("Cannot resolve copy destination"),
+                                session,
+                                request,
+                                operation,
+                            ));
+                            return;
+                        };
                         let _ = tx.send(OpsCommand::Copy {
                             sources,
                             destination,
+                            event_mode: OperationEventMode::Compat,
                             session,
                             request,
                             operation,
@@ -509,9 +539,10 @@
                         operation,
                     } = cmd
                     {
-                        let _ = tx.send(OpsCommand::CopyLocation {
+                        let _ = tx.send(OpsCommand::Copy {
                             sources,
                             destination,
+                            event_mode: OperationEventMode::Location,
                             session,
                             request,
                             operation,
@@ -521,7 +552,7 @@
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.move.node.compat", move |cmd, _ctx| {
+                handlers.on("ops.move.node.compat", move |cmd, ctx| {
                     if let Command::MoveNodeCompat {
                         sources,
                         destination,
@@ -530,9 +561,15 @@
                         operation,
                     } = cmd
                     {
+                        let sources = sources
+                            .into_iter()
+                            .map(|source| ctx.registry.resolve_node_location(source).unwrap())
+                            .collect();
+                        let destination = ctx.registry.resolve_node_location(destination).unwrap();
                         let _ = tx.send(OpsCommand::Move {
                             sources,
                             destination,
+                            event_mode: OperationEventMode::Compat,
                             session,
                             request,
                             operation,
@@ -551,9 +588,10 @@
                         operation,
                     } = cmd
                     {
-                        let _ = tx.send(OpsCommand::MoveLocation {
+                        let _ = tx.send(OpsCommand::Move {
                             sources,
                             destination,
+                            event_mode: OperationEventMode::Location,
                             session,
                             request,
                             operation,
@@ -563,7 +601,7 @@
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.delete.node.compat", move |cmd, _ctx| {
+                handlers.on("ops.delete.node.compat", move |cmd, ctx| {
                     if let Command::DeleteNodeCompat {
                         nodes,
                         trash,
@@ -572,9 +610,14 @@
                         operation,
                     } = cmd
                     {
+                        let targets = nodes
+                            .into_iter()
+                            .map(|node| ctx.registry.resolve_node_location(node).unwrap())
+                            .collect();
                         let _ = tx.send(OpsCommand::Delete {
-                            targets: nodes,
+                            targets,
                             trash,
+                            event_mode: OperationEventMode::Compat,
                             session,
                             request,
                             operation,
@@ -593,9 +636,10 @@
                         operation,
                     } = cmd
                     {
-                        let _ = tx.send(OpsCommand::DeleteLocation {
+                        let _ = tx.send(OpsCommand::Delete {
                             targets: locations,
                             trash,
+                            event_mode: OperationEventMode::Location,
                             session,
                             request,
                             operation,
@@ -605,7 +649,7 @@
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.rename.node.compat", move |cmd, _ctx| {
+                handlers.on("ops.rename.node.compat", move |cmd, ctx| {
                     if let Command::RenameNodeCompat {
                         node,
                         new_name,
@@ -614,9 +658,11 @@
                         operation,
                     } = cmd
                     {
+                        let source = ctx.registry.resolve_node_location(node).unwrap();
                         let _ = tx.send(OpsCommand::Rename {
-                            source: node,
+                            source,
                             new_name,
+                            event_mode: OperationEventMode::Compat,
                             session,
                             request,
                             operation,
@@ -635,9 +681,10 @@
                         operation,
                     } = cmd
                     {
-                        let _ = tx.send(OpsCommand::RenameLocation {
+                        let _ = tx.send(OpsCommand::Rename {
                             source: location,
                             new_name,
+                            event_mode: OperationEventMode::Location,
                             session,
                             request,
                             operation,
@@ -647,7 +694,7 @@
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.create_folder.node.compat", move |cmd, _ctx| {
+                handlers.on("ops.create_folder.node.compat", move |cmd, ctx| {
                     if let Command::CreateFolderNodeCompat {
                         parent,
                         name,
@@ -656,9 +703,11 @@
                         operation,
                     } = cmd
                     {
+                        let parent = ctx.registry.resolve_node_location(parent).unwrap();
                         let _ = tx.send(OpsCommand::CreateFolder {
                             parent,
                             name,
+                            event_mode: OperationEventMode::Compat,
                             session,
                             request,
                             operation,
@@ -677,9 +726,10 @@
                         operation,
                     } = cmd
                     {
-                        let _ = tx.send(OpsCommand::CreateFolderLocation {
+                        let _ = tx.send(OpsCommand::CreateFolder {
                             parent,
                             name,
+                            event_mode: OperationEventMode::Location,
                             session,
                             request,
                             operation,
@@ -689,7 +739,7 @@
             }
             {
                 let tx = ops_tx.clone();
-                handlers.on("ops.create_file.node.compat", move |cmd, _ctx| {
+                handlers.on("ops.create_file.node.compat", move |cmd, ctx| {
                     if let Command::CreateFileNodeCompat {
                         parent,
                         name,
@@ -698,9 +748,11 @@
                         operation,
                     } = cmd
                     {
+                        let parent = ctx.registry.resolve_node_location(parent).unwrap();
                         let _ = tx.send(OpsCommand::CreateFile {
                             parent,
                             name,
+                            event_mode: OperationEventMode::Compat,
                             session,
                             request,
                             operation,
@@ -719,9 +771,10 @@
                         operation,
                     } = cmd
                     {
-                        let _ = tx.send(OpsCommand::CreateFileLocation {
+                        let _ = tx.send(OpsCommand::CreateFile {
                             parent,
                             name,
+                            event_mode: OperationEventMode::Location,
                             session,
                             request,
                             operation,

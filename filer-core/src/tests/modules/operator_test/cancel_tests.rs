@@ -11,8 +11,8 @@ mod cancel_tests {
         let src_dir = PathBuf::from("/home/user/big_project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let src_id = register(&registry, &src_dir);
-        let dst_id = register(&registry, &dst_dir);
+        let _src_id = register(&registry, &src_dir);
+        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(
             &src_dir,
@@ -33,8 +33,9 @@ mod cancel_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_dir)],
+                destination: local_ref(&dst_dir),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -81,16 +82,17 @@ mod cancel_tests {
 
         let src_path = PathBuf::from("/home/user/doc.txt");
         let dst_path = PathBuf::from("/home/user/backup");
-        let src_id = register(&registry, &src_path);
-        let dst_id = register(&registry, &dst_path);
+        let _src_id = register(&registry, &src_path);
+        let _dst_id = register(&registry, &dst_path);
         provider.set_rename_delay_ms(200);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
         let operation = OperationId::new();
         cmd_tx
             .send(OpsCommand::Move {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_path)],
+                destination: local_ref(&dst_path),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation,
@@ -126,15 +128,16 @@ mod cancel_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/doc.txt");
-        let node_id = register(&registry, &path);
+        let _node_id = register(&registry, &path);
         provider.set_delete_delay_ms(200);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
         let operation = OperationId::new();
         cmd_tx
             .send(OpsCommand::Delete {
-                targets: vec![node_id],
+                targets: vec![local_ref(&path)],
                 trash: false,
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation,
@@ -173,8 +176,8 @@ mod cancel_tests {
         let src_dir = PathBuf::from("/home/user/project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let src_id = register(&registry, &src_dir);
-        let dst_id = register(&registry, &dst_dir);
+        let _src_id = register(&registry, &src_dir);
+        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(&src_dir, MockOpsProvider::make_dir("project", "/home/user"));
 
@@ -189,8 +192,9 @@ mod cancel_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_dir)],
+                destination: local_ref(&dst_dir),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation,
@@ -234,8 +238,8 @@ mod cancel_tests {
         let src_dir = PathBuf::from("/home/user/big_project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let src_id = register(&registry, &src_dir);
-        let dst_id = register(&registry, &dst_dir);
+        let _src_id = register(&registry, &src_dir);
+        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(
             &src_dir,
@@ -256,8 +260,9 @@ mod cancel_tests {
 
         cmd_tx
             .send(OpsCommand::Copy {
-                sources: vec![src_id],
-                destination: dst_id,
+                sources: vec![local_ref(&src_dir)],
+                destination: local_ref(&dst_dir),
+                event_mode: OperationEventMode::Compat,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),

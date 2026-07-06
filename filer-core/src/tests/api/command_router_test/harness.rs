@@ -19,7 +19,7 @@
     use crate::model::request::RequestId;
     use crate::model::session::SessionId;
     use crate::modules::navigation::navigator::NavCommand;
-    use crate::modules::operations::operator::OpsCommand;
+    use crate::modules::operations::operator::{OperationEventMode, OpsCommand};
     use crate::modules::preview::previewer::{PreviewCommand, PreviewEventMode};
     use crate::modules::scan::scanner::ScanCommand;
     use crate::modules::search::searcher::{SearchCommand, SearchEventMode};

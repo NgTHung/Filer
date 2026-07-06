@@ -26,7 +26,7 @@ use crate::api::events::Event;
 use crate::errors::{CoreError, ErrorCode, ErrorContext, ErrorTarget};
 use crate::model::capability::LocationCapabilityError;
 use crate::model::location::{
-    Location, LocationDescriptor, LocationRef, LocationSegment, ProviderRef,
+    Location, LocationDescriptor, LocationId, LocationRef, LocationSegment, ProviderRef,
 };
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
@@ -34,7 +34,7 @@ use crate::model::progress::{ProgressKind, ProgressStatus};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::modules::operations::operator::{Operator, OpsCommand};
+use crate::modules::operations::operator::{OperationEventMode, Operator, OpsCommand};
 use crate::services::dir_cache::{DirCache, SharedDirCache};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 
@@ -440,6 +440,10 @@ fn spawn_operator_with_cache(
 /// Register a path in the registry and return its NodeId.
 fn register(registry: &NodeRegistry, path: impl Into<PathBuf>) -> NodeId {
     registry.clone().register(path.into())
+}
+
+fn local_ref(path: impl Into<PathBuf>) -> LocationRef {
+    LocationRef::from_location(&Location::local(path.into()))
 }
 
 /// Collect all events until an OperationCompleteCompat or Error is received.
