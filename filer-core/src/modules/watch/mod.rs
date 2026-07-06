@@ -19,10 +19,12 @@ use std::sync::Arc;
 use flume::Sender;
 
 use crate::api::commands::Command;
+use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
+use crate::errors::CoreError;
 use crate::modules::navigation::navigator::NavCommand;
 use crate::vfs::watch::WatchProvider;
-use watcher::WatchCommand;
+use watcher::{UnwatchScope, WatchCommand, WatchEventMode};
 
 /// Watch module — owns the Watcher actor.
 ///
@@ -54,9 +56,21 @@ impl Module for WatchModule {
         let (watch_tx, watch_rx) = flume::unbounded::<WatchCommand>();
 
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch.node.compat", move |cmd, _ctx| {
+        ctx.handlers.on("watch.node.compat", move |cmd, ctx| {
             if let Command::WatchNodeCompat { node, session } = cmd {
-                let _ = tx.send(WatchCommand::Watch(node, session));
+                let Some(location) = ctx.registry.resolve_node_location(node) else {
+                    let _ = ctx.events.send(Event::from_error(
+                        CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                        session,
+                    ));
+                    return;
+                };
+                let _ = tx.send(WatchCommand::Watch {
+                    location,
+                    session,
+                    request: None,
+                    event_mode: WatchEventMode::Compat { node },
+                });
             }
         });
 
@@ -68,26 +82,36 @@ impl Module for WatchModule {
                 request,
             } = cmd
             {
-                let _ = tx.send(WatchCommand::WatchLocation {
+                let _ = tx.send(WatchCommand::Watch {
                     location,
                     session,
-                    request,
+                    request: Some(request),
+                    event_mode: WatchEventMode::Location,
                 });
             }
         });
 
         let tx = watch_tx.clone();
         ctx.handlers
-            .on("watch.node.remove.compat", move |cmd, _ctx| {
+            .on("watch.node.remove.compat", move |cmd, ctx| {
                 if let Command::UnwatchNodeCompat { node } = cmd {
-                    let _ = tx.send(WatchCommand::Unwatch(node));
+                    let Some(location) = ctx.registry.resolve_node_location(node) else {
+                        return;
+                    };
+                    let _ = tx.send(WatchCommand::Unwatch {
+                        location,
+                        scope: UnwatchScope::All,
+                    });
                 }
             });
 
         let tx = watch_tx.clone();
         ctx.handlers.on("watch.remove", move |cmd, _ctx| {
             if let Command::Unwatch { location, session } = cmd {
-                let _ = tx.send(WatchCommand::UnwatchLocation { location, session });
+                let _ = tx.send(WatchCommand::Unwatch {
+                    location,
+                    scope: UnwatchScope::Session(session),
+                });
             }
         });
 

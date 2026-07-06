@@ -35,13 +35,13 @@ pub struct LocationDescriptor {
     display_path: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Location {
     id: LocationId,
     descriptor: LocationDescriptor,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LocationRef {
     Id(LocationId),
     Descriptor(LocationDescriptor),

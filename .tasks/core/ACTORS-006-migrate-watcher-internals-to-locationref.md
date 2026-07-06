@@ -1,7 +1,7 @@
 ---
 id: ACTORS-006
 title: Migrate watcher internals to LocationRef
-status: To Do
+status: Done
 priority: High
 type: Refactor
 parent: CORE-025
@@ -10,7 +10,7 @@ rules: [PROVIDER-ACCESS, SESSION-BOUNDARY, ACTOR-LONG-WORK]
 risk: High
 impact: "Changes watch identity, refresh routing, and filesystem change events."
 tags: [core, actors, watcher, location, nodeid]
-last_updated: 2026-07-04
+last_updated: 2026-07-06
 ---
 
 ## Summary
@@ -19,7 +19,7 @@ Move watcher keys, watch entries, and change events to LocationRef while keeping
 
 ## Acceptance Criteria
 
-- [ ] Watch keys and watch entries use LocationRef as the authoritative identity.
-- [ ] NodeId watch and unwatch compatibility inputs translate before provider watch setup.
-- [ ] Filesystem change events emit LocationRef-native variants.
-- [ ] Compatibility filesystem change events remain only where required and are covered by tests.
+- [x] Watch keys and watch entries use LocationRef as the authoritative identity.
+- [x] NodeId watch and unwatch compatibility inputs translate before provider watch setup.
+- [x] Filesystem change events emit LocationRef-native variants.
+- [x] Compatibility filesystem change events remain only where required and are covered by tests.

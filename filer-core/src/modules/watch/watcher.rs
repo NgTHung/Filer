@@ -1,7 +1,7 @@
 use flume::Sender;
 use std::path::PathBuf;
 
-use rapidhash::RapidHashMap;
+use rapidhash::fast::RandomState;
 use std::sync::Arc;
 
 use crate::actors::Actor;
@@ -18,33 +18,44 @@ use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 /// Commands for watcher actor
 #[derive(Debug, Clone)]
 pub enum WatchCommand {
-    Watch(NodeId, SessionId),
-    WatchLocation {
+    Watch {
         location: LocationRef,
         session: SessionId,
-        request: RequestId,
+        request: Option<RequestId>,
+        event_mode: WatchEventMode,
     },
-    Unwatch(NodeId),
-    UnwatchLocation {
+    Unwatch {
         location: LocationRef,
-        session: SessionId,
+        scope: UnwatchScope,
     },
     UnwatchSession(SessionId),
     UnwatchAll,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum WatchKey {
-    Node(NodeId),
-    Location(crate::model::location::LocationId),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WatchEventMode {
+    Location,
+    Compat { node: NodeId },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnwatchScope {
+    Session(SessionId),
+    All,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WatchSubscription {
+    session: SessionId,
+    event_mode: WatchEventMode,
 }
 
 /// Tracks which sessions are watching which paths
 struct WatchEntry {
     path: PathBuf,
-    node: Option<NodeId>,
-    location: Option<LocationRef>,
-    sessions: Vec<SessionId>,
+    location: LocationRef,
+    refresh_node: Option<NodeId>,
+    subscriptions: Vec<WatchSubscription>,
     #[allow(dead_code)]
     handle: Box<dyn WatchHandle>,
 }
@@ -54,7 +65,7 @@ pub struct Watcher {
     commands: flume::Receiver<WatchCommand>,
     events: Sender<Event>,
     registry: NodeRegistry,
-    watches: RapidHashMap<WatchKey, WatchEntry>,
+    watches: scc::HashMap<LocationRef, WatchEntry, RandomState>,
     provider: Arc<dyn WatchProvider>,
     /// Receives raw changes from the provider; forwarded as Events.
     change_rx: flume::Receiver<FsChange>,
@@ -94,7 +105,7 @@ impl Watcher {
             commands,
             events,
             registry,
-            watches: RapidHashMap::default(),
+            watches: scc::HashMap::with_hasher(RandomState::new()),
             provider,
             change_rx,
             change_tx,
@@ -102,69 +113,17 @@ impl Watcher {
         }
     }
 
-    /// Handle a watch command
-    async fn handle_watch(&mut self, node_id: NodeId, session_id: SessionId) {
-        // Resolve node to path
-        let path = match self.registry.resolve(node_id) {
-            Some(p) => p,
-            None => {
-                tracing::warn!("Cannot watch node {:?}: not found in registry", node_id);
-                return;
-            }
-        };
-
-        // If already watching, just add the session
-        if let Some(entry) = self.watches.get_mut(&WatchKey::Node(node_id)) {
-            if !entry.sessions.contains(&session_id) {
-                entry.sessions.push(session_id);
-                tracing::debug!(
-                    node = ?node_id,
-                    path = %entry.path.display(),
-                    session = ?session_id,
-                    "Added session to existing watch"
-                );
-            }
-            return;
-        }
-
-        // Ask the provider to start watching
-        match self.provider.watch(&path, self.change_tx.clone()).await {
-            Ok(handle) => {
-                let entry = WatchEntry {
-                    path: path.clone(),
-                    node: Some(node_id),
-                    location: None,
-                    sessions: vec![session_id],
-                    handle,
-                };
-                self.watches.insert(WatchKey::Node(node_id), entry);
-                tracing::debug!(
-                    node = ?node_id,
-                    path = %path.display(),
-                    session = ?session_id,
-                    "Started watching path"
-                );
-            }
-            Err(e) => {
-                tracing::error!(path = %path.display(), error = %e, "Failed to watch path");
-            }
-        }
-    }
-
-    async fn handle_watch_location(
+    async fn handle_watch(
         &mut self,
         location_ref: LocationRef,
         session_id: SessionId,
-        request: RequestId,
+        request: Option<RequestId>,
+        event_mode: WatchEventMode,
     ) {
         let location = match self.registry.resolve_location_ref(&location_ref) {
             Ok(location) => location,
             Err(error) => {
-                send_or_warn(
-                    &self.events,
-                    Event::from_request_error(error, session_id, request),
-                    "watch location resolve error",
-                );
+                self.emit_watch_error(error, session_id, request, "watch location resolve error");
                 return;
             }
         };
@@ -172,104 +131,135 @@ impl Watcher {
         let path = match location.route().require_direct_path() {
             Ok(path) => path.to_path_buf(),
             Err(error) => {
-                send_or_warn(
-                    &self.events,
-                    Event::from_request_error(error, session_id, request),
-                    "watch location route error",
-                );
+                self.emit_watch_error(error, session_id, request, "watch location route error");
                 return;
             }
         };
 
-        let key = WatchKey::Location(location.id());
-        let location_ref = LocationRef::from_location(&location);
-        let node = self.registry.register_location_node(location).ok();
+        let key = LocationRef::from_location(&location);
+        let refresh_node = self.registry.register_location_node(location).ok();
+        let subscription = WatchSubscription {
+            session: session_id,
+            event_mode,
+        };
 
-        if let Some(entry) = self.watches.get_mut(&key) {
-            if !entry.sessions.contains(&session_id) {
-                entry.sessions.push(session_id);
-            }
+        if self
+            .watches
+            .update_sync(&key, |_, entry| {
+                if !entry.subscriptions.contains(&subscription) {
+                    entry.subscriptions.push(subscription.clone());
+                }
+            })
+            .is_some()
+        {
             return;
         }
 
         match self.provider.watch(&path, self.change_tx.clone()).await {
             Ok(handle) => {
-                self.watches.insert(
-                    key,
+                let _ = self.watches.insert_sync(
+                    key.clone(),
                     WatchEntry {
                         path: path.clone(),
-                        node,
-                        location: Some(location_ref),
-                        sessions: vec![session_id],
+                        location: key,
+                        refresh_node,
+                        subscriptions: vec![subscription],
                         handle,
                     },
                 );
             }
             Err(error) => {
-                send_or_warn(
-                    &self.events,
-                    Event::from_request_error(error, session_id, request),
-                    "watch location provider error",
-                );
+                self.emit_watch_error(error, session_id, request, "watch location provider error");
             }
         }
     }
 
-    /// Handle an unwatch command
-    async fn handle_unwatch(&mut self, node_id: NodeId) {
-        if let Some(entry) = self.watches.remove(&WatchKey::Node(node_id)) {
-            if let Err(e) = self.provider.unwatch(&entry.path).await {
-                tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path");
-            } else {
-                tracing::debug!(path = %entry.path.display(), "Stopped watching path");
-            }
-            // handle is dropped here, which also cleans up provider resources
-        }
+    fn emit_watch_error(
+        &self,
+        error: crate::CoreError,
+        session_id: SessionId,
+        request: Option<RequestId>,
+        label: &'static str,
+    ) {
+        let event = match request {
+            Some(request) => Event::from_request_error(error, session_id, request),
+            None => Event::from_error(error, session_id),
+        };
+        send_or_warn(&self.events, event, label);
     }
 
-    async fn handle_unwatch_location(&mut self, location_ref: LocationRef, session_id: SessionId) {
+    async fn handle_unwatch(&mut self, location_ref: LocationRef, scope: UnwatchScope) {
         let Ok(location) = self.registry.resolve_location_ref(&location_ref) else {
-            tracing::warn!(session = ?session_id, "Cannot unwatch unresolved location");
+            tracing::warn!("Cannot unwatch unresolved location");
             return;
         };
 
-        let key = WatchKey::Location(location.id());
-        if let Some(mut entry) = self.watches.remove(&key) {
-            entry.sessions.retain(|s| *s != session_id);
-            if entry.sessions.is_empty() {
-                if let Err(e) = self.provider.unwatch(&entry.path).await {
-                    tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch location");
+        let key = LocationRef::from_location(&location);
+        if let Some((_, mut entry)) = self.watches.remove_sync(&key) {
+            match scope {
+                UnwatchScope::Session(session_id) => {
+                    entry
+                        .subscriptions
+                        .retain(|subscription| subscription.session != session_id);
+                    if entry.subscriptions.is_empty() {
+                        if let Err(e) = self.provider.unwatch(&entry.path).await {
+                            tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch location");
+                        }
+                    } else {
+                        let _ = self.watches.insert_sync(key, entry);
+                    }
                 }
-            } else {
-                self.watches.insert(key, entry);
+                UnwatchScope::All => {
+                    if let Err(e) = self.provider.unwatch(&entry.path).await {
+                        tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch location");
+                    }
+                }
             }
         }
     }
 
     /// Handle unwatch session command
     async fn handle_unwatch_session(&mut self, session_id: SessionId) {
-        let mut to_remove = Vec::new();
-
-        for (key, entry) in &mut self.watches {
-            entry.sessions.retain(|s| *s != session_id);
-            if entry.sessions.is_empty() {
-                to_remove.push(key.clone());
-            }
-        }
-
-        for key in to_remove {
-            if let Some(entry) = self.watches.remove(&key)
-                && let Err(e) = self.provider.unwatch(&entry.path).await
+        let mut keys = Vec::new();
+        self.watches.iter_sync(|key, entry| {
+            if entry
+                .subscriptions
+                .iter()
+                .any(|subscription| subscription.session == session_id)
             {
-                tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path for session cleanup");
+                keys.push(key.clone());
+            }
+            true
+        });
+
+        for key in keys {
+            let Some((_, mut entry)) = self.watches.remove_sync(&key) else {
+                continue;
+            };
+            entry
+                .subscriptions
+                .retain(|subscription| subscription.session != session_id);
+            if entry.subscriptions.is_empty() {
+                if let Err(e) = self.provider.unwatch(&entry.path).await {
+                    tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path for session cleanup");
+                }
+            } else {
+                let _ = self.watches.insert_sync(key, entry);
             }
         }
     }
 
     /// Handle unwatch all command
     async fn handle_unwatch_all(&mut self) {
-        let entries: Vec<_> = self.watches.drain().collect();
-        for (_, entry) in entries {
+        let mut keys = Vec::new();
+        self.watches.iter_sync(|key, _| {
+            keys.push(key.clone());
+            true
+        });
+        for key in keys {
+            let Some((_, entry)) = self.watches.remove_sync(&key) else {
+                continue;
+            };
             if let Err(e) = self.provider.unwatch(&entry.path).await {
                 tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path during shutdown");
             }
@@ -283,32 +273,31 @@ impl Watcher {
             kind = ?change.kind,
             "Watcher received provider change"
         );
-        for (_key, entry) in &self.watches {
+        self.watches.iter_sync(|_key, entry| {
             if change.path.starts_with(&entry.path) {
-                for session in &entry.sessions {
+                for subscription in &entry.subscriptions {
                     tracing::debug!(
                         path = %change.path.display(),
                         kind = ?change.kind,
-                        session = ?session,
-                        "Watcher dispatching FsChangedCompat"
+                        session = ?subscription.session,
+                        "Watcher dispatching filesystem change"
                     );
-                    let evt = if let Some(location) = &entry.location {
-                        Event::FsChanged {
-                            location: location.clone(),
+                    let evt = match subscription.event_mode {
+                        WatchEventMode::Location => Event::FsChanged {
+                            location: entry.location.clone(),
                             kind: change.kind.clone(),
-                            session: *session,
-                        }
-                    } else {
-                        Event::FsChangedCompat {
-                            node: entry.node.expect("legacy watch entry must have node"),
+                            session: subscription.session,
+                        },
+                        WatchEventMode::Compat { node } => Event::FsChangedCompat {
+                            node,
                             kind: change.kind.clone(),
-                            session: *session,
-                        }
+                            session: subscription.session,
+                        },
                     };
-                    send_or_warn(&self.events, evt, "emit FsChangedCompat");
+                    send_or_warn(&self.events, evt, "emit filesystem change");
                 }
 
-                if let (Some(refresh_tx), Some(node)) = (&self.refresh_tx, entry.node) {
+                if let (Some(refresh_tx), Some(node)) = (&self.refresh_tx, entry.refresh_node) {
                     send_or_warn(
                         refresh_tx,
                         NavCommand::Invalidate(node),
@@ -316,7 +305,8 @@ impl Watcher {
                     );
                 }
             }
-        }
+            true
+        });
     }
 }
 
@@ -328,17 +318,11 @@ impl Actor for Watcher {
             tokio::select! {
                 cmd = self.commands.recv_async() => {
                     match cmd {
-                        Ok(WatchCommand::Watch(node, session)) => {
-                            self.handle_watch(node, session).await;
+                        Ok(WatchCommand::Watch { location, session, request, event_mode }) => {
+                            self.handle_watch(location, session, request, event_mode).await;
                         }
-                        Ok(WatchCommand::WatchLocation { location, session, request }) => {
-                            self.handle_watch_location(location, session, request).await;
-                        }
-                        Ok(WatchCommand::Unwatch(node)) => {
-                            self.handle_unwatch(node).await;
-                        }
-                        Ok(WatchCommand::UnwatchLocation { location, session }) => {
-                            self.handle_unwatch_location(location, session).await;
+                        Ok(WatchCommand::Unwatch { location, scope }) => {
+                            self.handle_unwatch(location, scope).await;
                         }
                         Ok(WatchCommand::UnwatchSession(session)) => {
                             self.handle_unwatch_session(session).await;

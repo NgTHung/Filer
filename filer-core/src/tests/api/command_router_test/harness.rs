@@ -23,7 +23,7 @@
     use crate::modules::preview::previewer::{PreviewCommand, PreviewEventMode};
     use crate::modules::scan::scanner::ScanCommand;
     use crate::modules::search::searcher::{SearchCommand, SearchEventMode};
-    use crate::modules::watch::watcher::WatchCommand;
+    use crate::modules::watch::watcher::{UnwatchScope, WatchCommand, WatchEventMode};
     use crate::pipeline::PipelineConfig;
 
     /// Timeout for async operations in tests

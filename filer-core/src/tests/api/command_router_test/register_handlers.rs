@@ -284,9 +284,21 @@
 
             {
                 let tx = watch_tx.clone();
-                handlers.on("watch.node.compat", move |cmd, _ctx| {
+                handlers.on("watch.node.compat", move |cmd, ctx| {
                     if let Command::WatchNodeCompat { node, session } = cmd {
-                        let _ = tx.send(WatchCommand::Watch(node, session));
+                        let Some(location) = ctx.registry.resolve_node_location(node) else {
+                            let _ = ctx.events.send(Event::from_error(
+                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                                session,
+                            ));
+                            return;
+                        };
+                        let _ = tx.send(WatchCommand::Watch {
+                            location,
+                            session,
+                            request: None,
+                            event_mode: WatchEventMode::Compat { node },
+                        });
                     }
                 });
             }
@@ -299,19 +311,26 @@
                         request,
                     } = cmd
                     {
-                        let _ = tx.send(WatchCommand::WatchLocation {
+                        let _ = tx.send(WatchCommand::Watch {
                             location,
                             session,
-                            request,
+                            request: Some(request),
+                            event_mode: WatchEventMode::Location,
                         });
                     }
                 });
             }
             {
                 let tx = watch_tx.clone();
-                handlers.on("watch.node.remove.compat", move |cmd, _ctx| {
+                handlers.on("watch.node.remove.compat", move |cmd, ctx| {
                     if let Command::UnwatchNodeCompat { node } = cmd {
-                        let _ = tx.send(WatchCommand::Unwatch(node));
+                        let Some(location) = ctx.registry.resolve_node_location(node) else {
+                            return;
+                        };
+                        let _ = tx.send(WatchCommand::Unwatch {
+                            location,
+                            scope: UnwatchScope::All,
+                        });
                     }
                 });
             }
@@ -319,7 +338,10 @@
                 let tx = watch_tx.clone();
                 handlers.on("watch.remove", move |cmd, _ctx| {
                     if let Command::Unwatch { location, session } = cmd {
-                        let _ = tx.send(WatchCommand::UnwatchLocation { location, session });
+                        let _ = tx.send(WatchCommand::Unwatch {
+                            location,
+                            scope: UnwatchScope::Session(session),
+                        });
                     }
                 });
             }

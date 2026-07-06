@@ -487,9 +487,20 @@
             .expect("WatchCommand channel closed");
 
         match watch_cmd {
-            WatchCommand::Watch(n, s) => {
-                assert_eq!(n, node, "Watch NodeId must be forwarded");
+            WatchCommand::Watch {
+                location,
+                session: s,
+                request,
+                event_mode,
+            } => {
+                assert_eq!(
+                    location,
+                    harness.registry.resolve_node_location(node).unwrap(),
+                    "Watch NodeId must resolve before reaching watcher"
+                );
                 assert_eq!(s, session, "Watch SessionId must be forwarded");
+                assert!(request.is_none(), "compat watch has no request id");
+                assert_eq!(event_mode, WatchEventMode::Compat { node });
             }
             other => panic!("Expected WatchCommand::Watch, got {:?}", other),
         }
@@ -510,8 +521,13 @@
             .expect("WatchCommand channel closed");
 
         match watch_cmd {
-            WatchCommand::Unwatch(n) => {
-                assert_eq!(n, node, "Unwatch NodeId must be forwarded");
+            WatchCommand::Unwatch { location, scope } => {
+                assert_eq!(
+                    location,
+                    harness.registry.resolve_node_location(node).unwrap(),
+                    "Unwatch NodeId must resolve before reaching watcher"
+                );
+                assert_eq!(scope, UnwatchScope::All);
             }
             other => panic!("Expected WatchCommand::Unwatch, got {:?}", other),
         }
@@ -538,16 +554,18 @@
             .expect("WatchCommand channel closed");
 
         match watch_cmd {
-            WatchCommand::WatchLocation {
+            WatchCommand::Watch {
                 location: routed,
                 session: s,
-                request: r,
+                request: routed_request,
+                event_mode,
             } => {
                 assert_eq!(routed, location);
                 assert_eq!(s, session);
-                assert_eq!(r, request);
+                assert_eq!(routed_request, Some(request));
+                assert_eq!(event_mode, WatchEventMode::Location);
             }
-            other => panic!("Expected WatchCommand::WatchLocation, got {:?}", other),
+            other => panic!("Expected WatchCommand::Watch, got {:?}", other),
         }
     }
 
@@ -570,13 +588,13 @@
             .expect("WatchCommand channel closed");
 
         match watch_cmd {
-            WatchCommand::UnwatchLocation {
+            WatchCommand::Unwatch {
                 location: routed,
-                session: s,
+                scope,
             } => {
                 assert_eq!(routed, location);
-                assert_eq!(s, session);
+                assert_eq!(scope, UnwatchScope::Session(session));
             }
-            other => panic!("Expected WatchCommand::UnwatchLocation, got {:?}", other),
+            other => panic!("Expected WatchCommand::Unwatch, got {:?}", other),
         }
     }
