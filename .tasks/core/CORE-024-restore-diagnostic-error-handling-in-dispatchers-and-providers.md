@@ -8,15 +8,15 @@ parent: CORE-001
 risk: Low
 impact: "Silently dropped commands and panic-on-call providers erode the diagnostic trail and the no-panic rule."
 tags: [core, audit, remediation, reliability]
-last_updated: 2026-07-04
+last_updated: 2026-07-08
 ---
 
 ## Summary
 
-The per-module command dispatchers still drop sends with let _ = tx.send(...) instead of the crate's own send_or_warn helper, so a command to a closed actor channel vanishes with no log and no error to the caller; this affects operations/mod.rs, watch/mod.rs, and search/mod.rs. Route these through send_or_warn to restore a diagnostic trail with no happy-path change. Fold in two smaller error-handling fixes from the audit: replace the code.rs:61 theme fallback unwrap with a graceful unstyled fallback, and correct the copy-paste panic message at operations/mod.rs:61 that names ScanModule inside the operations module.
+Most of the audit findings behind this task landed with later work: the module dispatchers in operations/mod.rs, watch/mod.rs, and search/mod.rs now route every send through send_or_warn, and the copy-paste panic message in operations/mod.rs is gone (re-verified 2026-07-08). What remains is the theme fallback unwrap at services/preview/providers/code.rs:61, which chains unwrap_or_else into unwrap and panics when the theme set is empty; replace it with a graceful unstyled fallback.
 
 ## Acceptance Criteria
 
-- [ ] The command-dispatcher sends in operations/mod.rs, watch/mod.rs, and search/mod.rs route through send_or_warn.
-- [ ] The code.rs theme fallback returns an unstyled string instead of unwrapping, and the operations/mod.rs:61 panic message names the correct module.
+- [x] The command-dispatcher sends in operations/mod.rs, watch/mod.rs, and search/mod.rs route through send_or_warn.
+- [ ] The code.rs theme fallback returns an unstyled string instead of unwrapping, pinned by a test with an empty theme set.
 - [x] Incomplete feature-gated VFS provider stubs no longer exist in filer-core.

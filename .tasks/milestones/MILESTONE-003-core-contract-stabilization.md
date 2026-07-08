@@ -5,7 +5,7 @@ status: In Progress
 priority: High
 type: Milestone
 milestone: "0.3.0"
-last_updated: 2026-07-07
+last_updated: 2026-07-08
 ---
 
 ## Summary
@@ -14,7 +14,7 @@ Stabilize the public core contracts needed by desktop, transport, provider, and 
 
 ## Exit Criteria
 
-- [ ] Path and NodeId command surfaces use explicit compatibility names.
+- [ ] NodeId is removed from public and internal core contracts; LocationRef is the only addressing contract (API-004).
 - [ ] Provider calls carry timeout and capability context through app-facing errors.
 - [ ] Large-directory paging works across providers with stable mutation behavior.
 - [ ] Archive traversal uses segmented Location navigation.

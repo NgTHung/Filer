@@ -3,7 +3,7 @@ id: API-004
 title: Remove NodeId completely
 status: To Do
 priority: High
-type: Refactor
+type: Epic
 parent: CORE-001
 milestone: "0.3.0"
 depends_on: [CORE-025]
@@ -11,18 +11,20 @@ rules: [CORE-LIBRARY, PROVIDER-ACCESS]
 risk: High
 impact: "Removes NodeId from public and internal core contracts instead of preserving compatibility surfaces."
 tags: [api, nodeid, location, compatibility]
-last_updated: 2026-07-05
+last_updated: 2026-07-08
 ---
 
 ## Summary
 
 Remove NodeId from filer-core contracts and implementation entirely. Do not preserve deprecated routes, compatibility event variants, or translation paths, because keeping them prolongs tech debt around transient identity.
 
-## Acceptance Criteria
+A single-pass removal was attempted on 2026-07-08 and reverted: it deleted the test suite (844 tests) instead of migrating it, so its passing `cargo test` evidence was vacuous. This epic stages the removal so coverage survives every step: tests migrate first, then the public surface, then internals, then the type itself. Each child stays within the change-size guidance.
 
+This epic supersedes the API-002 compatibility intent and the obsolete API-003 removal-or-rejection task so future work does not reintroduce a staged NodeId migration.
+
+## Exit Criteria
+
+- [ ] API-005, API-006, API-007, and API-008 are Done.
 - [ ] Public core commands, events, DTOs, and rustdoc no longer expose NodeId or NodeId compatibility variants.
-- [ ] Actor internals, command routing, caches, watches, previews, metadata, search, and operations no longer accept NodeId as an addressing input or perform provider work from NodeId-only input.
-- [ ] NodeId type definitions, constructors, hashing helpers, compatibility translators, and related exports are removed unless a remaining test proves they are dead-code cleanup outside this task.
-- [ ] Tests and API snapshots prove removed NodeId command routes are absent, not retained as structured errors or deprecated compatibility routes.
-- [ ] LocationRef command routes continue to cover navigation, scan, preview, metadata, search, watch, and operations without a compatibility fallback.
-- [ ] The task resolution explicitly supersedes API-002 compatibility intent and the obsolete API-003 removal-or-rejection task so future work does not reintroduce a staged NodeId migration.
+- [ ] NodeId type definitions, constructors, hashing helpers, and compatibility translators are removed.
+- [ ] The full filer-core test suite passes at every stage with no net loss of coverage.

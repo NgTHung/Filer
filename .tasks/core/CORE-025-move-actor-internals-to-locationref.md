@@ -1,7 +1,7 @@
 ---
 id: CORE-025
 title: Move actor internals to LocationRef
-status: To Do
+status: Done
 priority: High
 type: Epic
 parent: CORE-001
