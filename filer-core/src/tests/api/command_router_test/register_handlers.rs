@@ -106,33 +106,42 @@
                     {
                         match crate::model::query::SearchQuery::parse(&query) {
                             Ok(query) => {
-                                let Some(root) = ctx.registry.resolve_node_location(node_root)
+                                let Ok(root) =
+                                    compat::resolve_node_location(&ctx.registry, node_root)
                                 else {
-                                    let _ = ctx.events.send(Event::from_request_error(
+                                    compat::emit_unresolved_node_request(
+                                        &ctx.events,
+                                        node_root,
+                                        session,
+                                        request,
+                                        "search.node.compat resolve",
+                                    );
+                                    return;
+                                };
+                                send_or_warn(
+                                    &tx,
+                                    SearchCommand::Search {
+                                        query,
+                                        root,
+                                        event_mode: SearchEventMode::Compat,
+                                        session,
+                                        request,
+                                    },
+                                    "search.node.compat",
+                                );
+                            }
+                            Err(error) => {
+                                send_or_warn(
+                                    &ctx.events,
+                                    Event::from_request_error(
                                         CoreError::invalid_input(format!(
-                                            "Unable to resolve ID: {node_root:?}"
+                                            "Invalid search query: {error}"
                                         )),
                                         session,
                                         request,
-                                    ));
-                                    return;
-                                };
-                                let _ = tx.send(SearchCommand::Search {
-                                    query,
-                                    root,
-                                    event_mode: SearchEventMode::Compat,
-                                    session,
-                                    request,
-                                });
-                            }
-                            Err(error) => {
-                                let _ = ctx.events.send(Event::from_request_error(
-                                    CoreError::invalid_input(format!(
-                                        "Invalid search query: {error}"
-                                    )),
-                                    session,
-                                    request,
-                                ));
+                                    ),
+                                    "search query parse",
+                                );
                             }
                         }
                     }
@@ -151,22 +160,30 @@
                         match crate::model::query::SearchQuery::parse(&query) {
                             Ok(query) => {
                                 let location = crate::Location::local(root);
-                                let _ = tx.send(SearchCommand::Search {
-                                    query,
-                                    root: crate::LocationRef::from_location(&location),
-                                    event_mode: SearchEventMode::Compat,
-                                    session,
-                                    request,
-                                });
+                                send_or_warn(
+                                    &tx,
+                                    SearchCommand::Search {
+                                        query,
+                                        root: crate::LocationRef::from_location(&location),
+                                        event_mode: SearchEventMode::Compat,
+                                        session,
+                                        request,
+                                    },
+                                    "search.path.compat",
+                                );
                             }
                             Err(error) => {
-                                let _ = ctx.events.send(Event::from_request_error(
-                                    CoreError::invalid_input(format!(
-                                        "Invalid search query: {error}"
-                                    )),
-                                    session,
-                                    request,
-                                ));
+                                send_or_warn(
+                                    &ctx.events,
+                                    Event::from_request_error(
+                                        CoreError::invalid_input(format!(
+                                            "Invalid search query: {error}"
+                                        )),
+                                        session,
+                                        request,
+                                    ),
+                                    "search query parse",
+                                );
                             }
                         }
                     }
@@ -184,22 +201,30 @@
                     {
                         match crate::model::query::SearchQuery::parse(&query) {
                             Ok(query) => {
-                                let _ = tx.send(SearchCommand::Search {
-                                    query,
-                                    root,
-                                    event_mode: SearchEventMode::Location,
-                                    session,
-                                    request,
-                                });
+                                send_or_warn(
+                                    &tx,
+                                    SearchCommand::Search {
+                                        query,
+                                        root,
+                                        event_mode: SearchEventMode::Location,
+                                        session,
+                                        request,
+                                    },
+                                    "search",
+                                );
                             }
                             Err(error) => {
-                                let _ = ctx.events.send(Event::from_request_error(
-                                    CoreError::invalid_input(format!(
-                                        "Invalid search query: {error}"
-                                    )),
-                                    session,
-                                    request,
-                                ));
+                                send_or_warn(
+                                    &ctx.events,
+                                    Event::from_request_error(
+                                        CoreError::invalid_input(format!(
+                                            "Invalid search query: {error}"
+                                        )),
+                                        session,
+                                        request,
+                                    ),
+                                    "search query parse",
+                                );
                             }
                         }
                     }
@@ -268,7 +293,14 @@
                         request,
                     } = cmd
                     {
-                        let Some(location) = ctx.registry.resolve_node_location(node) else {
+                        let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
+                            compat::emit_unresolved_node_request(
+                                &ctx.events,
+                                node,
+                                session,
+                                request,
+                                "scan.node.compat resolve",
+                            );
                             return;
                         };
                         let _ = tx.send(ScanCommand::ScanCompat {
@@ -286,11 +318,13 @@
                 let tx = watch_tx.clone();
                 handlers.on("watch.node.compat", move |cmd, ctx| {
                     if let Command::WatchNodeCompat { node, session } = cmd {
-                        let Some(location) = ctx.registry.resolve_node_location(node) else {
-                            let _ = ctx.events.send(Event::from_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                        let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
+                            compat::emit_unresolved_node_session(
+                                &ctx.events,
+                                node,
                                 session,
-                            ));
+                                "watch.node.compat resolve",
+                            );
                             return;
                         };
                         let _ = tx.send(WatchCommand::Watch {
@@ -324,7 +358,7 @@
                 let tx = watch_tx.clone();
                 handlers.on("watch.node.remove.compat", move |cmd, ctx| {
                     if let Command::UnwatchNodeCompat { node } = cmd {
-                        let Some(location) = ctx.registry.resolve_node_location(node) else {
+                        let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
                             return;
                         };
                         let _ = tx.send(WatchCommand::Unwatch {
@@ -364,12 +398,14 @@
                         request,
                     } = cmd
                     {
-                        let Some(location) = ctx.registry.resolve_node_location(id) else {
-                            let _ = ctx.events.send(Event::from_request_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {id:?}")),
+                        let Ok(location) = compat::resolve_node_location(&ctx.registry, id) else {
+                            compat::emit_unresolved_node_request(
+                                &ctx.events,
+                                id,
                                 session,
                                 request,
-                            ));
+                                "preview.load.node.compat resolve",
+                            );
                             return;
                         };
                         let _ = tx.send(PreviewCommand::Generate {
@@ -419,12 +455,14 @@
                         request,
                     } = cmd
                     {
-                        let Some(location) = ctx.registry.resolve_node_location(node) else {
-                            let _ = ctx.events.send(Event::from_request_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                        let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
+                            compat::emit_unresolved_node_request(
+                                &ctx.events,
+                                node,
                                 session,
                                 request,
-                            ));
+                                "metadata.load.node.compat resolve",
+                            );
                             return;
                         };
                         let _ = tx.send(PreviewCommand::LoadMetadata {
@@ -463,12 +501,14 @@
                         request,
                     } = cmd
                     {
-                        let Some(location) = ctx.registry.resolve_node_location(node) else {
-                            let _ = ctx.events.send(Event::from_request_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
+                        let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
+                            compat::emit_unresolved_node_request(
+                                &ctx.events,
+                                node,
                                 session,
                                 request,
-                            ));
+                                "metadata.extended.node.compat resolve",
+                            );
                             return;
                         };
                         let _ = tx.send(PreviewCommand::LoadExtendedMetadata {
@@ -510,33 +550,28 @@
                         operation,
                     } = cmd
                     {
-                        let sources = match sources
-                            .into_iter()
-                            .map(|source| {
-                                ctx.registry.resolve_node_location(source).ok_or(source)
-                            })
-                            .collect::<Result<Vec<_>, _>>()
-                        {
+                        let sources = match compat::resolve_node_locations(&ctx.registry, sources) {
                             Ok(sources) => sources,
-                            Err(source) => {
-                                let _ = ctx.events.send(Event::from_operation_error(
-                                    CoreError::invalid_input(format!(
-                                        "Cannot resolve node {source:?}"
-                                    )),
-                                    session,
-                                    request,
-                                    operation,
-                                ));
+                            Err(error) => {
+                                send_or_warn(
+                                    &ctx.events,
+                                    Event::from_operation_error(error, session, request, operation),
+                                    "operations: copy source compat resolve",
+                                );
                                 return;
                             }
                         };
-                        let Some(destination) = ctx.registry.resolve_node_location(destination) else {
-                            let _ = ctx.events.send(Event::from_operation_error(
-                                CoreError::invalid_input("Cannot resolve copy destination"),
+                        let Ok(destination) =
+                            compat::resolve_node_location(&ctx.registry, destination)
+                        else {
+                            compat::emit_unresolved_node_operation(
+                                &ctx.events,
+                                destination,
                                 session,
                                 request,
                                 operation,
-                            ));
+                                "operations: copy destination compat resolve",
+                            );
                             return;
                         };
                         let _ = tx.send(OpsCommand::Copy {
@@ -583,11 +618,30 @@
                         operation,
                     } = cmd
                     {
-                        let sources = sources
-                            .into_iter()
-                            .map(|source| ctx.registry.resolve_node_location(source).unwrap())
-                            .collect();
-                        let destination = ctx.registry.resolve_node_location(destination).unwrap();
+                        let sources = match compat::resolve_node_locations(&ctx.registry, sources) {
+                            Ok(sources) => sources,
+                            Err(error) => {
+                                send_or_warn(
+                                    &ctx.events,
+                                    Event::from_operation_error(error, session, request, operation),
+                                    "operations: move source compat resolve",
+                                );
+                                return;
+                            }
+                        };
+                        let Ok(destination) =
+                            compat::resolve_node_location(&ctx.registry, destination)
+                        else {
+                            compat::emit_unresolved_node_operation(
+                                &ctx.events,
+                                destination,
+                                session,
+                                request,
+                                operation,
+                                "operations: move destination compat resolve",
+                            );
+                            return;
+                        };
                         let _ = tx.send(OpsCommand::Move {
                             sources,
                             destination,
@@ -632,10 +686,17 @@
                         operation,
                     } = cmd
                     {
-                        let targets = nodes
-                            .into_iter()
-                            .map(|node| ctx.registry.resolve_node_location(node).unwrap())
-                            .collect();
+                        let targets = match compat::resolve_node_locations(&ctx.registry, nodes) {
+                            Ok(targets) => targets,
+                            Err(error) => {
+                                send_or_warn(
+                                    &ctx.events,
+                                    Event::from_operation_error(error, session, request, operation),
+                                    "operations: delete compat resolve",
+                                );
+                                return;
+                            }
+                        };
                         let _ = tx.send(OpsCommand::Delete {
                             targets,
                             trash,
@@ -680,7 +741,17 @@
                         operation,
                     } = cmd
                     {
-                        let source = ctx.registry.resolve_node_location(node).unwrap();
+                        let Ok(source) = compat::resolve_node_location(&ctx.registry, node) else {
+                            compat::emit_unresolved_node_operation(
+                                &ctx.events,
+                                node,
+                                session,
+                                request,
+                                operation,
+                                "operations: rename compat resolve",
+                            );
+                            return;
+                        };
                         let _ = tx.send(OpsCommand::Rename {
                             source,
                             new_name,
@@ -725,7 +796,17 @@
                         operation,
                     } = cmd
                     {
-                        let parent = ctx.registry.resolve_node_location(parent).unwrap();
+                        let Ok(parent) = compat::resolve_node_location(&ctx.registry, parent) else {
+                            compat::emit_unresolved_node_operation(
+                                &ctx.events,
+                                parent,
+                                session,
+                                request,
+                                operation,
+                                "operations: create folder compat resolve",
+                            );
+                            return;
+                        };
                         let _ = tx.send(OpsCommand::CreateFolder {
                             parent,
                             name,
@@ -770,7 +851,17 @@
                         operation,
                     } = cmd
                     {
-                        let parent = ctx.registry.resolve_node_location(parent).unwrap();
+                        let Ok(parent) = compat::resolve_node_location(&ctx.registry, parent) else {
+                            compat::emit_unresolved_node_operation(
+                                &ctx.events,
+                                parent,
+                                session,
+                                request,
+                                operation,
+                                "operations: create file compat resolve",
+                            );
+                            return;
+                        };
                         let _ = tx.send(OpsCommand::CreateFile {
                             parent,
                             name,

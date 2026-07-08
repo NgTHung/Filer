@@ -24,7 +24,9 @@
     use crate::modules::scan::scanner::ScanCommand;
     use crate::modules::search::searcher::{SearchCommand, SearchEventMode};
     use crate::modules::watch::watcher::{UnwatchScope, WatchCommand, WatchEventMode};
+    use crate::modules::compat;
     use crate::pipeline::PipelineConfig;
+    use crate::utils::channel::send_or_warn;
 
     /// Timeout for async operations in tests
     const TEST_TIMEOUT: Duration = Duration::from_millis(500);

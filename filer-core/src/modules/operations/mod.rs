@@ -25,24 +25,14 @@ use crate::FsProvider;
 use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
-use crate::model::location::LocationRef;
-use crate::model::node::NodeId;
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
+use crate::modules::compat;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn;
 use flume::Sender;
 use operator::{OperationEventMode, Operator, OpsCommand};
-
-fn resolve_compat_node(
-    registry: &crate::model::registry::NodeRegistry,
-    node: NodeId,
-) -> Result<LocationRef, CoreError> {
-    registry
-        .resolve_node_location(node)
-        .ok_or_else(|| CoreError::invalid_input(format!("Cannot resolve node {node:?}")))
-}
 
 fn emit_compat_resolve_error(
     events: &Sender<Event>,
@@ -102,24 +92,25 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let resolved = sources
-                    .into_iter()
-                    .map(|source| resolve_compat_node(&_ctx.registry, source))
-                    .collect::<Result<Vec<_>, _>>()
-                    .and_then(|sources| {
-                        resolve_compat_node(&_ctx.registry, destination)
+                let resolved =
+                    compat::resolve_node_locations(&_ctx.registry, sources).and_then(|sources| {
+                        compat::resolve_node_location(&_ctx.registry, destination)
                             .map(|destination| (sources, destination))
                     });
                 match resolved {
                     Ok((sources, destination)) => {
-                        let _ = tx.send(OpsCommand::Copy {
-                            sources,
-                            destination,
-                            event_mode: OperationEventMode::Compat,
-                            session,
-                            request,
-                            operation,
-                        });
+                        send_or_warn(
+                            &tx,
+                            OpsCommand::Copy {
+                                sources,
+                                destination,
+                                event_mode: OperationEventMode::Compat,
+                                session,
+                                request,
+                                operation,
+                            },
+                            "ops.copy.node.compat",
+                        );
                     }
                     Err(error) => emit_compat_resolve_error(
                         &_ctx.events,
@@ -143,14 +134,18 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Copy {
-                    sources,
-                    destination,
-                    event_mode: OperationEventMode::Location,
-                    session,
-                    request,
-                    operation,
-                });
+                send_or_warn(
+                    &tx,
+                    OpsCommand::Copy {
+                        sources,
+                        destination,
+                        event_mode: OperationEventMode::Location,
+                        session,
+                        request,
+                        operation,
+                    },
+                    "ops.copy",
+                );
             }
         });
 
@@ -164,24 +159,25 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let resolved = sources
-                    .into_iter()
-                    .map(|source| resolve_compat_node(&_ctx.registry, source))
-                    .collect::<Result<Vec<_>, _>>()
-                    .and_then(|sources| {
-                        resolve_compat_node(&_ctx.registry, destination)
+                let resolved =
+                    compat::resolve_node_locations(&_ctx.registry, sources).and_then(|sources| {
+                        compat::resolve_node_location(&_ctx.registry, destination)
                             .map(|destination| (sources, destination))
                     });
                 match resolved {
                     Ok((sources, destination)) => {
-                        let _ = tx.send(OpsCommand::Move {
-                            sources,
-                            destination,
-                            event_mode: OperationEventMode::Compat,
-                            session,
-                            request,
-                            operation,
-                        });
+                        send_or_warn(
+                            &tx,
+                            OpsCommand::Move {
+                                sources,
+                                destination,
+                                event_mode: OperationEventMode::Compat,
+                                session,
+                                request,
+                                operation,
+                            },
+                            "ops.move.node.compat",
+                        );
                     }
                     Err(error) => emit_compat_resolve_error(
                         &_ctx.events,
@@ -205,14 +201,18 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Move {
-                    sources,
-                    destination,
-                    event_mode: OperationEventMode::Location,
-                    session,
-                    request,
-                    operation,
-                });
+                send_or_warn(
+                    &tx,
+                    OpsCommand::Move {
+                        sources,
+                        destination,
+                        event_mode: OperationEventMode::Location,
+                        session,
+                        request,
+                        operation,
+                    },
+                    "ops.move",
+                );
             }
         });
 
@@ -226,20 +226,21 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let resolved = nodes
-                    .into_iter()
-                    .map(|node| resolve_compat_node(&_ctx.registry, node))
-                    .collect::<Result<Vec<_>, _>>();
+                let resolved = compat::resolve_node_locations(&_ctx.registry, nodes);
                 match resolved {
                     Ok(targets) => {
-                        let _ = tx.send(OpsCommand::Delete {
-                            targets,
-                            trash,
-                            event_mode: OperationEventMode::Compat,
-                            session,
-                            request,
-                            operation,
-                        });
+                        send_or_warn(
+                            &tx,
+                            OpsCommand::Delete {
+                                targets,
+                                trash,
+                                event_mode: OperationEventMode::Compat,
+                                session,
+                                request,
+                                operation,
+                            },
+                            "ops.delete.node.compat",
+                        );
                     }
                     Err(error) => emit_compat_resolve_error(
                         &_ctx.events,
@@ -263,14 +264,18 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Delete {
-                    targets: locations,
-                    trash,
-                    event_mode: OperationEventMode::Location,
-                    session,
-                    request,
-                    operation,
-                });
+                send_or_warn(
+                    &tx,
+                    OpsCommand::Delete {
+                        targets: locations,
+                        trash,
+                        event_mode: OperationEventMode::Location,
+                        session,
+                        request,
+                        operation,
+                    },
+                    "ops.delete",
+                );
             }
         });
 
@@ -284,20 +289,24 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                match resolve_compat_node(&_ctx.registry, node) {
+                match compat::resolve_node_location(&_ctx.registry, node) {
                     Ok(source) => {
-                        let _ = tx.send(OpsCommand::Rename {
-                            source,
-                            new_name,
-                            event_mode: OperationEventMode::Compat,
-                            session,
-                            request,
-                            operation,
-                        });
+                        send_or_warn(
+                            &tx,
+                            OpsCommand::Rename {
+                                source,
+                                new_name,
+                                event_mode: OperationEventMode::Compat,
+                                session,
+                                request,
+                                operation,
+                            },
+                            "ops.rename.node.compat",
+                        );
                     }
-                    Err(error) => emit_compat_resolve_error(
+                    Err(_) => compat::emit_unresolved_node_operation(
                         &_ctx.events,
-                        error,
+                        node,
                         session,
                         request,
                         operation,
@@ -317,14 +326,18 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::Rename {
-                    source: location,
-                    new_name,
-                    event_mode: OperationEventMode::Location,
-                    session,
-                    request,
-                    operation,
-                });
+                send_or_warn(
+                    &tx,
+                    OpsCommand::Rename {
+                        source: location,
+                        new_name,
+                        event_mode: OperationEventMode::Location,
+                        session,
+                        request,
+                        operation,
+                    },
+                    "ops.rename",
+                );
             }
         });
 
@@ -339,20 +352,24 @@ impl Module for OperationsModule {
                     operation,
                 } = cmd
                 {
-                    match resolve_compat_node(&_ctx.registry, parent) {
+                    match compat::resolve_node_location(&_ctx.registry, parent) {
                         Ok(parent) => {
-                            let _ = tx.send(OpsCommand::CreateFolder {
-                                parent,
-                                name,
-                                event_mode: OperationEventMode::Compat,
-                                session,
-                                request,
-                                operation,
-                            });
+                            send_or_warn(
+                                &tx,
+                                OpsCommand::CreateFolder {
+                                    parent,
+                                    name,
+                                    event_mode: OperationEventMode::Compat,
+                                    session,
+                                    request,
+                                    operation,
+                                },
+                                "ops.create_folder.node.compat",
+                            );
                         }
-                        Err(error) => emit_compat_resolve_error(
+                        Err(_) => compat::emit_unresolved_node_operation(
                             &_ctx.events,
-                            error,
+                            parent,
                             session,
                             request,
                             operation,
@@ -372,14 +389,18 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::CreateFolder {
-                    parent,
-                    name,
-                    event_mode: OperationEventMode::Location,
-                    session,
-                    request,
-                    operation,
-                });
+                send_or_warn(
+                    &tx,
+                    OpsCommand::CreateFolder {
+                        parent,
+                        name,
+                        event_mode: OperationEventMode::Location,
+                        session,
+                        request,
+                        operation,
+                    },
+                    "ops.create_folder",
+                );
             }
         });
 
@@ -394,20 +415,24 @@ impl Module for OperationsModule {
                     operation,
                 } = cmd
                 {
-                    match resolve_compat_node(&_ctx.registry, parent) {
+                    match compat::resolve_node_location(&_ctx.registry, parent) {
                         Ok(parent) => {
-                            let _ = tx.send(OpsCommand::CreateFile {
-                                parent,
-                                name,
-                                event_mode: OperationEventMode::Compat,
-                                session,
-                                request,
-                                operation,
-                            });
+                            send_or_warn(
+                                &tx,
+                                OpsCommand::CreateFile {
+                                    parent,
+                                    name,
+                                    event_mode: OperationEventMode::Compat,
+                                    session,
+                                    request,
+                                    operation,
+                                },
+                                "ops.create_file.node.compat",
+                            );
                         }
-                        Err(error) => emit_compat_resolve_error(
+                        Err(_) => compat::emit_unresolved_node_operation(
                             &_ctx.events,
-                            error,
+                            parent,
                             session,
                             request,
                             operation,
@@ -427,27 +452,39 @@ impl Module for OperationsModule {
                 operation,
             } = cmd
             {
-                let _ = tx.send(OpsCommand::CreateFile {
-                    parent,
-                    name,
-                    event_mode: OperationEventMode::Location,
-                    session,
-                    request,
-                    operation,
-                });
+                send_or_warn(
+                    &tx,
+                    OpsCommand::CreateFile {
+                        parent,
+                        name,
+                        event_mode: OperationEventMode::Location,
+                        session,
+                        request,
+                        operation,
+                    },
+                    "ops.create_file",
+                );
             }
         });
 
         let tx = self.ops_tx.clone();
         ctx.handlers.on("ops.cancel", move |cmd, _ctx| {
             if let Command::CancelOperation { session, operation } = cmd {
-                let _ = tx.send(OpsCommand::CancelOperation { session, operation });
+                send_or_warn(
+                    &tx,
+                    OpsCommand::CancelOperation { session, operation },
+                    "ops.cancel",
+                );
             }
         });
 
         let tx = self.ops_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
-            let _ = tx.send(OpsCommand::Cancel(session));
+            send_or_warn(
+                &tx,
+                OpsCommand::Cancel(session),
+                "operations session destroy",
+            );
         });
 
         let operator = match self.cache.take() {

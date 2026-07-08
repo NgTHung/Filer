@@ -20,4 +20,5 @@ mod command_router_tests {
     include!("route_unwatch_session_to_watcher.rs");
     include!("route_handshake_emits_session_created.rs");
     include!("route_load_preview_with_options.rs");
+    include!("route_unresolved_node_boundaries.rs");
 }

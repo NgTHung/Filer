@@ -1,7 +1,7 @@
 ---
 id: ACTORS-007
 title: Audit LocationRef actor compatibility boundaries
-status: To Do
+status: Done
 priority: High
 type: Refactor
 parent: CORE-025
@@ -11,7 +11,7 @@ rules: [PROVIDER-ACCESS, SESSION-BOUNDARY, ACTOR-LONG-WORK]
 risk: High
 impact: "Confirms NodeId compatibility remains explicit before public API deprecation starts."
 tags: [core, actors, compatibility, location, nodeid]
-last_updated: 2026-07-04
+last_updated: 2026-07-08
 ---
 
 ## Summary
@@ -20,7 +20,7 @@ Audit migrated actors so NodeId survives only as explicit compatibility input or
 
 ## Acceptance Criteria
 
-- [ ] No actor performs provider work from unresolved NodeId input.
-- [ ] NodeId variants remain only as public compatibility inputs or compatibility outputs.
-- [ ] Tests prove canonical LocationRef flows and retained compatibility flows.
-- [ ] CORE-025 exit criteria can be checked after this task is complete.
+- [x] No actor performs provider work from unresolved NodeId input.
+- [x] NodeId variants remain only as public compatibility inputs or compatibility outputs.
+- [x] Tests prove canonical LocationRef flows and retained compatibility flows.
+- [x] CORE-025 exit criteria can be checked after this task is complete.

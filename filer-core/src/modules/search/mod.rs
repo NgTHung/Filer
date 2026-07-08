@@ -16,6 +16,8 @@ use crate::api::module::{Module, ModuleContext};
 use crate::errors::CoreError;
 use crate::model::location::{Location, LocationRef};
 use crate::model::query::SearchQuery;
+use crate::modules::compat;
+use crate::utils::channel::send_or_warn;
 use crate::vfs::provider::FsProvider;
 use searcher::{SearchCommand, SearchEventMode};
 
@@ -45,23 +47,28 @@ impl Module for SearchModule {
             {
                 match SearchQuery::parse(&query) {
                     Ok(query) => {
-                        let Some(root) = ctx.registry.resolve_node_location(node_root) else {
-                            let _ = ctx.events.send(Event::from_request_error(
-                                CoreError::invalid_input(format!(
-                                    "Unable to resolve ID: {node_root:?}"
-                                )),
+                        let Ok(root) = compat::resolve_node_location(&ctx.registry, node_root)
+                        else {
+                            compat::emit_unresolved_node_request(
+                                &ctx.events,
+                                node_root,
                                 session,
                                 request,
-                            ));
+                                "search.node.compat resolve",
+                            );
                             return;
                         };
-                        let _ = tx.send(SearchCommand::Search {
-                            query,
-                            root,
-                            event_mode: SearchEventMode::Compat,
-                            session,
-                            request,
-                        });
+                        send_or_warn(
+                            &tx,
+                            SearchCommand::Search {
+                                query,
+                                root,
+                                event_mode: SearchEventMode::Compat,
+                                session,
+                                request,
+                            },
+                            "search.node.compat",
+                        );
                     }
                     Err(error) => emit_query_error(ctx, session, request, error),
                 }
@@ -80,13 +87,17 @@ impl Module for SearchModule {
                 match SearchQuery::parse(&query) {
                     Ok(query) => {
                         let location = Location::local(root);
-                        let _ = tx.send(SearchCommand::Search {
-                            query,
-                            root: LocationRef::from_location(&location),
-                            event_mode: SearchEventMode::Compat,
-                            session,
-                            request,
-                        });
+                        send_or_warn(
+                            &tx,
+                            SearchCommand::Search {
+                                query,
+                                root: LocationRef::from_location(&location),
+                                event_mode: SearchEventMode::Compat,
+                                session,
+                                request,
+                            },
+                            "search.path.compat",
+                        );
                     }
                     Err(error) => emit_query_error(ctx, session, request, error),
                 }
@@ -104,13 +115,17 @@ impl Module for SearchModule {
             {
                 match SearchQuery::parse(&query) {
                     Ok(query) => {
-                        let _ = tx.send(SearchCommand::Search {
-                            query,
-                            root,
-                            event_mode: SearchEventMode::Location,
-                            session,
-                            request,
-                        });
+                        send_or_warn(
+                            &tx,
+                            SearchCommand::Search {
+                                query,
+                                root,
+                                event_mode: SearchEventMode::Location,
+                                session,
+                                request,
+                            },
+                            "search",
+                        );
                     }
                     Err(error) => emit_query_error(ctx, session, request, error),
                 }
@@ -120,13 +135,17 @@ impl Module for SearchModule {
         let tx = search_tx.clone();
         ctx.handlers.on("search.cancel", move |cmd, _ctx| {
             if let Command::CancelSearch { session } = cmd {
-                let _ = tx.send(SearchCommand::Cancel(session));
+                send_or_warn(&tx, SearchCommand::Cancel(session), "search.cancel");
             }
         });
 
         let tx = search_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _ctx| {
-            let _ = tx.send(SearchCommand::Cancel(session));
+            send_or_warn(
+                &tx,
+                SearchCommand::Cancel(session),
+                "search session destroy",
+            );
         });
 
         let searcher = searcher::Searcher::new(
@@ -145,9 +164,13 @@ fn emit_query_error(
     request: crate::model::request::RequestId,
     error: crate::model::query::QueryParseError,
 ) {
-    let _ = ctx.events.send(Event::from_request_error(
-        CoreError::invalid_input(format!("Invalid search query: {error}")),
-        session,
-        request,
-    ));
+    send_or_warn(
+        &ctx.events,
+        Event::from_request_error(
+            CoreError::invalid_input(format!("Invalid search query: {error}")),
+            session,
+            request,
+        ),
+        "search query parse",
+    );
 }

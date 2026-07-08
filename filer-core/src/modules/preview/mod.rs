@@ -14,9 +14,8 @@ pub mod previewer;
 use std::sync::Arc;
 
 use crate::api::commands::Command;
-use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
-use crate::errors::CoreError;
+use crate::modules::compat;
 use crate::utils::channel::send_or_warn;
 use crate::vfs::provider::FsProvider;
 use previewer::{PreviewCommand, PreviewEventMode, Previewer};
@@ -46,14 +45,12 @@ impl Module for PreviewModule {
                     request,
                 } = cmd
                 {
-                    let Some(location) = ctx.registry.resolve_node_location(id) else {
-                        send_or_warn(
+                    let Ok(location) = compat::resolve_node_location(&ctx.registry, id) else {
+                        compat::emit_unresolved_node_request(
                             &ctx.events,
-                            Event::from_request_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {id:?}")),
-                                session,
-                                request,
-                            ),
+                            id,
+                            session,
+                            request,
                             "preview.load.node.compat resolve",
                         );
                         return;
@@ -111,14 +108,12 @@ impl Module for PreviewModule {
                     request,
                 } = cmd
                 {
-                    let Some(location) = ctx.registry.resolve_node_location(node) else {
-                        send_or_warn(
+                    let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
+                        compat::emit_unresolved_node_request(
                             &ctx.events,
-                            Event::from_request_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
-                                session,
-                                request,
-                            ),
+                            node,
+                            session,
+                            request,
                             "metadata.load.node.compat resolve",
                         );
                         return;
@@ -166,14 +161,12 @@ impl Module for PreviewModule {
                     request,
                 } = cmd
                 {
-                    let Some(location) = ctx.registry.resolve_node_location(node) else {
-                        send_or_warn(
+                    let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
+                        compat::emit_unresolved_node_request(
                             &ctx.events,
-                            Event::from_request_error(
-                                CoreError::invalid_input(format!("Unable to resolve ID: {node:?}")),
-                                session,
-                                request,
-                            ),
+                            node,
+                            session,
+                            request,
                             "metadata.extended.node.compat resolve",
                         );
                         return;
