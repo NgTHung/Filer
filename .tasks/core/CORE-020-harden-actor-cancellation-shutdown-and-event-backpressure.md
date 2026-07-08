@@ -2,14 +2,14 @@
 id: CORE-020
 title: Harden actor cancellation, shutdown, and event backpressure
 status: To Do
-priority: Medium
+priority: High
 type: Bug
 parent: CORE-001
 rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: Medium
-impact: "Shutdown can return while work continues, a fallback scan ignores cancel, and unbounded event streams can grow without limit."
+impact: "Shutdown can return while work continues, a fallback scan ignores cancel, and unbounded event streams can grow without limit. Gates MODULES-002: decoration event streams must land on the backpressure policy, not on unbounded channels."
 tags: [core, audit, remediation, async]
-last_updated: 2026-07-04
+last_updated: 2026-07-07
 ---
 
 ## Summary
