@@ -4,11 +4,12 @@ title: Migrate type detection to the file-format crate
 status: To Do
 priority: Medium
 type: Refactor
+milestone: "0.3.1"
 depends_on: [SERVICES-001, SERVICES-002]
 risk: High
 impact: "Replaces infer and new_mime_guess internals behind MimeDetector and re-audits category routing."
 tags: [mime, detection, dependencies]
-last_updated: 2026-06-13
+last_updated: 2026-07-09
 ---
 
 ## Summary

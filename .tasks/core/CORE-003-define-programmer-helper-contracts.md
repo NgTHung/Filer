@@ -4,12 +4,13 @@ title: Define programmer helper contracts
 status: To Do
 priority: Low
 type: Epic
+milestone: "0.4.0"
 depends_on: [MODULES-001]
 rules: [CORE-LIBRARY, SEMANTIC-EXTENSION-OUTPUT]
 risk: Medium
 impact: "Adds developer-oriented actions without turning core into an IDE."
 tags: [programmer, actions, extensions]
-last_updated: 2026-06-06
+last_updated: 2026-07-09
 ---
 
 ## Summary

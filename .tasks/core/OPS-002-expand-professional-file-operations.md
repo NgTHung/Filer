@@ -4,12 +4,13 @@ title: Expand professional file operations
 status: To Do
 priority: Medium
 type: Epic
+milestone: "0.5.0"
 depends_on: [OPS-001]
 rules: [PROVIDER-ACCESS, ACTOR-LONG-WORK, CORE-MECHANICS-BUILTIN]
 risk: High
 impact: "Adds queued, reversible, bulk, and archive operations."
 tags: [operations, queue, archive]
-last_updated: 2026-06-06
+last_updated: 2026-07-09
 ---
 
 ## Summary

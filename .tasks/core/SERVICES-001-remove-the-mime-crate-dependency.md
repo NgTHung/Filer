@@ -4,10 +4,11 @@ title: Remove the mime crate dependency
 status: To Do
 priority: Low
 type: Refactor
+milestone: "0.3.1"
 risk: Low
 impact: "Drops the mime crate; the detector's text-type check uses string comparison."
 tags: [mime, dependencies]
-last_updated: 2026-06-13
+last_updated: 2026-07-09
 ---
 
 ## Summary

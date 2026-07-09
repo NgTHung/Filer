@@ -4,18 +4,21 @@ title: Evolve directory presentation contracts
 status: To Do
 priority: Medium
 type: Epic
+milestone: "0.5.0"
 rules: [PIPELINE-TRANSFORMS]
 risk: Medium
 impact: "Changes sorting, grouping, and folder preference behavior across clients."
 tags: [pipeline, sorting, grouping, paging, performance]
-last_updated: 2026-07-07
+last_updated: 2026-07-09
 ---
 
 ## Summary
 
 Extend view-independent directory preferences and stable grouping behavior.
 
-This epic also owns the paging scalability ceiling from the CORE-004 audit (finding F24): `load_provider` walks the entire directory to produce one page, even with native provider paging, because only the keyset boundary survives between page requests. The fix spans the pipeline, the provider cursor, and the paging session (a cached materialized order keyed by the cursor, or pipeline-ordered provider paging), which is why it lives here and not in the tactical hot-path task CORE-021.
+This epic also owns the paging scalability ceiling from the CORE-004 audit (finding F24): `load_provider` walks the entire directory to produce one page, even with native provider paging, because only the keyset boundary survives between page requests. The fix spans the pipeline, the provider cursor, and the paging session (a cached materialized order keyed by the cursor, or pipeline-ordered provider paging), which is why it lives here and not in the tactical hot-path task CORE-021. CORE-018 owns session map TTL/LRU and cursor documentation only, not F24.
+
+Milestone 0.5.0 (MILESTONE-006 draft). Cross-provider paging contracts already landed in PIPELINE-001.
 
 ## Exit Criteria
 

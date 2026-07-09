@@ -5,16 +5,19 @@ status: To Do
 priority: High
 type: Bug
 parent: CORE-001
+milestone: "0.3.0"
 rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: Medium
 impact: "Shutdown can return while work continues, a fallback scan ignores cancel, and unbounded event streams can grow without limit. Gates MODULES-002: decoration event streams must land on the backpressure policy, not on unbounded channels."
 tags: [core, audit, remediation, async]
-last_updated: 2026-07-07
+last_updated: 2026-07-09
 ---
 
 ## Summary
 
 Three actor-lifecycle gaps weaken the non-blocking large-directory target. First, FilerCore::shutdown aborts the tracked actor loops and calls cancel_all, which only sets the atomic flag; detached per-command tasks are not joined, so a copy or scan can keep touching the filesystem after shutdown returns. Track per-command handles in a per-actor JoinSet and await them after cancel_all, or document shutdown as fire-and-forget. Second, the fallback paging path runs PageSelection::extend over the whole directory with no is_cancelled check, so a cancel is not observed until the loop finishes; thread the token into extend and check it every N entries, matching the native page cadence. Third, every channel is unbounded; adopt the VERDICT backpressure policy: bounded channels for high-volume event streams, coalescing progress events on overflow and blocking on page and change events, with command channels left unbounded.
+
+Explicit 0.3.0 member because MODULES-002 depends on the backpressure policy before decoration event streams ship.
 
 ## Acceptance Criteria
 

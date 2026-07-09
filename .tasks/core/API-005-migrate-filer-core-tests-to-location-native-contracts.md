@@ -11,12 +11,12 @@ rules: [CORE-LIBRARY]
 risk: Medium
 impact: "Ports NodeId-coupled tests to LocationRef identity so NodeId removal cannot delete coverage."
 tags: [api, nodeid, location, testing]
-last_updated: 2026-07-08
+last_updated: 2026-07-09
 ---
 
 ## Summary
 
-Port the tests that assert on NodeId, FileNode rows, or compatibility command and event variants to Location-native contracts before any removal lands. 27 test files reference NodeId across roughly 105 sites. Where a test exercises a compatibility route slated for removal, replace it with the LocationRef-native equivalent that pins the same behavior; do not delete behavior coverage. This is the gate for API-006 through API-008: the 2026-07-08 removal attempt failed precisely because this step was skipped.
+Port the tests that assert on NodeId, FileNode rows, or compatibility command and event variants to Location-native contracts before any removal lands. As of 2026-07-09 about 25 test files reference NodeId across roughly 91 sites. Where a test exercises a compatibility route slated for removal, replace it with the LocationRef-native equivalent that pins the same behavior; do not delete behavior coverage. This is the gate for API-006 through API-008: the 2026-07-08 removal attempt failed precisely because this step was skipped.
 
 ## Acceptance Criteria
 
