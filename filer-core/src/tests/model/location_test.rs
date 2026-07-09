@@ -5,8 +5,9 @@ use crate::model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
     ProviderRef,
 };
-use crate::model::node::{FileNode, NodeEntry, NodeId, NodeKind, NodeMeta};
+use crate::model::node::{FileNode, NodeEntry, NodeKind, NodeMeta};
 use crate::model::registry::NodeRegistry;
+use crate::tests::fixtures::local_file_node;
 
 #[test]
 fn local_descriptor_uses_file_scheme_and_local_provider() {
@@ -464,19 +465,16 @@ fn registry_registers_direct_location_as_node() {
 fn node_entry_carries_location_without_exposing_path() {
     let registry = NodeRegistry::new();
     let path = PathBuf::from("/tmp/entry.txt");
-    let node = FileNode {
-        id: NodeId::from_path(&path),
-        name: "entry.txt".to_string(),
-        path: path.clone(),
-        kind: NodeKind::File {
+    let node = local_file_node(
+        path.clone(),
+        "entry.txt",
+        NodeKind::File {
             extension: Some("txt".to_string()),
         },
-        size: 42,
-        modified: None,
-        created: None,
-        accessed: None,
-        meta: NodeMeta::default(),
-    };
+        42,
+        None,
+        NodeMeta::default(),
+    );
 
     let entry = NodeEntry::from_file_node(node, &registry);
 
@@ -534,8 +532,10 @@ fn node_entry_can_carry_segmented_display_and_navigation_metadata() {
         .archive_member("src")
         .with_display_path("/tmp/bundle.zip!/src");
     let location = Location::new(descriptor.clone());
+    let registry = NodeRegistry::new();
+    let id = registry.register_segmented_location_node(location.clone());
     let node = FileNode {
-        id: NodeId(42),
+        id,
         name: "src".to_string(),
         path: PathBuf::from("/tmp/bundle.zip!/src"),
         kind: NodeKind::Directory {

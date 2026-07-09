@@ -2,22 +2,21 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::model::location::{Location, LocationId};
-use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+use crate::model::node::{FileNode, NodeKind, NodeMeta};
 use crate::services::dir_cache::DirCache;
+use crate::tests::fixtures::local_file_node;
 use crate::vfs::provider::ListingOptions;
 
 fn make_node(name: &str) -> FileNode {
-    FileNode {
-        id: NodeId(0),
-        name: name.to_string(),
-        path: PathBuf::from(format!("/tmp/{name}")),
-        kind: NodeKind::File { extension: None },
-        size: 0,
-        modified: None,
-        created: None,
-        accessed: None,
-        meta: NodeMeta::default(),
-    }
+    let path = PathBuf::from(format!("/tmp/{name}"));
+    local_file_node(
+        path,
+        name,
+        NodeKind::File { extension: None },
+        0,
+        None,
+        NodeMeta::default(),
+    )
 }
 
 fn one_node() -> Vec<FileNode> {

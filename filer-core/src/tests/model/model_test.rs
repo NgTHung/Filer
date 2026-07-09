@@ -1,6 +1,7 @@
 //! Tests for model layer
 
-use crate::model::node::{FileNode, NodeId};
+use crate::model::location::{Location, LocationDescriptor};
+use crate::model::node::{FileNode, NodeEntry};
 use crate::model::registry::NodeRegistry;
 use std::path::PathBuf;
 
@@ -23,24 +24,23 @@ fn non_utf8_path() -> PathBuf {
 }
 
 #[test]
-fn test_node_id_from_path() {
+fn test_location_id_from_path() {
     let path = PathBuf::from("/home/user/test.txt");
-    let id = NodeId::from_path(&path);
+    let location = Location::local(path.clone());
 
-    // Same path should produce same ID
-    let id2 = NodeId::from_path(&path);
-    assert_eq!(id, id2);
+    let same_location = Location::local(path);
+    assert_eq!(location.id(), same_location.id());
 }
 
 #[test]
-fn test_node_id_from_non_utf8_path_is_stable() {
+fn test_location_id_from_non_utf8_path_is_stable() {
     let path = non_utf8_path();
     assert!(path.to_str().is_none());
 
-    let id = NodeId::from_path(&path);
-    let id2 = NodeId::from_path(&path);
+    let location = Location::local(path.clone());
+    let same_location = Location::local(path);
 
-    assert_eq!(id, id2);
+    assert_eq!(location.id(), same_location.id());
 }
 
 #[test]
@@ -50,9 +50,13 @@ fn test_file_node_from_metadata_accepts_non_utf8_path() {
     let path = non_utf8_path();
 
     let node = FileNode::from_metadata(metadata, path.clone(), None).unwrap();
+    let registry = NodeRegistry::new();
+    let entry = NodeEntry::from_file_node(node, &registry);
 
-    assert_eq!(node.id, NodeId::from_path(&path));
-    assert_eq!(node.path, path);
+    assert_eq!(
+        entry.location.descriptor(),
+        Some(&LocationDescriptor::local(path))
+    );
 }
 
 #[test]
@@ -62,20 +66,24 @@ fn test_file_node_from_dir_entry_accepts_non_utf8_path() {
     let path = non_utf8_path();
 
     let node = FileNode::from_dir_entry(path.clone(), file_type, None);
+    let registry = NodeRegistry::new();
+    let entry = NodeEntry::from_file_node(node, &registry);
 
-    assert_eq!(node.id, NodeId::from_path(&path));
-    assert_eq!(node.path, path);
+    assert_eq!(
+        entry.location.descriptor(),
+        Some(&LocationDescriptor::local(path))
+    );
 }
 
 #[test]
-fn test_node_id_different_paths() {
+fn test_location_id_different_paths() {
     let path1 = PathBuf::from("/home/user/test.txt");
     let path2 = PathBuf::from("/home/user/other.txt");
 
-    let id1 = NodeId::from_path(&path1);
-    let id2 = NodeId::from_path(&path2);
+    let first = Location::local(path1);
+    let second = Location::local(path2);
 
-    assert_ne!(id1, id2);
+    assert_ne!(first.id(), second.id());
 }
 
 #[test]
@@ -126,11 +134,14 @@ fn test_registry_register() {
     let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
 
-    let id = registry.clone().register(path.clone());
+    let handle = registry.clone().register(path.clone());
 
     assert_eq!(registry.len(), 1);
     assert!(!registry.is_empty());
-    assert_eq!(id, NodeId::from_path(&path));
+    assert_eq!(
+        registry.resolve_node_location(handle).unwrap().descriptor(),
+        Some(&LocationDescriptor::local(path))
+    );
 }
 
 #[test]
@@ -138,12 +149,13 @@ fn test_registry_register_same_path_twice() {
     let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
 
-    let id1 = registry.clone().register(path.clone());
-    let id2 = registry.clone().register(path.clone());
+    let first = registry.clone().register(path.clone());
+    let second = registry.clone().register(path);
 
-    // Should produce same ID
-    assert_eq!(id1, id2);
-    // Should still have only one entry (overwrites)
+    assert_eq!(
+        registry.resolve_node_location(first),
+        registry.resolve_node_location(second)
+    );
     assert_eq!(registry.len(), 1);
 }
 
@@ -153,10 +165,13 @@ fn test_registry_register_different_paths() {
     let path1 = PathBuf::from("/home/user/test.txt");
     let path2 = PathBuf::from("/home/user/other.txt");
 
-    let id1 = registry.clone().register(path1.clone());
-    let id2 = registry.clone().register(path2.clone());
+    let first = registry.clone().register(path1.clone());
+    let second = registry.clone().register(path2.clone());
 
-    assert_ne!(id1, id2);
+    assert_ne!(
+        registry.resolve_node_location(first),
+        registry.resolve_node_location(second)
+    );
     assert_eq!(registry.len(), 2);
 }
 
@@ -165,19 +180,21 @@ fn test_registry_resolve() {
     let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
 
-    let id = registry.clone().register(path.clone());
-    let resolved = registry.resolve(id);
+    let handle = registry.clone().register(path.clone());
+    let resolved = registry.resolve_node_location(handle);
 
-    assert_eq!(resolved, Some(path));
+    assert_eq!(
+        resolved.unwrap().descriptor(),
+        Some(&LocationDescriptor::local(path))
+    );
 }
 
 #[test]
 fn test_registry_resolve_not_found() {
     let registry = NodeRegistry::new();
-    let path = PathBuf::from("/home/user/test.txt");
-    let id = NodeId::from_path(&path);
+    let unregistered = Location::local("/home/user/test.txt");
 
-    let resolved = registry.resolve(id);
+    let resolved = registry.resolve_location(unregistered.id());
     assert_eq!(resolved, None);
 }
 
@@ -186,10 +203,13 @@ fn test_registry_get_id() {
     let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
 
-    let id = registry.clone().register(path.clone());
+    let handle = registry.clone().register(path.clone());
     let found_id = registry.get_id(&path);
 
-    assert_eq!(found_id, Some(id));
+    assert_eq!(
+        found_id.and_then(|id| registry.resolve_node_location(id)),
+        registry.resolve_node_location(handle)
+    );
 }
 
 #[test]
@@ -206,24 +226,26 @@ fn test_registry_unregister() {
     let registry = NodeRegistry::new();
     let path = PathBuf::from("/home/user/test.txt");
 
-    let id = registry.clone().register(path.clone());
+    let handle = registry.clone().register(path.clone());
     assert_eq!(registry.len(), 1);
 
-    let removed = registry.unregister(id);
+    let removed = registry.unregister(handle);
 
     assert_eq!(removed, Some(path));
     assert_eq!(registry.len(), 0);
     assert!(registry.is_empty());
-    assert_eq!(registry.resolve(id), None);
+    assert_eq!(registry.resolve_node_location(handle), None);
 }
 
 #[test]
 fn test_registry_unregister_not_found() {
     let registry = NodeRegistry::new();
-    let path = PathBuf::from("/home/user/test.txt");
-    let id = NodeId::from_path(&path);
+    let handle = registry
+        .register_location_node(Location::local("/home/user/test.txt"))
+        .unwrap();
+    registry.unregister(handle);
 
-    let removed = registry.unregister(id);
+    let removed = registry.unregister(handle);
     assert_eq!(removed, None);
 }
 
@@ -263,10 +285,11 @@ fn test_registry_register_batch() {
     assert_eq!(ids.len(), 3);
     assert_eq!(registry.len(), 3);
 
-    // Check each ID matches
     for (path, id) in paths.iter().zip(ids.iter()) {
-        assert_eq!(*id, NodeId::from_path(path));
-        assert_eq!(registry.resolve(*id), Some(path.clone()));
+        assert_eq!(
+            registry.resolve_node_location(*id).unwrap().descriptor(),
+            Some(&LocationDescriptor::local(path.clone()))
+        );
     }
 }
 
@@ -295,7 +318,13 @@ fn test_registry_resolve_batch() {
 
     assert_eq!(resolved.len(), 3);
     for (path, resolved_path) in paths.iter().zip(resolved.iter()) {
-        assert_eq!(*resolved_path, Some(path.clone()));
+        let location = resolved_path
+            .as_ref()
+            .map(|path| LocationDescriptor::local(path.clone()));
+        assert_eq!(
+            location.as_ref(),
+            Some(&LocationDescriptor::local(path.clone()))
+        );
     }
 }
 
@@ -306,11 +335,15 @@ fn test_registry_resolve_batch_mixed() {
     let path2 = PathBuf::from("/home/user/test2.txt");
     let path3 = PathBuf::from("/home/user/test3.txt");
 
-    let id1 = registry.clone().register(path1.clone());
-    let id2 = NodeId::from_path(&path2); // Not registered
-    let id3 = registry.clone().register(path3.clone());
+    let first = registry.clone().register(path1.clone());
+    let unregistered = registry
+        .clone()
+        .register_location_node(Location::local(path2.clone()))
+        .unwrap();
+    registry.unregister(unregistered);
+    let third = registry.clone().register(path3.clone());
 
-    let resolved = registry.resolve_batch(&[id1, id2, id3]);
+    let resolved = registry.resolve_batch(&[first, unregistered, third]);
 
     assert_eq!(resolved.len(), 3);
     assert_eq!(resolved[0], Some(path1));
@@ -330,34 +363,53 @@ fn test_registry_resolve_batch_empty() {
 fn test_registry_multiple_operations() {
     let registry = NodeRegistry::new();
 
-    // Register some paths
     let path1 = PathBuf::from("/home/user/test1.txt");
     let path2 = PathBuf::from("/home/user/test2.txt");
-    let id1 = registry.clone().register(path1.clone());
-    let id2 = registry.clone().register(path2.clone());
+    let first = registry.clone().register(path1.clone());
+    let second = registry.clone().register(path2.clone());
 
     assert_eq!(registry.len(), 2);
+    assert_eq!(
+        registry.resolve_node_location(first).unwrap().descriptor(),
+        Some(&LocationDescriptor::local(path1))
+    );
+    assert_eq!(
+        registry.resolve_node_location(second).unwrap().descriptor(),
+        Some(&LocationDescriptor::local(path2.clone()))
+    );
 
-    // Resolve them
-    assert_eq!(registry.resolve(id1), Some(path1));
-    assert_eq!(registry.resolve(id2), Some(path2.clone()));
-
-    // Unregister one
-    registry.unregister(id1);
+    registry.unregister(first);
     assert_eq!(registry.len(), 1);
-    assert_eq!(registry.resolve(id1), None);
-    assert_eq!(registry.resolve(id2), Some(path2));
+    assert_eq!(registry.resolve_node_location(first), None);
+    assert_eq!(
+        registry.resolve_node_location(second).unwrap().descriptor(),
+        Some(&LocationDescriptor::local(path2))
+    );
 
-    // Register a new one
     let path3 = PathBuf::from("/home/user/test3.txt");
-    let id3 = registry.clone().register(path3.clone());
+    let third = registry.clone().register(path3);
     assert_eq!(registry.len(), 2);
 
-    // Clear all
     registry.clear();
     assert_eq!(registry.len(), 0);
-    assert_eq!(registry.resolve(id2), None);
-    assert_eq!(registry.resolve(id3), None);
+    assert_eq!(registry.resolve_node_location(second), None);
+    assert_eq!(registry.resolve_node_location(third), None);
+}
+
+#[test]
+fn test_registry_deterministic_location_refs() {
+    let registry1 = NodeRegistry::new();
+    let registry2 = NodeRegistry::new();
+
+    let path = PathBuf::from("/home/user/test.txt");
+
+    let first = registry1.clone().register(path.clone());
+    let second = registry2.clone().register(path);
+
+    assert_eq!(
+        registry1.resolve_node_location(first).unwrap(),
+        registry2.resolve_node_location(second).unwrap()
+    );
 }
 
 #[test]
@@ -367,9 +419,8 @@ fn test_registry_deterministic_ids() {
 
     let path = PathBuf::from("/home/user/test.txt");
 
-    let id1 = registry1.register(path.clone());
-    let id2 = registry2.register(path.clone());
+    let first = registry1.clone().register(path.clone());
+    let second = registry2.clone().register(path);
 
-    // Same path should produce same ID in different registries
-    assert_eq!(id1, id2);
+    assert_eq!(first, second);
 }

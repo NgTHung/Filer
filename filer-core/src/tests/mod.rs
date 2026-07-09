@@ -1,3 +1,5 @@
+mod fixtures;
+
 mod api;
 mod infra;
 mod model;
