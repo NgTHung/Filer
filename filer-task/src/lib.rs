@@ -5,10 +5,10 @@
 //! command behavior can be tested without depending on terminal output.
 //!
 //! ```
-//! use filer_task::repo::find_repo_root;
+//! use filer_task::repo::discover_project_root;
 //!
-//! let root = find_repo_root(std::env::current_dir()?)?;
-//! assert!(root.join(".tasks").exists());
+//! let root = discover_project_root(std::env::current_dir()?)?;
+//! assert!(root.join(".tasks").is_dir());
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

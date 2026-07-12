@@ -13,6 +13,31 @@ cargo run -p filer-task -- summary
 cargo run -p filer-task -- list --format json
 ```
 
+## Project Discovery
+
+`filer-task` starts at your current working directory and selects the nearest
+ancestor that directly contains a `.tasks` directory. You can run commands from
+the project root or any nested path. A nested project takes precedence over an
+outer project.
+
+Use `--root <path>` on any command to start discovery somewhere else. Relative
+paths resolve from your current working directory, and the path may point to a
+project root, a nested directory, or an existing file inside the project.
+
+```bash
+cargo run -p filer-task -- list --root ../another-project/src --format json
+cargo run -p filer-task -- validate --root C:\work\another-project
+```
+
+The `.tasks` directory alone marks a project. It does not need
+`task.schema.json`. Discovery does not inspect task contents, so malformed task
+files produce validation errors for the nearest project instead of causing a
+search for an outer project.
+
+If no `.tasks` directory exists at or above the starting path, the command exits
+unsuccessfully and reports both the searched path and the required `.tasks`
+directory.
+
 ## Task Files
 
 Tasks live under `.tasks/core`, `.tasks/app`, or `.tasks/ecosystem`. Project milestones live under `.tasks/milestones`.

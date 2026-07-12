@@ -1,3 +1,17 @@
+//! # Project Repository
+//!
+//! This module discovers task projects and reads their task files. Discovery
+//! checks only for a `.tasks` directory so validation can report malformed
+//! project contents separately.
+//!
+//! ```
+//! use filer_task::repo::discover_project_root;
+//!
+//! let root = discover_project_root(std::env::current_dir()?)?;
+//! assert!(root.join(".tasks").is_dir());
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -6,29 +20,28 @@ use std::{
 use crate::error::TaskError;
 
 pub const TASK_DIR: &str = ".tasks";
+/// Reserved compatibility file that discovery and task loading ignore.
 pub const TASK_SCHEMA: &str = "task.schema.json";
 pub const DOMAINS: &[&str] = &["core", "app", "ecosystem"];
 pub const MILESTONE_DOMAIN: &str = "milestones";
 
-pub fn find_repo_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskError> {
+pub fn discover_project_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskError> {
     let start = start.as_ref();
-    let mut current = if start.is_file() {
+    let current = if start.is_file() {
         start.parent().unwrap_or(start).to_path_buf()
     } else {
         start.to_path_buf()
     };
 
-    loop {
-        if current.join(TASK_DIR).join(TASK_SCHEMA).is_file() {
-            return Ok(current);
-        }
-
-        if !current.pop() {
-            return Err(TaskError::MissingRepoRoot {
-                start: start.to_path_buf(),
-            });
+    for ancestor in current.ancestors() {
+        if ancestor.join(TASK_DIR).is_dir() {
+            return Ok(ancestor.to_path_buf());
         }
     }
+
+    Err(TaskError::ProjectNotFound {
+        start: start.to_path_buf(),
+    })
 }
 
 pub fn read_task_files(root: &Path) -> Result<Vec<PathBuf>, TaskError> {

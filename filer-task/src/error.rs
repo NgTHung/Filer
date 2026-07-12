@@ -10,7 +10,7 @@ pub enum TaskError {
         path: PathBuf,
         source: std::io::Error,
     },
-    MissingRepoRoot {
+    ProjectNotFound {
         start: PathBuf,
     },
     Validation(Vec<ValidationError>),
@@ -46,9 +46,9 @@ impl fmt::Display for TaskError {
             Self::Io { path, source } => {
                 write!(f, "{}: {source}", path.display())
             }
-            Self::MissingRepoRoot { start } => write!(
+            Self::ProjectNotFound { start } => write!(
                 f,
-                "could not find repo root from {}; expected .tasks/task.schema.json",
+                "could not find a filer-task project from {}; expected a .tasks directory at that path or an ancestor",
                 start.display()
             ),
             Self::Validation(errors) => {
@@ -73,7 +73,7 @@ impl Error for TaskError {
         match self {
             Self::Io { source, .. } => Some(source),
             Self::Json(error) => Some(error),
-            Self::MissingRepoRoot { .. }
+            Self::ProjectNotFound { .. }
             | Self::Validation(_)
             | Self::NotFound { .. }
             | Self::Message(_) => None,

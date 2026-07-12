@@ -14,11 +14,13 @@ use crate::{
         ValidationOutput, render_context, render_import, render_milestone, render_ready,
         render_show, render_summary_output, render_task_action, render_tasks, render_validation,
     },
-    repo::find_repo_root,
+    repo::discover_project_root,
     validate::{TaskFilter, filter_tasks, require_valid_report, validate_repo},
 };
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+
+const ROOT_HELP: &str = "Start project discovery at PATH; defaults to the current directory and accepts paths nested inside a project";
 
 #[derive(Debug, Parser)]
 #[command(name = "filer-task")]
@@ -49,13 +51,13 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct ValidateArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
 pub struct ListArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     #[arg(long)]
     pub status: Option<TaskStatus>,
@@ -79,7 +81,7 @@ pub struct ListArgs {
 
 #[derive(Debug, Args)]
 pub struct DetailArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     pub id: String,
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
@@ -88,7 +90,7 @@ pub struct DetailArgs {
 
 #[derive(Debug, Args)]
 pub struct ReadyArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     #[arg(long)]
     pub domain: Option<String>,
@@ -106,7 +108,7 @@ pub struct ReadyArgs {
 
 #[derive(Debug, Args)]
 pub struct DepsArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     #[arg(long)]
     pub incomplete: bool,
@@ -117,7 +119,7 @@ pub struct DepsArgs {
 
 #[derive(Debug, Args)]
 pub struct MilestoneArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     pub milestone: String,
     #[arg(long)]
@@ -128,7 +130,7 @@ pub struct MilestoneArgs {
 
 #[derive(Debug, Args)]
 pub struct SummaryArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     #[arg(long)]
     pub milestone: Option<String>,
@@ -138,7 +140,7 @@ pub struct SummaryArgs {
 
 #[derive(Debug, Args)]
 pub struct AddArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     #[arg(long)]
     pub domain: String,
@@ -182,7 +184,7 @@ pub struct AddArgs {
 
 #[derive(Debug, Args)]
 pub struct ImportArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     pub file: PathBuf,
     #[arg(long)]
@@ -193,14 +195,14 @@ pub struct ImportArgs {
 
 #[derive(Debug, Args)]
 pub struct TaskIdArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     pub id: String,
 }
 
 #[derive(Debug, Args)]
 pub struct ReasonArgs {
-    #[arg(long)]
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
     pub id: String,
     pub reason: String,
@@ -513,16 +515,19 @@ pub fn run_obsolete(args: ReasonArgs) -> Result<(), TaskError> {
 }
 
 fn resolve_root(root: Option<PathBuf>) -> Result<PathBuf, TaskError> {
-    match root {
-        Some(root) => find_repo_root(root),
-        None => {
-            let cwd = std::env::current_dir().map_err(|source| TaskError::Io {
-                path: PathBuf::from("."),
-                source,
-            })?;
-            find_repo_root(cwd)
-        }
-    }
+    let start = match root {
+        Some(root) if root.is_absolute() => root,
+        Some(root) => current_working_directory()?.join(root),
+        None => current_working_directory()?,
+    };
+    discover_project_root(start)
+}
+
+fn current_working_directory() -> Result<PathBuf, TaskError> {
+    std::env::current_dir().map_err(|source| TaskError::Io {
+        path: PathBuf::from("."),
+        source,
+    })
 }
 
 fn print_json(tasks: &[Task]) -> Result<(), TaskError> {

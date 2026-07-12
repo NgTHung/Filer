@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use filer_task::repo::find_repo_root;
+use filer_task::repo::discover_project_root;
 
 use crate::error::WebError;
 
@@ -25,10 +25,10 @@ pub struct ProjectRegistry {
 }
 
 impl ProjectRegistry {
-    /// Build a single-project registry by locating the repo root that contains
-    /// `start` (walking up for `.tasks/task.schema.json`).
+    /// Build a single-project registry from the nearest project containing
+    /// `start`.
     pub fn single(start: PathBuf) -> Result<Self, WebError> {
-        let root = find_repo_root(&start)?;
+        let root = discover_project_root(&start)?;
         Ok(Self {
             projects: vec![Project {
                 name: DEFAULT_PROJECT.to_string(),
@@ -72,7 +72,6 @@ mod tests {
     fn repo() -> tempfile::TempDir {
         let temp = tempfile::tempdir().expect("temp dir created");
         fs::create_dir_all(temp.path().join(".tasks/core")).expect("core dir created");
-        fs::write(temp.path().join(".tasks/task.schema.json"), "{}").expect("schema written");
         temp
     }
 

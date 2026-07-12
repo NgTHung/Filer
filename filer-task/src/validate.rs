@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     frontmatter::parse_metadata,
     markdown::{has_section, has_unchecked_checklist_item},
     model::{Priority, SortBy, Task, TaskStatus, TaskType},
-    repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR, find_repo_root, read_task_files},
+    repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR, read_task_files},
 };
 
 pub(crate) const CORE_PREFIXES: &[&str] = &[
@@ -45,15 +45,6 @@ pub struct TaskFilter {
 pub struct ValidationReport {
     pub tasks: Vec<Task>,
     pub errors: Vec<ValidationError>,
-}
-
-pub fn validate_current_repo() -> Result<ValidationReport, TaskError> {
-    let cwd = std::env::current_dir().map_err(|source| TaskError::Io {
-        path: PathBuf::from("."),
-        source,
-    })?;
-    let root = find_repo_root(cwd)?;
-    validate_repo(&root)
 }
 
 pub fn validate_repo(root: &Path) -> Result<ValidationReport, TaskError> {
