@@ -23,5 +23,5 @@ Load and validate a versioned .tasks/config.json once per command, then pass an 
 - [ ] All commands use one resolved configuration per invocation instead of reopening or reparsing it in validation and lifecycle layers.
 - [ ] Projects without config.json receive documented defaults that preserve built-in task types, open tags, and compatibility with existing Filer task trees.
 - [ ] Malformed configuration fails before task reads or writes, and mutating commands never partially update a project after configuration failure.
-- [ ] Tests cover valid custom configuration, absent configuration, unsupported versions, unknown fields, duplicate entries, invalid domain and prefix names, and filesystem errors.
+- [ ] Tests cover valid custom configuration, absent configuration, unsupported versions, unknown fields, duplicate entries, invalid domain and prefix names including Windows device names, and filesystem errors.
 - [ ] Public Rust and configuration documentation includes the config path, version and validation behavior, compatibility defaults, a minimal single-domain project, and a fully customized example.

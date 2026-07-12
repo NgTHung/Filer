@@ -2,6 +2,8 @@
 
 The `.tasks/` directory stores Filer development work as markdown files with YAML frontmatter. `filer-task` validates metadata, links, criteria sections, prefixes, and rule references so task state stays useful during large roadmap migrations.
 
+This guide describes the behavior available in the repository today. The approved [task project contract](task-project-contract.md) defines planned portable domains, qualified identities, and project configuration. Update this guide with each implementation task so examples never lead the behavior they describe.
+
 Use these commands before and after task changes:
 
 ```bash
@@ -80,6 +82,10 @@ Required fields:
 | `priority` | `High`, `Medium`, `Low` |
 | `type` | `Milestone`, `Epic`, `Feature`, `Bug`, `Refactor`, `TechDebt`, `TestDebt`, `Design`, `Docs` |
 
+Status and type are separate. Status records lifecycle state. Type classifies the work and selects its criteria heading. `Deferred` and `Obsolete` are statuses, not task types. They require `## Rationale` and may omit criteria. `Blocked` is also a status; it requires `## Blocked Reason` in addition to the criteria selected by the task type.
+
+The current implementation assigns exit criteria and milestone behavior to built-in type names. The approved project contract removes that name-based assumption. Configured types will declare checklist behavior and the milestone role explicitly.
+
 Optional fields:
 
 | Field | Purpose |
@@ -104,13 +110,13 @@ Criteria stay in the markdown body because they are human work instructions, not
 ## Exit Criteria
 ```
 
-All other active task types must include:
+Tasks with any other type must include the following section unless their status is `Deferred` or `Obsolete`:
 
 ```markdown
 ## Acceptance Criteria
 ```
 
-`Deferred` and `Obsolete` tasks may omit criteria, but they must include:
+Tasks whose status is `Deferred` or `Obsolete` may omit criteria, but they must include:
 
 ```markdown
 ## Rationale
