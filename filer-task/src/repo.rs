@@ -17,7 +17,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::error::TaskError;
+use crate::{error::TaskError, project::TaskProject};
 
 pub const TASK_DIR: &str = ".tasks";
 /// Reserved compatibility file that discovery and task loading ignore.
@@ -44,10 +44,10 @@ pub fn discover_project_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskErr
     })
 }
 
-pub fn read_task_files(root: &Path) -> Result<Vec<PathBuf>, TaskError> {
+pub fn read_task_files(project: &TaskProject) -> Result<Vec<PathBuf>, TaskError> {
     let mut files = Vec::new();
     for domain in DOMAINS.iter().copied().chain([MILESTONE_DOMAIN]) {
-        let dir = root.join(TASK_DIR).join(domain);
+        let dir = project.root().join(TASK_DIR).join(domain);
         if !dir.exists() {
             continue;
         }

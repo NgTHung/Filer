@@ -17,6 +17,7 @@ use crate::{
     error::TaskError,
     markdown::{ChecklistItem, MarkdownSection, checklist_items, level_two_sections, section},
     model::{Priority, Task, TaskMetadata, TaskStatus, TaskType},
+    project::TaskProject,
 };
 
 const AGENT_SCHEMA_VERSION: u32 = 1;
@@ -111,15 +112,15 @@ pub struct ContextView {
     pub whitepaper: Option<String>,
 }
 
-pub fn build_show(root: &Path, tasks: &[Task], id: &str) -> Result<ShowView, TaskError> {
+pub fn build_show(project: &TaskProject, tasks: &[Task], id: &str) -> Result<ShowView, TaskError> {
     let task = find_task(tasks, id)?;
     Ok(ShowView {
         schema_version: AGENT_SCHEMA_VERSION,
-        detail: task_detail(root, task)?,
+        detail: task_detail(project.root(), task)?,
     })
 }
 
-pub fn build_ready(root: &Path, tasks: &[Task], filter: &ReadyFilter) -> ReadyView {
+pub fn build_ready(project: &TaskProject, tasks: &[Task], filter: &ReadyFilter) -> ReadyView {
     let mut ready: Vec<&Task> = tasks
         .iter()
         .filter(|task| matches_filter(task, filter))
@@ -138,12 +139,17 @@ pub fn build_ready(root: &Path, tasks: &[Task], filter: &ReadyFilter) -> ReadyVi
         schema_version: AGENT_SCHEMA_VERSION,
         tasks: ready
             .into_iter()
-            .map(|task| task_view(root, task))
+            .map(|task| task_view(project.root(), task))
             .collect(),
     }
 }
 
-pub fn build_context(root: &Path, tasks: &[Task], id: &str) -> Result<ContextView, TaskError> {
+pub fn build_context(
+    project: &TaskProject,
+    tasks: &[Task],
+    id: &str,
+) -> Result<ContextView, TaskError> {
+    let root = project.root();
     let task = find_task(tasks, id)?;
     let children = tasks
         .iter()

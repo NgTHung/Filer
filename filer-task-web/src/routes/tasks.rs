@@ -43,11 +43,11 @@ pub async fn list_tasks(
     State(state): State<AppState>,
     Query(query): Query<TaskQuery>,
 ) -> Result<Json<Vec<Task>>, WebError> {
-    let root = state.registry.resolve(None)?.to_path_buf();
+    let project = state.registry.resolve(None)?.clone();
     let filter = build_filter(&query)?;
     let sort_by = parse_sort(query.sort_by.as_deref())?;
     let tasks = blocking(move || {
-        let tasks = require_valid_report(validate_repo(&root)?)?;
+        let tasks = require_valid_report(validate_repo(&project)?)?;
         Ok(filter_tasks(tasks, &filter, sort_by))
     })
     .await?;
@@ -58,10 +58,10 @@ pub async fn get_task(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<ShowView>, WebError> {
-    let root = state.registry.resolve(None)?.to_path_buf();
+    let project = state.registry.resolve(None)?.clone();
     let view = blocking(move || {
-        let tasks = require_valid_report(validate_repo(&root)?)?;
-        build_show(&root, &tasks, &id)
+        let tasks = require_valid_report(validate_repo(&project)?)?;
+        build_show(&project, &tasks, &id)
     })
     .await?;
     Ok(Json(view))

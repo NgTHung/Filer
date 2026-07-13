@@ -5,7 +5,7 @@
 //! writes; it cannot guard against the CLI or git editing the same files, so the
 //! next read re-validates and surfaces any inconsistency.
 
-use std::path::{Path as FsPath, PathBuf};
+use std::path::PathBuf;
 
 use axum::{
     Json,
@@ -15,6 +15,7 @@ use filer_task::{
     agent_context::{ShowView, build_show},
     error::TaskError,
     lifecycle::{block_task, defer_task, done_task, obsolete_task, start_task},
+    project::TaskProject,
     validate::{require_valid_report, validate_repo},
 };
 
@@ -40,7 +41,10 @@ pub async fn block(
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, id, move |root, id| block_task(root, id, &reason)).await
+    transition(state, id, move |project, id| {
+        block_task(project, id, &reason)
+    })
+    .await
 }
 
 pub async fn defer(
@@ -49,7 +53,10 @@ pub async fn defer(
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, id, move |root, id| defer_task(root, id, &reason)).await
+    transition(state, id, move |project, id| {
+        defer_task(project, id, &reason)
+    })
+    .await
 }
 
 pub async fn obsolete(
@@ -58,19 +65,22 @@ pub async fn obsolete(
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, id, move |root, id| obsolete_task(root, id, &reason)).await
+    transition(state, id, move |project, id| {
+        obsolete_task(project, id, &reason)
+    })
+    .await
 }
 
 async fn transition<F>(state: AppState, id: String, op: F) -> Result<Json<ShowView>, WebError>
 where
-    F: FnOnce(&FsPath, &str) -> Result<PathBuf, TaskError> + Send + 'static,
+    F: FnOnce(&TaskProject, &str) -> Result<PathBuf, TaskError> + Send + 'static,
 {
-    let root = state.registry.resolve(None)?.to_path_buf();
+    let project = state.registry.resolve(None)?.clone();
     let _guard = state.write_lock.lock().await;
     let view = blocking(move || {
-        op(&root, &id)?;
-        let tasks = require_valid_report(validate_repo(&root)?)?;
-        build_show(&root, &tasks, &id)
+        op(&project, &id)?;
+        let tasks = require_valid_report(validate_repo(&project)?)?;
+        build_show(&project, &tasks, &id)
     })
     .await?;
     Ok(Json(view))

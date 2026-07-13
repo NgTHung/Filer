@@ -1,13 +1,11 @@
 //! # Project Registry
 //!
-//! Resolves a project name to a repository root. This is the only place that
-//! locates a `.tasks/` repo, so growing from one project to many later means
-//! adding entries here, not threading a new root through every handler. Handlers
-//! already receive a resolved `&Path` and pass it straight into `filer-task`.
+//! Resolves a project name to an opened task project. This is the only place
+//! that discovers a `.tasks` repository and loads its immutable policy.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use filer_task::repo::discover_project_root;
+use filer_task::{project::TaskProject, repo::discover_project_root};
 
 use crate::error::WebError;
 
@@ -16,7 +14,7 @@ const DEFAULT_PROJECT: &str = "default";
 #[derive(Debug, Clone)]
 struct Project {
     name: String,
-    root: PathBuf,
+    task_project: TaskProject,
 }
 
 #[derive(Debug, Clone)]
@@ -29,28 +27,28 @@ impl ProjectRegistry {
     /// `start`.
     pub fn single(start: PathBuf) -> Result<Self, WebError> {
         let root = discover_project_root(&start)?;
+        let task_project = TaskProject::open(root)?;
         Ok(Self {
             projects: vec![Project {
                 name: DEFAULT_PROJECT.to_string(),
-                root,
+                task_project,
             }],
         })
     }
 
-    /// Resolve a project to its root. `None` selects the default (first) project,
-    /// which keeps single-project URLs free of a project segment.
-    pub fn resolve(&self, name: Option<&str>) -> Result<&Path, WebError> {
+    /// Resolve an opened project. `None` selects the first registered project.
+    pub fn resolve(&self, name: Option<&str>) -> Result<&TaskProject, WebError> {
         match name {
             None => self
                 .projects
                 .first()
-                .map(|project| project.root.as_path())
+                .map(|project| &project.task_project)
                 .ok_or_else(|| WebError::ProjectNotFound(DEFAULT_PROJECT.to_string())),
             Some(name) => self
                 .projects
                 .iter()
                 .find(|project| project.name == name)
-                .map(|project| project.root.as_path())
+                .map(|project| &project.task_project)
                 .ok_or_else(|| WebError::ProjectNotFound(name.to_string())),
         }
     }
@@ -82,7 +80,7 @@ mod tests {
 
         let resolved = registry.resolve(None).expect("default resolves");
 
-        assert_eq!(resolved, temp.path());
+        assert_eq!(resolved.root(), temp.path().canonicalize().unwrap());
         assert_eq!(registry.names(), vec!["default"]);
     }
 

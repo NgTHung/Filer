@@ -69,7 +69,22 @@ impl IntoResponse for WebError {
             Self::Task(TaskError::Json(error)) => {
                 (StatusCode::BAD_REQUEST, error.to_string(), Vec::new())
             }
-            Self::Task(error @ (TaskError::Io { .. } | TaskError::ProjectNotFound { .. })) => (
+            Self::Task(
+                error @ (TaskError::ConfigInvalidJson { .. }
+                | TaskError::ConfigUnsupportedVersion { .. }
+                | TaskError::ConfigDuplicate { .. }
+                | TaskError::ConfigUnknownField { .. }
+                | TaskError::ConfigInvalidValue { .. }),
+            ) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                error.to_string(),
+                Vec::new(),
+            ),
+            Self::Task(
+                error @ (TaskError::Io { .. }
+                | TaskError::ConfigIo { .. }
+                | TaskError::ProjectNotFound { .. }),
+            ) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 error.to_string(),
                 Vec::new(),

@@ -38,6 +38,95 @@ If no `.tasks` directory exists at or above the starting path, the command exits
 unsuccessfully and reports both the searched path and the required `.tasks`
 directory.
 
+## Project Configuration
+
+`filer-task` loads `.tasks/config.json` once after project discovery and before
+it reads or writes task files. The file must use version 1. Every object is
+strict. Unknown fields, nulls, duplicate keys or list values, empty required
+collections, invalid portable names, conflicting milestone roles, and invalid
+tag policy combinations stop the command. JSON syntax errors report the file,
+line, and column.
+
+A minimal single-domain policy looks like this:
+
+```json
+{
+  "version": 1,
+  "domains": {
+    "work": {
+      "prefixes": ["WORK"]
+    }
+  },
+  "task_types": {
+    "Feature": {
+      "criteria": "acceptance"
+    }
+  },
+  "tags": {
+    "policy": "open"
+  }
+}
+```
+
+This example defines separate domain prefixes, custom checklist behavior, one
+milestone role, and a strict tag catalog:
+
+```json
+{
+  "version": 1,
+  "domains": {
+    "backend": {
+      "prefixes": ["API", "WORK"]
+    },
+    "release": {
+      "prefixes": ["REL", "WORK"]
+    }
+  },
+  "task_types": {
+    "Feature": {
+      "criteria": "acceptance"
+    },
+    "Container": {
+      "criteria": "exit"
+    },
+    "ReleaseGate": {
+      "criteria": "exit",
+      "role": "milestone"
+    }
+  },
+  "tags": {
+    "policy": "strict",
+    "allowed": ["backend", "release", "security-review"]
+  }
+}
+```
+
+When `config.json` is absent, Filer uses a fixed compatibility policy. It
+defines the `core`, `app`, `ecosystem`, and `milestones` domains with the
+prefixes listed in [Prefixes](#prefixes). `Milestone` and `Epic` use exit
+criteria, `Milestone` carries the milestone role, and every other built-in type
+uses acceptance criteria. Tags are open. A present configuration replaces this
+whole policy. It does not inherit compatibility values or define an implicit
+domain.
+
+Library callers open an explicit root. Discovery stays a separate host or CLI
+step:
+
+```rust
+use filer_task::project::{CriteriaPolicy, TaskProject};
+
+let project = TaskProject::open(root)?;
+let policy = project.policy();
+let feature = policy.task_type("Feature");
+assert_eq!(feature.map(|value| value.criteria()), Some(CriteriaPolicy::Acceptance));
+# Ok::<(), filer_task::error::TaskError>(())
+```
+
+`TaskProject` owns the canonical root and its immutable `ProjectPolicy`.
+Opening two roots produces independent policies. Configuration errors expose a
+stable code and structured context through `TaskError::code` and
+`TaskError::context`.
+
 ## Task Files
 
 Tasks live under `.tasks/core`, `.tasks/app`, or `.tasks/ecosystem`. Project milestones live under `.tasks/milestones`.

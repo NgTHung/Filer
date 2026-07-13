@@ -13,6 +13,38 @@ pub enum TaskError {
     ProjectNotFound {
         start: PathBuf,
     },
+    ConfigIo {
+        path: PathBuf,
+        operation: &'static str,
+        source: std::io::Error,
+    },
+    ConfigInvalidJson {
+        path: PathBuf,
+        line: usize,
+        column: usize,
+        message: String,
+    },
+    ConfigUnsupportedVersion {
+        path: PathBuf,
+        received: u64,
+        supported: u64,
+    },
+    ConfigDuplicate {
+        config_path: PathBuf,
+        path: String,
+        value: String,
+    },
+    ConfigUnknownField {
+        config_path: PathBuf,
+        path: String,
+        field: String,
+    },
+    ConfigInvalidValue {
+        config_path: PathBuf,
+        path: String,
+        value: String,
+        constraint: String,
+    },
     Validation(Vec<ValidationError>),
     Json(serde_json::Error),
     NotFound {
@@ -51,6 +83,62 @@ impl fmt::Display for TaskError {
                 "could not find a filer-task project from {}; expected a .tasks directory at that path or an ancestor",
                 start.display()
             ),
+            Self::ConfigIo {
+                path,
+                operation,
+                source,
+            } => write!(
+                f,
+                "could not {operation} task configuration {}: {source}",
+                path.display()
+            ),
+            Self::ConfigInvalidJson {
+                path,
+                line,
+                column,
+                message,
+            } => write!(
+                f,
+                "invalid task configuration JSON in {} at line {line}, column {column}: {message}",
+                path.display()
+            ),
+            Self::ConfigUnsupportedVersion {
+                path,
+                received,
+                supported,
+            } => write!(
+                f,
+                "unsupported task configuration version {received} in {}; supported version is {supported}",
+                path.display()
+            ),
+            Self::ConfigDuplicate {
+                config_path,
+                path,
+                value,
+            } => write!(
+                f,
+                "duplicate value {value:?} at {path} in {}",
+                config_path.display()
+            ),
+            Self::ConfigUnknownField {
+                config_path,
+                path,
+                field,
+            } => write!(
+                f,
+                "unknown field {field:?} at {path} in {}",
+                config_path.display()
+            ),
+            Self::ConfigInvalidValue {
+                config_path,
+                path,
+                value,
+                constraint,
+            } => write!(
+                f,
+                "invalid value {value:?} at {path} in {}: {constraint}",
+                config_path.display()
+            ),
             Self::Validation(errors) => {
                 writeln!(f, "task validation failed with {} error(s):", errors.len())?;
                 for error in errors {
@@ -71,12 +159,91 @@ impl fmt::Display for TaskError {
 impl Error for TaskError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Io { source, .. } => Some(source),
+            Self::Io { source, .. } | Self::ConfigIo { source, .. } => Some(source),
             Self::Json(error) => Some(error),
             Self::ProjectNotFound { .. }
+            | Self::ConfigInvalidJson { .. }
+            | Self::ConfigUnsupportedVersion { .. }
+            | Self::ConfigDuplicate { .. }
+            | Self::ConfigUnknownField { .. }
+            | Self::ConfigInvalidValue { .. }
             | Self::Validation(_)
             | Self::NotFound { .. }
             | Self::Message(_) => None,
+        }
+    }
+}
+
+impl TaskError {
+    /// Return the stable machine-readable category for this error.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::ProjectNotFound { .. } => "project_not_found",
+            Self::ConfigIo { .. } => "config_io",
+            Self::ConfigInvalidJson { .. } => "config_invalid_json",
+            Self::ConfigUnsupportedVersion { .. } => "config_unsupported_version",
+            Self::ConfigDuplicate { .. } => "config_duplicate",
+            Self::ConfigUnknownField { .. } => "config_unknown_field",
+            Self::ConfigInvalidValue { .. } => "config_invalid_value",
+            Self::Validation(_) => "validation_failed",
+            Self::Io { .. } => "io",
+            Self::Json(_) => "invalid_json",
+            Self::NotFound { .. } => "task_not_found",
+            Self::Message(_) => "invalid_operation",
+        }
+    }
+
+    /// Return code-specific context without requiring callers to parse the message.
+    pub fn context(&self) -> serde_json::Value {
+        match self {
+            Self::ConfigIo {
+                path, operation, ..
+            } => serde_json::json!({"path": path, "operation": operation}),
+            Self::ConfigInvalidJson {
+                path, line, column, ..
+            } => serde_json::json!({"path": path, "line": line, "column": column}),
+            Self::ConfigUnsupportedVersion {
+                path,
+                received,
+                supported,
+            } => serde_json::json!({
+                "path": path,
+                "received": received,
+                "supported": supported
+            }),
+            Self::ConfigDuplicate {
+                config_path,
+                path,
+                value,
+            } => serde_json::json!({
+                "config_path": config_path,
+                "path": path,
+                "value": value
+            }),
+            Self::ConfigUnknownField {
+                config_path,
+                path,
+                field,
+            } => serde_json::json!({
+                "config_path": config_path,
+                "path": path,
+                "field": field
+            }),
+            Self::ConfigInvalidValue {
+                config_path,
+                path,
+                value,
+                constraint,
+            } => serde_json::json!({
+                "config_path": config_path,
+                "path": path,
+                "value": value,
+                "constraint": constraint
+            }),
+            Self::ProjectNotFound { start } => serde_json::json!({"start": start}),
+            Self::Io { path, .. } => serde_json::json!({"path": path}),
+            Self::NotFound { id } => serde_json::json!({"id": id}),
+            Self::Validation(_) | Self::Json(_) | Self::Message(_) => serde_json::json!({}),
         }
     }
 }

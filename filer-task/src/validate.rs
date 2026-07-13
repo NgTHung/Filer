@@ -9,6 +9,7 @@ use crate::{
     frontmatter::parse_metadata,
     markdown::{has_section, has_unchecked_checklist_item},
     model::{Priority, SortBy, Task, TaskStatus, TaskType},
+    project::TaskProject,
     repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR, read_task_files},
 };
 
@@ -47,8 +48,9 @@ pub struct ValidationReport {
     pub errors: Vec<ValidationError>,
 }
 
-pub fn validate_repo(root: &Path) -> Result<ValidationReport, TaskError> {
-    let paths = read_task_files(root)?;
+pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskError> {
+    let root = project.root();
+    let paths = read_task_files(project)?;
     let mut tasks = Vec::new();
     let mut errors = Vec::new();
 
@@ -546,8 +548,17 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{TaskFilter, filter_tasks, validate_repo};
-    use crate::model::{Priority, SortBy, TaskStatus};
+    use super::{TaskFilter, ValidationReport, filter_tasks, validate_repo as validate_project};
+    use crate::{
+        error::TaskError,
+        model::{Priority, SortBy, TaskStatus},
+        project::TaskProject,
+    };
+
+    fn validate_repo(root: &Path) -> Result<ValidationReport, TaskError> {
+        let project = TaskProject::open(root)?;
+        validate_project(&project)
+    }
 
     #[test]
     fn validate_succeeds_for_minimal_task_tree() {

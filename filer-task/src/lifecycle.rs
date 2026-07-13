@@ -24,6 +24,7 @@ use crate::{
     frontmatter::parse_metadata,
     markdown::{has_unchecked_checklist_item, replace_or_append_section},
     model::{Priority, Risk, TaskStatus, TaskType},
+    project::TaskProject,
     repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR},
     validate::{RULE_IDS, allowed_prefixes, is_valid_task_id, require_valid_report, validate_repo},
 };
@@ -56,28 +57,28 @@ pub struct NewTask {
     pub blocked_reason: Option<String>,
 }
 
-pub fn add_task(root: &Path, task: NewTask) -> Result<PathBuf, TaskError> {
-    validate_new_tasks(root, &[&task], false)?;
-    let (path, content) = render_task(root, &task);
+pub fn add_task(project: &TaskProject, task: NewTask) -> Result<PathBuf, TaskError> {
+    validate_new_tasks(project, &[&task], false)?;
+    let (path, content) = render_task(project.root(), &task);
     write_new_task(&path, &content)?;
     Ok(path)
 }
 
 pub fn import_tasks(
-    root: &Path,
+    project: &TaskProject,
     tasks: &[NewTask],
     dry_run: bool,
     skip_existing: bool,
 ) -> Result<Vec<PathBuf>, TaskError> {
-    let existing = existing_ids(root)?;
+    let existing = existing_ids(project)?;
     let tasks_to_write: Vec<&NewTask> = tasks
         .iter()
         .filter(|task| !skip_existing || !existing.contains(task.id.as_str()))
         .collect();
-    validate_new_tasks(root, &tasks_to_write, skip_existing)?;
+    validate_new_tasks(project, &tasks_to_write, skip_existing)?;
     let rendered: Vec<(PathBuf, String)> = tasks_to_write
         .iter()
-        .map(|task| render_task(root, task))
+        .map(|task| render_task(project.root(), task))
         .collect();
     if dry_run {
         return Ok(rendered.into_iter().map(|(path, _)| path).collect());
@@ -89,11 +90,11 @@ pub fn import_tasks(
 }
 
 fn validate_new_tasks(
-    root: &Path,
+    project: &TaskProject,
     new_tasks: &[&NewTask],
     skip_existing: bool,
 ) -> Result<(), TaskError> {
-    let existing_tasks = require_valid_report(validate_repo(root)?)?;
+    let existing_tasks = require_valid_report(validate_repo(project)?)?;
     let mut known_ids: HashSet<&str> = existing_tasks
         .iter()
         .map(|task| task.metadata.id.as_str())
@@ -110,7 +111,7 @@ fn validate_new_tasks(
     let mut batch_ids = HashSet::new();
     for task in new_tasks {
         validate_new_task_shape(task)?;
-        let (path, _) = render_task(root, task);
+        let (path, _) = render_task(project.root(), task);
         if path.exists() && !skip_existing {
             return Err(TaskError::Message(format!(
                 "task file already exists: {}",
@@ -433,8 +434,8 @@ fn escape_yaml(value: &str) -> String {
     }
 }
 
-fn existing_ids(root: &Path) -> Result<HashSet<String>, TaskError> {
-    Ok(require_valid_report(validate_repo(root)?)?
+fn existing_ids(project: &TaskProject) -> Result<HashSet<String>, TaskError> {
+    Ok(require_valid_report(validate_repo(project)?)?
         .into_iter()
         .map(|task| task.metadata.id)
         .collect())
@@ -459,29 +460,39 @@ fn write_new_task(path: &Path, content: &str) -> Result<(), TaskError> {
     })
 }
 
-pub fn start_task(root: &Path, id: &str) -> Result<PathBuf, TaskError> {
-    update_status(root, id, TaskStatus::InProgress, None)
+pub fn start_task(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> {
+    update_status(project, id, TaskStatus::InProgress, None)
 }
 
-pub fn block_task(root: &Path, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
+pub fn block_task(project: &TaskProject, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
     update_status(
-        root,
+        project,
         id,
         TaskStatus::Blocked,
         Some(("Blocked Reason", reason)),
     )
 }
 
-pub fn defer_task(root: &Path, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
-    update_status(root, id, TaskStatus::Deferred, Some(("Rationale", reason)))
+pub fn defer_task(project: &TaskProject, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
+    update_status(
+        project,
+        id,
+        TaskStatus::Deferred,
+        Some(("Rationale", reason)),
+    )
 }
 
-pub fn obsolete_task(root: &Path, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
-    update_status(root, id, TaskStatus::Obsolete, Some(("Rationale", reason)))
+pub fn obsolete_task(project: &TaskProject, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
+    update_status(
+        project,
+        id,
+        TaskStatus::Obsolete,
+        Some(("Rationale", reason)),
+    )
 }
 
-pub fn done_task(root: &Path, id: &str) -> Result<PathBuf, TaskError> {
-    let path = task_path(root, id)?;
+pub fn done_task(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> {
+    let path = task_path(project, id)?;
     let content = read(&path)?;
     let metadata =
         parse_metadata(&path, &content).map_err(|error| TaskError::Validation(vec![error]))?;
@@ -500,19 +511,19 @@ pub fn done_task(root: &Path, id: &str) -> Result<PathBuf, TaskError> {
 }
 
 fn update_status(
-    root: &Path,
+    project: &TaskProject,
     id: &str,
     status: TaskStatus,
     section: Option<(&str, &str)>,
 ) -> Result<PathBuf, TaskError> {
-    let path = task_path(root, id)?;
+    let path = task_path(project, id)?;
     let content = read(&path)?;
     write_status(&path, &content, status, section)?;
     Ok(path)
 }
 
-fn task_path(root: &Path, id: &str) -> Result<PathBuf, TaskError> {
-    let tasks = require_valid_report(validate_repo(root)?)?;
+fn task_path(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> {
+    let tasks = require_valid_report(validate_repo(project)?)?;
     tasks
         .into_iter()
         .find(|task| task.metadata.id == id)

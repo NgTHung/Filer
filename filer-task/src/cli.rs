@@ -14,6 +14,7 @@ use crate::{
         ValidationOutput, render_context, render_import, render_milestone, render_ready,
         render_show, render_summary_output, render_task_action, render_tasks, render_validation,
     },
+    project::TaskProject,
     repo::discover_project_root,
     validate::{TaskFilter, filter_tasks, require_valid_report, validate_repo},
 };
@@ -215,8 +216,8 @@ pub enum OutputFormat {
 }
 
 pub fn run_validate(args: ValidateArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let report = validate_repo(&root)?;
+    let project = resolve_project(args.root)?;
+    let report = validate_repo(&project)?;
     let task_count = report.tasks.len();
     require_valid_report(report)?;
     println!("{}", render_validation(&ValidationOutput { task_count }));
@@ -224,8 +225,8 @@ pub fn run_validate(args: ValidateArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_list(args: ListArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let report = validate_repo(&root)?;
+    let project = resolve_project(args.root)?;
+    let report = validate_repo(&project)?;
     let tasks = require_valid_report(report)?;
     let filtered = filter_tasks(
         tasks,
@@ -250,9 +251,9 @@ pub fn run_list(args: ListArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_show(args: DetailArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let tasks = require_valid_report(validate_repo(&root)?)?;
-    let view = build_show(&root, &tasks, &args.id)?;
+    let project = resolve_project(args.root)?;
+    let tasks = require_valid_report(validate_repo(&project)?)?;
+    let view = build_show(&project, &tasks, &args.id)?;
     match args.format {
         OutputFormat::Human => println!("{}", render_show(&view)),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
@@ -261,10 +262,10 @@ pub fn run_show(args: DetailArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_ready(args: ReadyArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let tasks = require_valid_report(validate_repo(&root)?)?;
+    let project = resolve_project(args.root)?;
+    let tasks = require_valid_report(validate_repo(&project)?)?;
     let view = build_ready(
-        &root,
+        &project,
         &tasks,
         &ReadyFilter {
             domain: args.domain,
@@ -282,9 +283,9 @@ pub fn run_ready(args: ReadyArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_context(args: DetailArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let tasks = require_valid_report(validate_repo(&root)?)?;
-    let view = build_context(&root, &tasks, &args.id)?;
+    let project = resolve_project(args.root)?;
+    let tasks = require_valid_report(validate_repo(&project)?)?;
+    let view = build_context(&project, &tasks, &args.id)?;
     match args.format {
         OutputFormat::Human => println!("{}", render_context(&view)),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
@@ -293,8 +294,8 @@ pub fn run_context(args: DetailArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_deps(args: DepsArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let tasks = require_valid_report(validate_repo(&root)?)?;
+    let project = resolve_project(args.root)?;
+    let tasks = require_valid_report(validate_repo(&project)?)?;
     let task = tasks
         .iter()
         .find(|task| task.metadata.id == args.id)
@@ -316,8 +317,8 @@ pub fn run_deps(args: DepsArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_milestone(args: MilestoneArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let tasks = require_valid_report(validate_repo(&root)?)?;
+    let project = resolve_project(args.root)?;
+    let tasks = require_valid_report(validate_repo(&project)?)?;
     let milestone = tasks
         .iter()
         .find(|task| {
@@ -367,8 +368,8 @@ pub fn run_milestone(args: MilestoneArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let tasks = require_valid_report(validate_repo(&root)?)?;
+    let project = resolve_project(args.root)?;
+    let tasks = require_valid_report(validate_repo(&project)?)?;
     let scoped = match args.milestone {
         Some(milestone) => milestone_tasks(&tasks, &milestone),
         None => tasks,
@@ -382,10 +383,10 @@ pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
+    let project = resolve_project(args.root)?;
     let task_id = args.id.clone();
     let path = add_task(
-        &root,
+        &project,
         NewTask {
             domain: args.domain,
             id: args.id,
@@ -412,7 +413,7 @@ pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
         render_task_action(&TaskActionOutput {
             action: TaskAction::Created,
             task_id: &task_id,
-            root: &root,
+            root: project.root(),
             path: &path,
         })
     );
@@ -420,19 +421,19 @@ pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_import(args: ImportArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
+    let project = resolve_project(args.root)?;
     let content = fs::read_to_string(&args.file).map_err(|source| TaskError::Io {
         path: args.file.clone(),
         source,
     })?;
     let tasks: Vec<ImportTask> = serde_json::from_str(&content)?;
     let tasks: Vec<NewTask> = tasks.into_iter().map(NewTask::from).collect();
-    let paths = import_tasks(&root, &tasks, args.dry_run, args.skip_existing)?;
+    let paths = import_tasks(&project, &tasks, args.dry_run, args.skip_existing)?;
     println!(
         "{}",
         render_import(&ImportOutput {
             dry_run: args.dry_run,
-            root: &root,
+            root: project.root(),
             paths: &paths,
         })
     );
@@ -440,14 +441,14 @@ pub fn run_import(args: ImportArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_start(args: TaskIdArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let path = start_task(&root, &args.id)?;
+    let project = resolve_project(args.root)?;
+    let path = start_task(&project, &args.id)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Started,
             task_id: &args.id,
-            root: &root,
+            root: project.root(),
             path: &path,
         })
     );
@@ -455,14 +456,14 @@ pub fn run_start(args: TaskIdArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_done(args: TaskIdArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let path = done_task(&root, &args.id)?;
+    let project = resolve_project(args.root)?;
+    let path = done_task(&project, &args.id)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Completed,
             task_id: &args.id,
-            root: &root,
+            root: project.root(),
             path: &path,
         })
     );
@@ -470,14 +471,14 @@ pub fn run_done(args: TaskIdArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_block(args: ReasonArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let path = block_task(&root, &args.id, &args.reason)?;
+    let project = resolve_project(args.root)?;
+    let path = block_task(&project, &args.id, &args.reason)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Blocked,
             task_id: &args.id,
-            root: &root,
+            root: project.root(),
             path: &path,
         })
     );
@@ -485,14 +486,14 @@ pub fn run_block(args: ReasonArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_defer(args: ReasonArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let path = defer_task(&root, &args.id, &args.reason)?;
+    let project = resolve_project(args.root)?;
+    let path = defer_task(&project, &args.id, &args.reason)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Deferred,
             task_id: &args.id,
-            root: &root,
+            root: project.root(),
             path: &path,
         })
     );
@@ -500,27 +501,28 @@ pub fn run_defer(args: ReasonArgs) -> Result<(), TaskError> {
 }
 
 pub fn run_obsolete(args: ReasonArgs) -> Result<(), TaskError> {
-    let root = resolve_root(args.root)?;
-    let path = obsolete_task(&root, &args.id, &args.reason)?;
+    let project = resolve_project(args.root)?;
+    let path = obsolete_task(&project, &args.id, &args.reason)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Obsolete,
             task_id: &args.id,
-            root: &root,
+            root: project.root(),
             path: &path,
         })
     );
     Ok(())
 }
 
-fn resolve_root(root: Option<PathBuf>) -> Result<PathBuf, TaskError> {
+fn resolve_project(root: Option<PathBuf>) -> Result<TaskProject, TaskError> {
     let start = match root {
         Some(root) if root.is_absolute() => root,
         Some(root) => current_working_directory()?.join(root),
         None => current_working_directory()?,
     };
-    discover_project_root(start)
+    let root = discover_project_root(start)?;
+    TaskProject::open(root)
 }
 
 fn current_working_directory() -> Result<PathBuf, TaskError> {
