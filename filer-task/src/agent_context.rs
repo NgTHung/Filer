@@ -9,18 +9,21 @@
 //! assert_eq!(TaskStatus::ToDo.to_string(), "To Do");
 //! ```
 
-use std::{collections::HashSet, fs, path::Path};
+use std::{fs, path::Path};
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 
 use crate::{
     error::TaskError,
+    graph::TaskGraph,
+    identity::TaskIdentity,
     markdown::{ChecklistItem, MarkdownSection, checklist_items, level_two_sections, section},
     model::{Priority, Task, TaskMetadata, TaskStatus, TaskType},
     project::TaskProject,
+    validate::ValidationWarning,
 };
 
-const AGENT_SCHEMA_VERSION: u32 = 1;
+const AGENT_SCHEMA_VERSION: u32 = 2;
 const INVARIANTS_PATH: &str = "docs/architecture/invariants.md";
 
 #[derive(Debug, Clone, Default)]
@@ -32,12 +35,48 @@ pub struct ReadyFilter {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskView {
     pub path: String,
     pub domain: String,
-    #[serde(flatten)]
     pub metadata: TaskMetadata,
+}
+
+impl TaskView {
+    pub fn identity(&self) -> TaskIdentity {
+        TaskIdentity {
+            domain: self.domain.clone(),
+            id: self.metadata.id.clone(),
+        }
+    }
+
+    pub fn qualified_id(&self) -> String {
+        self.identity().to_string()
+    }
+}
+
+impl Serialize for TaskView {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct TaskViewOutput<'a> {
+            path: &'a str,
+            domain: &'a str,
+            qualified_id: String,
+            #[serde(flatten)]
+            metadata: &'a TaskMetadata,
+        }
+
+        TaskViewOutput {
+            path: &self.path,
+            domain: &self.domain,
+            qualified_id: self.qualified_id(),
+            metadata: &self.metadata,
+        }
+        .serialize(serializer)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -50,12 +89,14 @@ pub struct TaskDetail {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ShowView {
     pub schema_version: u32,
+    pub warnings: Vec<ValidationWarning>,
     pub detail: TaskDetail,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReadyView {
     pub schema_version: u32,
+    pub warnings: Vec<ValidationWarning>,
     pub tasks: Vec<TaskView>,
 }
 
@@ -101,6 +142,7 @@ pub struct RelatedTaskView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ContextView {
     pub schema_version: u32,
+    pub warnings: Vec<ValidationWarning>,
     pub detail: TaskDetail,
     pub readiness: ReadinessView,
     pub parent: Option<RelatedTaskView>,
@@ -112,82 +154,79 @@ pub struct ContextView {
     pub whitepaper: Option<String>,
 }
 
-pub fn build_show(project: &TaskProject, tasks: &[Task], id: &str) -> Result<ShowView, TaskError> {
-    let task = find_task(tasks, id)?;
+pub fn build_show(
+    project: &TaskProject,
+    tasks: &[Task],
+    identity: &TaskIdentity,
+    warnings: &[ValidationWarning],
+) -> Result<ShowView, TaskError> {
+    let graph = TaskGraph::new(project, tasks)?;
+    let task = require_task(project, &graph, identity)?;
     Ok(ShowView {
         schema_version: AGENT_SCHEMA_VERSION,
-        detail: task_detail(project.root(), task)?,
+        warnings: warnings.to_vec(),
+        detail: task_detail(project.root(), &graph, task)?,
     })
 }
 
-pub fn build_ready(project: &TaskProject, tasks: &[Task], filter: &ReadyFilter) -> ReadyView {
+pub fn build_ready(
+    project: &TaskProject,
+    tasks: &[Task],
+    filter: &ReadyFilter,
+    warnings: &[ValidationWarning],
+) -> Result<ReadyView, TaskError> {
+    let graph = TaskGraph::new(project, tasks)?;
     let mut ready: Vec<&Task> = tasks
         .iter()
         .filter(|task| matches_filter(task, filter))
-        .filter(|task| readiness(tasks, task).ready)
+        .filter(|task| readiness(&graph, task).ready)
         .collect();
     ready.sort_by(|left, right| {
         priority_order(left.metadata.priority)
             .cmp(&priority_order(right.metadata.priority))
-            .then_with(|| left.metadata.id.cmp(&right.metadata.id))
+            .then_with(|| left.identity().cmp(&right.identity()))
     });
     if let Some(limit) = filter.limit {
         ready.truncate(limit);
     }
 
-    ReadyView {
+    Ok(ReadyView {
         schema_version: AGENT_SCHEMA_VERSION,
+        warnings: warnings.to_vec(),
         tasks: ready
             .into_iter()
-            .map(|task| task_view(project.root(), task))
+            .map(|task| task_view(project.root(), &graph, task))
             .collect(),
-    }
+    })
 }
 
 pub fn build_context(
     project: &TaskProject,
     tasks: &[Task],
-    id: &str,
+    identity: &TaskIdentity,
+    warnings: &[ValidationWarning],
 ) -> Result<ContextView, TaskError> {
     let root = project.root();
-    let task = find_task(tasks, id)?;
-    let children = tasks
-        .iter()
-        .filter(|candidate| candidate.metadata.parent.as_deref() == Some(id))
-        .map(|candidate| related_task_view(root, tasks, candidate))
+    let graph = TaskGraph::new(project, tasks)?;
+    let task = require_task(project, &graph, identity)?;
+    let children = graph
+        .children(identity)
+        .into_iter()
+        .map(|candidate| related_task_view(root, &graph, candidate))
         .collect();
-    let dependencies = task
-        .metadata
-        .depends_on
-        .iter()
-        .filter_map(|dependency| {
-            tasks
-                .iter()
-                .find(|candidate| candidate.metadata.id == *dependency)
-        })
-        .map(|candidate| related_task_view(root, tasks, candidate))
+    let dependencies = graph
+        .dependencies(identity)
+        .into_iter()
+        .map(|candidate| related_task_view(root, &graph, candidate))
         .collect();
-    let dependents = tasks
-        .iter()
-        .filter(|candidate| {
-            candidate
-                .metadata
-                .depends_on
-                .iter()
-                .any(|dependency| dependency == id)
-        })
-        .map(|candidate| related_task_view(root, tasks, candidate))
+    let dependents = graph
+        .dependents(identity)
+        .into_iter()
+        .map(|candidate| related_task_view(root, &graph, candidate))
         .collect();
-    let parent = task
-        .metadata
-        .parent
-        .as_ref()
-        .and_then(|parent| {
-            tasks
-                .iter()
-                .find(|candidate| candidate.metadata.id == *parent)
-        })
-        .map(|candidate| related_task_view(root, tasks, candidate));
+    let parent = graph
+        .parent(identity)
+        .map(|candidate| related_task_view(root, &graph, candidate));
     let milestone = task.metadata.milestone.as_ref().and_then(|milestone| {
         tasks.iter().find(|candidate| {
             candidate.metadata.task_type == TaskType::Milestone
@@ -197,19 +236,20 @@ pub fn build_context(
 
     Ok(ContextView {
         schema_version: AGENT_SCHEMA_VERSION,
-        detail: task_detail(root, task)?,
-        readiness: readiness(tasks, task),
+        warnings: warnings.to_vec(),
+        detail: task_detail(root, &graph, task)?,
+        readiness: readiness(&graph, task),
         parent,
         children,
         dependencies,
         dependents,
-        milestone: milestone.map(|candidate| related_task_view(root, tasks, candidate)),
+        milestone: milestone.map(|candidate| related_task_view(root, &graph, candidate)),
         rules: rule_references(root, &task.metadata.rules)?,
         whitepaper: task.metadata.whitepaper.as_deref().map(normalize_path),
     })
 }
 
-fn task_detail(root: &Path, task: &Task) -> Result<TaskDetail, TaskError> {
+fn task_detail(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> Result<TaskDetail, TaskError> {
     let content = fs::read_to_string(&task.path).map_err(|source| TaskError::Io {
         path: task.path.clone(),
         source,
@@ -222,92 +262,85 @@ fn task_detail(root: &Path, task: &Task) -> Result<TaskDetail, TaskError> {
         .filter(|section| section.heading != criteria_heading)
         .collect();
     Ok(TaskDetail {
-        task: task_view(root, task),
+        task: task_view(root, graph, task),
         sections,
         criteria: checklist_items(&content, criteria_heading),
     })
 }
 
-fn task_view(root: &Path, task: &Task) -> TaskView {
+fn task_view(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> TaskView {
     let path = task.path.strip_prefix(root).unwrap_or(&task.path);
+    let identity = task.identity();
+    let mut metadata = task.metadata.clone();
+    metadata.parent = graph.parent_identity(&identity).map(ToString::to_string);
+    metadata.depends_on = graph
+        .dependency_identities(&identity)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
     TaskView {
         path: normalize_path(path),
         domain: task.domain.clone(),
-        metadata: task.metadata.clone(),
+        metadata,
     }
 }
 
-fn related_task_view(root: &Path, tasks: &[Task], task: &Task) -> RelatedTaskView {
+fn related_task_view(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> RelatedTaskView {
     RelatedTaskView {
-        task: task_view(root, task),
-        readiness: readiness(tasks, task),
+        task: task_view(root, graph, task),
+        readiness: readiness(graph, task),
     }
 }
 
-fn readiness(tasks: &[Task], task: &Task) -> ReadinessView {
+fn readiness(graph: &TaskGraph<'_>, task: &Task) -> ReadinessView {
     let mut blockers = Vec::new();
+    let identity = task.identity();
     if task.metadata.status != TaskStatus::ToDo {
         blockers.push(ReadinessBlocker {
             kind: ReadinessBlockerKind::TaskStatus,
-            task_id: Some(task.metadata.id.clone()),
+            task_id: Some(identity.to_string()),
             status: Some(task.metadata.status),
         });
     }
     if task.metadata.task_type == TaskType::Milestone {
         blockers.push(ReadinessBlocker {
             kind: ReadinessBlockerKind::Milestone,
-            task_id: Some(task.metadata.id.clone()),
+            task_id: Some(identity.to_string()),
             status: None,
         });
     }
-    if tasks
-        .iter()
-        .any(|candidate| candidate.metadata.parent.as_ref() == Some(&task.metadata.id))
-    {
+    if !graph.children(&identity).is_empty() {
         blockers.push(ReadinessBlocker {
             kind: ReadinessBlockerKind::HasChildren,
-            task_id: Some(task.metadata.id.clone()),
+            task_id: Some(identity.to_string()),
             status: None,
         });
     }
-    for dependency in &task.metadata.depends_on {
-        if let Some(candidate) = tasks
-            .iter()
-            .find(|candidate| candidate.metadata.id == *dependency)
-        {
-            if candidate.metadata.status != TaskStatus::Done {
-                blockers.push(ReadinessBlocker {
-                    kind: ReadinessBlockerKind::Dependency,
-                    task_id: Some(candidate.metadata.id.clone()),
-                    status: Some(candidate.metadata.status),
-                });
-            }
+    for candidate in graph.dependencies(&identity) {
+        if candidate.metadata.status != TaskStatus::Done {
+            blockers.push(ReadinessBlocker {
+                kind: ReadinessBlockerKind::Dependency,
+                task_id: Some(candidate.qualified_id()),
+                status: Some(candidate.metadata.status),
+            });
         }
     }
-    append_ancestor_blockers(tasks, task, &mut blockers);
+    append_ancestor_blockers(graph, task, &mut blockers);
     ReadinessView {
         ready: blockers.is_empty(),
         blockers,
     }
 }
 
-fn append_ancestor_blockers(tasks: &[Task], task: &Task, blockers: &mut Vec<ReadinessBlocker>) {
-    let mut parent = task.metadata.parent.as_deref();
-    let mut visited = HashSet::new();
-    while let Some(parent_id) = parent {
-        if !visited.insert(parent_id) {
-            blockers.push(ReadinessBlocker {
-                kind: ReadinessBlockerKind::AncestorCycle,
-                task_id: Some(parent_id.to_string()),
-                status: None,
-            });
-            return;
-        }
-        let Some(ancestor) = tasks
-            .iter()
-            .find(|candidate| candidate.metadata.id == parent_id)
-        else {
-            return;
+fn append_ancestor_blockers(
+    graph: &TaskGraph<'_>,
+    task: &Task,
+    blockers: &mut Vec<ReadinessBlocker>,
+) {
+    let chain = graph.ancestor_identities(&task.identity());
+    for identity in chain.ancestors {
+        let Some(ancestor) = graph.task(&identity) else {
+            continue;
         };
         if !matches!(
             ancestor.metadata.status,
@@ -315,11 +348,17 @@ fn append_ancestor_blockers(tasks: &[Task], task: &Task, blockers: &mut Vec<Read
         ) {
             blockers.push(ReadinessBlocker {
                 kind: ReadinessBlockerKind::AncestorStatus,
-                task_id: Some(ancestor.metadata.id.clone()),
+                task_id: Some(identity.to_string()),
                 status: Some(ancestor.metadata.status),
             });
         }
-        parent = ancestor.metadata.parent.as_deref();
+    }
+    if let Some(identity) = chain.cycle {
+        blockers.push(ReadinessBlocker {
+            kind: ReadinessBlockerKind::AncestorCycle,
+            task_id: Some(identity.to_string()),
+            status: None,
+        });
     }
 }
 
@@ -367,11 +406,16 @@ fn matches_filter(task: &Task, filter: &ReadyFilter) -> bool {
             .is_none_or(|tag| task.metadata.tags.iter().any(|value| value == tag))
 }
 
-fn find_task<'a>(tasks: &'a [Task], id: &str) -> Result<&'a Task, TaskError> {
-    tasks
-        .iter()
-        .find(|task| task.metadata.id == id)
-        .ok_or_else(|| TaskError::NotFound { id: id.to_string() })
+fn require_task<'a>(
+    project: &TaskProject,
+    graph: &TaskGraph<'a>,
+    identity: &TaskIdentity,
+) -> Result<&'a Task, TaskError> {
+    graph.task(identity).ok_or_else(|| TaskError::TaskNotFound {
+        reference: identity.to_string(),
+        source_domain: None,
+        root: project.root().to_path_buf(),
+    })
 }
 
 fn priority_order(priority: Priority) -> u8 {

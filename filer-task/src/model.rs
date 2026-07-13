@@ -1,6 +1,8 @@
 use std::{fmt, path::PathBuf, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
+
+use crate::identity::TaskIdentity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum TaskStatus {
@@ -69,12 +71,48 @@ pub struct TaskMetadata {
     pub last_updated: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Task {
     pub path: PathBuf,
     pub domain: String,
-    #[serde(flatten)]
     pub metadata: TaskMetadata,
+}
+
+impl Task {
+    pub fn identity(&self) -> TaskIdentity {
+        TaskIdentity {
+            domain: self.domain.clone(),
+            id: self.metadata.id.clone(),
+        }
+    }
+
+    pub fn qualified_id(&self) -> String {
+        self.identity().to_string()
+    }
+}
+
+impl Serialize for Task {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[derive(Serialize)]
+        struct TaskOutput<'a> {
+            path: &'a PathBuf,
+            domain: &'a str,
+            qualified_id: String,
+            #[serde(flatten)]
+            metadata: &'a TaskMetadata,
+        }
+
+        TaskOutput {
+            path: &self.path,
+            domain: &self.domain,
+            qualified_id: self.qualified_id(),
+            metadata: &self.metadata,
+        }
+        .serialize(serializer)
+    }
 }
 
 impl TaskType {

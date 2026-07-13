@@ -21,8 +21,8 @@ fn show_returns_structured_task_body_and_complete_human_metadata() {
         "## Notes\n\nKeep provider boundaries explicit.\n",
     );
 
-    let json = run_json(&repo, ["show", "CORE-001", "--format", "json"]);
-    assert_eq!(json["schema_version"], 1);
+    let json = run_json(&repo, ["show", "core:CORE-001", "--format", "json"]);
+    assert_eq!(json["schema_version"], 2);
     assert_eq!(json["detail"]["task"]["id"], "CORE-001");
     assert_eq!(
         json["detail"]["task"]["path"],
@@ -59,7 +59,7 @@ fn show_returns_structured_task_body_and_complete_human_metadata() {
         "empty depends_on should be omitted"
     );
 
-    let human = run_stdout(&repo, ["show", "CORE-001"]);
+    let human = run_stdout(&repo, ["show", "core:CORE-001"]);
     assert!(human.contains("Dependencies: -"));
     assert!(human.contains("Rules: CORE-LIBRARY"));
     assert!(human.contains("Tags: location"));
@@ -119,13 +119,13 @@ fn ready_returns_filtered_priority_ordered_leaves_in_both_formats() {
     let title_column = lines[0].find("TITLE").expect("title header should exist");
 
     assert_eq!(lines.len(), 3);
-    assert!(lines[0].starts_with("ID"));
+    assert!(lines[0].starts_with("TASK"));
     assert!(
         lines[1]
             .chars()
             .all(|character| character == '-' || character == ' ')
     );
-    assert!(lines[2].starts_with("CORE-003"));
+    assert!(lines[2].starts_with("core:CORE-003"));
     assert!(lines[2][status_column..].starts_with("To Do"));
     assert!(lines[2][title_column..].starts_with("High ready task"));
 
@@ -135,7 +135,7 @@ fn ready_returns_filtered_priority_ordered_leaves_in_both_formats() {
             "ready", "--domain", "core", "--tag", "agent", "--limit", "1", "--format", "json",
         ],
     );
-    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["schema_version"], 2);
     assert_eq!(
         json["tasks"]
             .as_array()
@@ -186,8 +186,8 @@ fn context_returns_relations_readiness_rules_and_human_sections() {
         "depends_on: [CORE-003]\n",
     );
 
-    let json = run_json(&repo, ["context", "CORE-003", "--format", "json"]);
-    assert_eq!(json["schema_version"], 1);
+    let json = run_json(&repo, ["context", "core:CORE-003", "--format", "json"]);
+    assert_eq!(json["schema_version"], 2);
     assert_eq!(json["readiness"]["ready"], true);
     assert_eq!(json["parent"]["task"]["id"], "CORE-001");
     assert_eq!(json["dependencies"][0]["task"]["id"], "CORE-002");
@@ -203,19 +203,19 @@ fn context_returns_relations_readiness_rules_and_human_sections() {
     );
     assert_eq!(json["whitepaper"], "docs/design.md");
 
-    let human = run_stdout(&repo, ["context", "CORE-003"]);
+    let human = run_stdout(&repo, ["context", "core:CORE-003"]);
     assert!(human.contains("Readiness\nReady"));
-    assert!(human.contains("Dependencies\nCORE-002"));
+    assert!(human.contains("Dependencies\ncore:CORE-002"));
     assert!(human.contains("Rules\nCORE-LIBRARY"));
 }
 
 #[test]
 fn detail_commands_reject_unknown_tasks_and_missing_rule_sections() {
     let repo = task_repo();
-    let unknown = run_output(&repo, ["show", "CORE-999", "--format", "json"]);
+    let unknown = run_output(&repo, ["show", "core:CORE-999", "--format", "json"]);
     assert!(!unknown.status.success());
     assert!(unknown.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&unknown.stderr).contains("task CORE-999 does not exist"));
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("core:CORE-999"));
 
     write_task(
         &repo,
@@ -231,7 +231,7 @@ fn detail_commands_reject_unknown_tasks_and_missing_rule_sections() {
         "# Architecture Invariants\n",
     )
     .expect("invariants should be replaced");
-    let missing_rule = run_output(&repo, ["context", "CORE-001", "--format", "json"]);
+    let missing_rule = run_output(&repo, ["context", "core:CORE-001", "--format", "json"]);
     assert!(!missing_rule.status.success());
     assert!(
         String::from_utf8_lossy(&missing_rule.stderr)
@@ -275,16 +275,16 @@ fn context_reports_dependency_and_ancestor_blockers() {
         "parent: CORE-001\ndepends_on: [CORE-002]\n",
     );
 
-    let json = run_json(&repo, ["context", "CORE-003", "--format", "json"]);
+    let json = run_json(&repo, ["context", "core:CORE-003", "--format", "json"]);
     let blockers = json["readiness"]["blockers"]
         .as_array()
         .expect("blockers should be an array");
 
     assert_eq!(json["readiness"]["ready"], false);
     assert_eq!(blockers[0]["kind"], "dependency");
-    assert_eq!(blockers[0]["task_id"], "CORE-002");
+    assert_eq!(blockers[0]["task_id"], "core:CORE-002");
     assert_eq!(blockers[1]["kind"], "ancestor_status");
-    assert_eq!(blockers[1]["task_id"], "CORE-001");
+    assert_eq!(blockers[1]["task_id"], "core:CORE-001");
 }
 
 fn task_repo() -> TempDir {

@@ -23,10 +23,11 @@ use crate::{
     domain::compatibility_prefixes,
     error::TaskError,
     frontmatter::parse_metadata,
-    identity::{IdentityError, TaskIdentity, is_valid_local_id},
+    identity::{IdentityError, TaskIdentity, TaskReference},
     markdown::{has_unchecked_checklist_item, replace_or_append_section},
     model::{Priority, Risk, TaskStatus, TaskType},
     project::TaskProject,
+    reference::IdentityIndex,
     repo::{MILESTONE_DOMAIN, TASK_DIR},
     validate::{RULE_IDS, require_valid_report, validate_repo},
 };
@@ -38,6 +39,7 @@ pub struct Criterion {
     pub checked: bool,
 }
 
+#[derive(Clone)]
 pub struct NewTask {
     pub domain: String,
     pub id: String,
@@ -59,8 +61,8 @@ pub struct NewTask {
     pub blocked_reason: Option<String>,
 }
 
-pub fn add_task(project: &TaskProject, task: NewTask) -> Result<PathBuf, TaskError> {
-    validate_new_tasks(project, &[&task], false)?;
+pub fn add_task(project: &TaskProject, mut task: NewTask) -> Result<PathBuf, TaskError> {
+    validate_new_tasks(project, std::slice::from_mut(&mut task), false)?;
     let (path, content) = render_task(project.root(), &task);
     write_new_task(&path, &content)?;
     Ok(path)
@@ -73,15 +75,16 @@ pub fn import_tasks(
     skip_existing: bool,
 ) -> Result<Vec<PathBuf>, TaskError> {
     let existing = existing_identities(project)?;
-    let tasks_to_write: Vec<&NewTask> = tasks
+    let mut tasks_to_write: Vec<NewTask> = tasks
         .iter()
         .filter(|task| {
             !skip_existing
                 || !TaskIdentity::new(&task.domain, &task.id)
                     .is_ok_and(|identity| existing.contains(&identity))
         })
+        .cloned()
         .collect();
-    validate_new_tasks(project, &tasks_to_write, skip_existing)?;
+    validate_new_tasks(project, &mut tasks_to_write, skip_existing)?;
     let rendered: Vec<(PathBuf, String)> = tasks_to_write
         .iter()
         .map(|task| render_task(project.root(), task))
@@ -97,29 +100,25 @@ pub fn import_tasks(
 
 fn validate_new_tasks(
     project: &TaskProject,
-    new_tasks: &[&NewTask],
+    new_tasks: &mut [NewTask],
     skip_existing: bool,
 ) -> Result<(), TaskError> {
     let existing_tasks = require_valid_report(validate_repo(project)?)?;
-    let mut known_ids: HashSet<&str> = existing_tasks
-        .iter()
-        .map(|task| task.metadata.id.as_str())
-        .collect();
     let mut known_identities: HashSet<TaskIdentity> = existing_tasks
         .iter()
         .map(|task| task_identity(project, &task.domain, &task.metadata.id))
         .collect::<Result<_, _>>()?;
-    let mut milestone_counts: HashMap<&str, usize> = HashMap::new();
+    let mut milestone_counts: HashMap<String, usize> = HashMap::new();
     for task in &existing_tasks {
         if task.metadata.task_type == TaskType::Milestone {
             if let Some(milestone) = &task.metadata.milestone {
-                *milestone_counts.entry(milestone.as_str()).or_default() += 1;
+                *milestone_counts.entry(milestone.clone()).or_default() += 1;
             }
         }
     }
 
     let mut batch_ids = HashSet::new();
-    for task in new_tasks {
+    for task in new_tasks.iter() {
         let identity = validate_new_task_shape(project, task)?;
         let (path, _) = render_task(project.root(), task);
         if path.exists() && !skip_existing {
@@ -139,38 +138,43 @@ fn validate_new_tasks(
             )));
         }
         known_identities.insert(identity);
-        known_ids.insert(task.id.as_str());
         if task.task_type == TaskType::Milestone {
             let milestone = task.milestone.as_deref().ok_or_else(|| {
                 TaskError::Message("Milestone tasks must include --milestone".to_string())
             })?;
-            *milestone_counts.entry(milestone).or_default() += 1;
+            *milestone_counts.entry(milestone.to_string()).or_default() += 1;
         }
     }
 
-    for task in new_tasks {
-        if let Some(parent) = &task.parent {
-            if !is_valid_local_id(parent) {
-                return Err(TaskError::Message(format!(
-                    "invalid parent id {parent}; expected PREFIX-NUMBER"
-                )));
-            }
-            if !known_ids.contains(parent.as_str()) {
-                return Err(TaskError::Message(format!(
-                    "parent {parent} does not reference an existing or imported task"
-                )));
-            }
+    let index = IdentityIndex::new(project.root(), known_identities.iter().cloned());
+    let batch_identities: HashSet<TaskIdentity> = new_tasks
+        .iter()
+        .map(|task| task_identity(project, &task.domain, &task.id))
+        .collect::<Result<_, _>>()?;
+    let mut batch_dependencies: HashMap<TaskIdentity, Vec<TaskIdentity>> = HashMap::new();
+    for task in new_tasks.iter_mut() {
+        let source = task_identity(project, &task.domain, &task.id)?;
+        if let Some(parent) = &mut task.parent {
+            resolve_new_reference(project, &index, &task.domain, parent)?;
         }
-        for depends_on in &task.depends_on {
-            if !is_valid_local_id(depends_on) {
+        let mut seen_dependencies = HashSet::new();
+        for dependency in &mut task.depends_on {
+            let identity = resolve_new_reference(project, &index, &task.domain, dependency)?;
+            if !seen_dependencies.insert(identity.clone()) {
                 return Err(TaskError::Message(format!(
-                    "invalid dependency id {depends_on}; expected PREFIX-NUMBER"
+                    "duplicate dependency {identity}"
                 )));
             }
-            if !known_ids.contains(depends_on.as_str()) {
-                return Err(TaskError::Message(format!(
-                    "dependency {depends_on} does not reference an existing or imported task"
-                )));
+            if identity == source {
+                return Err(TaskError::Message(
+                    "task cannot depend on itself".to_string(),
+                ));
+            }
+            if batch_identities.contains(&identity) {
+                batch_dependencies
+                    .entry(source.clone())
+                    .or_default()
+                    .push(identity);
             }
         }
         if let Some(milestone) = &task.milestone {
@@ -185,7 +189,7 @@ fn validate_new_tasks(
             }
         }
     }
-    validate_new_dependency_cycles(new_tasks)?;
+    validate_new_dependency_cycles(&batch_identities, &batch_dependencies)?;
 
     Ok(())
 }
@@ -239,19 +243,6 @@ fn validate_new_task_shape(
             task.domain
         )));
     }
-    let mut seen_dependencies = HashSet::new();
-    for depends_on in &task.depends_on {
-        if !seen_dependencies.insert(depends_on) {
-            return Err(TaskError::Message(format!(
-                "duplicate dependency id {depends_on}"
-            )));
-        }
-        if depends_on == &task.id {
-            return Err(TaskError::Message(
-                "task cannot depend on itself".to_string(),
-            ));
-        }
-    }
     let mut seen_rules = HashSet::new();
     for rule in &task.rules {
         if !RULE_IDS.contains(&rule.as_str()) {
@@ -298,46 +289,61 @@ fn validate_new_task_shape(
     Ok(identity)
 }
 
-fn validate_new_dependency_cycles(new_tasks: &[&NewTask]) -> Result<(), TaskError> {
-    let by_id: HashMap<&str, &NewTask> = new_tasks
-        .iter()
-        .map(|task| (task.id.as_str(), *task))
-        .collect();
+fn validate_new_dependency_cycles(
+    identities: &HashSet<TaskIdentity>,
+    dependencies: &HashMap<TaskIdentity, Vec<TaskIdentity>>,
+) -> Result<(), TaskError> {
     let mut checked = HashSet::new();
-    for task in new_tasks {
+    let mut identities = identities.iter().collect::<Vec<_>>();
+    identities.sort();
+    for identity in identities {
         let mut visiting = Vec::new();
-        detect_new_cycle(task.id.as_str(), &by_id, &mut visiting, &mut checked)?;
+        detect_new_cycle(identity, dependencies, &mut visiting, &mut checked)?;
     }
     Ok(())
 }
 
-fn detect_new_cycle<'a>(
-    id: &'a str,
-    by_id: &HashMap<&'a str, &'a NewTask>,
-    visiting: &mut Vec<&'a str>,
-    checked: &mut HashSet<&'a str>,
+fn detect_new_cycle(
+    identity: &TaskIdentity,
+    dependencies: &HashMap<TaskIdentity, Vec<TaskIdentity>>,
+    visiting: &mut Vec<TaskIdentity>,
+    checked: &mut HashSet<TaskIdentity>,
 ) -> Result<(), TaskError> {
-    if checked.contains(id) {
+    if checked.contains(identity) {
         return Ok(());
     }
-    if let Some(position) = visiting.iter().position(|current| *current == id) {
-        let cycle = visiting[position..].join(" -> ");
+    if let Some(position) = visiting.iter().position(|current| current == identity) {
+        let cycle = visiting[position..]
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" -> ");
         return Err(TaskError::Message(format!(
-            "dependency cycle detected: {cycle} -> {id}"
+            "dependency cycle detected: {cycle} -> {identity}"
         )));
     }
-    let Some(task) = by_id.get(id) else {
-        return Ok(());
-    };
-    visiting.push(id);
-    for depends_on in &task.depends_on {
-        if by_id.contains_key(depends_on.as_str()) {
-            detect_new_cycle(depends_on, by_id, visiting, checked)?;
-        }
+    visiting.push(identity.clone());
+    for dependency in dependencies.get(identity).into_iter().flatten() {
+        detect_new_cycle(dependency, dependencies, visiting, checked)?;
     }
     visiting.pop();
-    checked.insert(id);
+    checked.insert(identity.clone());
     Ok(())
+}
+
+fn resolve_new_reference(
+    project: &TaskProject,
+    index: &IdentityIndex,
+    source_domain: &str,
+    value: &mut String,
+) -> Result<TaskIdentity, TaskError> {
+    let reference =
+        TaskReference::parse(value).map_err(|error| invalid_identity(project, &error))?;
+    let identity = index.resolve_creation(source_domain, &reference)?;
+    if matches!(reference, TaskReference::Qualified(_)) {
+        *value = identity.to_string();
+    }
+    Ok(identity)
 }
 
 fn render_task(root: &Path, task: &NewTask) -> (PathBuf, String) {
@@ -438,7 +444,7 @@ fn push_array(content: &mut String, key: &str, values: &[String]) {
 fn escape_yaml(value: &str) -> String {
     if value
         .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/'))
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':'))
     {
         value.to_string()
     } else {
@@ -488,39 +494,51 @@ fn write_new_task(path: &Path, content: &str) -> Result<(), TaskError> {
     })
 }
 
-pub fn start_task(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> {
-    update_status(project, id, TaskStatus::InProgress, None)
+pub fn start_task(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
+    update_status(project, identity, TaskStatus::InProgress, None)
 }
 
-pub fn block_task(project: &TaskProject, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
+pub fn block_task(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+    reason: &str,
+) -> Result<PathBuf, TaskError> {
     update_status(
         project,
-        id,
+        identity,
         TaskStatus::Blocked,
         Some(("Blocked Reason", reason)),
     )
 }
 
-pub fn defer_task(project: &TaskProject, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
+pub fn defer_task(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+    reason: &str,
+) -> Result<PathBuf, TaskError> {
     update_status(
         project,
-        id,
+        identity,
         TaskStatus::Deferred,
         Some(("Rationale", reason)),
     )
 }
 
-pub fn obsolete_task(project: &TaskProject, id: &str, reason: &str) -> Result<PathBuf, TaskError> {
+pub fn obsolete_task(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+    reason: &str,
+) -> Result<PathBuf, TaskError> {
     update_status(
         project,
-        id,
+        identity,
         TaskStatus::Obsolete,
         Some(("Rationale", reason)),
     )
 }
 
-pub fn done_task(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> {
-    let path = task_path(project, id)?;
+pub fn done_task(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
+    let path = task_path(project, identity)?;
     let content = read(&path)?;
     let metadata =
         parse_metadata(&path, &content).map_err(|error| TaskError::Validation(vec![error]))?;
@@ -531,7 +549,7 @@ pub fn done_task(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> 
     };
     if has_unchecked_checklist_item(&content, heading) {
         return Err(TaskError::Message(format!(
-            "{id} cannot be marked Done while ## {heading} has unchecked items"
+            "{identity} cannot be marked Done while ## {heading} has unchecked items"
         )));
     }
     write_status(&path, &content, TaskStatus::Done, None)?;
@@ -540,23 +558,27 @@ pub fn done_task(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> 
 
 fn update_status(
     project: &TaskProject,
-    id: &str,
+    identity: &TaskIdentity,
     status: TaskStatus,
     section: Option<(&str, &str)>,
 ) -> Result<PathBuf, TaskError> {
-    let path = task_path(project, id)?;
+    let path = task_path(project, identity)?;
     let content = read(&path)?;
     write_status(&path, &content, status, section)?;
     Ok(path)
 }
 
-fn task_path(project: &TaskProject, id: &str) -> Result<PathBuf, TaskError> {
+fn task_path(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
     let tasks = require_valid_report(validate_repo(project)?)?;
     tasks
         .into_iter()
-        .find(|task| task.metadata.id == id)
+        .find(|task| task.identity() == *identity)
         .map(|task| task.path)
-        .ok_or_else(|| TaskError::NotFound { id: id.to_string() })
+        .ok_or_else(|| TaskError::TaskNotFound {
+            reference: identity.to_string(),
+            source_domain: None,
+            root: project.root().to_path_buf(),
+        })
 }
 
 fn write_status(

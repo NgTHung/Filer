@@ -14,7 +14,7 @@ Make `.tasks/` the durable source of intent. Use `filer-task` JSON for decisions
 At the start of planning or implementation:
 
 1. Run `cargo run -q -p filer-task -- validate`.
-2. Inspect the named task with `context TASK-ID --format json`, or search with `ready` and `list --format json`.
+2. Inspect the named task with `context DOMAIN:TASK-ID --format json`, or search with `ready` and `list --format json`.
 3. Read `docs/task-tracking.md` only for command details.
 4. Compose with relevant available planning, TDD, debugging, execution, review, and verification skills.
 
@@ -54,7 +54,7 @@ Use `add` for new tasks. Edit task markdown directly only to refine existing int
 
 ## Implement Against Context
 
-Load `context TASK-ID --format json` before implementation. Treat the task summary, criteria, declared relationships, and embedded rules as constraints.
+Load `context DOMAIN:TASK-ID --format json` before implementation. Treat the task summary, criteria, declared relationships, and embedded rules as constraints.
 
 Use relevant installed methodology skills when available. If none are available, follow repository TDD and verification rules directly.
 
@@ -73,7 +73,7 @@ Before completion:
 2. Review the diff against every criterion and repository size guidance.
 3. Change checklist criteria to checked only when evidence proves them.
 4. Run `cargo run -q -p filer-task -- validate`.
-5. Run `done TASK-ID` only after all required criteria are checked.
-6. Validate again and inspect `show TASK-ID`.
+5. Run `done DOMAIN:TASK-ID` only after all required criteria are checked.
+6. Validate again and inspect `show DOMAIN:TASK-ID`.
 
 Never use passing task validation as a substitute for code verification.

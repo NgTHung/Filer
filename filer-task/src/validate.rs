@@ -4,14 +4,18 @@ use std::{
     path::Path,
 };
 
+use serde::Serialize;
+
 use crate::{
-    domain::{validate_duplicate_identities, validate_task_path},
+    domain::validate_task_path,
     error::{TaskError, ValidationError},
     frontmatter::parse_metadata,
-    identity::is_valid_local_id,
+    graph::TaskGraph,
+    identity::{TaskIdentity, TaskReference, is_valid_local_id},
     markdown::{has_section, has_unchecked_checklist_item},
     model::{Priority, SortBy, Task, TaskStatus, TaskType},
     project::TaskProject,
+    reference_validation::validate_task_references,
     repo::{read_task_files, validate_task_layout},
 };
 
@@ -31,7 +35,7 @@ pub struct TaskFilter {
     pub status: Option<TaskStatus>,
     pub priority: Option<Priority>,
     pub domain: Option<String>,
-    pub parent: Option<String>,
+    pub parent: Option<TaskIdentity>,
     pub milestone: Option<String>,
     pub tag: Option<String>,
     pub blocked: bool,
@@ -41,6 +45,48 @@ pub struct TaskFilter {
 pub struct ValidationReport {
     pub tasks: Vec<Task>,
     pub errors: Vec<ValidationError>,
+    pub warnings: Vec<ValidationWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ValidationWarning {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub message: String,
+    pub context: serde_json::Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidatedRepository {
+    pub tasks: Vec<Task>,
+    pub warnings: Vec<ValidationWarning>,
+}
+
+impl std::ops::Deref for ValidatedRepository {
+    type Target = [Task];
+
+    fn deref(&self) -> &Self::Target {
+        &self.tasks
+    }
+}
+
+impl IntoIterator for ValidatedRepository {
+    type Item = Task;
+    type IntoIter = std::vec::IntoIter<Task>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.tasks.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ValidatedRepository {
+    type Item = &'a Task;
+    type IntoIter = std::slice::Iter<'a, Task>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.tasks.iter()
+    }
 }
 
 pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskError> {
@@ -48,6 +94,7 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
     let paths = read_task_files(project)?;
     let mut tasks = Vec::new();
     let mut errors = validate_task_layout(project)?;
+    let mut warnings = Vec::new();
 
     for path in paths {
         let content = fs::read_to_string(&path).map_err(|source| TaskError::Io {
@@ -71,7 +118,8 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
         }
     }
 
-    validate_cross_references(&tasks, &mut errors);
+    validate_task_references(project, &tasks, &mut warnings, &mut errors);
+    validate_milestone_references(&tasks, &mut errors);
     tasks.sort_by(|left, right| {
         left.metadata
             .id
@@ -79,43 +127,60 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
             .then_with(|| left.domain.cmp(&right.domain))
     });
 
-    Ok(ValidationReport { tasks, errors })
+    Ok(ValidationReport {
+        tasks,
+        errors,
+        warnings,
+    })
 }
 
-pub fn require_valid_report(report: ValidationReport) -> Result<Vec<Task>, TaskError> {
+pub fn require_valid_report(report: ValidationReport) -> Result<ValidatedRepository, TaskError> {
     if report.errors.is_empty() {
-        Ok(report.tasks)
+        Ok(ValidatedRepository {
+            tasks: report.tasks,
+            warnings: report.warnings,
+        })
     } else {
         Err(TaskError::Validation(report.errors))
     }
 }
 
-pub fn filter_tasks(mut tasks: Vec<Task>, filter: &TaskFilter, sort_by: SortBy) -> Vec<Task> {
-    tasks.retain(|task| {
-        filter
-            .status
-            .is_none_or(|status| task.metadata.status == status)
-            && filter
-                .priority
-                .is_none_or(|priority| task.metadata.priority == priority)
-            && filter
-                .domain
-                .as_ref()
-                .is_none_or(|domain| &task.domain == domain)
-            && filter
-                .parent
-                .as_ref()
-                .is_none_or(|parent| task.metadata.parent.as_ref() == Some(parent))
-            && filter
-                .milestone
-                .as_ref()
-                .is_none_or(|milestone| task.metadata.milestone.as_ref() == Some(milestone))
-            && filter
-                .tag
-                .as_ref()
-                .is_none_or(|tag| task.metadata.tags.iter().any(|value| value == tag))
-            && (!filter.blocked || task.metadata.status == TaskStatus::Blocked)
-    });
+pub fn filter_tasks(
+    tasks: &[Task],
+    graph: &TaskGraph<'_>,
+    filter: &TaskFilter,
+    sort_by: SortBy,
+) -> Vec<Task> {
+    let mut tasks: Vec<Task> = tasks
+        .iter()
+        .filter(|task| {
+            let identity = task.identity();
+            filter
+                .status
+                .is_none_or(|status| task.metadata.status == status)
+                && filter
+                    .priority
+                    .is_none_or(|priority| task.metadata.priority == priority)
+                && filter
+                    .domain
+                    .as_ref()
+                    .is_none_or(|domain| &task.domain == domain)
+                && filter
+                    .parent
+                    .as_ref()
+                    .is_none_or(|parent| graph.parent_identity(&identity) == Some(parent))
+                && filter
+                    .milestone
+                    .as_ref()
+                    .is_none_or(|milestone| task.metadata.milestone.as_ref() == Some(milestone))
+                && filter
+                    .tag
+                    .as_ref()
+                    .is_none_or(|tag| task.metadata.tags.iter().any(|value| value == tag))
+                && (!filter.blocked || task.metadata.status == TaskStatus::Blocked)
+        })
+        .cloned()
+        .collect();
 
     match sort_by {
         SortBy::Status => tasks.sort_by_key(|task| status_order(task.metadata.status)),
@@ -154,34 +219,24 @@ fn validate_single_task(project: &TaskProject, task: &Task, errors: &mut Vec<Val
         ));
     }
 
-    if let Some(parent) = &metadata.parent {
-        if !is_valid_local_id(parent) {
-            errors.push(ValidationError::at(
-                path,
-                format!("invalid parent id {parent}; expected PREFIX-NUMBER"),
-            ));
-        }
+    if let Some(parent) = &metadata.parent
+        && let Err(error) = TaskReference::parse(parent)
+    {
+        errors.push(ValidationError::at(
+            path,
+            format!("invalid parent reference {parent}: {}", error.constraint()),
+        ));
     }
 
     for depends_on in &metadata.depends_on {
-        if !is_valid_local_id(depends_on) {
+        if let Err(error) = TaskReference::parse(depends_on) {
             errors.push(ValidationError::at(
                 path,
-                format!("invalid dependency id {depends_on}; expected PREFIX-NUMBER"),
+                format!(
+                    "invalid dependency reference {depends_on}: {}",
+                    error.constraint()
+                ),
             ));
-        }
-    }
-
-    let mut seen_dependencies = HashSet::new();
-    for depends_on in &metadata.depends_on {
-        if !seen_dependencies.insert(depends_on) {
-            errors.push(ValidationError::at(
-                path,
-                format!("duplicate dependency id {depends_on}"),
-            ));
-        }
-        if depends_on == &metadata.id {
-            errors.push(ValidationError::at(path, "task cannot depend on itself"));
         }
     }
 
@@ -277,39 +332,6 @@ fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) 
     }
 }
 
-fn validate_cross_references(tasks: &[Task], errors: &mut Vec<ValidationError>) {
-    let mut by_id: HashMap<&str, &Task> = HashMap::new();
-
-    for task in tasks {
-        by_id.insert(&task.metadata.id, task);
-    }
-    validate_duplicate_identities(tasks, errors);
-
-    for task in tasks {
-        if let Some(parent) = &task.metadata.parent {
-            if !by_id.contains_key(parent.as_str()) {
-                errors.push(ValidationError::at(
-                    &task.path,
-                    format!("parent {parent} does not reference an existing task"),
-                ));
-            }
-        }
-
-        for depends_on in &task.metadata.depends_on {
-            if !by_id.contains_key(depends_on.as_str()) {
-                errors.push(ValidationError::at(
-                    &task.path,
-                    format!("dependency {depends_on} does not reference an existing task"),
-                ));
-            }
-        }
-    }
-
-    validate_milestone_references(tasks, errors);
-
-    validate_dependency_cycles(tasks, errors);
-}
-
 fn validate_milestone_references(tasks: &[Task], errors: &mut Vec<ValidationError>) {
     let mut milestone_counts: HashMap<&str, usize> = HashMap::new();
     for task in tasks {
@@ -345,57 +367,6 @@ fn validate_milestone_references(tasks: &[Task], errors: &mut Vec<ValidationErro
             )),
         }
     }
-}
-
-fn validate_dependency_cycles(tasks: &[Task], errors: &mut Vec<ValidationError>) {
-    let by_id: HashMap<&str, &Task> = tasks
-        .iter()
-        .map(|task| (task.metadata.id.as_str(), task))
-        .collect();
-    let mut checked = HashSet::new();
-
-    for task in tasks {
-        let mut visiting = Vec::new();
-        detect_cycle(
-            task.metadata.id.as_str(),
-            &by_id,
-            &mut visiting,
-            &mut checked,
-            errors,
-        );
-    }
-}
-
-fn detect_cycle<'a>(
-    id: &'a str,
-    by_id: &HashMap<&'a str, &'a Task>,
-    visiting: &mut Vec<&'a str>,
-    checked: &mut HashSet<&'a str>,
-    errors: &mut Vec<ValidationError>,
-) {
-    if checked.contains(id) {
-        return;
-    }
-
-    if let Some(position) = visiting.iter().position(|current| *current == id) {
-        let cycle = visiting[position..].join(" -> ");
-        errors.push(ValidationError::new(
-            None,
-            format!("dependency cycle detected: {cycle} -> {id}"),
-        ));
-        return;
-    }
-
-    let Some(task) = by_id.get(id) else {
-        return;
-    };
-
-    visiting.push(id);
-    for depends_on in &task.metadata.depends_on {
-        detect_cycle(depends_on, by_id, visiting, checked, errors);
-    }
-    visiting.pop();
-    checked.insert(id);
 }
 
 fn domain_for_path(root: &Path, path: &Path) -> Option<String> {
@@ -467,6 +438,8 @@ mod tests {
     use super::{TaskFilter, ValidationReport, filter_tasks, validate_repo as validate_project};
     use crate::{
         error::TaskError,
+        graph::TaskGraph,
+        identity::TaskIdentity,
         model::{Priority, SortBy, TaskStatus},
         project::TaskProject,
     };
@@ -545,7 +518,7 @@ mod tests {
         assert!(report.errors.iter().any(|error| {
             error
                 .message
-                .contains("parent CORE-001 does not reference an existing task")
+                .contains("parent CORE-001 does not reference a task in domain core")
         }));
     }
 
@@ -617,14 +590,17 @@ mod tests {
 
         let report = validate_repo(temp.path()).expect("repo should validate");
         assert!(report.errors.is_empty());
+        let project = TaskProject::open(temp.path()).expect("project should open");
+        let graph = TaskGraph::new(&project, &report.tasks).expect("graph should build");
 
         let filtered = filter_tasks(
-            report.tasks,
+            &report.tasks,
+            &graph,
             &TaskFilter {
                 status: Some(TaskStatus::ToDo),
                 priority: Some(Priority::Medium),
                 domain: Some("core".to_string()),
-                parent: Some("CORE-001".to_string()),
+                parent: Some(TaskIdentity::new("core", "CORE-001").expect("valid identity")),
                 milestone: None,
                 tag: Some("provider".to_string()),
                 blocked: false,
@@ -862,14 +838,13 @@ mod tests {
         assert!(report.errors.iter().any(|error| {
             error
                 .message
-                .contains("dependency CORE-404 does not reference an existing task")
+                .contains("dependency CORE-404 does not reference a task in domain core")
         }));
-        assert!(
-            report
-                .errors
-                .iter()
-                .any(|error| error.message.contains("duplicate dependency id CORE-404"))
-        );
+        assert!(report.errors.iter().any(|error| {
+            error
+                .message
+                .contains("duplicate dependency reference CORE-404")
+        }));
     }
 
     #[test]
@@ -897,9 +872,9 @@ mod tests {
         let report = validate_repo(temp.path()).expect("repo should scan");
 
         assert!(report.errors.iter().any(|error| {
-            error
-                .message
-                .contains("dependency cycle detected: CORE-001 -> CORE-002 -> CORE-001")
+            error.message.contains(
+                "dependency cycle detected: core:CORE-001 -> core:CORE-002 -> core:CORE-001",
+            )
         }));
     }
 

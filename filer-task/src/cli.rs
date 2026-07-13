@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf};
 use crate::{
     agent_context::{ReadyFilter, build_context, build_ready, build_show},
     error::TaskError,
+    graph::TaskGraph,
     identity::{IdentityError, TaskIdentity},
     lifecycle::{
         Criterion, NewTask, add_task, block_task, defer_task, done_task, import_tasks,
@@ -16,6 +17,7 @@ use crate::{
         render_show, render_summary_output, render_task_action, render_tasks, render_validation,
     },
     project::TaskProject,
+    reference::IdentityIndex,
     repo::discover_project_root,
     validate::{TaskFilter, filter_tasks, require_valid_report, validate_repo},
 };
@@ -55,6 +57,8 @@ pub enum Command {
 pub struct ValidateArgs {
     #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
+    pub format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
@@ -67,7 +71,11 @@ pub struct ListArgs {
     pub priority: Option<Priority>,
     #[arg(long)]
     pub domain: Option<String>,
-    #[arg(long)]
+    #[arg(
+        long,
+        value_name = "TASK",
+        help = "Filter by an exact domain:LOCAL-ID parent identity"
+    )]
     pub parent: Option<String>,
     #[arg(long)]
     pub milestone: Option<String>,
@@ -85,6 +93,7 @@ pub struct ListArgs {
 pub struct DetailArgs {
     #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
+    #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
     pub id: String,
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     pub format: OutputFormat,
@@ -114,6 +123,7 @@ pub struct DepsArgs {
     pub root: Option<PathBuf>,
     #[arg(long)]
     pub incomplete: bool,
+    #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
     pub id: String,
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     pub format: OutputFormat,
@@ -162,11 +172,18 @@ pub struct AddArgs {
     pub priority: Priority,
     #[arg(long = "type", value_name = "TYPE")]
     pub task_type: TaskType,
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Local parent in the new task's domain, or a cross-domain domain:LOCAL-ID"
+    )]
     pub parent: Option<String>,
     #[arg(long)]
     pub milestone: Option<String>,
-    #[arg(long = "depends-on", value_delimiter = ',')]
+    #[arg(
+        long = "depends-on",
+        value_delimiter = ',',
+        help = "Local dependencies in the new task's domain or qualified cross-domain identities"
+    )]
     pub depends_on: Vec<String>,
     #[arg(long = "rule", value_delimiter = ',')]
     pub rules: Vec<String>,
@@ -205,6 +222,7 @@ pub struct ImportArgs {
 pub struct TaskIdArgs {
     #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
+    #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
     pub id: String,
 }
 
@@ -212,6 +230,7 @@ pub struct TaskIdArgs {
 pub struct ReasonArgs {
     #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
+    #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
     pub id: String,
     pub reason: String,
 }
@@ -226,22 +245,36 @@ pub fn run_validate(args: ValidateArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
     let report = validate_repo(&project)?;
     let task_count = report.tasks.len();
-    require_valid_report(report)?;
-    println!("{}", render_validation(&ValidationOutput { task_count }));
+    let validated = require_valid_report(report)?;
+    let output = ValidationOutput {
+        task_count,
+        warnings: &validated.warnings,
+    };
+    match args.format {
+        OutputFormat::Human => println!("{}", render_validation(&output)),
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&output)?),
+    }
     Ok(())
 }
 
 pub fn run_list(args: ListArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
     let report = validate_repo(&project)?;
-    let tasks = require_valid_report(report)?;
+    let validated = require_valid_report(report)?;
+    let parent = args
+        .parent
+        .as_deref()
+        .map(|value| resolve_selector(&project, &validated.tasks, value))
+        .transpose()?;
+    let graph = TaskGraph::new(&project, &validated.tasks)?;
     let filtered = filter_tasks(
-        tasks,
+        &validated.tasks,
+        &graph,
         &TaskFilter {
             status: args.status,
             priority: args.priority,
             domain: args.domain,
-            parent: args.parent,
+            parent,
             milestone: args.milestone,
             tag: args.tag,
             blocked: args.blocked,
@@ -259,8 +292,9 @@ pub fn run_list(args: ListArgs) -> Result<(), TaskError> {
 
 pub fn run_show(args: DetailArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let tasks = require_valid_report(validate_repo(&project)?)?;
-    let view = build_show(&project, &tasks, &args.id)?;
+    let validated = require_valid_report(validate_repo(&project)?)?;
+    let identity = resolve_selector(&project, &validated.tasks, &args.id)?;
+    let view = build_show(&project, &validated.tasks, &identity, &validated.warnings)?;
     match args.format {
         OutputFormat::Human => println!("{}", render_show(&view)),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
@@ -270,10 +304,10 @@ pub fn run_show(args: DetailArgs) -> Result<(), TaskError> {
 
 pub fn run_ready(args: ReadyArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let tasks = require_valid_report(validate_repo(&project)?)?;
+    let validated = require_valid_report(validate_repo(&project)?)?;
     let view = build_ready(
         &project,
-        &tasks,
+        &validated.tasks,
         &ReadyFilter {
             domain: args.domain,
             milestone: args.milestone,
@@ -281,7 +315,8 @@ pub fn run_ready(args: ReadyArgs) -> Result<(), TaskError> {
             tag: args.tag,
             limit: args.limit,
         },
-    );
+        &validated.warnings,
+    )?;
     match args.format {
         OutputFormat::Human => println!("{}", render_ready(&view)),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
@@ -291,8 +326,9 @@ pub fn run_ready(args: ReadyArgs) -> Result<(), TaskError> {
 
 pub fn run_context(args: DetailArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let tasks = require_valid_report(validate_repo(&project)?)?;
-    let view = build_context(&project, &tasks, &args.id)?;
+    let validated = require_valid_report(validate_repo(&project)?)?;
+    let identity = resolve_selector(&project, &validated.tasks, &args.id)?;
+    let view = build_context(&project, &validated.tasks, &identity, &validated.warnings)?;
     match args.format {
         OutputFormat::Human => println!("{}", render_context(&view)),
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&view)?),
@@ -302,16 +338,12 @@ pub fn run_context(args: DetailArgs) -> Result<(), TaskError> {
 
 pub fn run_deps(args: DepsArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let tasks = require_valid_report(validate_repo(&project)?)?;
-    let task = tasks
-        .iter()
-        .find(|task| task.metadata.id == args.id)
-        .ok_or_else(|| TaskError::Message(format!("task {} does not exist", args.id)))?;
-    let deps: Vec<Task> = task
-        .metadata
-        .depends_on
-        .iter()
-        .filter_map(|id| tasks.iter().find(|task| task.metadata.id == *id))
+    let validated = require_valid_report(validate_repo(&project)?)?;
+    let identity = resolve_selector(&project, &validated.tasks, &args.id)?;
+    let graph = TaskGraph::new(&project, &validated.tasks)?;
+    let deps: Vec<Task> = graph
+        .dependencies(&identity)
+        .into_iter()
         .filter(|task| !args.incomplete || task.metadata.status != TaskStatus::Done)
         .cloned()
         .collect();
@@ -379,7 +411,7 @@ pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
     let tasks = require_valid_report(validate_repo(&project)?)?;
     let scoped = match args.milestone {
         Some(milestone) => milestone_tasks(&tasks, &milestone),
-        None => tasks,
+        None => tasks.tasks,
     };
     let summary = build_summary(&scoped);
     match args.format {
@@ -396,6 +428,7 @@ pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
         domain,
         id: task_id,
     } = identity;
+    let qualified_id = format!("{domain}:{task_id}");
     let path = add_task(
         &project,
         NewTask {
@@ -423,7 +456,7 @@ pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Created,
-            task_id: &task_id,
+            task_id: &qualified_id,
             root: project.root(),
             path: &path,
         })
@@ -452,6 +485,7 @@ fn resolve_add_identity(
     } else {
         let domain = domain.ok_or_else(|| TaskError::DomainRequired {
             id: id.to_string(),
+            candidates: Vec::new(),
             root: project.root().to_path_buf(),
         })?;
         TaskIdentity::new(domain, id)
@@ -498,12 +532,13 @@ pub fn run_import(args: ImportArgs) -> Result<(), TaskError> {
 
 pub fn run_start(args: TaskIdArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let path = start_task(&project, &args.id)?;
+    let identity = resolve_existing_selector(&project, &args.id)?;
+    let path = start_task(&project, &identity)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Started,
-            task_id: &args.id,
+            task_id: &identity.to_string(),
             root: project.root(),
             path: &path,
         })
@@ -513,12 +548,13 @@ pub fn run_start(args: TaskIdArgs) -> Result<(), TaskError> {
 
 pub fn run_done(args: TaskIdArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let path = done_task(&project, &args.id)?;
+    let identity = resolve_existing_selector(&project, &args.id)?;
+    let path = done_task(&project, &identity)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Completed,
-            task_id: &args.id,
+            task_id: &identity.to_string(),
             root: project.root(),
             path: &path,
         })
@@ -528,12 +564,13 @@ pub fn run_done(args: TaskIdArgs) -> Result<(), TaskError> {
 
 pub fn run_block(args: ReasonArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let path = block_task(&project, &args.id, &args.reason)?;
+    let identity = resolve_existing_selector(&project, &args.id)?;
+    let path = block_task(&project, &identity, &args.reason)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Blocked,
-            task_id: &args.id,
+            task_id: &identity.to_string(),
             root: project.root(),
             path: &path,
         })
@@ -543,12 +580,13 @@ pub fn run_block(args: ReasonArgs) -> Result<(), TaskError> {
 
 pub fn run_defer(args: ReasonArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let path = defer_task(&project, &args.id, &args.reason)?;
+    let identity = resolve_existing_selector(&project, &args.id)?;
+    let path = defer_task(&project, &identity, &args.reason)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Deferred,
-            task_id: &args.id,
+            task_id: &identity.to_string(),
             root: project.root(),
             path: &path,
         })
@@ -558,12 +596,13 @@ pub fn run_defer(args: ReasonArgs) -> Result<(), TaskError> {
 
 pub fn run_obsolete(args: ReasonArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let path = obsolete_task(&project, &args.id, &args.reason)?;
+    let identity = resolve_existing_selector(&project, &args.id)?;
+    let path = obsolete_task(&project, &identity, &args.reason)?;
     println!(
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Obsolete,
-            task_id: &args.id,
+            task_id: &identity.to_string(),
             root: project.root(),
             path: &path,
         })
@@ -586,6 +625,22 @@ fn current_working_directory() -> Result<PathBuf, TaskError> {
         path: PathBuf::from("."),
         source,
     })
+}
+
+fn resolve_existing_selector(
+    project: &TaskProject,
+    value: &str,
+) -> Result<TaskIdentity, TaskError> {
+    let validated = require_valid_report(validate_repo(project)?)?;
+    resolve_selector(project, &validated.tasks, value)
+}
+
+fn resolve_selector(
+    project: &TaskProject,
+    tasks: &[Task],
+    value: &str,
+) -> Result<TaskIdentity, TaskError> {
+    IdentityIndex::new(project.root(), tasks.iter().map(Task::identity)).resolve_cli(value)
 }
 
 fn print_json(tasks: &[Task]) -> Result<(), TaskError> {

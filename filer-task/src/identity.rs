@@ -1,8 +1,8 @@
 //! # Task Identity
 //!
 //! This module defines portable domain names and exact task identities. It
-//! keeps parsing and validation shared by configuration, creation, and later
-//! task-reference resolution.
+//! keeps parsing and validation shared by configuration, creation, and task
+//! reference resolution.
 //!
 //! ```
 //! use filer_task::identity::TaskIdentity;
@@ -15,6 +15,8 @@
 //! ```
 
 use std::{error::Error, fmt};
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 
 pub const DOMAIN_CONSTRAINT: &str = "must be a portable lowercase domain name";
 pub const LOCAL_ID_CONSTRAINT: &str = "must use the PREFIX-NUMBER form";
@@ -60,6 +62,59 @@ impl TaskIdentity {
 impl fmt::Display for TaskIdentity {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}:{}", self.domain, self.id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TaskReference {
+    Local(String),
+    Qualified(TaskIdentity),
+}
+
+impl TaskReference {
+    pub fn parse(value: &str) -> Result<Self, IdentityError> {
+        if value.contains(':') {
+            TaskIdentity::parse(value).map(Self::Qualified)
+        } else if is_valid_local_id(value) {
+            Ok(Self::Local(value.to_string()))
+        } else {
+            Err(IdentityError::InvalidLocalId(value.to_string()))
+        }
+    }
+
+    pub fn local_id(&self) -> &str {
+        match self {
+            Self::Local(local_id) => local_id,
+            Self::Qualified(identity) => &identity.id,
+        }
+    }
+}
+
+impl fmt::Display for TaskReference {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Local(local_id) => formatter.write_str(local_id),
+            Self::Qualified(identity) => identity.fmt(formatter),
+        }
+    }
+}
+
+impl Serialize for TaskReference {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskReference {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value).map_err(D::Error::custom)
     }
 }
 

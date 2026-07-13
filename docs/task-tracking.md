@@ -8,6 +8,7 @@ Use these commands before and after task changes:
 
 ```bash
 cargo run -p filer-task -- validate
+cargo run -p filer-task -- validate --format json
 cargo run -p filer-task -- list
 cargo run -p filer-task -- summary
 cargo run -p filer-task -- list --format json
@@ -209,9 +210,9 @@ Optional fields:
 
 | Field | Purpose |
 | --- | --- |
-| `parent` | Parent task ID for hierarchy |
+| `parent` | Same-domain local ID or cross-domain qualified parent identity |
 | `milestone` | Project milestone value, for example `0.3.0` |
-| `depends_on` | Task IDs that must exist and must not form cycles |
+| `depends_on` | Same-domain local IDs or qualified task identities that must not form cycles |
 | `rules` | Architecture rule IDs from `docs/architecture/invariants.md` |
 | `risk` | `High`, `Medium`, or `Low` |
 | `impact` | Short description of what the work can affect |
@@ -274,7 +275,7 @@ Milestone prefixes:
 `cargo run -p filer-task -- validate` checks:
 
 - YAML frontmatter parses into the strict task model.
-- IDs and parent IDs use `PREFIX-NUMBER`.
+- Task IDs use `PREFIX-NUMBER`; relationship references use local IDs or `domain:LOCAL-ID`.
 - File names start with the task ID.
 - Compatibility-project prefixes are allowed for the task domain.
 - Parent tasks exist.
@@ -287,11 +288,23 @@ Milestone prefixes:
 - Required criteria, blocked reason, or rationale sections exist.
 - `Done` tasks have no unchecked criteria items.
 
+Local `parent` and `depends_on` values resolve in the task's own domain. Use
+`domain:LOCAL-ID` for a cross-domain relationship. Compatibility projects also
+accept a legacy local reference when it has one project-wide match outside the
+source domain. Validation reports this fallback as a
+`legacy_global_reference` warning. Multiple project-wide matches are
+ambiguous and fail validation.
+
 ## Workflow
 
 Create tasks when work introduces a feature, capability, significant refactor, architectural bug fix, or whitepaper implementation. Do not create tasks for routine formatting, trivial fixes, existing-doc edits, or dependency bumps.
 
 When starting work, move the task to `In Progress`. When complete, verify the implementation, tests, and criteria before marking it `Done`. Use `Blocked` only when progress depends on a missing decision, external state, or unresolved dependency. Use `Deferred` or `Obsolete` with a clear rationale so future readers know why the work is not active.
+
+Commands that select one task require its exact `domain:LOCAL-ID` identity.
+This applies to `show`, `context`, `deps`, every lifecycle command, and the
+`list --parent` filter. An unqualified selector fails and lists matching
+qualified candidates.
 
 List focused task sets with filters:
 
@@ -299,7 +312,7 @@ List focused task sets with filters:
 cargo run -p filer-task -- list --status "In Progress"
 cargo run -p filer-task -- list --priority High
 cargo run -p filer-task -- list --domain core
-cargo run -p filer-task -- list --parent CORE-000
+cargo run -p filer-task -- list --parent core:CORE-000
 cargo run -p filer-task -- list --tag location
 cargo run -p filer-task -- list --milestone 0.3.0
 cargo run -p filer-task -- list --blocked
@@ -313,7 +326,7 @@ cargo run -p filer-task -- list --format json
 
 ## Agent Workflow
 
-Use `ready` to select executable work. A ready task is `To Do`, is not a milestone, has no child tasks, has only `Done` dependencies, and has only `To Do` or `In Progress` ancestors. Results sort by priority and then task ID.
+Use `ready` to select executable work. A ready task is `To Do`, is not a milestone, has no child tasks, has only `Done` dependencies, and has only `To Do` or `In Progress` ancestors. Results sort by priority and then qualified identity.
 
 ```bash
 cargo run -p filer-task -- ready
@@ -324,35 +337,43 @@ cargo run -p filer-task -- ready --tag provider --format json
 Use `show` when you need one task's full metadata and body sections:
 
 ```bash
-cargo run -p filer-task -- show PROVIDER-001
-cargo run -p filer-task -- show PROVIDER-001 --format json
+cargo run -p filer-task -- show core:PROVIDER-001
+cargo run -p filer-task -- show core:PROVIDER-001 --format json
 ```
 
 Use `context` before implementation. It returns the target task, readiness blockers, direct task relationships, milestone, referenced architecture rule text, and whitepaper path. It does not infer source files.
 
 ```bash
-cargo run -p filer-task -- context PROVIDER-001
-cargo run -p filer-task -- context PROVIDER-001 --format json
+cargo run -p filer-task -- context core:PROVIDER-001
+cargo run -p filer-task -- context core:PROVIDER-001 --format json
 ```
 
-New agent-oriented JSON responses include `schema_version: 1`. Existing command JSON stays unchanged.
+The `show`, `ready`, and `context` JSON envelopes use `schema_version: 2` and
+include validation warnings. Every task object retains its local `id` and
+`domain`, and adds `qualified_id` as its canonical key. Parent, dependency,
+relation, and readiness blocker identities in these envelopes are qualified.
+
+Unversioned task-array JSON from `list`, `deps`, and milestone views also adds
+`qualified_id`. This is a semantic break for consumers that used local `id` as
+a project-wide key. Key tasks by `qualified_id`, or by the `domain` and `id`
+pair.
 
 An agent should use this sequence:
 
 ```bash
 cargo run -p filer-task -- ready --limit 5 --format json
-cargo run -p filer-task -- context PROVIDER-001 --format json
-cargo run -p filer-task -- start PROVIDER-001
+cargo run -p filer-task -- context core:PROVIDER-001 --format json
+cargo run -p filer-task -- start core:PROVIDER-001
 # Implement and test the task.
 cargo run -p filer-task -- validate
-cargo run -p filer-task -- done PROVIDER-001
+cargo run -p filer-task -- done core:PROVIDER-001
 ```
 
 Inspect dependencies that still need work:
 
 ```bash
-cargo run -p filer-task -- deps --incomplete CORE-042
-cargo run -p filer-task -- deps --incomplete CORE-042 --format json
+cargo run -p filer-task -- deps --incomplete core:CORE-042
+cargo run -p filer-task -- deps --incomplete core:CORE-042 --format json
 ```
 
 Inspect milestone exit criteria and progress:
@@ -376,11 +397,11 @@ Use lifecycle commands to keep status and rationale sections consistent:
 cargo run -p filer-task -- add --id core:CORE-042 --title "Provider timeout propagation" --priority High --type Feature --milestone 0.3.0
 cargo run -p filer-task -- add --domain core --id CORE-043 --title "Cache policy" --priority High --type Feature
 cargo run -p filer-task -- add --domain milestones --id MILESTONE-003 --title "Core contract stabilization" --priority High --type Milestone --milestone 0.3.0
-cargo run -p filer-task -- start CORE-042
-cargo run -p filer-task -- done CORE-042
-cargo run -p filer-task -- block CORE-042 "Waiting for provider timeout policy decision."
-cargo run -p filer-task -- defer CORE-042 "No longer needed for the current milestone."
-cargo run -p filer-task -- obsolete CORE-042 "Replaced by CORE-044."
+cargo run -p filer-task -- start core:CORE-042
+cargo run -p filer-task -- done core:CORE-042
+cargo run -p filer-task -- block core:CORE-042 "Waiting for provider timeout policy decision."
+cargo run -p filer-task -- defer core:CORE-042 "No longer needed for the current milestone."
+cargo run -p filer-task -- obsolete core:CORE-042 "Replaced by core:CORE-044."
 ```
 
 `add` accepts either `--id domain:LOCAL-ID` or an unqualified `--id` with an
@@ -392,7 +413,7 @@ Successful human output uses the same headings, labels, and path format across c
 
 ```text
 Task Started
-Task: CORE-042
+Task: core:CORE-042
 Path: .tasks/core/CORE-042-provider-timeout-propagation.md
 ```
 
@@ -402,6 +423,7 @@ Validation and imports use labeled summaries:
 Validation
 Status: Passed
 Tasks: 23
+Warnings: 0
 ```
 
 ```text
@@ -417,7 +439,7 @@ Paths
 `add` can scaffold richer task files when a migration already knows the metadata:
 
 ```bash
-cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --parent MILESTONE-003 --milestone 0.3.0 --rule PROVIDER-ACCESS --risk High --impact "Touches provider calls and cancellation behavior." --tag provider --summary "Propagate provider deadlines through core calls." --criterion "Provider calls receive timeout context."
+cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --parent milestones:MILESTONE-003 --milestone 0.3.0 --rule PROVIDER-ACCESS --risk High --impact "Touches provider calls and cancellation behavior." --tag provider --summary "Propagate provider deadlines through core calls." --criterion "Provider calls receive timeout context."
 ```
 
 Use `--criterion` for open checklist items and `--checked-criterion` when creating a `Done` task with completed criteria. `Blocked` tasks need `--blocked-reason`. `Deferred` and `Obsolete` tasks need `--rationale`.
@@ -443,7 +465,7 @@ Use `import` when migrating curated roadmap items into `.tasks/` without writing
     "title": "Provider timeout propagation",
     "priority": "High",
     "type": "Feature",
-    "parent": "MILESTONE-003",
+    "parent": "milestones:MILESTONE-003",
     "milestone": "0.3.0",
     "rules": ["PROVIDER-ACCESS"],
     "risk": "High",
@@ -468,3 +490,7 @@ cargo run -p filer-task -- import docs/roadmap-migration.tasks.json
 ```
 
 Use `--skip-existing` for reruns after a partial manual migration. Import validates the whole batch before writing files, including parent, dependency, milestone, and rule references.
+
+Creation never uses compatibility fallback. An unqualified parent or dependency
+must exist in the new task's explicit domain. Qualified inputs may reference
+any configured domain and are stored in canonical `domain:LOCAL-ID` form.

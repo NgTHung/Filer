@@ -4,8 +4,8 @@
 //! truncation rules here makes command output deterministic and testable.
 //!
 //! ```
-//! let columns = ["ID", "TITLE"];
-//! assert_eq!(columns.join("  "), "ID  TITLE");
+//! let columns = ["TASK", "TITLE"];
+//! assert_eq!(columns.join("  "), "TASK  TITLE");
 //! ```
 
 use std::{
@@ -21,10 +21,13 @@ use crate::{
     },
     markdown::ChecklistItem,
     model::Task,
+    validate::ValidationWarning,
 };
 
-pub(crate) struct ValidationOutput {
+#[derive(Serialize)]
+pub(crate) struct ValidationOutput<'a> {
     pub task_count: usize,
+    pub warnings: &'a [ValidationWarning],
 }
 
 pub(crate) struct TaskActionOutput<'a> {
@@ -68,7 +71,7 @@ const COLUMN_GAP: &str = "  ";
 const MAX_TITLE_CHARS: usize = 48;
 const ELLIPSIS_CHARS: usize = 3;
 const TASK_HEADERS: [&str; 8] = [
-    "ID",
+    "TASK",
     "STATUS",
     "TYPE",
     "PRIORITY",
@@ -85,7 +88,7 @@ pub(crate) fn render_tasks(tasks: &[Task]) -> String {
 
     let rows: Vec<[String; 8]> = tasks
         .iter()
-        .map(|task| task_row(&task.domain, &task.metadata))
+        .map(|task| task_row(&task.qualified_id(), &task.domain, &task.metadata))
         .collect();
     render_task_rows(&rows)
 }
@@ -157,14 +160,16 @@ pub(crate) fn render_milestone(output: &MilestoneOutput<'_>) -> String {
 }
 
 pub(crate) fn render_show(view: &ShowView) -> String {
-    render_detail(&view.detail)
+    append_warnings(render_detail(&view.detail), &view.warnings)
 }
 
 pub(crate) fn render_ready(view: &ReadyView) -> String {
-    if view.tasks.is_empty() {
-        return "No ready tasks.".to_string();
-    }
-    render_task_views(&view.tasks)
+    let output = if view.tasks.is_empty() {
+        "No ready tasks.".to_string()
+    } else {
+        render_task_views(&view.tasks)
+    };
+    append_warnings(output, &view.warnings)
 }
 
 pub(crate) fn render_context(view: &ContextView) -> String {
@@ -191,11 +196,18 @@ pub(crate) fn render_context(view: &ContextView) -> String {
     if let Some(whitepaper) = &view.whitepaper {
         sections.push(format!("Whitepaper\n{whitepaper}"));
     }
-    sections.join("\n\n")
+    append_warnings(sections.join("\n\n"), &view.warnings)
 }
 
-pub(crate) fn render_validation(output: &ValidationOutput) -> String {
-    format!("Validation\nStatus: Passed\nTasks: {}", output.task_count)
+pub(crate) fn render_validation(output: &ValidationOutput<'_>) -> String {
+    append_warnings(
+        format!(
+            "Validation\nStatus: Passed\nTasks: {}\nWarnings: {}",
+            output.task_count,
+            output.warnings.len()
+        ),
+        output.warnings,
+    )
 }
 
 pub(crate) fn render_task_action(output: &TaskActionOutput<'_>) -> String {
@@ -249,7 +261,7 @@ fn render_detail(detail: &TaskDetail) -> String {
     let metadata = &task.metadata;
     let mut output = format!(
         "{}: {}\nStatus: {}\nPriority: {}\nType: {}\nDomain: {}\nPath: {}\nParent: {}\nMilestone: {}\nDependencies: {}\nRules: {}\nRisk: {}\nImpact: {}\nTags: {}\nWhitepaper: {}\nLast Updated: {}",
-        metadata.id,
+        task.qualified_id(),
         metadata.title,
         metadata.status,
         metadata.priority,
@@ -333,7 +345,7 @@ fn render_relation<'a>(heading: &str, tasks: impl Iterator<Item = &'a RelatedTas
                 };
                 format!(
                     "{}  {}  {}  {}  {state}",
-                    related.task.metadata.id,
+                    related.task.qualified_id(),
                     related.task.metadata.status,
                     related.task.metadata.priority,
                     related.task.metadata.title
@@ -350,15 +362,19 @@ fn render_task_views<T: std::borrow::Borrow<TaskView>>(tasks: &[T]) -> String {
         .iter()
         .map(|task| {
             let task = task.borrow();
-            task_row(&task.domain, &task.metadata)
+            task_row(&task.qualified_id(), &task.domain, &task.metadata)
         })
         .collect();
     render_task_rows(&rows)
 }
 
-fn task_row(domain: &str, metadata: &crate::model::TaskMetadata) -> [String; 8] {
+fn task_row(
+    qualified_id: &str,
+    domain: &str,
+    metadata: &crate::model::TaskMetadata,
+) -> [String; 8] {
     [
-        metadata.id.clone(),
+        qualified_id.to_string(),
         metadata.status.to_string(),
         metadata.task_type.to_string(),
         metadata.priority.to_string(),
@@ -373,6 +389,28 @@ fn task_row(domain: &str, metadata: &crate::model::TaskMetadata) -> [String; 8] 
             .unwrap_or_else(|| "-".to_string()),
         truncate_title(&metadata.title),
     ]
+}
+
+fn append_warnings(mut output: String, warnings: &[ValidationWarning]) -> String {
+    if warnings.is_empty() {
+        return output;
+    }
+    output.push_str("\n\nWarnings\n");
+    output.push_str(
+        &warnings
+            .iter()
+            .map(|warning| {
+                let path = warning
+                    .path
+                    .as_ref()
+                    .map(|path| format!(" {path}"))
+                    .unwrap_or_default();
+                format!("- [{}]{path}: {}", warning.code, warning.message)
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    output
 }
 
 fn truncate_title(title: &str) -> String {
@@ -480,7 +518,7 @@ mod tests {
         );
         for (line, task) in lines[2..].iter().zip(&tasks) {
             let values = [
-                task.metadata.id.clone(),
+                task.qualified_id(),
                 task.metadata.status.to_string(),
                 task.metadata.task_type.to_string(),
                 task.metadata.priority.to_string(),

@@ -47,6 +47,7 @@ pub enum TaskError {
     },
     DomainRequired {
         id: String,
+        candidates: Vec<String>,
         root: PathBuf,
     },
     DomainConflict {
@@ -66,8 +67,16 @@ pub enum TaskError {
     },
     Validation(Vec<ValidationError>),
     Json(serde_json::Error),
-    NotFound {
-        id: String,
+    TaskNotFound {
+        reference: String,
+        source_domain: Option<String>,
+        root: PathBuf,
+    },
+    AmbiguousReference {
+        reference: String,
+        source_domain: Option<String>,
+        candidates: Vec<String>,
+        root: PathBuf,
     },
     Message(String),
 }
@@ -158,11 +167,21 @@ impl fmt::Display for TaskError {
                 "invalid value {value:?} at {path} in {}: {constraint}",
                 config_path.display()
             ),
-            Self::DomainRequired { id, root } => write!(
-                f,
-                "domain is required for task id {id:?} in {}; pass --domain or use domain:{id}",
-                root.display()
-            ),
+            Self::DomainRequired {
+                id,
+                candidates,
+                root,
+            } => {
+                write!(
+                    f,
+                    "domain is required for task id {id:?} in {}; use domain:{id}",
+                    root.display()
+                )?;
+                if !candidates.is_empty() {
+                    write!(f, "; matching tasks: {}", candidates.join(", "))?;
+                }
+                Ok(())
+            }
             Self::DomainConflict {
                 identity_domain,
                 flag_domain,
@@ -202,7 +221,34 @@ impl fmt::Display for TaskError {
                 Ok(())
             }
             Self::Json(error) => write!(f, "failed to process JSON: {error}"),
-            Self::NotFound { id } => write!(f, "task {id} does not exist"),
+            Self::TaskNotFound {
+                reference,
+                source_domain,
+                root,
+            } => {
+                write!(f, "task reference {reference:?} does not exist")?;
+                if let Some(domain) = source_domain {
+                    write!(f, " in domain {domain}")?;
+                }
+                write!(f, " in {}", root.display())
+            }
+            Self::AmbiguousReference {
+                reference,
+                source_domain,
+                candidates,
+                root,
+            } => {
+                write!(f, "task reference {reference:?} is ambiguous")?;
+                if let Some(domain) = source_domain {
+                    write!(f, " from domain {domain}")?;
+                }
+                write!(
+                    f,
+                    " in {}; candidates: {}",
+                    root.display(),
+                    candidates.join(", ")
+                )
+            }
             Self::Message(message) => write!(f, "{message}"),
         }
     }
@@ -224,7 +270,8 @@ impl Error for TaskError {
             | Self::InvalidReference { .. }
             | Self::UnknownDomain { .. }
             | Self::Validation(_)
-            | Self::NotFound { .. }
+            | Self::TaskNotFound { .. }
+            | Self::AmbiguousReference { .. }
             | Self::Message(_) => None,
         }
     }
@@ -248,7 +295,8 @@ impl TaskError {
             Self::Validation(_) => "validation_failed",
             Self::Io { .. } => "io",
             Self::Json(_) => "invalid_json",
-            Self::NotFound { .. } => "task_not_found",
+            Self::TaskNotFound { .. } => "task_not_found",
+            Self::AmbiguousReference { .. } => "ambiguous_reference",
             Self::Message(_) => "invalid_operation",
         }
     }
@@ -300,8 +348,17 @@ impl TaskError {
                 "value": value,
                 "constraint": constraint
             }),
-            Self::DomainRequired { id, root } => {
-                serde_json::json!({"id": id, "root": root})
+            Self::DomainRequired {
+                id,
+                candidates,
+                root,
+            } => {
+                serde_json::json!({
+                    "id": id,
+                    "reference": id,
+                    "candidates": candidates,
+                    "root": root
+                })
             }
             Self::DomainConflict {
                 identity_domain,
@@ -332,7 +389,26 @@ impl TaskError {
             }),
             Self::ProjectNotFound { start } => serde_json::json!({"start": start}),
             Self::Io { path, .. } => serde_json::json!({"path": path}),
-            Self::NotFound { id } => serde_json::json!({"id": id}),
+            Self::TaskNotFound {
+                reference,
+                source_domain,
+                root,
+            } => serde_json::json!({
+                "reference": reference,
+                "source_domain": source_domain,
+                "root": root
+            }),
+            Self::AmbiguousReference {
+                reference,
+                source_domain,
+                candidates,
+                root,
+            } => serde_json::json!({
+                "reference": reference,
+                "source_domain": source_domain,
+                "candidates": candidates,
+                "root": root
+            }),
             Self::Validation(_) | Self::Json(_) | Self::Message(_) => serde_json::json!({}),
         }
     }

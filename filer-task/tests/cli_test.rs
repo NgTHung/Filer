@@ -24,7 +24,10 @@ fn validate_command_accepts_minimal_task_repo() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout should be valid UTF-8");
-    assert_eq!(stdout, "Validation\nStatus: Passed\nTasks: 1\n");
+    assert_eq!(
+        stdout,
+        "Validation\nStatus: Passed\nTasks: 1\nWarnings: 0\n"
+    );
 }
 
 #[test]
@@ -62,6 +65,7 @@ fn list_command_emits_parseable_json() {
         1
     );
     assert_eq!(json[0]["id"], "CORE-001");
+    assert_eq!(json[0]["qualified_id"], "core:CORE-001");
     assert_eq!(json[0]["type"], "Feature");
     assert_eq!(json[0]["rules"][0], "CORE-LIBRARY");
     assert_eq!(json[0]["risk"], "High");
@@ -198,7 +202,7 @@ fn deps_command_outputs_incomplete_dependencies() {
             "--root",
             repo.path().to_str().expect("temp path should be UTF-8"),
             "--incomplete",
-            "CORE-042",
+            "core:CORE-042",
             "--format",
             "json",
         ])
@@ -238,17 +242,17 @@ fn deps_command_uses_aligned_human_table() {
         "depends_on: [CORE-001]\n",
     );
 
-    let stdout = run_task_command_stdout(&repo, ["deps", "CORE-042"]);
+    let stdout = run_task_command_stdout(&repo, ["deps", "core:CORE-042"]);
     let lines: Vec<&str> = stdout.lines().collect();
 
     assert_eq!(lines.len(), 3);
-    assert!(lines[0].starts_with("ID"));
+    assert!(lines[0].starts_with("TASK"));
     assert!(
         lines[1]
             .chars()
             .all(|character| character == '-' || character == ' ')
     );
-    assert!(lines[2].starts_with("CORE-001"));
+    assert!(lines[2].starts_with("core:CORE-001"));
 }
 
 #[test]
@@ -288,10 +292,10 @@ fn milestone_command_outputs_exit_checklist() {
     let status_column = header.find("STATUS").expect("status header should exist");
     let task_line = lines
         .iter()
-        .find(|line| line.starts_with("CORE-042"))
+        .find(|line| line.starts_with("core:CORE-042"))
         .expect("open task should exist");
 
-    assert!(header.starts_with("ID"));
+    assert!(header.starts_with("TASK"));
     assert!(
         lines[heading + 2]
             .chars()
@@ -359,12 +363,12 @@ fn lifecycle_commands_update_task_files() {
     assert!(add.status.success());
     assert_eq!(
         String::from_utf8(add.stdout).expect("stdout should be valid UTF-8"),
-        "Task Created\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
+        "Task Created\nTask: core:CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
     );
 
     assert_eq!(
-        run_task_command_stdout(&repo, ["start", "CORE-042"]),
-        "Task Started\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
+        run_task_command_stdout(&repo, ["start", "core:CORE-042"]),
+        "Task Started\nTask: core:CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
     );
     let task_path = repo
         .path()
@@ -377,11 +381,11 @@ fn lifecycle_commands_update_task_files() {
             &repo,
             [
                 "block",
-                "CORE-042",
+                "core:CORE-042",
                 "Waiting for provider timeout policy decision.",
             ],
         ),
-        "Task Blocked\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
+        "Task Blocked\nTask: core:CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
     );
     let blocked = fs::read_to_string(&task_path).expect("task should be readable");
     assert!(blocked.contains("status: Blocked"));
@@ -396,8 +400,8 @@ fn lifecycle_commands_update_task_files() {
     )
     .expect("task should be updated");
     assert_eq!(
-        run_task_command_stdout(&repo, ["done", "CORE-042"]),
-        "Task Completed\nTask: CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
+        run_task_command_stdout(&repo, ["done", "core:CORE-042"]),
+        "Task Completed\nTask: core:CORE-042\nPath: .tasks/core/CORE-042-provider-timeout-propagation.md\n"
     );
     let done = fs::read_to_string(&task_path).expect("task should be readable");
     assert!(done.contains("status: Done"));
@@ -414,9 +418,13 @@ fn lifecycle_commands_update_task_files() {
     assert_eq!(
         run_task_command_stdout(
             &repo,
-            ["defer", "CORE-043", "No longer needed for this milestone."],
+            [
+                "defer",
+                "core:CORE-043",
+                "No longer needed for this milestone.",
+            ],
         ),
-        "Task Deferred\nTask: CORE-043\nPath: .tasks/core/CORE-043-cache-policy.md\n"
+        "Task Deferred\nTask: core:CORE-043\nPath: .tasks/core/CORE-043-cache-policy.md\n"
     );
     let deferred = fs::read_to_string(repo.path().join(".tasks/core/CORE-043-cache-policy.md"))
         .expect("task should be readable");
@@ -433,8 +441,11 @@ fn lifecycle_commands_update_task_files() {
         "",
     );
     assert_eq!(
-        run_task_command_stdout(&repo, ["obsolete", "CORE-044", "Replaced by CORE-045."]),
-        "Task Obsolete\nTask: CORE-044\nPath: .tasks/core/CORE-044-replaced-policy.md\n"
+        run_task_command_stdout(
+            &repo,
+            ["obsolete", "core:CORE-044", "Replaced by CORE-045."],
+        ),
+        "Task Obsolete\nTask: core:CORE-044\nPath: .tasks/core/CORE-044-replaced-policy.md\n"
     );
     let obsolete = fs::read_to_string(repo.path().join(".tasks/core/CORE-044-replaced-policy.md"))
         .expect("task should be readable");
@@ -453,7 +464,7 @@ fn add_command_creates_milestone_and_rich_task() {
             "--domain",
             "milestones",
             "--id",
-            "MILESTONE-003",
+            "milestones:MILESTONE-003",
             "--title",
             "Core contract stabilization",
             "--priority",
@@ -481,7 +492,7 @@ fn add_command_creates_milestone_and_rich_task() {
             "--type",
             "Feature",
             "--parent",
-            "MILESTONE-003",
+            "milestones:MILESTONE-003",
             "--milestone",
             "0.3.0",
             "--rule",
@@ -505,7 +516,7 @@ fn add_command_creates_milestone_and_rich_task() {
             .join(".tasks/core/CORE-042-provider-timeout-propagation.md"),
     )
     .expect("task should be readable");
-    assert!(task.contains("parent: MILESTONE-003"));
+    assert!(task.contains("parent: milestones:MILESTONE-003"));
     assert!(task.contains("rules: [PROVIDER-ACCESS]"));
     assert!(task.contains("tags: [provider]"));
     assert!(task.contains("## Acceptance Criteria"));
@@ -569,7 +580,7 @@ fn import_command_writes_batch_and_allows_skip_existing_rerun() {
     "title": "Provider timeout propagation",
     "priority": "High",
     "type": "Feature",
-    "parent": "MILESTONE-003",
+    "parent": "milestones:MILESTONE-003",
     "milestone": "0.3.0",
     "rules": ["PROVIDER-ACCESS"],
     "risk": "High",
