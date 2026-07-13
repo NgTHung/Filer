@@ -3,6 +3,7 @@ use std::{fs, path::PathBuf};
 use crate::{
     agent_context::{ReadyFilter, build_context, build_ready, build_show},
     error::TaskError,
+    identity::{IdentityError, TaskIdentity},
     lifecycle::{
         Criterion, NewTask, add_task, block_task, defer_task, done_task, import_tasks,
         obsolete_task, start_task,
@@ -25,7 +26,7 @@ const ROOT_HELP: &str = "Start project discovery at PATH; defaults to the curren
 
 #[derive(Debug, Parser)]
 #[command(name = "filer-task")]
-#[command(about = "Manage Filer task files")]
+#[command(about = "Manage project task files")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -143,9 +144,15 @@ pub struct SummaryArgs {
 pub struct AddArgs {
     #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
-    #[arg(long)]
-    pub domain: String,
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Task domain; required when --id is not qualified as domain:LOCAL-ID"
+    )]
+    pub domain: Option<String>,
+    #[arg(
+        long,
+        help = "Local task ID with --domain, or a qualified domain:LOCAL-ID"
+    )]
     pub id: String,
     #[arg(long)]
     pub title: String,
@@ -384,12 +391,16 @@ pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
 
 pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let task_id = args.id.clone();
+    let identity = resolve_add_identity(&project, args.domain.as_deref(), &args.id)?;
+    let TaskIdentity {
+        domain,
+        id: task_id,
+    } = identity;
     let path = add_task(
         &project,
         NewTask {
-            domain: args.domain,
-            id: args.id,
+            domain,
+            id: task_id.clone(),
             title: args.title,
             status: args.status,
             priority: args.priority,
@@ -418,6 +429,51 @@ pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
         })
     );
     Ok(())
+}
+
+fn resolve_add_identity(
+    project: &TaskProject,
+    domain: Option<&str>,
+    id: &str,
+) -> Result<TaskIdentity, TaskError> {
+    let identity = if id.contains(':') {
+        let identity =
+            TaskIdentity::parse(id).map_err(|error| invalid_reference(project, id, &error))?;
+        if let Some(domain) = domain
+            && identity.domain != domain
+        {
+            return Err(TaskError::DomainConflict {
+                identity_domain: identity.domain.clone(),
+                flag_domain: domain.to_string(),
+                root: project.root().to_path_buf(),
+            });
+        }
+        identity
+    } else {
+        let domain = domain.ok_or_else(|| TaskError::DomainRequired {
+            id: id.to_string(),
+            root: project.root().to_path_buf(),
+        })?;
+        TaskIdentity::new(domain, id)
+            .map_err(|error| invalid_reference(project, error.value(), &error))?
+    };
+
+    if project.policy().domain(&identity.domain).is_none() {
+        return Err(TaskError::UnknownDomain {
+            domain: identity.domain.clone(),
+            configured: project.policy().domains().keys().cloned().collect(),
+            root: project.root().to_path_buf(),
+        });
+    }
+    Ok(identity)
+}
+
+fn invalid_reference(project: &TaskProject, reference: &str, error: &IdentityError) -> TaskError {
+    TaskError::InvalidReference {
+        reference: reference.to_string(),
+        constraint: error.constraint().to_string(),
+        root: project.root().to_path_buf(),
+    }
 }
 
 pub fn run_import(args: ImportArgs) -> Result<(), TaskError> {

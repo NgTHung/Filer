@@ -45,6 +45,25 @@ pub enum TaskError {
         value: String,
         constraint: String,
     },
+    DomainRequired {
+        id: String,
+        root: PathBuf,
+    },
+    DomainConflict {
+        identity_domain: String,
+        flag_domain: String,
+        root: PathBuf,
+    },
+    InvalidReference {
+        reference: String,
+        constraint: String,
+        root: PathBuf,
+    },
+    UnknownDomain {
+        domain: String,
+        configured: Vec<String>,
+        root: PathBuf,
+    },
     Validation(Vec<ValidationError>),
     Json(serde_json::Error),
     NotFound {
@@ -139,6 +158,39 @@ impl fmt::Display for TaskError {
                 "invalid value {value:?} at {path} in {}: {constraint}",
                 config_path.display()
             ),
+            Self::DomainRequired { id, root } => write!(
+                f,
+                "domain is required for task id {id:?} in {}; pass --domain or use domain:{id}",
+                root.display()
+            ),
+            Self::DomainConflict {
+                identity_domain,
+                flag_domain,
+                root,
+            } => write!(
+                f,
+                "task identity domain {identity_domain:?} conflicts with --domain {flag_domain:?} in {}",
+                root.display()
+            ),
+            Self::InvalidReference {
+                reference,
+                constraint,
+                root,
+            } => write!(
+                f,
+                "invalid task reference {reference:?} in {}: {constraint}",
+                root.display()
+            ),
+            Self::UnknownDomain {
+                domain,
+                configured,
+                root,
+            } => write!(
+                f,
+                "unknown task domain {domain:?} in {}; configured domains: {}",
+                root.display(),
+                configured.join(", ")
+            ),
             Self::Validation(errors) => {
                 writeln!(f, "task validation failed with {} error(s):", errors.len())?;
                 for error in errors {
@@ -167,6 +219,10 @@ impl Error for TaskError {
             | Self::ConfigDuplicate { .. }
             | Self::ConfigUnknownField { .. }
             | Self::ConfigInvalidValue { .. }
+            | Self::DomainRequired { .. }
+            | Self::DomainConflict { .. }
+            | Self::InvalidReference { .. }
+            | Self::UnknownDomain { .. }
             | Self::Validation(_)
             | Self::NotFound { .. }
             | Self::Message(_) => None,
@@ -185,6 +241,10 @@ impl TaskError {
             Self::ConfigDuplicate { .. } => "config_duplicate",
             Self::ConfigUnknownField { .. } => "config_unknown_field",
             Self::ConfigInvalidValue { .. } => "config_invalid_value",
+            Self::DomainRequired { .. } => "domain_required",
+            Self::DomainConflict { .. } => "domain_conflict",
+            Self::InvalidReference { .. } => "invalid_reference",
+            Self::UnknownDomain { .. } => "unknown_domain",
             Self::Validation(_) => "validation_failed",
             Self::Io { .. } => "io",
             Self::Json(_) => "invalid_json",
@@ -239,6 +299,36 @@ impl TaskError {
                 "path": path,
                 "value": value,
                 "constraint": constraint
+            }),
+            Self::DomainRequired { id, root } => {
+                serde_json::json!({"id": id, "root": root})
+            }
+            Self::DomainConflict {
+                identity_domain,
+                flag_domain,
+                root,
+            } => serde_json::json!({
+                "identity_domain": identity_domain,
+                "flag_domain": flag_domain,
+                "root": root
+            }),
+            Self::InvalidReference {
+                reference,
+                constraint,
+                root,
+            } => serde_json::json!({
+                "reference": reference,
+                "constraint": constraint,
+                "root": root
+            }),
+            Self::UnknownDomain {
+                domain,
+                configured,
+                root,
+            } => serde_json::json!({
+                "domain": domain,
+                "configured": configured,
+                "root": root
             }),
             Self::ProjectNotFound { start } => serde_json::json!({"start": start}),
             Self::Io { path, .. } => serde_json::json!({"path": path}),

@@ -129,12 +129,17 @@ stable code and structured context through `TaskError::code` and
 
 ## Task Files
 
-Tasks live under `.tasks/core`, `.tasks/app`, or `.tasks/ecosystem`. Project milestones live under `.tasks/milestones`.
+Each domain in project configuration maps to one direct child directory under
+`.tasks`. The `default` name is an ordinary domain. Commands do not select it
+when you omit a domain. When configuration is absent, the compatibility policy
+keeps `.tasks/core`, `.tasks/app`, `.tasks/ecosystem`, and `.tasks/milestones`
+readable.
 
 File names must start with the task ID:
 
 ```text
 .tasks/core/CORE-001-location-routing.md
+.tasks/default/WORK-001-first-task.md
 .tasks/milestones/MILESTONE-003-core-contract-stabilization.md
 ```
 
@@ -246,7 +251,7 @@ Tasks whose status is `Deferred` or `Obsolete` may omit criteria, but they must 
 
 ## Prefixes
 
-Prefixes are fixed by domain so invalid IDs are caught early.
+Compatibility projects use fixed prefixes so invalid IDs are caught early.
 
 Core prefixes:
 
@@ -271,7 +276,7 @@ Milestone prefixes:
 - YAML frontmatter parses into the strict task model.
 - IDs and parent IDs use `PREFIX-NUMBER`.
 - File names start with the task ID.
-- Prefixes are allowed for the task domain.
+- Compatibility-project prefixes are allowed for the task domain.
 - Parent tasks exist.
 - Referenced milestones match exactly one milestone task.
 - The `MILESTONE` prefix appears only under `.tasks/milestones`.
@@ -368,7 +373,8 @@ cargo run -p filer-task -- summary --format json
 Use lifecycle commands to keep status and rationale sections consistent:
 
 ```bash
-cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --milestone 0.3.0
+cargo run -p filer-task -- add --id core:CORE-042 --title "Provider timeout propagation" --priority High --type Feature --milestone 0.3.0
+cargo run -p filer-task -- add --domain core --id CORE-043 --title "Cache policy" --priority High --type Feature
 cargo run -p filer-task -- add --domain milestones --id MILESTONE-003 --title "Core contract stabilization" --priority High --type Milestone --milestone 0.3.0
 cargo run -p filer-task -- start CORE-042
 cargo run -p filer-task -- done CORE-042
@@ -376,6 +382,11 @@ cargo run -p filer-task -- block CORE-042 "Waiting for provider timeout policy d
 cargo run -p filer-task -- defer CORE-042 "No longer needed for the current milestone."
 cargo run -p filer-task -- obsolete CORE-042 "Replaced by CORE-044."
 ```
+
+`add` accepts either `--id domain:LOCAL-ID` or an unqualified `--id` with an
+explicit `--domain`. A matching domain in both inputs is valid. Conflicting
+domains fail, and an unqualified ID without `--domain` never falls back to
+`default`.
 
 Successful human output uses the same headings, labels, and path format across commands. Paths are relative to the repository and use `/` separators:
 

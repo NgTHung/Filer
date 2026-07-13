@@ -20,13 +20,15 @@ use std::{
 use serde::Deserialize;
 
 use crate::{
+    domain::compatibility_prefixes,
     error::TaskError,
     frontmatter::parse_metadata,
+    identity::{IdentityError, TaskIdentity, is_valid_local_id},
     markdown::{has_unchecked_checklist_item, replace_or_append_section},
     model::{Priority, Risk, TaskStatus, TaskType},
     project::TaskProject,
-    repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR},
-    validate::{RULE_IDS, allowed_prefixes, is_valid_task_id, require_valid_report, validate_repo},
+    repo::{MILESTONE_DOMAIN, TASK_DIR},
+    validate::{RULE_IDS, require_valid_report, validate_repo},
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,10 +72,14 @@ pub fn import_tasks(
     dry_run: bool,
     skip_existing: bool,
 ) -> Result<Vec<PathBuf>, TaskError> {
-    let existing = existing_ids(project)?;
+    let existing = existing_identities(project)?;
     let tasks_to_write: Vec<&NewTask> = tasks
         .iter()
-        .filter(|task| !skip_existing || !existing.contains(task.id.as_str()))
+        .filter(|task| {
+            !skip_existing
+                || !TaskIdentity::new(&task.domain, &task.id)
+                    .is_ok_and(|identity| existing.contains(&identity))
+        })
         .collect();
     validate_new_tasks(project, &tasks_to_write, skip_existing)?;
     let rendered: Vec<(PathBuf, String)> = tasks_to_write
@@ -99,6 +105,10 @@ fn validate_new_tasks(
         .iter()
         .map(|task| task.metadata.id.as_str())
         .collect();
+    let mut known_identities: HashSet<TaskIdentity> = existing_tasks
+        .iter()
+        .map(|task| task_identity(project, &task.domain, &task.metadata.id))
+        .collect::<Result<_, _>>()?;
     let mut milestone_counts: HashMap<&str, usize> = HashMap::new();
     for task in &existing_tasks {
         if task.metadata.task_type == TaskType::Milestone {
@@ -110,7 +120,7 @@ fn validate_new_tasks(
 
     let mut batch_ids = HashSet::new();
     for task in new_tasks {
-        validate_new_task_shape(task)?;
+        let identity = validate_new_task_shape(project, task)?;
         let (path, _) = render_task(project.root(), task);
         if path.exists() && !skip_existing {
             return Err(TaskError::Message(format!(
@@ -118,18 +128,17 @@ fn validate_new_tasks(
                 path.display()
             )));
         }
-        if known_ids.contains(task.id.as_str()) && !skip_existing {
+        if known_identities.contains(&identity) && !skip_existing {
             return Err(TaskError::Message(format!(
-                "task {} already exists",
-                task.id
+                "task {identity} already exists"
             )));
         }
-        if !batch_ids.insert(task.id.as_str()) {
+        if !batch_ids.insert(identity.clone()) {
             return Err(TaskError::Message(format!(
-                "task {} appears more than once in import",
-                task.id
+                "task {identity} appears more than once in import"
             )));
         }
+        known_identities.insert(identity);
         known_ids.insert(task.id.as_str());
         if task.task_type == TaskType::Milestone {
             let milestone = task.milestone.as_deref().ok_or_else(|| {
@@ -141,7 +150,7 @@ fn validate_new_tasks(
 
     for task in new_tasks {
         if let Some(parent) = &task.parent {
-            if !is_valid_task_id(parent) {
+            if !is_valid_local_id(parent) {
                 return Err(TaskError::Message(format!(
                     "invalid parent id {parent}; expected PREFIX-NUMBER"
                 )));
@@ -153,7 +162,7 @@ fn validate_new_tasks(
             }
         }
         for depends_on in &task.depends_on {
-            if !is_valid_task_id(depends_on) {
+            if !is_valid_local_id(depends_on) {
                 return Err(TaskError::Message(format!(
                     "invalid dependency id {depends_on}; expected PREFIX-NUMBER"
                 )));
@@ -181,25 +190,23 @@ fn validate_new_tasks(
     Ok(())
 }
 
-fn validate_new_task_shape(task: &NewTask) -> Result<(), TaskError> {
-    if !is_valid_task_id(&task.id) {
-        return Err(TaskError::Message(format!(
-            "invalid id {}; expected PREFIX-NUMBER",
-            task.id
-        )));
-    }
+fn validate_new_task_shape(
+    project: &TaskProject,
+    task: &NewTask,
+) -> Result<TaskIdentity, TaskError> {
+    let identity = task_identity(project, &task.domain, &task.id)?;
     if task.title.chars().count() < 5 {
         return Err(TaskError::Message(format!(
             "{} title must be at least 5 characters",
             task.id
         )));
     }
-    let valid_domain = DOMAINS.contains(&task.domain.as_str()) || task.domain == MILESTONE_DOMAIN;
-    if !valid_domain {
-        return Err(TaskError::Message(format!(
-            "domain {} is not a task domain",
-            task.domain
-        )));
+    if project.policy().domain(&task.domain).is_none() {
+        return Err(TaskError::UnknownDomain {
+            domain: task.domain.clone(),
+            configured: project.policy().domains().keys().cloned().collect(),
+            root: project.root().to_path_buf(),
+        });
     }
     if task.task_type == TaskType::Milestone && task.domain != MILESTONE_DOMAIN {
         return Err(TaskError::Message(
@@ -216,12 +223,17 @@ fn validate_new_task_shape(task: &NewTask) -> Result<(), TaskError> {
         .split_once('-')
         .map(|(prefix, _)| prefix)
         .unwrap_or("");
-    if prefix == "MILESTONE" && task.domain != MILESTONE_DOMAIN {
+    if project.policy().is_compatibility()
+        && prefix == "MILESTONE"
+        && task.domain != MILESTONE_DOMAIN
+    {
         return Err(TaskError::Message(
             "MILESTONE prefix is only allowed under .tasks/milestones".to_string(),
         ));
     }
-    if !allowed_prefixes(&task.domain).contains(&prefix) {
+    if project.policy().is_compatibility()
+        && !compatibility_prefixes(&task.domain).contains(&prefix)
+    {
         return Err(TaskError::Message(format!(
             "prefix {prefix} is not allowed for {} tasks",
             task.domain
@@ -283,7 +295,7 @@ fn validate_new_task_shape(task: &NewTask) -> Result<(), TaskError> {
             "Milestone tasks must include --milestone".to_string(),
         ));
     }
-    Ok(())
+    Ok(identity)
 }
 
 fn validate_new_dependency_cycles(new_tasks: &[&NewTask]) -> Result<(), TaskError> {
@@ -434,11 +446,27 @@ fn escape_yaml(value: &str) -> String {
     }
 }
 
-fn existing_ids(project: &TaskProject) -> Result<HashSet<String>, TaskError> {
-    Ok(require_valid_report(validate_repo(project)?)?
+fn existing_identities(project: &TaskProject) -> Result<HashSet<TaskIdentity>, TaskError> {
+    require_valid_report(validate_repo(project)?)?
         .into_iter()
-        .map(|task| task.metadata.id)
-        .collect())
+        .map(|task| task_identity(project, &task.domain, &task.metadata.id))
+        .collect()
+}
+
+fn task_identity(
+    project: &TaskProject,
+    domain: &str,
+    local_id: &str,
+) -> Result<TaskIdentity, TaskError> {
+    TaskIdentity::new(domain, local_id).map_err(|error| invalid_identity(project, &error))
+}
+
+fn invalid_identity(project: &TaskProject, error: &IdentityError) -> TaskError {
+    TaskError::InvalidReference {
+        reference: error.value().to_string(),
+        constraint: error.constraint().to_string(),
+        root: project.root().to_path_buf(),
+    }
 }
 
 fn write_new_task(path: &Path, content: &str) -> Result<(), TaskError> {

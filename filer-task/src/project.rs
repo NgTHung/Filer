@@ -23,7 +23,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::error::TaskError;
+use crate::{
+    domain::{APP_PREFIXES, CORE_PREFIXES, ECOSYSTEM_PREFIXES},
+    error::TaskError,
+    identity::{is_valid_domain_name, is_windows_device_name, valid_hyphen_name},
+};
 
 use self::json::{JsonNode, read_json};
 
@@ -32,12 +36,6 @@ mod json;
 pub const CONFIG_VERSION: u64 = 1;
 pub const CONFIG_PATH: &str = ".tasks/config.json";
 
-const CORE_PREFIXES: &[&str] = &[
-    "CORE", "ACTORS", "API", "MODULES", "PIPELINE", "SERVICES", "UTILS", "VFS", "REL", "NAV",
-    "SEARCH", "OPS", "PREVIEW", "PROVIDER", "PROTOCOL",
-];
-const APP_PREFIXES: &[&str] = &["UI", "EXPL", "SETS", "SRCH", "MEDIA", "NAV", "PERF", "A11Y"];
-const ECOSYSTEM_PREFIXES: &[&str] = &["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"];
 const ACCEPTANCE_TYPES: &[&str] = &[
     "Feature", "Bug", "Refactor", "TechDebt", "TestDebt", "Design", "Docs",
 ];
@@ -563,7 +561,7 @@ fn validate_name(
     kind: NameKind,
 ) -> Result<(), TaskError> {
     let valid = match kind {
-        NameKind::Domain => valid_hyphen_name(value, 64, true),
+        NameKind::Domain => is_valid_domain_name(value),
         NameKind::Prefix => {
             (1..=32).contains(&value.len())
                 && value.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
@@ -577,7 +575,7 @@ fn validate_name(
                 && value.bytes().all(|byte| byte.is_ascii_alphanumeric())
         }
         NameKind::Tag => valid_hyphen_name(value, 64, false),
-    } && !is_windows_device_name(value);
+    } && (matches!(kind, NameKind::Domain) || !is_windows_device_name(value));
     if valid {
         Ok(())
     } else {
@@ -589,33 +587,4 @@ fn validate_name(
         };
         invalid(config_path, path, value, constraint)
     }
-}
-
-fn valid_hyphen_name(value: &str, max: usize, starts_with_letter: bool) -> bool {
-    let bytes = value.as_bytes();
-    if !(1..=max).contains(&bytes.len()) {
-        return false;
-    }
-    let first_valid = if starts_with_letter {
-        bytes[0].is_ascii_lowercase()
-    } else {
-        bytes[0].is_ascii_lowercase() || bytes[0].is_ascii_digit()
-    };
-    first_valid
-        && (bytes[bytes.len() - 1].is_ascii_lowercase() || bytes[bytes.len() - 1].is_ascii_digit())
-        && bytes
-            .iter()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
-        && !value.contains("--")
-}
-
-fn is_windows_device_name(value: &str) -> bool {
-    let upper = value.to_ascii_uppercase();
-    matches!(upper.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || upper.strip_prefix("COM").is_some_and(|number| {
-            matches!(number, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
-        })
-        || upper.strip_prefix("LPT").is_some_and(|number| {
-            matches!(number, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
-        })
 }

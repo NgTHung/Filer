@@ -17,12 +17,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{error::TaskError, project::TaskProject};
+use crate::{
+    error::{TaskError, ValidationError},
+    project::{CONFIG_PATH, TaskProject},
+};
 
 pub const TASK_DIR: &str = ".tasks";
 /// Reserved compatibility file that discovery and task loading ignore.
 pub const TASK_SCHEMA: &str = "task.schema.json";
-pub const DOMAINS: &[&str] = &["core", "app", "ecosystem"];
 pub const MILESTONE_DOMAIN: &str = "milestones";
 
 pub fn discover_project_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskError> {
@@ -46,16 +48,80 @@ pub fn discover_project_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskErr
 
 pub fn read_task_files(project: &TaskProject) -> Result<Vec<PathBuf>, TaskError> {
     let mut files = Vec::new();
-    for domain in DOMAINS.iter().copied().chain([MILESTONE_DOMAIN]) {
+    for domain in project.policy().domains().keys() {
         let dir = project.root().join(TASK_DIR).join(domain);
-        if !dir.exists() {
+        let exists = dir.try_exists().map_err(|source| TaskError::Io {
+            path: dir.clone(),
+            source,
+        })?;
+        if !exists {
             continue;
         }
-
+        if !dir.is_dir() {
+            continue;
+        }
         read_markdown_files(&dir, &mut files)?;
     }
     files.sort();
     Ok(files)
+}
+
+pub fn validate_task_layout(project: &TaskProject) -> Result<Vec<ValidationError>, TaskError> {
+    let task_root = project.root().join(TASK_DIR);
+    let entries = fs::read_dir(&task_root).map_err(|source| TaskError::Io {
+        path: task_root.clone(),
+        source,
+    })?;
+    let mut errors = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| TaskError::Io {
+            path: task_root.clone(),
+            source,
+        })?;
+        let path = entry.path();
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            errors.push(ValidationError::at(
+                &path,
+                "task project entries must use portable UTF-8 names",
+            ));
+            continue;
+        };
+        if !path.is_dir() && is_reserved_entry(&name) {
+            continue;
+        }
+        if path.is_dir() {
+            if project.policy().domain(&name).is_none() {
+                errors.push(ValidationError::at(
+                    &path,
+                    format!(
+                        "undeclared task domain {name}; configured domains: {}",
+                        project
+                            .policy()
+                            .domains()
+                            .keys()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+            }
+        } else if project.policy().domain(&name).is_some() {
+            errors.push(ValidationError::at(
+                &path,
+                format!("configured task domain {name} must be a directory"),
+            ));
+        } else if path.extension().is_some_and(|extension| extension == "md") {
+            errors.push(ValidationError::at(
+                &path,
+                "task Markdown files must live inside a configured domain directory",
+            ));
+        }
+    }
+    Ok(errors)
+}
+
+fn is_reserved_entry(name: &str) -> bool {
+    name == TASK_SCHEMA || CONFIG_PATH.rsplit('/').next() == Some(name)
 }
 
 fn read_markdown_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), TaskError> {

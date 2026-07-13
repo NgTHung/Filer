@@ -16,8 +16,10 @@
 
 pub mod agent_context;
 pub mod cli;
+mod domain;
 pub mod error;
 pub mod frontmatter;
+pub mod identity;
 pub mod lifecycle;
 pub mod markdown;
 pub mod model;

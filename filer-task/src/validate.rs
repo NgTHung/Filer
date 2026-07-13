@@ -5,21 +5,16 @@ use std::{
 };
 
 use crate::{
+    domain::{validate_duplicate_identities, validate_task_path},
     error::{TaskError, ValidationError},
     frontmatter::parse_metadata,
+    identity::is_valid_local_id,
     markdown::{has_section, has_unchecked_checklist_item},
     model::{Priority, SortBy, Task, TaskStatus, TaskType},
     project::TaskProject,
-    repo::{DOMAINS, MILESTONE_DOMAIN, TASK_DIR, read_task_files},
+    repo::{read_task_files, validate_task_layout},
 };
 
-pub(crate) const CORE_PREFIXES: &[&str] = &[
-    "CORE", "ACTORS", "API", "MODULES", "PIPELINE", "SERVICES", "UTILS", "VFS", "REL", "NAV",
-    "SEARCH", "OPS", "PREVIEW", "PROVIDER", "PROTOCOL",
-];
-pub(crate) const APP_PREFIXES: &[&str] =
-    &["UI", "EXPL", "SETS", "SRCH", "MEDIA", "NAV", "PERF", "A11Y"];
-pub(crate) const ECOSYSTEM_PREFIXES: &[&str] = &["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"];
 pub(crate) const RULE_IDS: &[&str] = &[
     "CORE-LIBRARY",
     "PROVIDER-ACCESS",
@@ -52,7 +47,7 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
     let root = project.root();
     let paths = read_task_files(project)?;
     let mut tasks = Vec::new();
-    let mut errors = Vec::new();
+    let mut errors = validate_task_layout(project)?;
 
     for path in paths {
         let content = fs::read_to_string(&path).map_err(|source| TaskError::Io {
@@ -68,7 +63,7 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
                     domain,
                     metadata,
                 };
-                validate_single_task(root, &task, &mut errors);
+                validate_single_task(project, &task, &mut errors);
                 validate_body(&task, &content, &mut errors);
                 tasks.push(task);
             }
@@ -77,7 +72,12 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
     }
 
     validate_cross_references(&tasks, &mut errors);
-    tasks.sort_by(|left, right| left.metadata.id.cmp(&right.metadata.id));
+    tasks.sort_by(|left, right| {
+        left.metadata
+            .id
+            .cmp(&right.metadata.id)
+            .then_with(|| left.domain.cmp(&right.domain))
+    });
 
     Ok(ValidationReport { tasks, errors })
 }
@@ -120,7 +120,12 @@ pub fn filter_tasks(mut tasks: Vec<Task>, filter: &TaskFilter, sort_by: SortBy) 
     match sort_by {
         SortBy::Status => tasks.sort_by_key(|task| status_order(task.metadata.status)),
         SortBy::Priority => tasks.sort_by_key(|task| priority_order(task.metadata.priority)),
-        SortBy::Id => tasks.sort_by(|left, right| left.metadata.id.cmp(&right.metadata.id)),
+        SortBy::Id => tasks.sort_by(|left, right| {
+            left.metadata
+                .id
+                .cmp(&right.metadata.id)
+                .then_with(|| left.domain.cmp(&right.domain))
+        }),
         SortBy::Domain => tasks.sort_by(|left, right| {
             left.domain
                 .cmp(&right.domain)
@@ -131,11 +136,11 @@ pub fn filter_tasks(mut tasks: Vec<Task>, filter: &TaskFilter, sort_by: SortBy) 
     tasks
 }
 
-fn validate_single_task(root: &Path, task: &Task, errors: &mut Vec<ValidationError>) {
+fn validate_single_task(project: &TaskProject, task: &Task, errors: &mut Vec<ValidationError>) {
     let path = &task.path;
     let metadata = &task.metadata;
 
-    if !is_valid_task_id(&metadata.id) {
+    if !is_valid_local_id(&metadata.id) {
         errors.push(ValidationError::at(
             path,
             format!("invalid id {}; expected PREFIX-NUMBER", metadata.id),
@@ -150,7 +155,7 @@ fn validate_single_task(root: &Path, task: &Task, errors: &mut Vec<ValidationErr
     }
 
     if let Some(parent) = &metadata.parent {
-        if !is_valid_task_id(parent) {
+        if !is_valid_local_id(parent) {
             errors.push(ValidationError::at(
                 path,
                 format!("invalid parent id {parent}; expected PREFIX-NUMBER"),
@@ -159,7 +164,7 @@ fn validate_single_task(root: &Path, task: &Task, errors: &mut Vec<ValidationErr
     }
 
     for depends_on in &metadata.depends_on {
-        if !is_valid_task_id(depends_on) {
+        if !is_valid_local_id(depends_on) {
             errors.push(ValidationError::at(
                 path,
                 format!("invalid dependency id {depends_on}; expected PREFIX-NUMBER"),
@@ -214,7 +219,7 @@ fn validate_single_task(root: &Path, task: &Task, errors: &mut Vec<ValidationErr
         }
     }
 
-    validate_path(root, task, errors);
+    validate_task_path(project, task, errors);
 }
 
 fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) {
@@ -272,82 +277,13 @@ fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) 
     }
 }
 
-fn validate_path(root: &Path, task: &Task, errors: &mut Vec<ValidationError>) {
-    let path = &task.path;
-    let relative = match path.strip_prefix(root) {
-        Ok(relative) => relative,
-        Err(_) => {
-            errors.push(ValidationError::at(path, "task file is outside repo root"));
-            return;
-        }
-    };
-
-    let mut parts = relative.components();
-    let task_dir = parts.next().and_then(|part| part.as_os_str().to_str());
-    let domain = parts.next().and_then(|part| part.as_os_str().to_str());
-    let valid_domain =
-        domain.is_some_and(|value| DOMAINS.contains(&value) || value == MILESTONE_DOMAIN);
-    if task_dir != Some(TASK_DIR) || !valid_domain {
-        errors.push(ValidationError::at(
-            path,
-            "task file must live under .tasks/core, .tasks/app, .tasks/ecosystem, or .tasks/milestones",
-        ));
-    }
-
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("");
-    let expected_prefix = format!("{}-", task.metadata.id);
-    if !file_name.starts_with(&expected_prefix) {
-        errors.push(ValidationError::at(
-            path,
-            format!("file name must start with {}", expected_prefix),
-        ));
-    }
-
-    let prefix = task
-        .metadata
-        .id
-        .split_once('-')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or("");
-    if prefix == "MILESTONE" && task.domain != MILESTONE_DOMAIN {
-        errors.push(ValidationError::at(
-            path,
-            "MILESTONE prefix is only allowed under .tasks/milestones",
-        ));
-    } else if !allowed_prefixes(&task.domain).contains(&prefix) {
-        errors.push(ValidationError::at(
-            path,
-            format!("prefix {prefix} is not allowed for {} tasks", task.domain),
-        ));
-    }
-
-    if task.metadata.task_type == TaskType::Milestone && task.domain != MILESTONE_DOMAIN {
-        errors.push(ValidationError::at(
-            path,
-            "Milestone tasks must live under .tasks/milestones",
-        ));
-    }
-}
-
 fn validate_cross_references(tasks: &[Task], errors: &mut Vec<ValidationError>) {
     let mut by_id: HashMap<&str, &Task> = HashMap::new();
-    let mut duplicates = HashSet::new();
 
     for task in tasks {
-        if by_id.insert(&task.metadata.id, task).is_some() {
-            duplicates.insert(task.metadata.id.as_str());
-        }
+        by_id.insert(&task.metadata.id, task);
     }
-
-    for duplicate in duplicates {
-        errors.push(ValidationError::new(
-            None,
-            format!("duplicate task id {duplicate}"),
-        ));
-    }
+    validate_duplicate_identities(tasks, errors);
 
     for task in tasks {
         if let Some(parent) = &task.metadata.parent {
@@ -472,26 +408,6 @@ fn domain_for_path(root: &Path, path: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(crate) fn allowed_prefixes(domain: &str) -> &'static [&'static str] {
-    match domain {
-        "core" => CORE_PREFIXES,
-        "app" => APP_PREFIXES,
-        "ecosystem" => ECOSYSTEM_PREFIXES,
-        "milestones" => &["MILESTONE"],
-        _ => &[],
-    }
-}
-
-pub(crate) fn is_valid_task_id(value: &str) -> bool {
-    let Some((prefix, number)) = value.split_once('-') else {
-        return false;
-    };
-    !prefix.is_empty()
-        && prefix.chars().all(|ch| ch.is_ascii_uppercase())
-        && !number.is_empty()
-        && number.chars().all(|ch| ch.is_ascii_digit())
-}
-
 fn is_valid_iso_date(value: &str) -> bool {
     let parts: Vec<_> = value.split('-').collect();
     if parts.len() != 3 || parts[0].len() != 4 || parts[1].len() != 2 || parts[2].len() != 2 {
@@ -607,7 +523,7 @@ mod tests {
             report
                 .errors
                 .iter()
-                .any(|error| error.message.contains("duplicate task id CORE-001"))
+                .any(|error| error.message.contains("duplicate task id core:CORE-001"))
         );
     }
 
