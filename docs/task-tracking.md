@@ -39,6 +39,15 @@ If no `.tasks` directory exists at or above the starting path, the command exits
 unsuccessfully and reports both the searched path and the required `.tasks`
 directory.
 
+Create a new project with `init`. The command fails if the target already has a
+`.tasks` directory. It writes `.tasks/config.json` and leaves domain directories
+absent until the first task is added.
+
+```bash
+cargo run -p filer-task -- init --root C:\work\new-project --domain work --prefix WORK
+cargo run -p filer-task -- init --root ../new-project --domain work --prefix WORK,BUG
+```
+
 ## Project Configuration
 
 `filer-task` loads `.tasks/config.json` once after project discovery and before
@@ -413,6 +422,7 @@ cargo run -p filer-task -- add --domain core --id CORE-043 --title "Cache policy
 cargo run -p filer-task -- add --domain milestones --id MILESTONE-003 --title "Core contract stabilization" --priority High --type Milestone --milestone 0.3.0
 cargo run -p filer-task -- start core:CORE-042
 cargo run -p filer-task -- done core:CORE-042
+cargo run -p filer-task -- criterion-toggle core:CORE-042 0
 cargo run -p filer-task -- block core:CORE-042 "Waiting for provider timeout policy decision."
 cargo run -p filer-task -- defer core:CORE-042 "No longer needed for the current milestone."
 cargo run -p filer-task -- obsolete core:CORE-042 "Replaced by core:CORE-044."
@@ -457,6 +467,13 @@ cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider tim
 ```
 
 Use `--criterion` for open checklist items and `--checked-criterion` when creating a `Done` task with completed criteria. `Blocked` tasks need `--blocked-reason`. `Deferred` and `Obsolete` tasks need `--rationale`.
+
+Use `criterion-toggle` to flip one zero-based checklist item in the criteria
+section selected by the task type:
+
+```bash
+cargo run -p filer-task -- criterion-toggle core:CORE-042 0
+```
 
 ## Batch Import
 

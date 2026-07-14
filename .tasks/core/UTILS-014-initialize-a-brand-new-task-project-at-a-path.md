@@ -1,7 +1,7 @@
 ---
 id: UTILS-014
 title: Initialize a brand-new task project at a path
-status: To Do
+status: Done
 priority: High
 type: Feature
 parent: UTILS-013
@@ -17,7 +17,7 @@ TaskProject::open (project.rs) and discover_project_root (repo.rs) both require 
 
 ## Acceptance Criteria
 
-- [ ] TaskProject::init fails with a clear error if .tasks/ already exists at the target root, and never partially writes config.json on failure.
-- [ ] TaskProject::init accepts an optional starting domain/prefix set and writes a config.json that filer-task validate accepts with zero tasks.
-- [ ] A new filer-task init CLI subcommand calls the same library function and documents its flags in docs/task-tracking.md.
-- [ ] Tests cover init on an empty directory, init failing when .tasks/ already exists, and the resulting project passing validate_repo with no tasks.
+- [x] TaskProject::init fails with a clear error if .tasks/ already exists at the target root, and never partially writes config.json on failure.
+- [x] TaskProject::init accepts an optional starting domain/prefix set and writes a config.json that filer-task validate accepts with zero tasks.
+- [x] A new filer-task init CLI subcommand calls the same library function and documents its flags in docs/task-tracking.md.
+- [x] Tests cover init on an empty directory, init failing when .tasks/ already exists, and the resulting project passing validate_repo with no tasks.

@@ -13,6 +13,9 @@ pub enum TaskError {
     ProjectNotFound {
         start: PathBuf,
     },
+    ProjectAlreadyExists {
+        root: PathBuf,
+    },
     StaleProject {
         root: PathBuf,
     },
@@ -78,6 +81,11 @@ pub enum TaskError {
         source_domain: Option<String>,
         root: PathBuf,
     },
+    CriterionIndexOutOfRange {
+        task: String,
+        index: usize,
+        count: usize,
+    },
     AmbiguousReference {
         reference: String,
         source_domain: Option<String>,
@@ -140,6 +148,11 @@ impl fmt::Display for TaskError {
                 f,
                 "could not find a filer-task project from {}; expected a .tasks directory at that path or an ancestor",
                 start.display()
+            ),
+            Self::ProjectAlreadyExists { root } => write!(
+                f,
+                "task project already exists at {}; expected no .tasks directory",
+                root.display()
             ),
             Self::StaleProject { root } => write!(
                 f,
@@ -308,6 +321,10 @@ impl fmt::Display for TaskError {
                 }
                 write!(f, " in {}", root.display())
             }
+            Self::CriterionIndexOutOfRange { task, index, count } => write!(
+                f,
+                "criteria index {index} is out of range for {task}; task has {count} criteria item(s)"
+            ),
             Self::AmbiguousReference {
                 reference,
                 source_domain,
@@ -336,6 +353,7 @@ impl Error for TaskError {
             Self::Io { source, .. } | Self::ConfigIo { source, .. } => Some(source),
             Self::Json(error) => Some(error),
             Self::ProjectNotFound { .. }
+            | Self::ProjectAlreadyExists { .. }
             | Self::StaleProject { .. }
             | Self::ConfigInvalidJson { .. }
             | Self::ConfigUnsupportedVersion { .. }
@@ -351,6 +369,7 @@ impl Error for TaskError {
             | Self::PrefixNotAllowed(_)
             | Self::Validation(_)
             | Self::TaskNotFound { .. }
+            | Self::CriterionIndexOutOfRange { .. }
             | Self::AmbiguousReference { .. }
             | Self::Message(_) => None,
         }
@@ -362,6 +381,7 @@ impl TaskError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::ProjectNotFound { .. } => "project_not_found",
+            Self::ProjectAlreadyExists { .. } => "project_already_exists",
             Self::StaleProject { .. } => "project_stale",
             Self::ConfigIo { .. } => "config_io",
             Self::ConfigInvalidJson { .. } => "config_invalid_json",
@@ -380,6 +400,7 @@ impl TaskError {
             Self::Io { .. } => "io",
             Self::Json(_) => "invalid_json",
             Self::TaskNotFound { .. } => "task_not_found",
+            Self::CriterionIndexOutOfRange { .. } => "criterion_index_out_of_range",
             Self::AmbiguousReference { .. } => "ambiguous_reference",
             Self::Message(_) => "invalid_operation",
         }
@@ -483,6 +504,7 @@ impl TaskError {
                 "task": context.task
             }),
             Self::ProjectNotFound { start } => serde_json::json!({"start": start}),
+            Self::ProjectAlreadyExists { root } => serde_json::json!({"root": root}),
             Self::StaleProject { root } => serde_json::json!({"root": root}),
             Self::Io { path, .. } => serde_json::json!({"path": path}),
             Self::TaskNotFound {
@@ -493,6 +515,11 @@ impl TaskError {
                 "reference": reference,
                 "source_domain": source_domain,
                 "root": root
+            }),
+            Self::CriterionIndexOutOfRange { task, index, count } => serde_json::json!({
+                "task": task,
+                "index": index,
+                "count": count
             }),
             Self::AmbiguousReference {
                 reference,

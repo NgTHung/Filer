@@ -2,7 +2,8 @@ use std::{fs, process::Command};
 
 use filer_task::{
     error::TaskError,
-    project::{CriteriaPolicy, TagPolicy, TaskProject},
+    project::{CriteriaPolicy, InitDomain, InitProjectOptions, TagPolicy, TaskProject},
+    validate::{require_valid_report, validate_repo},
 };
 
 fn project() -> tempfile::TempDir {
@@ -22,6 +23,224 @@ fn minimal_config() -> &'static str {
         "task_types": {"Feature": {"criteria": "acceptance"}},
         "tags": {"policy": "open"}
     }"#
+}
+
+#[test]
+fn initializes_project_without_domain_directories() {
+    let temp = tempfile::tempdir().expect("temp project created");
+
+    let project = TaskProject::init(
+        temp.path(),
+        InitProjectOptions {
+            domain: InitDomain::new("work", ["WORK"]),
+        },
+    )
+    .expect("project initializes");
+
+    assert_eq!(project.root(), temp.path().canonicalize().unwrap());
+    assert!(temp.path().join(".tasks/config.json").is_file());
+    assert!(!temp.path().join(".tasks/work").exists());
+    assert!(
+        project
+            .policy()
+            .domain("work")
+            .unwrap()
+            .allows_prefix("WORK")
+    );
+    let validated = require_valid_report(validate_repo(&project).expect("project validates"))
+        .expect("empty project should be valid");
+    assert!(validated.tasks.is_empty());
+}
+
+#[test]
+fn init_rejects_invalid_options_without_creating_tasks_and_allows_retry() {
+    let cases = [
+        InitDomain {
+            name: "invalid/domain".to_string(),
+            prefixes: vec!["WORK".to_string()],
+        },
+        InitDomain {
+            name: "work".to_string(),
+            prefixes: Vec::new(),
+        },
+        InitDomain {
+            name: "work".to_string(),
+            prefixes: vec!["invalid-prefix".to_string()],
+        },
+        InitDomain {
+            name: "work".to_string(),
+            prefixes: vec!["WORK".to_string(), "WORK".to_string()],
+        },
+    ];
+
+    for domain in cases {
+        let temp = tempfile::tempdir().expect("temp project created");
+
+        TaskProject::init(temp.path(), InitProjectOptions { domain })
+            .expect_err("invalid initialization must fail");
+
+        assert!(!temp.path().join(".tasks").exists());
+        TaskProject::init(
+            temp.path(),
+            InitProjectOptions {
+                domain: InitDomain::new("work", ["WORK"]),
+            },
+        )
+        .expect("valid retry initializes project");
+    }
+}
+
+#[test]
+fn init_rejects_existing_task_project() {
+    let temp = project();
+    write_config(temp.path(), minimal_config());
+    let original = fs::read_to_string(temp.path().join(".tasks/config.json"))
+        .expect("configuration should be readable");
+
+    let error = TaskProject::init(temp.path(), InitProjectOptions::default()).unwrap_err();
+
+    assert!(matches!(error, TaskError::ProjectAlreadyExists { .. }));
+    assert_eq!(error.code(), "project_already_exists");
+    assert_eq!(
+        fs::read_to_string(temp.path().join(".tasks/config.json")).unwrap(),
+        original
+    );
+}
+
+#[test]
+fn init_command_writes_valid_project() {
+    let temp = tempfile::tempdir().expect("temp project created");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_filer-task"))
+        .args(["init", "--root"])
+        .arg(temp.path())
+        .args(["--domain", "work", "--prefix", "WORK,BUG"])
+        .output()
+        .expect("command runs");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let project = TaskProject::open(temp.path()).expect("project opens");
+    assert!(
+        project
+            .policy()
+            .domain("work")
+            .unwrap()
+            .allows_prefix("WORK")
+    );
+    assert!(
+        project
+            .policy()
+            .domain("work")
+            .unwrap()
+            .allows_prefix("BUG")
+    );
+    require_valid_report(validate_repo(&project).expect("project validates"))
+        .expect("empty project should be valid");
+}
+
+#[test]
+fn policy_mutation_adds_domain_prefix_type_and_tag() {
+    let temp = project();
+    write_config(temp.path(), minimal_config());
+    let project = TaskProject::open(temp.path()).expect("project opens");
+
+    let project = project
+        .add_domain("docs", &["DOCS".to_string()])
+        .expect("domain is added");
+    let project = project.add_prefix("work", "BUG").expect("prefix is added");
+    let project = project
+        .add_task_type("Bug", CriteriaPolicy::Acceptance, None)
+        .expect("type is added");
+    let project = project.add_tag("backend").expect("tag is added");
+
+    assert!(
+        project
+            .policy()
+            .domain("docs")
+            .unwrap()
+            .allows_prefix("DOCS")
+    );
+    assert!(
+        project
+            .policy()
+            .domain("work")
+            .unwrap()
+            .allows_prefix("BUG")
+    );
+    assert!(project.policy().task_type("Bug").is_some());
+    assert_eq!(
+        project.policy().tags(),
+        &TagPolicy::Strict {
+            allowed: vec!["backend".to_string()]
+        }
+    );
+    require_valid_report(validate_repo(&project).expect("project validates"))
+        .expect("empty project should be valid");
+}
+
+#[test]
+fn policy_mutation_returns_the_only_fresh_policy_handle() {
+    let temp = project();
+    write_config(temp.path(), minimal_config());
+    let project = TaskProject::open(temp.path()).expect("project opens");
+    let clone = project.clone();
+
+    let updated = clone
+        .add_prefix("work", "BUG")
+        .expect("policy mutation succeeds");
+
+    assert!(!updated.is_stale().expect("returned handle is fresh"));
+    assert!(project.is_stale().expect("original handle is stale"));
+    assert!(clone.is_stale().expect("clone is stale"));
+    assert!(matches!(
+        project.add_tag("backend"),
+        Err(TaskError::StaleProject { .. })
+    ));
+    updated
+        .add_tag("backend")
+        .expect("returned handle can mutate policy");
+}
+
+#[test]
+fn policy_mutation_rejects_removals_used_by_existing_tasks() {
+    let temp = project();
+    write_config(
+        temp.path(),
+        r#"{
+        "version": 1,
+        "domains": {"work": {"prefixes": ["ALT", "WORK"]}},
+        "task_types": {
+            "Bug": {"criteria": "acceptance"},
+            "Feature": {"criteria": "acceptance"}
+        },
+        "tags": {"policy": "strict", "allowed": ["backend", "unused"]}
+    }"#,
+    );
+    fs::create_dir_all(temp.path().join(".tasks/work")).expect("domain directory created");
+    fs::write(
+        temp.path().join(".tasks/work/WORK-001-existing-task.md"),
+        "---\nid: WORK-001\ntitle: Existing task\nstatus: To Do\npriority: High\ntype: Feature\ntags: [backend]\n---\n\n## Acceptance Criteria\n\n- [ ] Works\n",
+    )
+    .expect("task written");
+    let project = TaskProject::open(temp.path()).expect("project opens");
+    let original =
+        fs::read_to_string(temp.path().join(".tasks/config.json")).expect("configuration readable");
+
+    for error in [
+        project.remove_prefix("work", "WORK").unwrap_err(),
+        project.remove_task_type("Feature").unwrap_err(),
+        project.remove_tag("backend").unwrap_err(),
+    ] {
+        assert!(matches!(error, TaskError::Validation(_)), "{error:?}");
+        assert_eq!(
+            fs::read_to_string(temp.path().join(".tasks/config.json")).unwrap(),
+            original
+        );
+    }
 }
 
 #[test]

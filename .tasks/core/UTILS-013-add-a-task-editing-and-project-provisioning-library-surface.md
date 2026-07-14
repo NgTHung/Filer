@@ -1,7 +1,7 @@
 ---
 id: UTILS-013
 title: Add a task-editing and project-provisioning library surface
-status: To Do
+status: Done
 priority: High
 type: Epic
 depends_on: [UTILS-012]
@@ -17,8 +17,8 @@ core:UTILS-005 made filer-task portable across projects and core:UTILS-012 made 
 
 ## Exit Criteria
 
-- [ ] TaskProject can initialize a brand-new project at a path that has no .tasks/ yet, writing a valid config.json and creating no domain directories until a task exists in them.
-- [ ] An open project's policy (domains, prefixes, task types, tag catalog) can be mutated in a way that re-validates against all existing task files before writing, and rejects a change that would invalidate an existing task.
-- [ ] An existing task's title, summary, body sections, risk, impact, tags, milestone, parent, and depends_on can be edited through the same validation path task creation uses, and the file write is atomic.
-- [ ] One acceptance/exit criteria item can be toggled by index without rewriting any other line of the task file.
-- [ ] Every new library function is documented and, where a CLI equivalent makes sense, exposed as a filer-task subcommand in the same child task so CLI and library stay in parity.
+- [x] TaskProject can initialize a brand-new project at a path that has no .tasks/ yet, writing a valid config.json and creating no domain directories until a task exists in them.
+- [x] An open project's policy (domains, prefixes, task types, tag catalog) can be mutated in a way that re-validates against all existing task files before writing, and rejects a change that would invalidate an existing task.
+- [x] An existing task's title, summary, body sections, risk, impact, tags, milestone, parent, and depends_on can be edited through the same validation path task creation uses, and the file write is atomic.
+- [x] One acceptance/exit criteria item can be toggled by index without rewriting any other line of the task file.
+- [x] Every new library function is documented and, where a CLI equivalent makes sense, exposed as a filer-task subcommand in the same child task so CLI and library stay in parity.

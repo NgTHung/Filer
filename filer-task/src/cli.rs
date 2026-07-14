@@ -7,7 +7,7 @@ use crate::{
     identity::{IdentityError, TaskIdentity},
     lifecycle::{
         Criterion, NewTask, add_task, block_task, defer_task, done_task, import_tasks,
-        obsolete_task, start_task,
+        obsolete_task, start_task, toggle_criterion,
     },
     markdown::checklist_items,
     model::{Priority, Risk, SortBy, Task, TaskStatus, TaskType},
@@ -16,7 +16,7 @@ use crate::{
         ValidationOutput, render_context, render_import, render_milestone, render_ready,
         render_show, render_summary_output, render_task_action, render_tasks, render_validation,
     },
-    project::TaskProject,
+    project::{InitDomain, InitProjectOptions, TaskProject},
     reference::IdentityIndex,
     repo::discover_project_root,
     taxonomy::{criteria_heading, is_milestone_type},
@@ -45,10 +45,12 @@ pub enum Command {
     Deps(DepsArgs),
     Milestone(MilestoneArgs),
     Summary(SummaryArgs),
+    Init(InitArgs),
     Add(Box<AddArgs>),
     Import(ImportArgs),
     Start(TaskIdArgs),
     Done(TaskIdArgs),
+    CriterionToggle(CriterionToggleArgs),
     Block(ReasonArgs),
     Defer(ReasonArgs),
     Obsolete(ReasonArgs),
@@ -153,6 +155,20 @@ pub struct SummaryArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct InitArgs {
+    #[arg(
+        long,
+        value_name = "PATH",
+        help = "Directory where .tasks will be created; defaults to the current directory"
+    )]
+    pub root: Option<PathBuf>,
+    #[arg(long, default_value = "default")]
+    pub domain: String,
+    #[arg(long = "prefix", value_delimiter = ',', default_value = "WORK")]
+    pub prefixes: Vec<String>,
+}
+
+#[derive(Debug, Args)]
 pub struct AddArgs {
     #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
@@ -234,6 +250,16 @@ pub struct TaskIdArgs {
     pub root: Option<PathBuf>,
     #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
     pub id: String,
+}
+
+#[derive(Debug, Args)]
+pub struct CriterionToggleArgs {
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
+    pub root: Option<PathBuf>,
+    #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
+    pub id: String,
+    #[arg(value_name = "INDEX", help = "Zero-based criteria index")]
+    pub index: usize,
 }
 
 #[derive(Debug, Args)]
@@ -439,6 +465,29 @@ pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
     Ok(())
 }
 
+pub fn run_init(args: InitArgs) -> Result<(), TaskError> {
+    let root = match args.root {
+        Some(root) if root.is_absolute() => root,
+        Some(root) => current_working_directory()?.join(root),
+        None => current_working_directory()?,
+    };
+    let project = TaskProject::init(
+        &root,
+        InitProjectOptions {
+            domain: InitDomain {
+                name: args.domain,
+                prefixes: args.prefixes,
+            },
+        },
+    )?;
+    println!(
+        "Project Initialized\nRoot: {}\nConfig: {}",
+        project.root().display(),
+        project.root().join(crate::project::CONFIG_PATH).display()
+    );
+    Ok(())
+}
+
 pub fn run_add(args: AddArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
     let identity = resolve_add_identity(&project, args.domain.as_deref(), &args.id)?;
@@ -572,6 +621,22 @@ pub fn run_done(args: TaskIdArgs) -> Result<(), TaskError> {
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::Completed,
+            task_id: &identity.to_string(),
+            root: project.root(),
+            path: &path,
+        })
+    );
+    Ok(())
+}
+
+pub fn run_criterion_toggle(args: CriterionToggleArgs) -> Result<(), TaskError> {
+    let project = resolve_project(args.root)?;
+    let identity = resolve_existing_selector(&project, &args.id)?;
+    let path = toggle_criterion(&project, &identity, args.index)?;
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::CriterionToggled,
             task_id: &identity.to_string(),
             root: project.root(),
             path: &path,

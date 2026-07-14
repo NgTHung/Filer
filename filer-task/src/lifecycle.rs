@@ -19,7 +19,7 @@ use serde::Deserialize;
 
 use crate::{
     error::TaskError,
-    frontmatter::parse_metadata,
+    frontmatter::{parse_metadata, render_metadata},
     identity::{IdentityError, TaskIdentity, TaskReference},
     markdown::has_unchecked_checklist_item,
     model::{Priority, Risk, TaskStatus, TaskType},
@@ -34,7 +34,12 @@ use crate::{
 
 use self::write::{read, today, write_new_task, write_status};
 
+mod criteria;
+mod edit;
 mod write;
+
+pub use criteria::toggle_criterion;
+pub use edit::{FieldPatch, TaskPatch, edit_task};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Criterion {
@@ -371,30 +376,24 @@ fn render_task(project: &TaskProject, task: &NewTask) -> Result<(PathBuf, String
 }
 
 fn render_new_task(project: &TaskProject, task: &NewTask) -> Result<String, TaskError> {
-    let mut content = format!(
-        "---\nid: {id}\ntitle: {title}\nstatus: {status}\npriority: {priority}\ntype: {task_type}\n",
-        id = task.id,
-        title = task.title,
-        status = task.status,
-        priority = task.priority,
-        task_type = task.task_type
-    );
-    push_optional_scalar(&mut content, "parent", task.parent.as_deref(), false);
-    push_optional_scalar(&mut content, "milestone", task.milestone.as_deref(), true);
-    push_array(&mut content, "depends_on", &task.depends_on);
-    push_array(&mut content, "rules", &task.rules);
-    if let Some(risk) = task.risk {
-        content.push_str(&format!("risk: {risk}\n"));
-    }
-    push_optional_scalar(&mut content, "impact", task.impact.as_deref(), false);
-    push_array(&mut content, "tags", &task.tags);
-    push_optional_scalar(
-        &mut content,
-        "whitepaper",
-        task.whitepaper.as_deref(),
-        false,
-    );
-    content.push_str(&format!("last_updated: {}\n---\n\n", today()));
+    let metadata = crate::model::TaskMetadata {
+        id: task.id.clone(),
+        title: task.title.clone(),
+        status: task.status,
+        priority: task.priority,
+        task_type: task.task_type.clone(),
+        parent: task.parent.clone(),
+        milestone: task.milestone.clone(),
+        depends_on: task.depends_on.clone(),
+        rules: task.rules.clone(),
+        risk: task.risk,
+        impact: task.impact.clone(),
+        tags: task.tags.clone(),
+        whitepaper: task.whitepaper.clone(),
+        last_updated: Some(today()),
+    };
+    let mut content = render_metadata(&metadata)?;
+    content.push('\n');
 
     content.push_str("## Summary\n\n");
     content.push_str(
@@ -436,41 +435,6 @@ fn render_new_task(project: &TaskProject, task: &NewTask) -> Result<String, Task
     Ok(content)
 }
 
-fn push_optional_scalar(content: &mut String, key: &str, value: Option<&str>, quoted: bool) {
-    if let Some(value) = value {
-        if quoted {
-            content.push_str(&format!("{key}: \"{}\"\n", escape_yaml(value)));
-        } else {
-            content.push_str(&format!("{key}: {}\n", escape_yaml(value)));
-        }
-    }
-}
-
-fn push_array(content: &mut String, key: &str, values: &[String]) {
-    if values.is_empty() {
-        return;
-    }
-    content.push_str(&format!("{key}: ["));
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            content.push_str(", ");
-        }
-        content.push_str(&escape_yaml(value));
-    }
-    content.push_str("]\n");
-}
-
-fn escape_yaml(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '/' | ':'))
-    {
-        value.to_string()
-    } else {
-        format!("\"{}\"", value.replace('"', "\\\""))
-    }
-}
-
 fn existing_identities(project: &TaskProject) -> Result<HashSet<TaskIdentity>, TaskError> {
     require_valid_report(validate_repo(project)?)?
         .into_iter()
@@ -495,7 +459,8 @@ fn invalid_identity(project: &TaskProject, error: &IdentityError) -> TaskError {
 }
 
 pub fn start_task(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
-    project.with_write_lock(|| update_status(project, identity, TaskStatus::InProgress, None))
+    let path = project.task_path(identity)?;
+    project.with_write_lock(|| update_status(&path, TaskStatus::InProgress, None))
 }
 
 pub fn block_task(
@@ -503,13 +468,9 @@ pub fn block_task(
     identity: &TaskIdentity,
     reason: &str,
 ) -> Result<PathBuf, TaskError> {
+    let path = project.task_path(identity)?;
     project.with_write_lock(|| {
-        update_status(
-            project,
-            identity,
-            TaskStatus::Blocked,
-            Some(("Blocked Reason", reason)),
-        )
+        update_status(&path, TaskStatus::Blocked, Some(("Blocked Reason", reason)))
     })
 }
 
@@ -518,14 +479,9 @@ pub fn defer_task(
     identity: &TaskIdentity,
     reason: &str,
 ) -> Result<PathBuf, TaskError> {
-    project.with_write_lock(|| {
-        update_status(
-            project,
-            identity,
-            TaskStatus::Deferred,
-            Some(("Rationale", reason)),
-        )
-    })
+    let path = project.task_path(identity)?;
+    project
+        .with_write_lock(|| update_status(&path, TaskStatus::Deferred, Some(("Rationale", reason))))
 }
 
 pub fn obsolete_task(
@@ -533,28 +489,24 @@ pub fn obsolete_task(
     identity: &TaskIdentity,
     reason: &str,
 ) -> Result<PathBuf, TaskError> {
-    project.with_write_lock(|| {
-        update_status(
-            project,
-            identity,
-            TaskStatus::Obsolete,
-            Some(("Rationale", reason)),
-        )
-    })
+    let path = project.task_path(identity)?;
+    project
+        .with_write_lock(|| update_status(&path, TaskStatus::Obsolete, Some(("Rationale", reason))))
 }
 
 pub fn done_task(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
-    project.with_write_lock(|| done_task_unlocked(project, identity))
+    let path = project.task_path(identity)?;
+    project.with_write_lock(|| done_task_unlocked(project, identity, &path))
 }
 
 fn done_task_unlocked(
     project: &TaskProject,
     identity: &TaskIdentity,
+    path: &Path,
 ) -> Result<PathBuf, TaskError> {
-    let path = task_path(project, identity)?;
-    let content = read(&path)?;
+    let content = read(path)?;
     let metadata =
-        parse_metadata(&path, &content).map_err(|error| TaskError::Validation(vec![error]))?;
+        parse_metadata(path, &content).map_err(|error| TaskError::Validation(vec![error]))?;
     let heading = criteria_heading(
         project,
         &metadata.task_type,
@@ -566,33 +518,18 @@ fn done_task_unlocked(
             "{identity} cannot be marked Done while ## {heading} has unchecked items"
         )));
     }
-    write_status(&path, &content, TaskStatus::Done, None)?;
-    Ok(path)
+    write_status(path, &content, TaskStatus::Done, None)?;
+    Ok(path.to_path_buf())
 }
 
 fn update_status(
-    project: &TaskProject,
-    identity: &TaskIdentity,
+    path: &Path,
     status: TaskStatus,
     section: Option<(&str, &str)>,
 ) -> Result<PathBuf, TaskError> {
-    let path = task_path(project, identity)?;
-    let content = read(&path)?;
-    write_status(&path, &content, status, section)?;
-    Ok(path)
-}
-
-fn task_path(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
-    let tasks = require_valid_report(validate_repo(project)?)?;
-    tasks
-        .into_iter()
-        .find(|task| task.identity() == *identity)
-        .map(|task| task.path)
-        .ok_or_else(|| TaskError::TaskNotFound {
-            reference: identity.to_string(),
-            source_domain: None,
-            root: project.root().to_path_buf(),
-        })
+    let content = read(path)?;
+    write_status(path, &content, status, section)?;
+    Ok(path.to_path_buf())
 }
 
 fn slug(title: &str) -> String {

@@ -9,6 +9,9 @@
 //! Each task file is replaced atomically. If an editor or another process
 //! changes project content without updating the handle, mutation returns
 //! `project_stale`; call [`TaskProject::reload`] and retry with the new handle.
+//! Ordinary task writes refresh every clone's shared revision. Policy writes
+//! return a reopened handle because existing handles retain their immutable
+//! policy and intentionally become stale after the configuration changes.
 //!
 //! ```
 //! use filer_task::project::TaskProject;
@@ -26,7 +29,6 @@
 
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::OpenOptions,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -34,13 +36,16 @@ use std::{
 use crate::{
     domain::{APP_PREFIXES, CORE_PREFIXES, ECOSYSTEM_PREFIXES},
     error::TaskError,
-    identity::{is_valid_domain_name, is_windows_device_name, valid_hyphen_name},
+    identity::{TaskIdentity, is_valid_domain_name, is_windows_device_name, valid_hyphen_name},
 };
 
 use self::json::{JsonNode, read_json};
 
 mod freshness;
 mod json;
+mod policy;
+
+pub use policy::{InitDomain, InitProjectOptions};
 
 use freshness::ProjectRevision;
 
@@ -122,9 +127,24 @@ impl TaskProject {
         &self,
         operation: impl FnOnce() -> Result<T, TaskError>,
     ) -> Result<T, TaskError> {
+        self.with_project_lock(RevisionUpdate::Refresh, operation)
+    }
+
+    fn with_policy_write_lock<T>(
+        &self,
+        operation: impl FnOnce() -> Result<T, TaskError>,
+    ) -> Result<T, TaskError> {
+        self.with_project_lock(RevisionUpdate::Keep, operation)
+    }
+
+    fn with_project_lock<T>(
+        &self,
+        revision_update: RevisionUpdate,
+        operation: impl FnOnce() -> Result<T, TaskError>,
+    ) -> Result<T, TaskError> {
         let mut baseline = revision_guard(&self.state.revision);
         let lock_path = self.root.join(PROJECT_LOCK_PATH);
-        let lock = OpenOptions::new()
+        let lock = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
@@ -144,9 +164,41 @@ impl TaskProject {
             });
         }
         let result = operation()?;
-        *baseline = ProjectRevision::read(&self.root)?;
+        if matches!(revision_update, RevisionUpdate::Refresh) {
+            *baseline = ProjectRevision::read(&self.root)?;
+        }
         Ok(result)
     }
+
+    pub(crate) fn task_path(&self, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
+        let baseline = revision_guard(&self.state.revision);
+        let paths = baseline.task_paths(&self.root, identity);
+        match paths.as_slice() {
+            [path] => Ok(path.clone()),
+            [] => Err(TaskError::TaskNotFound {
+                reference: identity.to_string(),
+                source_domain: None,
+                root: self.root.clone(),
+            }),
+            _ => Err(TaskError::Validation(vec![
+                crate::error::ValidationError::new(None, format!("duplicate task id {identity}")),
+            ])),
+        }
+    }
+
+    pub(crate) fn with_candidate_policy(&self, policy: ProjectPolicy) -> Self {
+        Self {
+            root: self.root.clone(),
+            policy,
+            state: self.state.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum RevisionUpdate {
+    Refresh,
+    Keep,
 }
 
 impl PartialEq for TaskProject {

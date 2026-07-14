@@ -1,7 +1,7 @@
 ---
 id: UTILS-016
 title: Edit an existing task's stored fields
-status: To Do
+status: Done
 priority: High
 type: Feature
 parent: UTILS-013
@@ -17,8 +17,8 @@ lifecycle.rs only has add_task (create) and the five status transitions; nothing
 
 ## Acceptance Criteria
 
-- [ ] edit_task accepts a partial patch (only supplied fields change) and re-validates the whole task, including relationship fields, before writing.
-- [ ] Editing parent or depends_on to a value that would introduce a cycle is rejected with the same cycle error validate_repo reports, and the file is left unchanged.
-- [ ] Editing milestone to a value with no matching milestone-role task is rejected before any write happens.
-- [ ] The write is atomic, matching the guarantee core:UTILS-004 established for task file writes.
-- [ ] Tests cover a successful multi-field edit, a rejected cyclic parent/depends_on edit, a rejected unknown milestone edit, and byte-for-byte no-op when the patch is empty.
+- [x] edit_task accepts a partial patch (only supplied fields change) and re-validates the whole task, including relationship fields, before writing.
+- [x] Editing parent or depends_on to a value that would introduce a cycle is rejected with the same cycle error validate_repo reports, and the file is left unchanged.
+- [x] Editing milestone to a value with no matching milestone-role task is rejected before any write happens.
+- [x] The write is atomic, matching the guarantee core:UTILS-004 established for task file writes.
+- [x] Tests cover a successful multi-field edit, a rejected cyclic parent/depends_on edit, a rejected unknown milestone edit, and byte-for-byte no-op when the patch is empty.

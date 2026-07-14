@@ -292,8 +292,8 @@ fn creation_resolves_local_and_qualified_relationships_without_fallback() {
             .join(".tasks/backend/WORK-002-namespaced-creation.md"),
     )
     .expect("created task read");
-    assert!(content.contains("parent: WORK-001"));
-    assert!(content.contains("depends_on: [release:WORK-001]"));
+    assert!(content.contains("parent: \"WORK-001\""));
+    assert!(content.contains("depends_on: [\"release:WORK-001\"]"));
 
     let missing = run(
         repo.path(),
@@ -395,8 +395,8 @@ fn import_preserves_local_relationships_and_canonicalizes_qualified_ones() {
             .join(".tasks/backend/WORK-002-imported-relationships.md"),
     )
     .expect("imported task read");
-    assert!(content.contains("parent: WORK-001"));
-    assert!(content.contains("depends_on: [release:WORK-001]"));
+    assert!(content.contains("parent: \"WORK-001\""));
+    assert!(content.contains("depends_on: [\"release:WORK-001\"]"));
 }
 
 #[test]

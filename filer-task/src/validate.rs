@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     path::Path,
 };
 
@@ -9,16 +8,18 @@ use serde::Serialize;
 use crate::{
     domain::validate_task_path,
     error::{TaskError, ValidationError},
-    frontmatter::parse_metadata,
     graph::TaskGraph,
     identity::{TaskIdentity, TaskReference, is_valid_local_id},
     markdown::{has_section, has_unchecked_checklist_item},
     model::{Priority, SortBy, Task, TaskStatus},
     project::TaskProject,
-    reference_validation::validate_task_references,
-    repo::{read_task_files, validate_task_layout},
     taxonomy::{is_milestone_type, validate_stored_task, validate_tag},
 };
+
+mod candidate;
+
+use candidate::validate_candidate;
+pub(crate) use candidate::{CandidateOverrides, CandidateScope, TaskContentOverride};
 
 pub(crate) const RULE_IDS: &[&str] = &[
     "CORE-LIBRARY",
@@ -91,48 +92,41 @@ impl<'a> IntoIterator for &'a ValidatedRepository {
 }
 
 pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskError> {
-    let root = project.root();
-    let paths = read_task_files(project)?;
-    let mut tasks = Vec::new();
-    let mut errors = validate_task_layout(project)?;
-    let mut warnings = Vec::new();
+    validate_candidate(
+        project,
+        CandidateOverrides::default(),
+        CandidateScope::Repository,
+    )
+}
 
-    for path in paths {
-        let content = fs::read_to_string(&path).map_err(|source| TaskError::Io {
-            path: path.clone(),
-            source,
-        })?;
+pub(crate) fn validate_task_candidate(
+    project: &TaskProject,
+    path: &Path,
+    content: &str,
+    scope: CandidateScope,
+) -> Result<ValidationReport, TaskError> {
+    validate_candidate(
+        project,
+        CandidateOverrides {
+            task: Some(TaskContentOverride { path, content }),
+            policy: None,
+        },
+        scope,
+    )
+}
 
-        match parse_metadata(&path, &content) {
-            Ok(metadata) => {
-                let domain = domain_for_path(root, &path).unwrap_or_else(|| "unknown".to_string());
-                let task = Task {
-                    path: path.clone(),
-                    domain,
-                    metadata,
-                };
-                validate_single_task(project, &task, &mut errors);
-                validate_body(project, &task, &content, &mut errors);
-                tasks.push(task);
-            }
-            Err(error) => errors.push(error),
-        }
-    }
-
-    validate_task_references(project, &tasks, &mut warnings, &mut errors);
-    validate_milestone_references(project, &tasks, &mut errors);
-    tasks.sort_by(|left, right| {
-        left.metadata
-            .id
-            .cmp(&right.metadata.id)
-            .then_with(|| left.domain.cmp(&right.domain))
-    });
-
-    Ok(ValidationReport {
-        tasks,
-        errors,
-        warnings,
-    })
+pub(crate) fn validate_policy_candidate(
+    project: &TaskProject,
+    policy: &crate::project::ProjectPolicy,
+) -> Result<ValidationReport, TaskError> {
+    validate_candidate(
+        project,
+        CandidateOverrides {
+            task: None,
+            policy: Some(policy),
+        },
+        CandidateScope::Repository,
+    )
 }
 
 pub fn require_valid_report(report: ValidationReport) -> Result<ValidatedRepository, TaskError> {

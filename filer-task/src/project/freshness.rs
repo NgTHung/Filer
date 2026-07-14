@@ -22,7 +22,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::{error::TaskError, repo::TASK_DIR};
+use crate::{error::TaskError, identity::TaskIdentity, repo::TASK_DIR};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ProjectRevision {
@@ -46,6 +46,27 @@ impl ProjectRevision {
             files.insert(relative, Sha256::digest(content).into());
         }
         Ok(Self { files })
+    }
+
+    pub(super) fn task_paths(&self, root: &Path, identity: &TaskIdentity) -> Vec<PathBuf> {
+        let expected = format!("{}-", identity.id);
+        self.files
+            .keys()
+            .filter(|relative| {
+                relative
+                    .components()
+                    .next()
+                    .is_some_and(|part| part.as_os_str() == identity.domain.as_str())
+                    && relative
+                        .extension()
+                        .is_some_and(|extension| extension == "md")
+                    && relative
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with(&expected))
+            })
+            .map(|relative| root.join(TASK_DIR).join(relative))
+            .collect()
     }
 }
 

@@ -1,4 +1,84 @@
-use crate::{error::ValidationError, model::TaskMetadata};
+//! # Task Frontmatter
+//!
+//! This module parses and renders task metadata through one YAML-compatible
+//! representation. JSON string encoding is valid YAML and keeps every scalar
+//! round-trippable without maintaining a second escaping policy.
+//!
+//! ```
+//! use filer_task::frontmatter::parse_metadata;
+//! use std::path::Path;
+//!
+//! let content = "---\nid: \"CORE-001\"\ntitle: \"A # title\"\nstatus: \"To Do\"\npriority: \"High\"\ntype: \"Feature\"\n---\n";
+//! let metadata = parse_metadata(Path::new("CORE-001-example.md"), content)?;
+//! assert_eq!(metadata.title, "A # title");
+//! # Ok::<(), filer_task::error::ValidationError>(())
+//! ```
+
+use crate::{
+    error::{TaskError, ValidationError},
+    model::TaskMetadata,
+};
+
+pub(crate) fn render_metadata(metadata: &TaskMetadata) -> Result<String, TaskError> {
+    let mut content = String::from("---\n");
+    push_scalar(&mut content, "id", &metadata.id)?;
+    push_scalar(&mut content, "title", &metadata.title)?;
+    push_scalar(&mut content, "status", &metadata.status.to_string())?;
+    push_scalar(&mut content, "priority", &metadata.priority.to_string())?;
+    push_scalar(&mut content, "type", metadata.task_type.as_str())?;
+    push_optional_scalar(&mut content, "parent", metadata.parent.as_deref())?;
+    push_optional_scalar(&mut content, "milestone", metadata.milestone.as_deref())?;
+    push_array(&mut content, "depends_on", &metadata.depends_on)?;
+    push_array(&mut content, "rules", &metadata.rules)?;
+    if let Some(risk) = metadata.risk {
+        push_scalar(&mut content, "risk", &risk.to_string())?;
+    }
+    push_optional_scalar(&mut content, "impact", metadata.impact.as_deref())?;
+    push_array(&mut content, "tags", &metadata.tags)?;
+    push_optional_scalar(&mut content, "whitepaper", metadata.whitepaper.as_deref())?;
+    push_optional_scalar(
+        &mut content,
+        "last_updated",
+        metadata.last_updated.as_deref(),
+    )?;
+    content.push_str("---\n");
+    Ok(content)
+}
+
+fn push_scalar(content: &mut String, key: &str, value: &str) -> Result<(), TaskError> {
+    content.push_str(key);
+    content.push_str(": ");
+    content.push_str(&serde_json::to_string(value)?);
+    content.push('\n');
+    Ok(())
+}
+
+fn push_optional_scalar(
+    content: &mut String,
+    key: &str,
+    value: Option<&str>,
+) -> Result<(), TaskError> {
+    if let Some(value) = value {
+        push_scalar(content, key, value)?;
+    }
+    Ok(())
+}
+
+fn push_array(content: &mut String, key: &str, values: &[String]) -> Result<(), TaskError> {
+    if values.is_empty() {
+        return Ok(());
+    }
+    content.push_str(key);
+    content.push_str(": [");
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            content.push_str(", ");
+        }
+        content.push_str(&serde_json::to_string(value)?);
+    }
+    content.push_str("]\n");
+    Ok(())
+}
 
 pub fn parse_metadata(
     path: &std::path::Path,

@@ -516,9 +516,9 @@ fn add_command_creates_milestone_and_rich_task() {
             .join(".tasks/core/CORE-042-provider-timeout-propagation.md"),
     )
     .expect("task should be readable");
-    assert!(task.contains("parent: milestones:MILESTONE-003"));
-    assert!(task.contains("rules: [PROVIDER-ACCESS]"));
-    assert!(task.contains("tags: [provider]"));
+    assert!(task.contains("parent: \"milestones:MILESTONE-003\""));
+    assert!(task.contains("rules: [\"PROVIDER-ACCESS\"]"));
+    assert!(task.contains("tags: [\"provider\"]"));
     assert!(task.contains("## Acceptance Criteria"));
 }
 

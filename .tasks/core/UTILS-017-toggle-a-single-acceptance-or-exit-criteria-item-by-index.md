@@ -1,7 +1,7 @@
 ---
 id: UTILS-017
 title: Toggle a single acceptance or exit criteria item by index
-status: To Do
+status: Done
 priority: Medium
 type: Feature
 parent: UTILS-013
@@ -17,7 +17,7 @@ No function in the crate touches the '## Acceptance Criteria' / '## Exit Criteri
 
 ## Acceptance Criteria
 
-- [ ] toggle_criterion flips exactly one checklist marker and the rest of the file is byte-identical before and after.
-- [ ] An out-of-range index returns a structured error instead of panicking.
-- [ ] The write is atomic, matching the guarantee core:UTILS-004 established for task file writes.
-- [ ] Tests cover toggling the first, last, and an out-of-range index, and confirm re-toggling restores the original file bytes.
+- [x] toggle_criterion flips exactly one checklist marker and the rest of the file is byte-identical before and after.
+- [x] An out-of-range index returns a structured error instead of panicking.
+- [x] The write is atomic, matching the guarantee core:UTILS-004 established for task file writes.
+- [x] Tests cover toggling the first, last, and an out-of-range index, and confirm re-toggling restores the original file bytes.

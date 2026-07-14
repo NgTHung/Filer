@@ -1,7 +1,7 @@
 ---
 id: UTILS-015
 title: Mutate an open project's domain, prefix, type, and tag policy
-status: To Do
+status: Done
 priority: High
 type: Feature
 parent: UTILS-013
@@ -18,7 +18,7 @@ ProjectPolicy (project.rs) is read-only after TaskProject::open — core:UTILS-0
 
 ## Acceptance Criteria
 
-- [ ] Adding a domain, prefix, task type, or tag writes config.json only after confirming validate_repo still passes for every existing task under the proposed policy.
-- [ ] Removing a prefix, task type, or tag still referenced by an existing task is rejected with a structured error naming the blocking task, and config.json is left unchanged.
-- [ ] Mutations use the same atomic-write guarantee as task file writes — a failed mutation leaves the previous config.json intact.
-- [ ] Tests cover a successful additive change, a rejected removal blocked by an existing task, and config.json being byte-identical to its prior state after a rejected mutation.
+- [x] Adding a domain, prefix, task type, or tag writes config.json only after confirming validate_repo still passes for every existing task under the proposed policy.
+- [x] Removing a prefix, task type, or tag still referenced by an existing task is rejected with a structured error naming the blocking task, and config.json is left unchanged.
+- [x] Mutations use the same atomic-write guarantee as task file writes — a failed mutation leaves the previous config.json intact.
+- [x] Tests cover a successful additive change, a rejected removal blocked by an existing task, and config.json being byte-identical to its prior state after a rejected mutation.

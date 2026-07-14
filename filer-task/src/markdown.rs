@@ -11,10 +11,18 @@
 //! assert!(section(body, "Acceptance Criteria").is_some());
 //! ```
 
+use std::ops::Range;
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ChecklistItem {
     pub checked: bool,
     pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChecklistMatch {
+    pub(crate) item: ChecklistItem,
+    pub(crate) marker: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -68,11 +76,29 @@ pub fn has_section(content: &str, heading: &str) -> bool {
 }
 
 pub fn checklist_items(content: &str, heading: &str) -> Vec<ChecklistItem> {
-    section(content, heading)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(parse_checklist_item)
+    checklist_matches(content, heading)
+        .into_iter()
+        .map(|matched| matched.item)
         .collect()
+}
+
+pub(crate) fn checklist_matches(content: &str, heading: &str) -> Vec<ChecklistMatch> {
+    let mut matches = Vec::new();
+    let mut in_section = false;
+    let mut offset = 0;
+
+    for line in content.split_inclusive('\n') {
+        if let Some(current_heading) = level_two_heading(line) {
+            if in_section && current_heading != heading {
+                break;
+            }
+            in_section = current_heading == heading;
+        } else if in_section && let Some(matched) = parse_checklist_match(line, offset) {
+            matches.push(matched);
+        }
+        offset += line.len();
+    }
+    matches
 }
 
 pub fn has_unchecked_checklist_item(content: &str, heading: &str) -> bool {
@@ -113,8 +139,9 @@ pub fn replace_or_append_section(content: &str, heading: &str, replacement: &str
     output
 }
 
-fn parse_checklist_item(line: &str) -> Option<ChecklistItem> {
+fn parse_checklist_match(line: &str, offset: usize) -> Option<ChecklistMatch> {
     let trimmed = line.trim_start();
+    let indentation = line.len() - trimmed.len();
     let rest = trimmed.strip_prefix("- [")?;
     let (marker, text) = rest.split_once(']')?;
     let checked = match marker {
@@ -122,9 +149,13 @@ fn parse_checklist_item(line: &str) -> Option<ChecklistItem> {
         " " => false,
         _ => return None,
     };
-    Some(ChecklistItem {
-        checked,
-        text: text.trim().to_string(),
+    let marker_start = offset + indentation + 3;
+    Some(ChecklistMatch {
+        item: ChecklistItem {
+            checked,
+            text: text.trim().to_string(),
+        },
+        marker: marker_start..marker_start + 1,
     })
 }
 
