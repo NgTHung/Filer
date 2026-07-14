@@ -10,3 +10,4 @@ mod dto;
 pub mod error;
 pub mod registry;
 mod routes;
+pub mod storage;

@@ -1,19 +1,30 @@
 //! Serves the filer-task web interface on localhost only.
 //!
-//! Binds `127.0.0.1` so the task board is never exposed to the network. Pass
-//! `--root <path>` to pick the repo (defaults to the working directory) and
-//! `--port <port>` to change the port.
+//! Binds `127.0.0.1` so the task board is never exposed to the network. Repeat
+//! `--root <path>` to serve several repos (defaults to the working
+//! directory), pass `--port <port>` to change the port, and pass `--database
+//! <path>` to select the SQLite file.
 
 use std::{net::SocketAddr, path::PathBuf};
 
-use filer_task_web::app::{AppState, router};
+use filer_task_web::{
+    app::{AppState, router},
+    storage::Storage,
+};
 use tower_http::services::ServeDir;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = Options::from_args();
+    let storage = match Storage::open(&options.database).await {
+        Ok(storage) => storage,
+        Err(error) => {
+            eprintln!("failed to start: {error}");
+            return Err(error.into());
+        }
+    };
 
-    let state = match AppState::single(options.root) {
+    let state = match AppState::from_roots(options.roots, storage) {
         Ok(state) => state,
         Err(error) => {
             eprintln!("failed to start: {error:?}");
@@ -32,20 +43,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 struct Options {
-    root: PathBuf,
+    roots: Vec<PathBuf>,
     port: u16,
+    database: PathBuf,
 }
 
 impl Options {
     fn from_args() -> Self {
-        let mut root = PathBuf::from(".");
+        let mut roots = Vec::new();
         let mut port = 7878;
+        let mut database = PathBuf::from("filer-task-web.sqlite3");
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--root" => {
                     if let Some(value) = args.next() {
-                        root = PathBuf::from(value);
+                        roots.push(PathBuf::from(value));
                     }
                 }
                 "--port" => {
@@ -53,9 +66,21 @@ impl Options {
                         port = value;
                     }
                 }
+                "--database" => {
+                    if let Some(value) = args.next() {
+                        database = PathBuf::from(value);
+                    }
+                }
                 _ => {}
             }
         }
-        Self { root, port }
+        if roots.is_empty() {
+            roots.push(PathBuf::from("."));
+        }
+        Self {
+            roots,
+            port,
+            database,
+        }
     }
 }

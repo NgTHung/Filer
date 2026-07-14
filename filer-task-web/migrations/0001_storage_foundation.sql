@@ -1,0 +1,1 @@
+-- SQLx records this migration as schema version 1; later tasks own their tables.

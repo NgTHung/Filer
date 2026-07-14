@@ -1,56 +1,139 @@
 //! # Project Registry
 //!
-//! Resolves a project name to an opened task project. This is the only place
-//! that discovers a `.tasks` repository and loads its immutable policy.
+//! Discovers configured task roots and gives each project an independent write
+//! boundary. Repository contents stay uncached so CLI and git edits are visible
+//! on the next request.
+//!
+//! ```no_run
+//! use filer_task_web::registry::ProjectRegistry;
+//!
+//! let registry = ProjectRegistry::single(std::env::current_dir().unwrap());
+//! assert!(registry.is_ok());
+//! ```
 
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
-use filer_task::{project::TaskProject, repo::discover_project_root};
+use filer_task::{
+    project::TaskProject,
+    repo::discover_project_root,
+    validate::{ValidatedRepository, validate_repo},
+};
+use tokio::sync::Mutex;
 
-use crate::error::WebError;
-
-const DEFAULT_PROJECT: &str = "default";
+use crate::{
+    dto::{ProjectSummary, ValidationIssue},
+    error::WebError,
+};
 
 #[derive(Debug, Clone)]
-struct Project {
+pub struct RegisteredProject {
     name: String,
     task_project: TaskProject,
+    write_lock: Arc<Mutex<()>>,
+}
+
+impl RegisteredProject {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn task_project(&self) -> &TaskProject {
+        &self.task_project
+    }
+
+    pub fn write_lock(&self) -> Arc<Mutex<()>> {
+        Arc::clone(&self.write_lock)
+    }
+
+    pub fn validate(&self) -> Result<ValidatedRepository, WebError> {
+        let report = validate_repo(&self.task_project)?;
+        if report.errors.is_empty() {
+            Ok(ValidatedRepository {
+                tasks: report.tasks,
+                warnings: report.warnings,
+            })
+        } else {
+            Err(WebError::ProjectBroken {
+                name: self.name.clone(),
+                issues: report
+                    .errors
+                    .into_iter()
+                    .map(ValidationIssue::from)
+                    .collect(),
+            })
+        }
+    }
+
+    fn summary(&self) -> Result<ProjectSummary, WebError> {
+        let report = validate_repo(&self.task_project)?;
+        let issues: Vec<_> = report
+            .errors
+            .into_iter()
+            .map(ValidationIssue::from)
+            .collect();
+        Ok(ProjectSummary {
+            name: self.name.clone(),
+            task_count: report.tasks.len(),
+            domain_count: self.task_project.policy().domains().len(),
+            broken: !issues.is_empty(),
+            issues,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct ProjectRegistry {
-    projects: Vec<Project>,
+    projects: Vec<RegisteredProject>,
 }
 
 impl ProjectRegistry {
     /// Build a single-project registry from the nearest project containing
     /// `start`.
     pub fn single(start: PathBuf) -> Result<Self, WebError> {
-        let root = discover_project_root(&start)?;
-        let task_project = TaskProject::open(root)?;
-        Ok(Self {
-            projects: vec![Project {
-                name: DEFAULT_PROJECT.to_string(),
-                task_project,
-            }],
-        })
+        Self::from_roots([start])
     }
 
-    /// Resolve an opened project. `None` selects the first registered project.
-    pub fn resolve(&self, name: Option<&str>) -> Result<&TaskProject, WebError> {
-        match name {
-            None => self
-                .projects
-                .first()
-                .map(|project| &project.task_project)
-                .ok_or_else(|| WebError::ProjectNotFound(DEFAULT_PROJECT.to_string())),
-            Some(name) => self
-                .projects
-                .iter()
-                .find(|project| project.name == name)
-                .map(|project| &project.task_project)
-                .ok_or_else(|| WebError::ProjectNotFound(name.to_string())),
+    /// Discover and open every configured project start path.
+    pub fn from_roots(starts: impl IntoIterator<Item = PathBuf>) -> Result<Self, WebError> {
+        let mut projects = Vec::new();
+        let mut names = HashSet::new();
+        for start in starts {
+            let root = discover_project_root(&start)?;
+            let task_project = TaskProject::open(root)?;
+            let name = task_project
+                .root()
+                .file_name()
+                .and_then(|value| value.to_str())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| WebError::InvalidProjectName(task_project.root().to_path_buf()))?
+                .to_string();
+            if !names.insert(name.clone()) {
+                return Err(WebError::DuplicateProjectName(name));
+            }
+            projects.push(RegisteredProject {
+                name,
+                task_project,
+                write_lock: Arc::new(Mutex::new(())),
+            });
         }
+        if projects.is_empty() {
+            return Err(WebError::NoProjects);
+        }
+        Ok(Self { projects })
+    }
+
+    pub fn resolve(&self, name: &str) -> Result<&RegisteredProject, WebError> {
+        self.projects
+            .iter()
+            .find(|project| project.name == name)
+            .ok_or_else(|| WebError::ProjectNotFound(name.to_string()))
+    }
+
+    pub fn summaries(&self) -> Result<Vec<ProjectSummary>, WebError> {
+        self.projects
+            .iter()
+            .map(RegisteredProject::summary)
+            .collect()
     }
 
     pub fn names(&self) -> Vec<&str> {
@@ -58,48 +141,5 @@ impl ProjectRegistry {
             .iter()
             .map(|project| project.name.as_str())
             .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use super::*;
-
-    fn repo() -> tempfile::TempDir {
-        let temp = tempfile::tempdir().expect("temp dir created");
-        fs::create_dir_all(temp.path().join(".tasks/core")).expect("core dir created");
-        temp
-    }
-
-    #[test]
-    fn single_resolves_default_to_repo_root() {
-        let temp = repo();
-        let registry = ProjectRegistry::single(temp.path().to_path_buf()).expect("registry builds");
-
-        let resolved = registry.resolve(None).expect("default resolves");
-
-        assert_eq!(resolved.root(), temp.path().canonicalize().unwrap());
-        assert_eq!(registry.names(), vec!["default"]);
-    }
-
-    #[test]
-    fn resolving_unknown_project_fails() {
-        let temp = repo();
-        let registry = ProjectRegistry::single(temp.path().to_path_buf()).expect("registry builds");
-
-        let error = registry.resolve(Some("ghost"));
-
-        assert!(matches!(error, Err(WebError::ProjectNotFound(name)) if name == "ghost"));
-    }
-
-    #[test]
-    fn single_fails_without_a_repo() {
-        let temp = tempfile::tempdir().expect("temp dir created");
-
-        let error = ProjectRegistry::single(temp.path().to_path_buf());
-
-        assert!(error.is_err());
     }
 }

@@ -1,7 +1,7 @@
 //! # Read Routes
 //!
-//! List and detail endpoints. Listing re-reads and validates the repo per
-//! request so the response reflects edits made by the CLI or git, not a cache.
+//! List and detail endpoints validate the selected repository per request so
+//! external CLI and git edits are visible without serving cached task data.
 
 use axum::{
     Json,
@@ -9,12 +9,15 @@ use axum::{
 };
 use filer_task::{
     agent_context::{ShowView, build_show},
+    graph::TaskGraph,
     model::{Priority, SortBy, Task, TaskStatus},
-    validate::{TaskFilter, filter_tasks, require_valid_report, validate_repo},
+    project::TaskProject,
+    reference::IdentityIndex,
+    validate::{TaskFilter, filter_tasks},
 };
 use serde::Deserialize;
 
-use crate::{app::AppState, error::WebError, routes::blocking};
+use crate::{app::AppState, dto::ProjectSummary, error::WebError, routes::blocking};
 
 #[derive(Debug, Deserialize)]
 pub struct TaskQuery {
@@ -28,55 +31,84 @@ pub struct TaskQuery {
     sort_by: Option<String>,
 }
 
-pub async fn list_projects(State(state): State<AppState>) -> Json<Vec<String>> {
-    Json(
-        state
-            .registry
-            .names()
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-    )
+pub(crate) async fn list_projects(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ProjectSummary>>, WebError> {
+    let registry = state.registry.clone();
+    let projects = blocking(move || registry.summaries()).await?;
+    Ok(Json(projects))
 }
 
-pub async fn list_tasks(
+pub(crate) async fn list_tasks(
     State(state): State<AppState>,
+    Path(project_name): Path<String>,
     Query(query): Query<TaskQuery>,
 ) -> Result<Json<Vec<Task>>, WebError> {
-    let project = state.registry.resolve(None)?.clone();
-    let filter = build_filter(&query)?;
+    let registered = state.registry.resolve(&project_name)?.clone();
     let sort_by = parse_sort(query.sort_by.as_deref())?;
     let tasks = blocking(move || {
-        let tasks = require_valid_report(validate_repo(&project)?)?;
-        Ok(filter_tasks(tasks, &filter, sort_by))
+        let validated = registered.validate()?;
+        let filter = build_filter(registered.task_project(), &validated.tasks, &query)?;
+        let graph = TaskGraph::new(registered.task_project(), &validated.tasks)?;
+        Ok(filter_tasks(
+            registered.task_project(),
+            &validated.tasks,
+            &graph,
+            &filter,
+            sort_by,
+        )?)
     })
     .await?;
     Ok(Json(tasks))
 }
 
-pub async fn get_task(
+pub(crate) async fn get_task(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path((project_name, id)): Path<(String, String)>,
 ) -> Result<Json<ShowView>, WebError> {
-    let project = state.registry.resolve(None)?.clone();
+    let registered = state.registry.resolve(&project_name)?.clone();
     let view = blocking(move || {
-        let tasks = require_valid_report(validate_repo(&project)?)?;
-        build_show(&project, &tasks, &id)
+        let validated = registered.validate()?;
+        let identity = resolve_identity(registered.task_project(), &validated.tasks, &id)?;
+        Ok(build_show(
+            registered.task_project(),
+            &validated.tasks,
+            &identity,
+            &validated.warnings,
+        )?)
     })
     .await?;
     Ok(Json(view))
 }
 
-fn build_filter(query: &TaskQuery) -> Result<TaskFilter, WebError> {
+fn build_filter(
+    project: &TaskProject,
+    tasks: &[Task],
+    query: &TaskQuery,
+) -> Result<TaskFilter, WebError> {
+    let parent = query
+        .parent
+        .as_deref()
+        .map(|value| resolve_identity(project, tasks, value))
+        .transpose()?;
     Ok(TaskFilter {
         status: parse_opt::<TaskStatus>(query.status.as_deref())?,
         priority: parse_opt::<Priority>(query.priority.as_deref())?,
         domain: query.domain.clone(),
-        parent: query.parent.clone(),
+        parent,
         milestone: query.milestone.clone(),
         tag: query.tag.clone(),
         blocked: query.blocked.unwrap_or(false),
     })
+}
+
+pub(crate) fn resolve_identity(
+    project: &TaskProject,
+    tasks: &[Task],
+    value: &str,
+) -> Result<filer_task::identity::TaskIdentity, WebError> {
+    let index = IdentityIndex::new(project.root(), tasks.iter().map(Task::identity));
+    Ok(index.resolve_cli(value)?)
 }
 
 fn parse_opt<T: std::str::FromStr<Err = String>>(

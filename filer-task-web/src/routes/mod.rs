@@ -7,19 +7,18 @@
 pub mod tasks;
 pub mod transitions;
 
-use filer_task::error::TaskError;
-
 use crate::error::WebError;
 
 /// Run synchronous `filer-task` work off the async runtime. Repo reads and file
 /// writes would otherwise block a runtime thread for the duration of the call.
 pub(crate) async fn blocking<F, T>(f: F) -> Result<T, WebError>
 where
-    F: FnOnce() -> Result<T, TaskError> + Send + 'static,
+    F: FnOnce() -> Result<T, WebError> + Send + 'static,
     T: Send + 'static,
 {
-    tokio::task::spawn_blocking(f)
-        .await
-        .map_err(|join| WebError::Task(TaskError::Message(format!("worker task failed: {join}"))))?
-        .map_err(WebError::from)
+    tokio::task::spawn_blocking(f).await.map_err(|join| {
+        WebError::Task(filer_task::error::TaskError::Message(format!(
+            "worker task failed: {join}"
+        )))
+    })?
 }

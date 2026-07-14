@@ -10,36 +10,64 @@ use axum::{
     Router,
     routing::{get, post},
 };
-use tokio::sync::Mutex;
 
-use crate::{error::WebError, registry::ProjectRegistry, routes};
+use crate::{error::WebError, registry::ProjectRegistry, routes, storage::Storage};
 
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) registry: Arc<ProjectRegistry>,
-    pub(crate) write_lock: Arc<Mutex<()>>,
+    storage: Storage,
 }
 
 impl AppState {
-    pub fn single(start: PathBuf) -> Result<Self, WebError> {
+    pub fn single(start: PathBuf, storage: Storage) -> Result<Self, WebError> {
+        Self::from_roots([start], storage)
+    }
+
+    pub fn from_roots(
+        roots: impl IntoIterator<Item = PathBuf>,
+        storage: Storage,
+    ) -> Result<Self, WebError> {
         Ok(Self {
-            registry: Arc::new(ProjectRegistry::single(start)?),
-            write_lock: Arc::new(Mutex::new(())),
+            registry: Arc::new(ProjectRegistry::from_roots(roots)?),
+            storage,
         })
+    }
+
+    pub fn storage(&self) -> &Storage {
+        &self.storage
     }
 }
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/projects", get(routes::tasks::list_projects))
-        .route("/api/tasks", get(routes::tasks::list_tasks))
-        .route("/api/tasks/{id}", get(routes::tasks::get_task))
-        .route("/api/tasks/{id}/start", post(routes::transitions::start))
-        .route("/api/tasks/{id}/done", post(routes::transitions::done))
-        .route("/api/tasks/{id}/block", post(routes::transitions::block))
-        .route("/api/tasks/{id}/defer", post(routes::transitions::defer))
         .route(
-            "/api/tasks/{id}/obsolete",
+            "/api/projects/{project}/tasks",
+            get(routes::tasks::list_tasks),
+        )
+        .route(
+            "/api/projects/{project}/tasks/{id}",
+            get(routes::tasks::get_task),
+        )
+        .route(
+            "/api/projects/{project}/tasks/{id}/start",
+            post(routes::transitions::start),
+        )
+        .route(
+            "/api/projects/{project}/tasks/{id}/done",
+            post(routes::transitions::done),
+        )
+        .route(
+            "/api/projects/{project}/tasks/{id}/block",
+            post(routes::transitions::block),
+        )
+        .route(
+            "/api/projects/{project}/tasks/{id}/defer",
+            post(routes::transitions::defer),
+        )
+        .route(
+            "/api/projects/{project}/tasks/{id}/obsolete",
             post(routes::transitions::obsolete),
         )
         .with_state(state)

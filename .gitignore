@@ -14,3 +14,6 @@
 .vscode
 .rtk
 /.tasks/.filer-task.lock
+/filer-task-web.sqlite3
+/filer-task-web.sqlite3-wal
+/filer-task-web.sqlite3-shm
