@@ -13,7 +13,7 @@ last_updated: 2026-07-14
 
 ## Summary
 
-ProjectRegistry::single only ever opens the one project nearest a start path. The v2 design's command palette (cmd-K) lists every known project, shows a validation_failed badge on a broken one, and switches the active project on click. Extend the registry to accept a list of project roots (or a configured search list), open each with TaskProject::open, keep broken ones registered with their filer-task validate issues instead of failing registry construction, and expose GET /api/projects with name, task count, domain count, and broken/issues so the frontend can render the palette without a second round trip per project.
+ProjectRegistry::single only ever opens the one project nearest a start path. The v2 design's command palette (cmd-K) lists every known project, shows a validation_failed badge on a broken one, and switches the active project on click. Extend the registry to accept a list of project roots (web:WEB-016 later persists that list in the database; this task keeps it in memory), open each with TaskProject::open, keep broken ones registered with their filer-task validate issues instead of failing registry construction, and expose GET /api/projects with name, task count, domain count, and broken/issues so the frontend can render the palette without a second round trip per project.
 
 ## Acceptance Criteria
 
