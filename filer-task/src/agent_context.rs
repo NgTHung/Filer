@@ -18,8 +18,9 @@ use crate::{
     graph::TaskGraph,
     identity::TaskIdentity,
     markdown::{ChecklistItem, MarkdownSection, checklist_items, level_two_sections, section},
-    model::{Priority, Task, TaskMetadata, TaskStatus, TaskType},
+    model::{Priority, Task, TaskMetadata, TaskStatus},
     project::TaskProject,
+    taxonomy::{criteria_heading, is_milestone_type, validate_tag},
     validate::ValidationWarning,
 };
 
@@ -83,6 +84,7 @@ impl Serialize for TaskView {
 pub struct TaskDetail {
     pub task: TaskView,
     pub sections: Vec<MarkdownSection>,
+    pub criteria_heading: String,
     pub criteria: Vec<ChecklistItem>,
 }
 
@@ -165,7 +167,7 @@ pub fn build_show(
     Ok(ShowView {
         schema_version: AGENT_SCHEMA_VERSION,
         warnings: warnings.to_vec(),
-        detail: task_detail(project.root(), &graph, task)?,
+        detail: task_detail(project, &graph, task)?,
     })
 }
 
@@ -175,11 +177,14 @@ pub fn build_ready(
     filter: &ReadyFilter,
     warnings: &[ValidationWarning],
 ) -> Result<ReadyView, TaskError> {
+    if let Some(tag) = &filter.tag {
+        validate_tag(project, tag, "tag", None, None)?;
+    }
     let graph = TaskGraph::new(project, tasks)?;
     let mut ready: Vec<&Task> = tasks
         .iter()
         .filter(|task| matches_filter(task, filter))
-        .filter(|task| readiness(&graph, task).ready)
+        .filter(|task| readiness(project, &graph, task).ready)
         .collect();
     ready.sort_by(|left, right| {
         priority_order(left.metadata.priority)
@@ -212,24 +217,24 @@ pub fn build_context(
     let children = graph
         .children(identity)
         .into_iter()
-        .map(|candidate| related_task_view(root, &graph, candidate))
+        .map(|candidate| related_task_view(project, &graph, candidate))
         .collect();
     let dependencies = graph
         .dependencies(identity)
         .into_iter()
-        .map(|candidate| related_task_view(root, &graph, candidate))
+        .map(|candidate| related_task_view(project, &graph, candidate))
         .collect();
     let dependents = graph
         .dependents(identity)
         .into_iter()
-        .map(|candidate| related_task_view(root, &graph, candidate))
+        .map(|candidate| related_task_view(project, &graph, candidate))
         .collect();
     let parent = graph
         .parent(identity)
-        .map(|candidate| related_task_view(root, &graph, candidate));
+        .map(|candidate| related_task_view(project, &graph, candidate));
     let milestone = task.metadata.milestone.as_ref().and_then(|milestone| {
         tasks.iter().find(|candidate| {
-            candidate.metadata.task_type == TaskType::Milestone
+            is_milestone_type(project, &candidate.metadata.task_type)
                 && candidate.metadata.milestone.as_ref() == Some(milestone)
         })
     });
@@ -237,24 +242,33 @@ pub fn build_context(
     Ok(ContextView {
         schema_version: AGENT_SCHEMA_VERSION,
         warnings: warnings.to_vec(),
-        detail: task_detail(root, &graph, task)?,
-        readiness: readiness(&graph, task),
+        detail: task_detail(project, &graph, task)?,
+        readiness: readiness(project, &graph, task),
         parent,
         children,
         dependencies,
         dependents,
-        milestone: milestone.map(|candidate| related_task_view(root, &graph, candidate)),
+        milestone: milestone.map(|candidate| related_task_view(project, &graph, candidate)),
         rules: rule_references(root, &task.metadata.rules)?,
         whitepaper: task.metadata.whitepaper.as_deref().map(normalize_path),
     })
 }
 
-fn task_detail(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> Result<TaskDetail, TaskError> {
+fn task_detail(
+    project: &TaskProject,
+    graph: &TaskGraph<'_>,
+    task: &Task,
+) -> Result<TaskDetail, TaskError> {
     let content = fs::read_to_string(&task.path).map_err(|source| TaskError::Io {
         path: task.path.clone(),
         source,
     })?;
-    let criteria_heading = task.metadata.task_type.criteria_heading();
+    let criteria_heading = criteria_heading(
+        project,
+        &task.metadata.task_type,
+        Some(&task.domain),
+        Some(&task.qualified_id()),
+    )?;
     // The criteria heading is exposed structurally through `criteria`, so drop
     // it from `sections` to avoid emitting the same checklist text twice.
     let sections = level_two_sections(&content)
@@ -262,8 +276,9 @@ fn task_detail(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> Result<TaskDe
         .filter(|section| section.heading != criteria_heading)
         .collect();
     Ok(TaskDetail {
-        task: task_view(root, graph, task),
+        task: task_view(project.root(), graph, task),
         sections,
+        criteria_heading: criteria_heading.to_string(),
         criteria: checklist_items(&content, criteria_heading),
     })
 }
@@ -285,14 +300,14 @@ fn task_view(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> TaskView {
     }
 }
 
-fn related_task_view(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> RelatedTaskView {
+fn related_task_view(project: &TaskProject, graph: &TaskGraph<'_>, task: &Task) -> RelatedTaskView {
     RelatedTaskView {
-        task: task_view(root, graph, task),
-        readiness: readiness(graph, task),
+        task: task_view(project.root(), graph, task),
+        readiness: readiness(project, graph, task),
     }
 }
 
-fn readiness(graph: &TaskGraph<'_>, task: &Task) -> ReadinessView {
+fn readiness(project: &TaskProject, graph: &TaskGraph<'_>, task: &Task) -> ReadinessView {
     let mut blockers = Vec::new();
     let identity = task.identity();
     if task.metadata.status != TaskStatus::ToDo {
@@ -302,7 +317,7 @@ fn readiness(graph: &TaskGraph<'_>, task: &Task) -> ReadinessView {
             status: Some(task.metadata.status),
         });
     }
-    if task.metadata.task_type == TaskType::Milestone {
+    if is_milestone_type(project, &task.metadata.task_type) {
         blockers.push(ReadinessBlocker {
             kind: ReadinessBlockerKind::Milestone,
             task_id: Some(identity.to_string()),

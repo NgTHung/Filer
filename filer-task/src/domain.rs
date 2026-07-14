@@ -15,12 +15,7 @@
 
 use std::collections::HashSet;
 
-use crate::{
-    error::ValidationError,
-    model::{Task, TaskType},
-    project::TaskProject,
-    repo::{MILESTONE_DOMAIN, TASK_DIR},
-};
+use crate::{error::ValidationError, model::Task, project::TaskProject, repo::TASK_DIR};
 
 pub(crate) const CORE_PREFIXES: &[&str] = &[
     "CORE", "ACTORS", "API", "MODULES", "PIPELINE", "SERVICES", "UTILS", "VFS", "REL", "NAV",
@@ -29,16 +24,6 @@ pub(crate) const CORE_PREFIXES: &[&str] = &[
 pub(crate) const APP_PREFIXES: &[&str] =
     &["UI", "EXPL", "SETS", "SRCH", "MEDIA", "NAV", "PERF", "A11Y"];
 pub(crate) const ECOSYSTEM_PREFIXES: &[&str] = &["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"];
-
-pub(crate) fn compatibility_prefixes(domain: &str) -> &'static [&'static str] {
-    match domain {
-        "core" => CORE_PREFIXES,
-        "app" => APP_PREFIXES,
-        "ecosystem" => ECOSYSTEM_PREFIXES,
-        MILESTONE_DOMAIN => &["MILESTONE"],
-        _ => &[],
-    }
-}
 
 pub(crate) fn validate_task_path(
     project: &TaskProject,
@@ -74,35 +59,6 @@ pub(crate) fn validate_task_path(
         errors.push(ValidationError::at(
             path,
             format!("file name must start with {expected_prefix}"),
-        ));
-    }
-
-    let prefix = task
-        .metadata
-        .id
-        .split_once('-')
-        .map_or("", |(prefix, _)| prefix);
-    if project.policy().is_compatibility()
-        && prefix == "MILESTONE"
-        && task.domain != MILESTONE_DOMAIN
-    {
-        errors.push(ValidationError::at(
-            path,
-            "MILESTONE prefix is only allowed under .tasks/milestones",
-        ));
-    } else if project.policy().is_compatibility()
-        && !compatibility_prefixes(&task.domain).contains(&prefix)
-    {
-        errors.push(ValidationError::at(
-            path,
-            format!("prefix {prefix} is not allowed for {} tasks", task.domain),
-        ));
-    }
-
-    if task.metadata.task_type == TaskType::Milestone && task.domain != MILESTONE_DOMAIN {
-        errors.push(ValidationError::at(
-            path,
-            "Milestone tasks must live under .tasks/milestones",
         ));
     }
 }

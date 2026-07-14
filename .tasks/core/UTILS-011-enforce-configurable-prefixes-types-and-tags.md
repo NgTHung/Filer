@@ -1,7 +1,7 @@
 ---
 id: UTILS-011
 title: Enforce configurable prefixes types and tags
-status: To Do
+status: Done
 priority: High
 type: Feature
 parent: UTILS-005
@@ -9,7 +9,7 @@ depends_on: [UTILS-008]
 risk: High
 impact: "Replaces compile-time prefix and type catalogs and adds optional strict tag validation across reads and writes."
 tags: [tooling, tasks, configuration, validation]
-last_updated: 2026-07-12
+last_updated: 2026-07-14
 ---
 
 ## Summary
@@ -18,13 +18,13 @@ Apply project configuration to task parsing, validation, creation, import, filte
 
 ## Acceptance Criteria
 
-- [ ] ID validation reads allowed prefixes from the task domain configuration, and the same prefix may be configured independently in multiple domains.
-- [ ] Task metadata and CLI parsing accept configured task types without recompilation while retaining a stable representation in human and JSON output.
-- [ ] Each task type declares acceptance-criteria or exit-criteria behavior, and an optional milestone role drives milestone-specific validation and commands without checking a hardcoded type name.
-- [ ] Every milestone-role task declares a non-empty milestone value, those values are unique project-wide across domains, and every task milestone matches exactly one milestone-role task project-wide.
-- [ ] Open tag policy accepts any syntactically valid tag, while strict policy rejects tags outside the configured catalog during validate, add, and import.
-- [ ] Configuration changes are applied consistently to existing task files and new writes, with errors naming the domain, field, and rejected value.
-- [ ] Add and import return the applicable `unknown_type`, `tag_rejected`, or `prefix_not_allowed` error; strict tag filters return `tag_rejected`; repository validation records the same reason codes inside `validation_failed` issues.
-- [ ] Filer receives an explicit project configuration that preserves its current prefixes, built-in types, and existing tags before hardcoded catalogs are removed.
-- [ ] Tests cover custom prefixes by domain, custom normal and container types, a renamed milestone type, missing and duplicate project-wide milestone bindings, open tags, strict tags, distinct policy errors, and unchanged legacy behavior.
-- [ ] CLI help, examples, task-tracking documentation, and public Rust documentation explain configuration fields, validation behavior, custom type roles, tag policies, and safe taxonomy migration without retaining hardcoded catalogs.
+- [x] ID validation reads allowed prefixes from the task domain configuration, and the same prefix may be configured independently in multiple domains.
+- [x] Task metadata and CLI parsing accept configured task types without recompilation while retaining a stable representation in human and JSON output.
+- [x] Each task type declares acceptance-criteria or exit-criteria behavior, and an optional milestone role drives milestone-specific validation and commands without checking a hardcoded type name.
+- [x] Every milestone-role task declares a non-empty milestone value, those values are unique project-wide across domains, and every task milestone matches exactly one milestone-role task project-wide.
+- [x] Open tag policy accepts any syntactically valid tag, while strict policy rejects tags outside the configured catalog during validate, add, and import.
+- [x] Configuration changes are applied consistently to existing task files and new writes, with errors naming the domain, field, and rejected value.
+- [x] Add and import return the applicable `unknown_type`, `tag_rejected`, or `prefix_not_allowed` error; strict tag filters return `tag_rejected`; repository validation records the same reason codes inside `validation_failed` issues.
+- [x] Filer receives an explicit project configuration that preserves its current prefixes, built-in types, and existing tags before hardcoded catalogs are removed.
+- [x] Tests cover custom prefixes by domain, custom normal and container types, a renamed milestone type, missing and duplicate project-wide milestone bindings, open tags, strict tags, distinct policy errors, and unchanged legacy behavior.
+- [x] CLI help, examples, task-tracking documentation, and public Rust documentation explain configuration fields, validation behavior, custom type roles, tag policies, and safe taxonomy migration without retaining hardcoded catalogs.

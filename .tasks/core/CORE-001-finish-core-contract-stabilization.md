@@ -4,7 +4,7 @@ title: Finish core contract stabilization
 status: In Progress
 priority: High
 type: Epic
-parent: MILESTONE-003
+parent: milestones:MILESTONE-003
 milestone: "0.3.0"
 rules: [CORE-LIBRARY, CORE-MECHANICS-BUILTIN]
 risk: High

@@ -19,6 +19,7 @@ use crate::{
     project::TaskProject,
     reference::IdentityIndex,
     repo::discover_project_root,
+    taxonomy::{criteria_heading, is_milestone_type},
     validate::{TaskFilter, filter_tasks, require_valid_report, validate_repo},
 };
 use clap::{Args, Parser, Subcommand};
@@ -44,7 +45,7 @@ pub enum Command {
     Deps(DepsArgs),
     Milestone(MilestoneArgs),
     Summary(SummaryArgs),
-    Add(AddArgs),
+    Add(Box<AddArgs>),
     Import(ImportArgs),
     Start(TaskIdArgs),
     Done(TaskIdArgs),
@@ -79,7 +80,7 @@ pub struct ListArgs {
     pub parent: Option<String>,
     #[arg(long)]
     pub milestone: Option<String>,
-    #[arg(long)]
+    #[arg(long, help = "Filter by a tag accepted by the project tag policy")]
     pub tag: Option<String>,
     #[arg(long)]
     pub blocked: bool,
@@ -109,7 +110,7 @@ pub struct ReadyArgs {
     pub milestone: Option<String>,
     #[arg(long)]
     pub priority: Option<Priority>,
-    #[arg(long)]
+    #[arg(long, help = "Filter by a tag accepted by the project tag policy")]
     pub tag: Option<String>,
     #[arg(long)]
     pub limit: Option<usize>,
@@ -133,8 +134,9 @@ pub struct DepsArgs {
 pub struct MilestoneArgs {
     #[arg(long, value_name = "PATH", help = ROOT_HELP)]
     pub root: Option<PathBuf>,
+    #[arg(help = "Milestone value bound to the configured milestone-role task")]
     pub milestone: String,
-    #[arg(long)]
+    #[arg(long, help = "Show the milestone type's configured criteria checklist")]
     pub exit_checklist: bool,
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     pub format: OutputFormat,
@@ -170,7 +172,11 @@ pub struct AddArgs {
     pub status: TaskStatus,
     #[arg(long)]
     pub priority: Priority,
-    #[arg(long = "type", value_name = "TYPE")]
+    #[arg(
+        long = "type",
+        value_name = "TYPE",
+        help = "Task type name declared in .tasks/config.json"
+    )]
     pub task_type: TaskType,
     #[arg(
         long,
@@ -191,7 +197,11 @@ pub struct AddArgs {
     pub risk: Option<Risk>,
     #[arg(long)]
     pub impact: Option<String>,
-    #[arg(long = "tag", value_delimiter = ',')]
+    #[arg(
+        long = "tag",
+        value_delimiter = ',',
+        help = "Portable tag accepted by the project tag policy"
+    )]
     pub tags: Vec<String>,
     #[arg(long)]
     pub whitepaper: Option<String>,
@@ -268,6 +278,7 @@ pub fn run_list(args: ListArgs) -> Result<(), TaskError> {
         .transpose()?;
     let graph = TaskGraph::new(&project, &validated.tasks)?;
     let filtered = filter_tasks(
+        &project,
         &validated.tasks,
         &graph,
         &TaskFilter {
@@ -280,7 +291,7 @@ pub fn run_list(args: ListArgs) -> Result<(), TaskError> {
             blocked: args.blocked,
         },
         args.sort_by,
-    );
+    )?;
 
     match args.format {
         OutputFormat::Human => println!("{}", render_tasks(&filtered)),
@@ -361,7 +372,7 @@ pub fn run_milestone(args: MilestoneArgs) -> Result<(), TaskError> {
     let milestone = tasks
         .iter()
         .find(|task| {
-            task.metadata.task_type == TaskType::Milestone
+            is_milestone_type(&project, &task.metadata.task_type)
                 && task.metadata.milestone.as_deref() == Some(args.milestone.as_str())
         })
         .ok_or_else(|| {
@@ -373,7 +384,13 @@ pub fn run_milestone(args: MilestoneArgs) -> Result<(), TaskError> {
     })?;
     let scoped = milestone_tasks(&tasks, &args.milestone);
     let summary = build_summary(&scoped);
-    let criteria = checklist_items(&content, "Exit Criteria");
+    let heading = criteria_heading(
+        &project,
+        &milestone.metadata.task_type,
+        Some(&milestone.domain),
+        Some(&milestone.qualified_id()),
+    )?;
+    let criteria = checklist_items(&content, heading);
     let open_tasks: Vec<Task> = scoped
         .iter()
         .filter(|task| task.metadata.status != TaskStatus::Done)
@@ -388,6 +405,7 @@ pub fn run_milestone(args: MilestoneArgs) -> Result<(), TaskError> {
                     milestone: &args.milestone,
                     title: &milestone.metadata.title,
                     summary: &summary,
+                    criteria_heading: heading,
                     exit_criteria: args.exit_checklist.then_some(criteria.as_slice()),
                     open_tasks: &open_tasks,
                 })

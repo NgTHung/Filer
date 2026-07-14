@@ -47,7 +47,7 @@ mod tests {
         assert_eq!(metadata.id, "CORE-001");
         assert_eq!(metadata.status, TaskStatus::ToDo);
         assert_eq!(metadata.priority, Priority::High);
-        assert_eq!(metadata.task_type, TaskType::Feature);
+        assert_eq!(metadata.task_type, TaskType::new("Feature"));
     }
 
     #[test]

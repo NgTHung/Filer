@@ -65,6 +65,9 @@ pub enum TaskError {
         configured: Vec<String>,
         root: PathBuf,
     },
+    UnknownType(Box<TaxonomyErrorContext>),
+    TagRejected(Box<TaxonomyErrorContext>),
+    PrefixNotAllowed(Box<TaxonomyErrorContext>),
     Validation(Vec<ValidationError>),
     Json(serde_json::Error),
     TaskNotFound {
@@ -82,9 +85,22 @@ pub enum TaskError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxonomyErrorContext {
+    pub rejected_value: String,
+    pub field: String,
+    pub domain: Option<String>,
+    pub policy: Option<String>,
+    pub allowed: Vec<String>,
+    pub project_root: PathBuf,
+    pub task: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationError {
     pub path: Option<PathBuf>,
     pub message: String,
+    pub code: String,
+    pub context: serde_json::Value,
 }
 
 impl ValidationError {
@@ -92,11 +108,22 @@ impl ValidationError {
         Self {
             path: path.into(),
             message: message.into(),
+            code: "validation_error".to_string(),
+            context: serde_json::json!({}),
         }
     }
 
     pub fn at(path: impl AsRef<Path>, message: impl Into<String>) -> Self {
         Self::new(Some(path.as_ref().to_path_buf()), message)
+    }
+
+    pub fn from_task_error(path: impl AsRef<Path>, error: &TaskError) -> Self {
+        Self {
+            path: Some(path.as_ref().to_path_buf()),
+            message: error.to_string(),
+            code: error.code().to_string(),
+            context: error.context(),
+        }
     }
 }
 
@@ -210,6 +237,47 @@ impl fmt::Display for TaskError {
                 root.display(),
                 configured.join(", ")
             ),
+            Self::UnknownType(context) => {
+                write!(
+                    f,
+                    "unknown task type {:?} for field {}",
+                    context.rejected_value, context.field
+                )?;
+                if let Some(domain) = &context.domain {
+                    write!(f, " in domain {domain}")?;
+                }
+                write!(
+                    f,
+                    " in {}; allowed types: {}",
+                    context.project_root.display(),
+                    context.allowed.join(", ")
+                )
+            }
+            Self::TagRejected(context) => {
+                let policy = context.policy.as_deref().unwrap_or("configured");
+                write!(
+                    f,
+                    "tag {:?} is rejected for field {} by the {policy} tag policy in {}",
+                    context.rejected_value,
+                    context.field,
+                    context.project_root.display()
+                )?;
+                if !context.allowed.is_empty() {
+                    write!(f, "; allowed tags: {}", context.allowed.join(", "))?;
+                }
+                Ok(())
+            }
+            Self::PrefixNotAllowed(context) => {
+                let domain = context.domain.as_deref().unwrap_or("unknown");
+                write!(
+                    f,
+                    "prefix {:?} is not allowed for field {} in domain {domain} in {}; allowed prefixes: {}",
+                    context.rejected_value,
+                    context.field,
+                    context.project_root.display(),
+                    context.allowed.join(", ")
+                )
+            }
             Self::Validation(errors) => {
                 writeln!(f, "task validation failed with {} error(s):", errors.len())?;
                 for error in errors {
@@ -269,6 +337,9 @@ impl Error for TaskError {
             | Self::DomainConflict { .. }
             | Self::InvalidReference { .. }
             | Self::UnknownDomain { .. }
+            | Self::UnknownType(_)
+            | Self::TagRejected(_)
+            | Self::PrefixNotAllowed(_)
             | Self::Validation(_)
             | Self::TaskNotFound { .. }
             | Self::AmbiguousReference { .. }
@@ -292,6 +363,9 @@ impl TaskError {
             Self::DomainConflict { .. } => "domain_conflict",
             Self::InvalidReference { .. } => "invalid_reference",
             Self::UnknownDomain { .. } => "unknown_domain",
+            Self::UnknownType(_) => "unknown_type",
+            Self::TagRejected(_) => "tag_rejected",
+            Self::PrefixNotAllowed(_) => "prefix_not_allowed",
             Self::Validation(_) => "validation_failed",
             Self::Io { .. } => "io",
             Self::Json(_) => "invalid_json",
@@ -387,6 +461,17 @@ impl TaskError {
                 "configured": configured,
                 "root": root
             }),
+            Self::UnknownType(context)
+            | Self::TagRejected(context)
+            | Self::PrefixNotAllowed(context) => serde_json::json!({
+                "rejected_value": context.rejected_value,
+                "field": context.field,
+                "domain": context.domain,
+                "policy": context.policy,
+                "allowed": context.allowed,
+                "project_root": context.project_root,
+                "task": context.task
+            }),
             Self::ProjectNotFound { start } => serde_json::json!({"start": start}),
             Self::Io { path, .. } => serde_json::json!({"path": path}),
             Self::TaskNotFound {
@@ -409,7 +494,15 @@ impl TaskError {
                 "candidates": candidates,
                 "root": root
             }),
-            Self::Validation(_) | Self::Json(_) | Self::Message(_) => serde_json::json!({}),
+            Self::Validation(issues) => serde_json::json!({
+                "issues": issues.iter().map(|issue| serde_json::json!({
+                    "code": issue.code,
+                    "path": issue.path,
+                    "message": issue.message,
+                    "context": issue.context
+                })).collect::<Vec<_>>()
+            }),
+            Self::Json(_) | Self::Message(_) => serde_json::json!({}),
         }
     }
 }

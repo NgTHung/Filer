@@ -23,18 +23,13 @@ pub enum Priority {
     Low,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-pub enum TaskType {
-    Milestone,
-    Epic,
-    Feature,
-    Bug,
-    Refactor,
-    TechDebt,
-    TestDebt,
-    Design,
-    Docs,
-}
+/// An owned task type name resolved through the active project policy.
+///
+/// The value stays open so configured projects can add types without changing
+/// this crate. Policy-aware operations reject names that are not configured.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct TaskType(String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Risk {
@@ -116,14 +111,14 @@ impl Serialize for Task {
 }
 
 impl TaskType {
-    /// Milestones and epics track Exit Criteria; every other task tracks
-    /// Acceptance Criteria. Both the agent context and the human renderer
-    /// resolve the checklist heading through here so the two never diverge.
-    pub fn criteria_heading(self) -> &'static str {
-        match self {
-            Self::Milestone | Self::Epic => "Exit Criteria",
-            _ => "Acceptance Criteria",
-        }
+    /// Create a task type value without applying a project policy.
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    /// Return the configured task type name.
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
@@ -160,17 +155,7 @@ impl fmt::Display for Priority {
 
 impl fmt::Display for TaskType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Milestone => write!(f, "Milestone"),
-            Self::Epic => write!(f, "Epic"),
-            Self::Feature => write!(f, "Feature"),
-            Self::Bug => write!(f, "Bug"),
-            Self::Refactor => write!(f, "Refactor"),
-            Self::TechDebt => write!(f, "TechDebt"),
-            Self::TestDebt => write!(f, "TestDebt"),
-            Self::Design => write!(f, "Design"),
-            Self::Docs => write!(f, "Docs"),
-        }
+        f.write_str(&self.0)
     }
 }
 
@@ -217,18 +202,19 @@ impl FromStr for TaskType {
     type Err = String;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "Milestone" => Ok(Self::Milestone),
-            "Epic" => Ok(Self::Epic),
-            "Feature" => Ok(Self::Feature),
-            "Bug" => Ok(Self::Bug),
-            "Refactor" => Ok(Self::Refactor),
-            "TechDebt" => Ok(Self::TechDebt),
-            "TestDebt" => Ok(Self::TestDebt),
-            "Design" => Ok(Self::Design),
-            "Docs" => Ok(Self::Docs),
-            _ => Err(format!("invalid task type: {value}")),
-        }
+        Ok(Self::new(value))
+    }
+}
+
+impl From<&str> for TaskType {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for TaskType {
+    fn from(value: String) -> Self {
+        Self::new(value)
     }
 }
 

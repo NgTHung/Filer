@@ -29,4 +29,5 @@ pub mod project;
 pub mod reference;
 mod reference_validation;
 pub mod repo;
+pub mod taxonomy;
 pub mod validate;

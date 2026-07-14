@@ -56,6 +56,7 @@ pub(crate) struct MilestoneOutput<'a> {
     pub milestone: &'a str,
     pub title: &'a str,
     pub summary: &'a SummaryOutput,
+    pub criteria_heading: &'a str,
     pub exit_criteria: Option<&'a [ChecklistItem]>,
     pub open_tasks: &'a [Task],
 }
@@ -94,7 +95,7 @@ pub(crate) fn render_tasks(tasks: &[Task]) -> String {
 }
 
 fn render_task_rows(rows: &[[String; 8]]) -> String {
-    let widths = column_widths(&rows);
+    let widths = column_widths(rows);
     let mut lines = Vec::with_capacity(rows.len() + 2);
     lines.push(render_row(&TASK_HEADERS, &widths));
     let underline = widths.map(|width| "-".repeat(width));
@@ -153,7 +154,7 @@ pub(crate) fn render_milestone(output: &MilestoneOutput<'_>) -> String {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        sections.push(format!("Exit Criteria\n{rendered}"));
+        sections.push(format!("{}\n{rendered}", output.criteria_heading));
     }
     sections.push(format!("Open Tasks\n{}", render_tasks(output.open_tasks)));
     sections.join("\n\n")
@@ -294,10 +295,7 @@ fn render_detail(detail: &TaskDetail) -> String {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        output.push_str(&format!(
-            "\n\n{}\n{items}",
-            metadata.task_type.criteria_heading()
-        ));
+        output.push_str(&format!("\n\n{}\n{items}", detail.criteria_heading));
     }
     output
 }
@@ -470,16 +468,17 @@ mod tests {
             TaskStatus::Obsolete,
         ];
         let types = [
-            TaskType::Milestone,
-            TaskType::Epic,
-            TaskType::Feature,
-            TaskType::Bug,
-            TaskType::Refactor,
-            TaskType::TechDebt,
-            TaskType::TestDebt,
-            TaskType::Design,
-            TaskType::Docs,
-        ];
+            "Milestone",
+            "Epic",
+            "Feature",
+            "Bug",
+            "Refactor",
+            "TechDebt",
+            "TestDebt",
+            "Design",
+            "Docs",
+        ]
+        .map(TaskType::new);
         let priorities = [Priority::High, Priority::Medium, Priority::Low];
         let risks = [Some(Risk::High), Some(Risk::Medium), Some(Risk::Low), None];
         let tasks: Vec<Task> = types
@@ -493,7 +492,7 @@ mod tests {
                         "LONG-DYNAMIC-IDENTIFIER"
                     },
                     statuses[index % statuses.len()],
-                    *task_type,
+                    task_type.clone(),
                     priorities[index % priorities.len()],
                     risks[index % risks.len()],
                     if index % 2 == 0 { "core" } else { "platform" },
@@ -550,7 +549,7 @@ mod tests {
         let output = render_tasks(&[task(
             "CORE-001",
             TaskStatus::ToDo,
-            TaskType::Feature,
+            TaskType::new("Feature"),
             Priority::High,
             None,
             "core",
@@ -592,6 +591,7 @@ mod tests {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn task(
         id: &str,
         status: TaskStatus,

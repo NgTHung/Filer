@@ -164,7 +164,7 @@ last_updated: 2026-06-05
 ---
 ```
 
-Milestone tasks are project references, not domain-local IDs. A milestone file uses a normal task ID with the `MILESTONE` prefix and stores the shared milestone value in `milestone`:
+Milestone tasks are project references, not domain-local IDs. In Filer's policy, a milestone file uses the `MILESTONE` prefix and stores the shared milestone value in `milestone`:
 
 ```yaml
 ---
@@ -200,11 +200,11 @@ Required fields:
 | `title` | At least 5 characters |
 | `status` | `To Do`, `In Progress`, `Blocked`, `Done`, `Deferred`, `Obsolete` |
 | `priority` | `High`, `Medium`, `Low` |
-| `type` | `Milestone`, `Epic`, `Feature`, `Bug`, `Refactor`, `TechDebt`, `TestDebt`, `Design`, `Docs` |
+| `type` | A name declared in `task_types`; compatibility names are `Milestone`, `Epic`, `Feature`, `Bug`, `Refactor`, `TechDebt`, `TestDebt`, `Design`, `Docs` |
 
-Status and type are separate. Status records lifecycle state. Type classifies the work and selects its criteria heading. `Deferred` and `Obsolete` are statuses, not task types. They require `## Rationale` and may omit criteria. `Blocked` is also a status; it requires `## Blocked Reason` in addition to the criteria selected by the task type.
+Status and type are separate. Status records lifecycle state. Type classifies the work and selects its criteria heading. A configured project accepts the names in `task_types`; a compatibility project accepts the nine built-in names shown in the table. `Deferred` and `Obsolete` are statuses, not task types. They require `## Rationale` and may omit criteria. `Blocked` is also a status; it requires `## Blocked Reason` in addition to the criteria selected by the task type.
 
-The current implementation assigns exit criteria and milestone behavior to built-in type names. The approved project contract removes that name-based assumption. Configured types will declare checklist behavior and the milestone role explicitly.
+Task type values are stored and emitted as strings. You can add a type in configuration without recompiling `filer-task`. The type's `criteria` value selects `## Acceptance Criteria` or `## Exit Criteria`. The optional `milestone` role, not the type name or directory, enables milestone validation, readiness blocking, context relations, and milestone commands.
 
 Optional fields:
 
@@ -224,13 +224,13 @@ Optional fields:
 
 Criteria stay in the markdown body because they are human work instructions, not query metadata.
 
-`Milestone` and `Epic` tasks must include:
+Types configured with `"criteria": "exit"` must include:
 
 ```markdown
 ## Exit Criteria
 ```
 
-Tasks with any other type must include the following section unless their status is `Deferred` or `Obsolete`:
+Types configured with `"criteria": "acceptance"` must include the following section unless their status is `Deferred` or `Obsolete`:
 
 ```markdown
 ## Acceptance Criteria
@@ -252,7 +252,7 @@ Tasks whose status is `Deferred` or `Obsolete` may omit criteria, but they must 
 
 ## Prefixes
 
-Compatibility projects use fixed prefixes so invalid IDs are caught early.
+Every domain declares its allowed ID prefixes. A prefix may appear in more than one domain, but each task is checked against its own domain. Compatibility projects use the following fixed prefixes:
 
 Core prefixes:
 
@@ -277,10 +277,12 @@ Milestone prefixes:
 - YAML frontmatter parses into the strict task model.
 - Task IDs use `PREFIX-NUMBER`; relationship references use local IDs or `domain:LOCAL-ID`.
 - File names start with the task ID.
-- Compatibility-project prefixes are allowed for the task domain.
+- The task ID prefix is allowed by its configured domain.
+- The task type exists and its configured criteria section is present.
+- Tags use portable lowercase syntax and satisfy the open or strict tag policy.
 - Parent tasks exist.
-- Referenced milestones match exactly one milestone task.
-- The `MILESTONE` prefix appears only under `.tasks/milestones`.
+- Every milestone-role task has a non-empty milestone value and milestone values are unique project-wide.
+- Every task milestone matches exactly one milestone-role task across all domains.
 - Dependencies exist, do not duplicate IDs, do not reference self, and do not form cycles.
 - Rule IDs exist in `docs/architecture/invariants.md`.
 - `last_updated` is a real `YYYY-MM-DD` date.
@@ -294,6 +296,18 @@ accept a legacy local reference when it has one project-wide match outside the
 source domain. Validation reports this fallback as a
 `legacy_global_reference` warning. Multiple project-wide matches are
 ambiguous and fail validation.
+
+Taxonomy failures remain machine-readable. Direct add, import, ready, and list preflight return `unknown_type`, `tag_rejected`, or `prefix_not_allowed`. Stored-task validation returns `validation_failed`; each entry in `context.issues` keeps the original reason code, rejected value, field, domain, task identity, allowed values, and project root.
+
+Use this order when changing taxonomy:
+
+1. Inventory every domain, prefix, type, milestone binding, and tag in the existing task files.
+2. Add a configuration that accepts the current repository without changing task files.
+3. Run `filer-task validate` and resolve every taxonomy issue.
+4. Update task files and configuration together for the intended rename or restriction.
+5. Validate again before removing old prefixes, types, or tags from configuration.
+
+This sequence keeps reads and writes available during migration. A present configuration replaces the compatibility profile, so adding a partial configuration before the inventory step can make existing tasks invalid.
 
 ## Workflow
 

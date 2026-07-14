@@ -18,7 +18,7 @@ fn main() -> ExitCode {
         Command::Deps(args) => run_deps(args),
         Command::Milestone(args) => run_milestone(args),
         Command::Summary(args) => run_summary(args),
-        Command::Add(args) => run_add(args),
+        Command::Add(args) => run_add(*args),
         Command::Import(args) => run_import(args),
         Command::Start(args) => run_start(args),
         Command::Done(args) => run_done(args),

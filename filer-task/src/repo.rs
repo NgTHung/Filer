@@ -25,8 +25,6 @@ use crate::{
 pub const TASK_DIR: &str = ".tasks";
 /// Reserved compatibility file that discovery and task loading ignore.
 pub const TASK_SCHEMA: &str = "task.schema.json";
-pub const MILESTONE_DOMAIN: &str = "milestones";
-
 pub fn discover_project_root(start: impl AsRef<Path>) -> Result<PathBuf, TaskError> {
     let start = start.as_ref();
     let current = if start.is_file() {

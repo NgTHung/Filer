@@ -39,7 +39,7 @@ fn task_identity_is_derived_and_serialized_without_redundant_state() {
             title: "Backend task".to_string(),
             status: TaskStatus::ToDo,
             priority: Priority::High,
-            task_type: TaskType::Feature,
+            task_type: TaskType::new("Feature"),
             parent: None,
             milestone: None,
             depends_on: Vec::new(),

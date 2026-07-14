@@ -7,7 +7,7 @@
 //! use filer_task::model::{Priority, TaskType};
 //!
 //! assert_eq!(Priority::High.to_string(), "High");
-//! assert_eq!(TaskType::Feature.to_string(), "Feature");
+//! assert_eq!(TaskType::new("Feature").to_string(), "Feature");
 //! ```
 
 use std::{
@@ -20,7 +20,6 @@ use std::{
 use serde::Deserialize;
 
 use crate::{
-    domain::compatibility_prefixes,
     error::TaskError,
     frontmatter::parse_metadata,
     identity::{IdentityError, TaskIdentity, TaskReference},
@@ -28,7 +27,10 @@ use crate::{
     model::{Priority, Risk, TaskStatus, TaskType},
     project::TaskProject,
     reference::IdentityIndex,
-    repo::{MILESTONE_DOMAIN, TASK_DIR},
+    repo::TASK_DIR,
+    taxonomy::{
+        criteria_heading, is_milestone_type, task_type_policy, validate_prefix, validate_tags,
+    },
     validate::{RULE_IDS, require_valid_report, validate_repo},
 };
 
@@ -63,7 +65,7 @@ pub struct NewTask {
 
 pub fn add_task(project: &TaskProject, mut task: NewTask) -> Result<PathBuf, TaskError> {
     validate_new_tasks(project, std::slice::from_mut(&mut task), false)?;
-    let (path, content) = render_task(project.root(), &task);
+    let (path, content) = render_task(project, &task)?;
     write_new_task(&path, &content)?;
     Ok(path)
 }
@@ -87,8 +89,8 @@ pub fn import_tasks(
     validate_new_tasks(project, &mut tasks_to_write, skip_existing)?;
     let rendered: Vec<(PathBuf, String)> = tasks_to_write
         .iter()
-        .map(|task| render_task(project.root(), task))
-        .collect();
+        .map(|task| render_task(project, task))
+        .collect::<Result<_, _>>()?;
     if dry_run {
         return Ok(rendered.into_iter().map(|(path, _)| path).collect());
     }
@@ -110,17 +112,17 @@ fn validate_new_tasks(
         .collect::<Result<_, _>>()?;
     let mut milestone_counts: HashMap<String, usize> = HashMap::new();
     for task in &existing_tasks {
-        if task.metadata.task_type == TaskType::Milestone {
-            if let Some(milestone) = &task.metadata.milestone {
-                *milestone_counts.entry(milestone.clone()).or_default() += 1;
-            }
+        if is_milestone_type(project, &task.metadata.task_type)
+            && let Some(milestone) = &task.metadata.milestone
+        {
+            *milestone_counts.entry(milestone.clone()).or_default() += 1;
         }
     }
 
     let mut batch_ids = HashSet::new();
     for task in new_tasks.iter() {
         let identity = validate_new_task_shape(project, task)?;
-        let (path, _) = render_task(project.root(), task);
+        let path = new_task_path(project.root(), task);
         if path.exists() && !skip_existing {
             return Err(TaskError::Message(format!(
                 "task file already exists: {}",
@@ -138,10 +140,16 @@ fn validate_new_tasks(
             )));
         }
         known_identities.insert(identity);
-        if task.task_type == TaskType::Milestone {
-            let milestone = task.milestone.as_deref().ok_or_else(|| {
-                TaskError::Message("Milestone tasks must include --milestone".to_string())
-            })?;
+        if is_milestone_type(project, &task.task_type) {
+            let milestone = task
+                .milestone
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| {
+                    TaskError::Message(
+                        "milestone-role tasks must include a non-empty milestone value".to_string(),
+                    )
+                })?;
             *milestone_counts.entry(milestone.to_string()).or_default() += 1;
         }
     }
@@ -212,37 +220,21 @@ fn validate_new_task_shape(
             root: project.root().to_path_buf(),
         });
     }
-    if task.task_type == TaskType::Milestone && task.domain != MILESTONE_DOMAIN {
-        return Err(TaskError::Message(
-            "Milestone tasks must be created under .tasks/milestones".to_string(),
-        ));
-    }
-    if task.task_type != TaskType::Milestone && task.domain == MILESTONE_DOMAIN {
-        return Err(TaskError::Message(
-            ".tasks/milestones only accepts Milestone tasks".to_string(),
-        ));
-    }
-    let prefix = task
-        .id
-        .split_once('-')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or("");
-    if project.policy().is_compatibility()
-        && prefix == "MILESTONE"
-        && task.domain != MILESTONE_DOMAIN
-    {
-        return Err(TaskError::Message(
-            "MILESTONE prefix is only allowed under .tasks/milestones".to_string(),
-        ));
-    }
-    if project.policy().is_compatibility()
-        && !compatibility_prefixes(&task.domain).contains(&prefix)
-    {
-        return Err(TaskError::Message(format!(
-            "prefix {prefix} is not allowed for {} tasks",
-            task.domain
-        )));
-    }
+    let task_name = identity.to_string();
+    task_type_policy(
+        project,
+        &task.task_type,
+        Some(&task.domain),
+        Some(&task_name),
+    )?;
+    validate_prefix(project, &task.domain, &task.id, Some(&task_name))?;
+    validate_tags(
+        project,
+        &task.tags,
+        "tags",
+        Some(&task.domain),
+        Some(&task_name),
+    )?;
     let mut seen_rules = HashSet::new();
     for rule in &task.rules {
         if !RULE_IDS.contains(&rule.as_str()) {
@@ -252,12 +244,12 @@ fn validate_new_task_shape(
             return Err(TaskError::Message(format!("duplicate rule id {rule}")));
         }
     }
-    if let Some(impact) = &task.impact {
-        if impact.chars().count() < 10 {
-            return Err(TaskError::Message(
-                "impact must be at least 10 characters when present".to_string(),
-            ));
-        }
+    if let Some(impact) = &task.impact
+        && impact.chars().count() < 10
+    {
+        return Err(TaskError::Message(
+            "impact must be at least 10 characters when present".to_string(),
+        ));
     }
     if task.status == TaskStatus::Blocked && task.blocked_reason.is_none() {
         return Err(TaskError::Message(format!(
@@ -281,9 +273,14 @@ fn validate_new_task_shape(
             task.id
         )));
     }
-    if task.task_type == TaskType::Milestone && task.milestone.is_none() {
+    if is_milestone_type(project, &task.task_type)
+        && task
+            .milestone
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
         return Err(TaskError::Message(
-            "Milestone tasks must include --milestone".to_string(),
+            "milestone-role tasks must include a non-empty milestone value".to_string(),
         ));
     }
     Ok(identity)
@@ -346,14 +343,18 @@ fn resolve_new_reference(
     Ok(identity)
 }
 
-fn render_task(root: &Path, task: &NewTask) -> (PathBuf, String) {
+fn new_task_path(root: &Path, task: &NewTask) -> PathBuf {
     let relative = format!("{}-{}.md", task.id, slug(&task.title));
-    let path = root.join(TASK_DIR).join(&task.domain).join(relative);
-    let content = render_new_task(task);
-    (path, content)
+    root.join(TASK_DIR).join(&task.domain).join(relative)
 }
 
-fn render_new_task(task: &NewTask) -> String {
+fn render_task(project: &TaskProject, task: &NewTask) -> Result<(PathBuf, String), TaskError> {
+    let path = new_task_path(project.root(), task);
+    let content = render_new_task(project, task)?;
+    Ok((path, content))
+}
+
+fn render_new_task(project: &TaskProject, task: &NewTask) -> Result<String, TaskError> {
     let mut content = format!(
         "---\nid: {id}\ntitle: {title}\nstatus: {status}\npriority: {priority}\ntype: {task_type}\n",
         id = task.id,
@@ -396,14 +397,16 @@ fn render_new_task(task: &NewTask) -> String {
         content.push_str("## Rationale\n\n");
         content.push_str(rationale.trim());
         content.push_str("\n\n");
-        return content;
+        return Ok(content);
     }
 
-    let criteria_heading = if matches!(task.task_type, TaskType::Milestone | TaskType::Epic) {
-        "Exit Criteria"
-    } else {
-        "Acceptance Criteria"
-    };
+    let task_name = format!("{}:{}", task.domain, task.id);
+    let criteria_heading = criteria_heading(
+        project,
+        &task.task_type,
+        Some(&task.domain),
+        Some(&task_name),
+    )?;
     content.push_str(&format!("## {criteria_heading}\n\n"));
     if task.criteria.is_empty() {
         content.push_str("- [ ] Define completion criteria.\n");
@@ -414,7 +417,7 @@ fn render_new_task(task: &NewTask) -> String {
         }
     }
 
-    content
+    Ok(content)
 }
 
 fn push_optional_scalar(content: &mut String, key: &str, value: Option<&str>, quoted: bool) {
@@ -542,11 +545,12 @@ pub fn done_task(project: &TaskProject, identity: &TaskIdentity) -> Result<PathB
     let content = read(&path)?;
     let metadata =
         parse_metadata(&path, &content).map_err(|error| TaskError::Validation(vec![error]))?;
-    let heading = if matches!(metadata.task_type, TaskType::Milestone | TaskType::Epic) {
-        "Exit Criteria"
-    } else {
-        "Acceptance Criteria"
-    };
+    let heading = criteria_heading(
+        project,
+        &metadata.task_type,
+        Some(&identity.domain),
+        Some(&identity.to_string()),
+    )?;
     if has_unchecked_checklist_item(&content, heading) {
         return Err(TaskError::Message(format!(
             "{identity} cannot be marked Done while ## {heading} has unchecked items"

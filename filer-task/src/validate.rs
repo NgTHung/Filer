@@ -13,10 +13,11 @@ use crate::{
     graph::TaskGraph,
     identity::{TaskIdentity, TaskReference, is_valid_local_id},
     markdown::{has_section, has_unchecked_checklist_item},
-    model::{Priority, SortBy, Task, TaskStatus, TaskType},
+    model::{Priority, SortBy, Task, TaskStatus},
     project::TaskProject,
     reference_validation::validate_task_references,
     repo::{read_task_files, validate_task_layout},
+    taxonomy::{is_milestone_type, validate_stored_task, validate_tag},
 };
 
 pub(crate) const RULE_IDS: &[&str] = &[
@@ -111,7 +112,7 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
                     metadata,
                 };
                 validate_single_task(project, &task, &mut errors);
-                validate_body(&task, &content, &mut errors);
+                validate_body(project, &task, &content, &mut errors);
                 tasks.push(task);
             }
             Err(error) => errors.push(error),
@@ -119,7 +120,7 @@ pub fn validate_repo(project: &TaskProject) -> Result<ValidationReport, TaskErro
     }
 
     validate_task_references(project, &tasks, &mut warnings, &mut errors);
-    validate_milestone_references(&tasks, &mut errors);
+    validate_milestone_references(project, &tasks, &mut errors);
     tasks.sort_by(|left, right| {
         left.metadata
             .id
@@ -146,11 +147,15 @@ pub fn require_valid_report(report: ValidationReport) -> Result<ValidatedReposit
 }
 
 pub fn filter_tasks(
+    project: &TaskProject,
     tasks: &[Task],
     graph: &TaskGraph<'_>,
     filter: &TaskFilter,
     sort_by: SortBy,
-) -> Vec<Task> {
+) -> Result<Vec<Task>, TaskError> {
+    if let Some(tag) = &filter.tag {
+        validate_tag(project, tag, "tag", None, None)?;
+    }
     let mut tasks: Vec<Task> = tasks
         .iter()
         .filter(|task| {
@@ -198,7 +203,7 @@ pub fn filter_tasks(
         }),
     }
 
-    tasks
+    Ok(tasks)
 }
 
 fn validate_single_task(project: &TaskProject, task: &Task, errors: &mut Vec<ValidationError>) {
@@ -256,28 +261,34 @@ fn validate_single_task(project: &TaskProject, task: &Task, errors: &mut Vec<Val
         }
     }
 
-    if let Some(impact) = &metadata.impact {
-        if impact.chars().count() < 10 {
-            errors.push(ValidationError::at(
-                path,
-                "impact must be at least 10 characters when present",
-            ));
-        }
+    if let Some(impact) = &metadata.impact
+        && impact.chars().count() < 10
+    {
+        errors.push(ValidationError::at(
+            path,
+            "impact must be at least 10 characters when present",
+        ));
     }
 
-    if let Some(last_updated) = &metadata.last_updated {
-        if !is_valid_iso_date(last_updated) {
-            errors.push(ValidationError::at(
-                path,
-                "last_updated must use YYYY-MM-DD format",
-            ));
-        }
+    if let Some(last_updated) = &metadata.last_updated
+        && !is_valid_iso_date(last_updated)
+    {
+        errors.push(ValidationError::at(
+            path,
+            "last_updated must use YYYY-MM-DD format",
+        ));
     }
 
     validate_task_path(project, task, errors);
+    validate_stored_task(project, task, errors);
 }
 
-fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) {
+fn validate_body(
+    project: &TaskProject,
+    task: &Task,
+    content: &str,
+    errors: &mut Vec<ValidationError>,
+) {
     let metadata = &task.metadata;
     if metadata.status == TaskStatus::Blocked && !has_section(content, "Blocked Reason") {
         errors.push(ValidationError::at(
@@ -296,52 +307,43 @@ fn validate_body(task: &Task, content: &str, errors: &mut Vec<ValidationError>) 
         return;
     }
 
-    match metadata.task_type {
-        TaskType::Milestone | TaskType::Epic => {
-            if !has_section(content, "Exit Criteria") {
-                errors.push(ValidationError::at(
-                    &task.path,
-                    "milestone and epic tasks must include ## Exit Criteria",
-                ));
-            }
-            if metadata.status == TaskStatus::Done
-                && has_unchecked_checklist_item(content, "Exit Criteria")
-            {
-                errors.push(ValidationError::at(
-                    &task.path,
-                    "done tasks must not have unchecked ## Exit Criteria items",
-                ));
-            }
-        }
-        _ => {
-            if !has_section(content, "Acceptance Criteria") {
-                errors.push(ValidationError::at(
-                    &task.path,
-                    "tasks must include ## Acceptance Criteria",
-                ));
-            }
-            if metadata.status == TaskStatus::Done
-                && has_unchecked_checklist_item(content, "Acceptance Criteria")
-            {
-                errors.push(ValidationError::at(
-                    &task.path,
-                    "done tasks must not have unchecked ## Acceptance Criteria items",
-                ));
-            }
-        }
+    let Some(type_policy) = project.policy().task_type(metadata.task_type.as_str()) else {
+        return;
+    };
+    let heading = type_policy.criteria().heading();
+    if !has_section(content, heading) {
+        errors.push(ValidationError::at(
+            &task.path,
+            format!("{} tasks must include ## {heading}", metadata.task_type),
+        ));
+    }
+    if metadata.status == TaskStatus::Done && has_unchecked_checklist_item(content, heading) {
+        errors.push(ValidationError::at(
+            &task.path,
+            format!("done tasks must not have unchecked ## {heading} items"),
+        ));
     }
 }
 
-fn validate_milestone_references(tasks: &[Task], errors: &mut Vec<ValidationError>) {
+fn validate_milestone_references(
+    project: &TaskProject,
+    tasks: &[Task],
+    errors: &mut Vec<ValidationError>,
+) {
     let mut milestone_counts: HashMap<&str, usize> = HashMap::new();
     for task in tasks {
-        if task.metadata.task_type == TaskType::Milestone {
-            if let Some(milestone) = &task.metadata.milestone {
-                *milestone_counts.entry(milestone.as_str()).or_default() += 1;
+        if is_milestone_type(project, &task.metadata.task_type) {
+            if let Some(milestone) = task
+                .metadata
+                .milestone
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                *milestone_counts.entry(milestone).or_default() += 1;
             } else {
                 errors.push(ValidationError::at(
                     &task.path,
-                    "milestone tasks must include milestone",
+                    "milestone-role tasks must include a non-empty milestone value",
                 ));
             }
         }
@@ -359,7 +361,7 @@ fn validate_milestone_references(tasks: &[Task], errors: &mut Vec<ValidationErro
             1 => {}
             0 => errors.push(ValidationError::at(
                 &task.path,
-                format!("milestone {milestone} does not reference an existing milestone task"),
+                format!("milestone {milestone} must match exactly one milestone-role task"),
             )),
             _ => errors.push(ValidationError::at(
                 &task.path,
@@ -407,7 +409,7 @@ fn is_valid_iso_date(value: &str) -> bool {
 }
 
 fn is_leap_year(year: u16) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 fn status_order(status: TaskStatus) -> u8 {
@@ -594,6 +596,7 @@ mod tests {
         let graph = TaskGraph::new(&project, &report.tasks).expect("graph should build");
 
         let filtered = filter_tasks(
+            &project,
             &report.tasks,
             &graph,
             &TaskFilter {
@@ -606,7 +609,8 @@ mod tests {
                 blocked: false,
             },
             SortBy::Id,
-        );
+        )
+        .expect("filter should validate");
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].metadata.id, "VFS-001");
@@ -665,7 +669,7 @@ mod tests {
         assert!(report.errors.iter().any(|error| {
             error
                 .message
-                .contains("milestone and epic tasks must include ## Exit Criteria")
+                .contains("Milestone tasks must include ## Exit Criteria")
         }));
     }
 
@@ -706,7 +710,7 @@ mod tests {
         assert!(report.errors.iter().any(|error| {
             error
                 .message
-                .contains("milestone 0.3.0 does not reference an existing milestone task")
+                .contains("milestone 0.3.0 must match exactly one milestone-role task")
         }));
     }
 
@@ -748,7 +752,7 @@ mod tests {
         assert!(report.errors.iter().any(|error| {
             error
                 .message
-                .contains("MILESTONE prefix is only allowed under .tasks/milestones")
+                .contains("prefix \"MILESTONE\" is not allowed")
         }));
     }
 
