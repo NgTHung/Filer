@@ -26,6 +26,9 @@
     "ecosystem": {
       "prefixes": ["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"]
     },
+    "web": {
+      "prefixes": ["WEB"]
+    },
     "milestones": {
       "prefixes": ["MILESTONE"]
     }
