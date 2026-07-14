@@ -19,7 +19,7 @@ use std::{
 
 use crate::{
     error::{TaskError, ValidationError},
-    project::{CONFIG_PATH, TaskProject},
+    project::{CONFIG_PATH, PROJECT_LOCK_PATH, TaskProject},
 };
 
 pub const TASK_DIR: &str = ".tasks";
@@ -119,7 +119,9 @@ pub fn validate_task_layout(project: &TaskProject) -> Result<Vec<ValidationError
 }
 
 fn is_reserved_entry(name: &str) -> bool {
-    name == TASK_SCHEMA || CONFIG_PATH.rsplit('/').next() == Some(name)
+    name == TASK_SCHEMA
+        || CONFIG_PATH.rsplit('/').next() == Some(name)
+        || PROJECT_LOCK_PATH.rsplit('/').next() == Some(name)
 }
 
 fn read_markdown_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), TaskError> {

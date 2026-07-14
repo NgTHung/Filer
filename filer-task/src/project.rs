@@ -1,8 +1,14 @@
 //! # Project Configuration
 //!
-//! This module opens an explicit task-project root and loads its immutable
-//! policy from `.tasks/config.json`. It never discovers ancestors or reads the
-//! process working directory, so one process can safely keep several projects.
+//! This module opens an explicit task-project root, loads its immutable policy,
+//! and records a content revision for configuration and task files. Clones of
+//! one handle share revision state, while different roots remain isolated.
+//!
+//! Mutations take an operating-system lock on `.tasks/.filer-task.lock`, so
+//! handles and processes that use this library serialize writes to one root.
+//! Each task file is replaced atomically. If an editor or another process
+//! changes project content without updating the handle, mutation returns
+//! `project_stale`; call [`TaskProject::reload`] and retry with the new handle.
 //!
 //! ```
 //! use filer_task::project::TaskProject;
@@ -20,7 +26,9 @@
 
 use std::{
     collections::{BTreeMap, HashSet},
+    fs::OpenOptions,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use crate::{
@@ -31,19 +39,29 @@ use crate::{
 
 use self::json::{JsonNode, read_json};
 
+mod freshness;
 mod json;
+
+use freshness::ProjectRevision;
 
 pub const CONFIG_VERSION: u64 = 1;
 pub const CONFIG_PATH: &str = ".tasks/config.json";
+pub(crate) const PROJECT_LOCK_PATH: &str = ".tasks/.filer-task.lock";
 
 const ACCEPTANCE_TYPES: &[&str] = &[
     "Feature", "Bug", "Refactor", "TechDebt", "TestDebt", "Design", "Docs",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct TaskProject {
     root: PathBuf,
     policy: ProjectPolicy,
+    state: Arc<ProjectState>,
+}
+
+#[derive(Debug)]
+struct ProjectState {
+    revision: Mutex<ProjectRevision>,
 }
 
 impl TaskProject {
@@ -56,18 +74,25 @@ impl TaskProject {
                 path: root.as_ref().to_path_buf(),
                 source,
             })?;
-        let path = root.join(CONFIG_PATH);
-        let exists = path.try_exists().map_err(|source| TaskError::ConfigIo {
-            path: path.clone(),
-            operation: "inspect",
-            source,
-        })?;
-        let policy = if exists {
-            load_policy(&path)?
-        } else {
-            ProjectPolicy::filer_compatibility()
-        };
-        Ok(Self { root, policy })
+        let mut attempts = 0;
+        loop {
+            let before = ProjectRevision::read(&root)?;
+            let policy = load_project_policy(&root);
+            let revision = ProjectRevision::read(&root)?;
+            if before == revision {
+                return Ok(Self {
+                    root,
+                    policy: policy?,
+                    state: Arc::new(ProjectState {
+                        revision: Mutex::new(revision),
+                    }),
+                });
+            }
+            attempts += 1;
+            if attempts == 3 {
+                return Err(TaskError::StaleProject { root });
+            }
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -76,6 +101,80 @@ impl TaskProject {
 
     pub fn policy(&self) -> &ProjectPolicy {
         &self.policy
+    }
+
+    /// Return whether task or configuration content changed since this handle
+    /// opened or last completed a mutation.
+    pub fn is_stale(&self) -> Result<bool, TaskError> {
+        let baseline = revision_guard(&self.state.revision);
+        Ok(*baseline != ProjectRevision::read(&self.root)?)
+    }
+
+    /// Open a fresh handle for the same canonical project root.
+    ///
+    /// Reloading re-reads configuration and establishes a new content revision.
+    /// Existing clones keep their previous policy and revision.
+    pub fn reload(&self) -> Result<Self, TaskError> {
+        Self::open(&self.root)
+    }
+
+    pub(crate) fn with_write_lock<T>(
+        &self,
+        operation: impl FnOnce() -> Result<T, TaskError>,
+    ) -> Result<T, TaskError> {
+        let mut baseline = revision_guard(&self.state.revision);
+        let lock_path = self.root.join(PROJECT_LOCK_PATH);
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .map_err(|source| TaskError::Io {
+                path: lock_path.clone(),
+                source,
+            })?;
+        lock.lock().map_err(|source| TaskError::Io {
+            path: lock_path,
+            source,
+        })?;
+        if *baseline != ProjectRevision::read(&self.root)? {
+            return Err(TaskError::StaleProject {
+                root: self.root.clone(),
+            });
+        }
+        let result = operation()?;
+        *baseline = ProjectRevision::read(&self.root)?;
+        Ok(result)
+    }
+}
+
+impl PartialEq for TaskProject {
+    fn eq(&self, other: &Self) -> bool {
+        self.root == other.root && self.policy == other.policy
+    }
+}
+
+impl Eq for TaskProject {}
+
+fn revision_guard(revision: &Mutex<ProjectRevision>) -> MutexGuard<'_, ProjectRevision> {
+    // A panic leaves the old revision intact, so the next comparison detects any completed write.
+    revision
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn load_project_policy(root: &Path) -> Result<ProjectPolicy, TaskError> {
+    let path = root.join(CONFIG_PATH);
+    let exists = path.try_exists().map_err(|source| TaskError::ConfigIo {
+        path: path.clone(),
+        operation: "inspect",
+        source,
+    })?;
+    if exists {
+        load_policy(&path)
+    } else {
+        Ok(ProjectPolicy::filer_compatibility())
     }
 }
 

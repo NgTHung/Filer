@@ -15,6 +15,7 @@
 //! ```
 
 pub mod agent_context;
+mod atomic_write;
 pub mod cli;
 mod domain;
 pub mod error;

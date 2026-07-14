@@ -7,8 +7,9 @@
 //! ```
 //! use filer_task::project::TaskProject;
 //!
-//! let root = std::env::current_dir()?;
-//! let project = TaskProject::open(root)?;
+//! let root = tempfile::tempdir()?;
+//! std::fs::create_dir(root.path().join(".tasks"))?;
+//! let project = TaskProject::open(root.path())?;
 //! assert!(!project.policy().domains().is_empty());
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```

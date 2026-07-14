@@ -304,7 +304,15 @@ let task = project.show(TaskIdentity::parse("core:UTILS-006")?)?;
 
 `TaskProject` owns the canonical root and resolved `ProjectPolicy`. Read, validation, graph, import, creation, and lifecycle operations receive `&TaskProject` or are methods on it. They must not call `current_dir`, discover ancestors, or read process-global project state.
 
-`discover_project_root(start)` is a separate helper for CLI and host applications. Opening several roots creates independent project values. UTILS-012 adds per-project write coordination and stale-state detection without changing identity or policy semantics.
+`discover_project_root(start)` is a separate helper for CLI and host applications. Opening several roots creates independent project values. Clones of one `TaskProject` share its loaded revision, but each root has independent revision and in-process coordination state.
+
+Every non-dry-run mutation takes an exclusive operating-system lock on `.tasks/.filer-task.lock`. The persistent empty file is a reserved project entry. Separate handles and processes that use `filer-task` therefore serialize writes to the same canonical root without blocking other roots. Process termination releases the operating-system lock; the file itself carries no owner or recovery state.
+
+`TaskProject` hashes `.tasks/config.json` and every Markdown file below `.tasks` when it opens. `is_stale()` compares current content with that baseline, so detection does not depend on file size or timestamp precision. Successful mutations refresh the shared baseline for every clone. A stale mutation fails with `project_stale` before validation or writing. Consumers recover by calling `reload()`, replacing the old handle, rebuilding any derived view, and retrying only if the original intent remains valid under the new policy and task state.
+
+Task creation writes a temporary file in the destination directory, flushes and synchronizes complete content, then persists it without replacing an existing path. Lifecycle updates use the same preparation and atomically replace the destination. Readers can observe the complete old task or complete new task, never a partially written task. A failed preparation or persistence removes the temporary file and preserves the existing destination.
+
+The filesystem lock coordinates cooperating consumers. Editors and tools that ignore it can still race after a freshness check. Their changes are detected by the next content comparison, so consumers must retain normal file-conflict handling for uncoordinated writers.
 
 Public identity and result types expose:
 
@@ -338,6 +346,7 @@ The public error catalog includes:
 | Code | Required context |
 | --- | --- |
 | `project_not_found` | searched start path |
+| `project_stale` | canonical project root |
 | `config_io` | config path and operation |
 | `config_invalid_json` | config path and parser location |
 | `config_unsupported_version` | received and supported versions |

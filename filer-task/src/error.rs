@@ -13,6 +13,9 @@ pub enum TaskError {
     ProjectNotFound {
         start: PathBuf,
     },
+    StaleProject {
+        root: PathBuf,
+    },
     ConfigIo {
         path: PathBuf,
         operation: &'static str,
@@ -137,6 +140,11 @@ impl fmt::Display for TaskError {
                 f,
                 "could not find a filer-task project from {}; expected a .tasks directory at that path or an ancestor",
                 start.display()
+            ),
+            Self::StaleProject { root } => write!(
+                f,
+                "task project {} changed on disk; reload it before retrying the mutation",
+                root.display()
             ),
             Self::ConfigIo {
                 path,
@@ -328,6 +336,7 @@ impl Error for TaskError {
             Self::Io { source, .. } | Self::ConfigIo { source, .. } => Some(source),
             Self::Json(error) => Some(error),
             Self::ProjectNotFound { .. }
+            | Self::StaleProject { .. }
             | Self::ConfigInvalidJson { .. }
             | Self::ConfigUnsupportedVersion { .. }
             | Self::ConfigDuplicate { .. }
@@ -353,6 +362,7 @@ impl TaskError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::ProjectNotFound { .. } => "project_not_found",
+            Self::StaleProject { .. } => "project_stale",
             Self::ConfigIo { .. } => "config_io",
             Self::ConfigInvalidJson { .. } => "config_invalid_json",
             Self::ConfigUnsupportedVersion { .. } => "config_unsupported_version",
@@ -473,6 +483,7 @@ impl TaskError {
                 "task": context.task
             }),
             Self::ProjectNotFound { start } => serde_json::json!({"start": start}),
+            Self::StaleProject { root } => serde_json::json!({"root": root}),
             Self::Io { path, .. } => serde_json::json!({"path": path}),
             Self::TaskNotFound {
                 reference,

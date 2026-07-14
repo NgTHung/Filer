@@ -7,8 +7,9 @@
 //! ```
 //! use filer_task::{model::TaskType, project::TaskProject, taxonomy::criteria_heading};
 //!
-//! let root = std::env::current_dir()?;
-//! let project = TaskProject::open(root)?;
+//! let root = tempfile::tempdir()?;
+//! std::fs::create_dir(root.path().join(".tasks"))?;
+//! let project = TaskProject::open(root.path())?;
 //! let heading = criteria_heading(&project, &TaskType::new("Feature"), None, None)?;
 //! assert_eq!(heading, "Acceptance Criteria");
 //! # Ok::<(), Box<dyn std::error::Error>>(())

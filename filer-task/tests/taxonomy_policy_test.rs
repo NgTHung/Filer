@@ -116,6 +116,7 @@ fn prefixes_are_domain_scoped_and_report_structured_failures() {
 
     fs::remove_file(temp.path().join(".tasks/release/API-002-task.md"))
         .expect("invalid fixture removed");
+    let project = TaskProject::open(temp.path()).expect("clean project reopens");
 
     let error = add_task(&project, new_task("backend", "REL-003", "Change"))
         .expect_err("add rejects a domain-specific prefix");
@@ -374,6 +375,7 @@ fn open_and_strict_tags_share_validation_across_reads_writes_and_filters() {
 
     fs::remove_file(strict.path().join(".tasks/backend/WORK-001-task.md"))
         .expect("invalid fixture removed");
+    let strict_project = TaskProject::open(strict.path()).expect("clean strict project reopens");
     let mut rejected = new_task("backend", "WORK-002", "Change");
     rejected.tags = vec!["unknown".to_string()];
     assert_eq!(

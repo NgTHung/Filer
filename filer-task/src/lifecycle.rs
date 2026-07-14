@@ -12,9 +12,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::Deserialize;
@@ -23,7 +21,7 @@ use crate::{
     error::TaskError,
     frontmatter::parse_metadata,
     identity::{IdentityError, TaskIdentity, TaskReference},
-    markdown::{has_unchecked_checklist_item, replace_or_append_section},
+    markdown::has_unchecked_checklist_item,
     model::{Priority, Risk, TaskStatus, TaskType},
     project::TaskProject,
     reference::IdentityIndex,
@@ -33,6 +31,10 @@ use crate::{
     },
     validate::{RULE_IDS, require_valid_report, validate_repo},
 };
+
+use self::write::{read, today, write_new_task, write_status};
+
+mod write;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Criterion {
@@ -64,13 +66,27 @@ pub struct NewTask {
 }
 
 pub fn add_task(project: &TaskProject, mut task: NewTask) -> Result<PathBuf, TaskError> {
-    validate_new_tasks(project, std::slice::from_mut(&mut task), false)?;
-    let (path, content) = render_task(project, &task)?;
-    write_new_task(&path, &content)?;
-    Ok(path)
+    project.with_write_lock(|| {
+        validate_new_tasks(project, std::slice::from_mut(&mut task), false)?;
+        let (path, content) = render_task(project, &task)?;
+        write_new_task(&path, &content)?;
+        Ok(path)
+    })
 }
 
 pub fn import_tasks(
+    project: &TaskProject,
+    tasks: &[NewTask],
+    dry_run: bool,
+    skip_existing: bool,
+) -> Result<Vec<PathBuf>, TaskError> {
+    if dry_run {
+        return import_tasks_unlocked(project, tasks, true, skip_existing);
+    }
+    project.with_write_lock(|| import_tasks_unlocked(project, tasks, false, skip_existing))
+}
+
+fn import_tasks_unlocked(
     project: &TaskProject,
     tasks: &[NewTask],
     dry_run: bool,
@@ -478,27 +494,8 @@ fn invalid_identity(project: &TaskProject, error: &IdentityError) -> TaskError {
     }
 }
 
-fn write_new_task(path: &Path, content: &str) -> Result<(), TaskError> {
-    if path.exists() {
-        return Err(TaskError::Message(format!(
-            "task file already exists: {}",
-            path.display()
-        )));
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| TaskError::Io {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-    fs::write(path, content).map_err(|source| TaskError::Io {
-        path: path.to_path_buf(),
-        source,
-    })
-}
-
 pub fn start_task(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
-    update_status(project, identity, TaskStatus::InProgress, None)
+    project.with_write_lock(|| update_status(project, identity, TaskStatus::InProgress, None))
 }
 
 pub fn block_task(
@@ -506,12 +503,14 @@ pub fn block_task(
     identity: &TaskIdentity,
     reason: &str,
 ) -> Result<PathBuf, TaskError> {
-    update_status(
-        project,
-        identity,
-        TaskStatus::Blocked,
-        Some(("Blocked Reason", reason)),
-    )
+    project.with_write_lock(|| {
+        update_status(
+            project,
+            identity,
+            TaskStatus::Blocked,
+            Some(("Blocked Reason", reason)),
+        )
+    })
 }
 
 pub fn defer_task(
@@ -519,12 +518,14 @@ pub fn defer_task(
     identity: &TaskIdentity,
     reason: &str,
 ) -> Result<PathBuf, TaskError> {
-    update_status(
-        project,
-        identity,
-        TaskStatus::Deferred,
-        Some(("Rationale", reason)),
-    )
+    project.with_write_lock(|| {
+        update_status(
+            project,
+            identity,
+            TaskStatus::Deferred,
+            Some(("Rationale", reason)),
+        )
+    })
 }
 
 pub fn obsolete_task(
@@ -532,15 +533,24 @@ pub fn obsolete_task(
     identity: &TaskIdentity,
     reason: &str,
 ) -> Result<PathBuf, TaskError> {
-    update_status(
-        project,
-        identity,
-        TaskStatus::Obsolete,
-        Some(("Rationale", reason)),
-    )
+    project.with_write_lock(|| {
+        update_status(
+            project,
+            identity,
+            TaskStatus::Obsolete,
+            Some(("Rationale", reason)),
+        )
+    })
 }
 
 pub fn done_task(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, TaskError> {
+    project.with_write_lock(|| done_task_unlocked(project, identity))
+}
+
+fn done_task_unlocked(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+) -> Result<PathBuf, TaskError> {
     let path = task_path(project, identity)?;
     let content = read(&path)?;
     let metadata =
@@ -585,68 +595,6 @@ fn task_path(project: &TaskProject, identity: &TaskIdentity) -> Result<PathBuf, 
         })
 }
 
-fn write_status(
-    path: &Path,
-    content: &str,
-    status: TaskStatus,
-    section: Option<(&str, &str)>,
-) -> Result<(), TaskError> {
-    let mut updated = update_frontmatter(content, status);
-    if let Some((heading, text)) = section {
-        updated = replace_or_append_section(&updated, heading, text);
-    }
-    fs::write(path, updated).map_err(|source| TaskError::Io {
-        path: path.to_path_buf(),
-        source,
-    })
-}
-
-fn update_frontmatter(content: &str, status: TaskStatus) -> String {
-    let mut in_frontmatter = false;
-    let mut seen_status = false;
-    let mut seen_last_updated = false;
-    let mut output = Vec::new();
-
-    for (index, line) in content.lines().enumerate() {
-        if index == 0 && line.trim() == "---" {
-            in_frontmatter = true;
-            output.push(line.to_string());
-            continue;
-        }
-        if in_frontmatter && line.trim() == "---" {
-            if !seen_status {
-                output.push(format!("status: {status}"));
-            }
-            if !seen_last_updated {
-                output.push(format!("last_updated: {}", today()));
-            }
-            in_frontmatter = false;
-            output.push(line.to_string());
-            continue;
-        }
-        if in_frontmatter && line.starts_with("status:") {
-            output.push(format!("status: {status}"));
-            seen_status = true;
-        } else if in_frontmatter && line.starts_with("last_updated:") {
-            output.push(format!("last_updated: {}", today()));
-            seen_last_updated = true;
-        } else {
-            output.push(line.to_string());
-        }
-    }
-
-    let mut joined = output.join("\n");
-    joined.push('\n');
-    joined
-}
-
-fn read(path: &Path) -> Result<String, TaskError> {
-    fs::read_to_string(path).map_err(|source| TaskError::Io {
-        path: path.to_path_buf(),
-        source,
-    })
-}
-
 fn slug(title: &str) -> String {
     let mut slug = String::new();
     for ch in title.chars() {
@@ -657,28 +605,4 @@ fn slug(title: &str) -> String {
         }
     }
     slug.trim_matches('-').to_string()
-}
-
-fn today() -> String {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0);
-    let days = (seconds / 86_400) as i64;
-    let (year, month, day) = civil_from_days(days);
-    format!("{year:04}-{month:02}-{day:02}")
-}
-
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = mp + if mp < 10 { 3 } else { -9 };
-    let year = y + if m <= 2 { 1 } else { 0 };
-    (year, m as u32, d as u32)
 }
