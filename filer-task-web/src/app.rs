@@ -47,6 +47,14 @@ pub fn router(state: AppState) -> Router {
             get(routes::tasks::list_tasks),
         )
         .route(
+            "/api/projects/{project}/ready",
+            get(routes::tasks::list_ready),
+        )
+        .route(
+            "/api/projects/{project}/milestones",
+            get(routes::tasks::list_milestones),
+        )
+        .route(
             "/api/projects/{project}/tasks/{id}",
             get(routes::tasks::get_task),
         )

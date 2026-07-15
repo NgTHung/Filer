@@ -10,6 +10,7 @@ use crate::{
         obsolete_task, start_task, toggle_criterion,
     },
     markdown::checklist_items,
+    milestone::tasks_for_milestone,
     model::{Priority, Risk, SortBy, Task, TaskStatus, TaskType},
     output::{
         ImportOutput, MilestoneOutput, SummaryOutput, TaskAction, TaskActionOutput,
@@ -408,7 +409,9 @@ pub fn run_milestone(args: MilestoneArgs) -> Result<(), TaskError> {
         path: milestone.path.clone(),
         source,
     })?;
-    let scoped = milestone_tasks(&tasks, &args.milestone);
+    let scoped: Vec<Task> = tasks_for_milestone(&tasks, &args.milestone)
+        .cloned()
+        .collect();
     let summary = build_summary(&scoped);
     let heading = criteria_heading(
         &project,
@@ -454,7 +457,7 @@ pub fn run_summary(args: SummaryArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
     let tasks = require_valid_report(validate_repo(&project)?)?;
     let scoped = match args.milestone {
-        Some(milestone) => milestone_tasks(&tasks, &milestone),
+        Some(milestone) => tasks_for_milestone(&tasks, &milestone).cloned().collect(),
         None => tasks.tasks,
     };
     let summary = build_summary(&scoped);
@@ -738,14 +741,6 @@ struct MilestoneView<'a> {
     exit_criteria: Vec<crate::markdown::ChecklistItem>,
     counts: SummaryOutput,
     open_tasks: Vec<Task>,
-}
-
-fn milestone_tasks(tasks: &[Task], milestone: &str) -> Vec<Task> {
-    tasks
-        .iter()
-        .filter(|task| task.metadata.milestone.as_deref() == Some(milestone))
-        .cloned()
-        .collect()
 }
 
 fn build_summary(tasks: &[Task]) -> SummaryOutput {

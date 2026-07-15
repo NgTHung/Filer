@@ -8,8 +8,9 @@ use axum::{
     extract::{Path, Query, State},
 };
 use filer_task::{
-    agent_context::{ShowView, build_show},
+    agent_context::{ReadyFilter, ShowView, TaskView, build_ready, build_show},
     graph::TaskGraph,
+    milestone::{MilestoneAggregation, build_milestone_aggregations},
     model::{Priority, SortBy, Task, TaskStatus},
     project::TaskProject,
     reference::IdentityIndex,
@@ -29,6 +30,12 @@ pub struct TaskQuery {
     tag: Option<String>,
     blocked: Option<bool>,
     sort_by: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReadyQuery {
+    domain: Option<String>,
+    milestone: Option<String>,
 }
 
 pub(crate) async fn list_projects(
@@ -60,6 +67,46 @@ pub(crate) async fn list_tasks(
     })
     .await?;
     Ok(Json(tasks))
+}
+
+pub(crate) async fn list_ready(
+    State(state): State<AppState>,
+    Path(project_name): Path<String>,
+    Query(query): Query<ReadyQuery>,
+) -> Result<Json<Vec<TaskView>>, WebError> {
+    let registered = state.registry.resolve(&project_name)?.clone();
+    let tasks = blocking(move || {
+        let validated = registered.validate()?;
+        Ok(build_ready(
+            registered.task_project(),
+            &validated.tasks,
+            &ReadyFilter {
+                domain: query.domain,
+                milestone: query.milestone,
+                ..ReadyFilter::default()
+            },
+            &validated.warnings,
+        )?
+        .tasks)
+    })
+    .await?;
+    Ok(Json(tasks))
+}
+
+pub(crate) async fn list_milestones(
+    State(state): State<AppState>,
+    Path(project_name): Path<String>,
+) -> Result<Json<Vec<MilestoneAggregation>>, WebError> {
+    let registered = state.registry.resolve(&project_name)?.clone();
+    let milestones = blocking(move || {
+        let validated = registered.validate()?;
+        Ok(build_milestone_aggregations(
+            registered.task_project(),
+            &validated.tasks,
+        )?)
+    })
+    .await?;
+    Ok(Json(milestones))
 }
 
 pub(crate) async fn get_task(

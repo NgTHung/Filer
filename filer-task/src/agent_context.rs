@@ -283,7 +283,7 @@ fn task_detail(
     })
 }
 
-fn task_view(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> TaskView {
+pub(crate) fn task_view(root: &Path, graph: &TaskGraph<'_>, task: &Task) -> TaskView {
     let path = task.path.strip_prefix(root).unwrap_or(&task.path);
     let identity = task.identity();
     let mut metadata = task.metadata.clone();

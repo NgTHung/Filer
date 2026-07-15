@@ -24,6 +24,7 @@ pub mod graph;
 pub mod identity;
 pub mod lifecycle;
 pub mod markdown;
+pub mod milestone;
 pub mod model;
 mod output;
 pub mod project;
