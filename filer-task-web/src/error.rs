@@ -20,6 +20,7 @@ use crate::dto::ValidationIssue;
 #[derive(Debug)]
 pub enum WebError {
     BadRequest(String),
+    PreconditionRequired(String),
     DuplicateProjectName(String),
     InvalidProjectName(PathBuf),
     NoProjects,
@@ -41,6 +42,12 @@ impl From<TaskError> for WebError {
 struct ErrorBody {
     error: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     project: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     issues: Vec<ValidationIssue>,
@@ -50,6 +57,20 @@ impl IntoResponse for WebError {
     fn into_response(self) -> Response {
         let (status, error, project, issues) = match self {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message, None, Vec::new()),
+            Self::PreconditionRequired(message) => {
+                return (
+                    StatusCode::PRECONDITION_REQUIRED,
+                    Json(ErrorBody {
+                        error: message,
+                        code: Some("precondition_required".to_string()),
+                        field: None,
+                        context: None,
+                        project: None,
+                        issues: Vec::new(),
+                    }),
+                )
+                    .into_response();
+            }
             Self::DuplicateProjectName(name) => (
                 StatusCode::BAD_REQUEST,
                 format!("project name {name:?} is registered more than once"),
@@ -83,63 +104,58 @@ impl IntoResponse for WebError {
                 Some(name),
                 issues,
             ),
-            Self::Task(TaskError::TaskNotFound { reference, .. }) => (
-                StatusCode::NOT_FOUND,
-                format!("task {reference} does not exist"),
-                None,
-                Vec::new(),
-            ),
-            Self::Task(TaskError::Validation(errors)) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "task validation failed".to_string(),
-                None,
-                errors.into_iter().map(ValidationIssue::from).collect(),
-            ),
-            // A rejected transition (for example marking Done with unchecked
-            // criteria) is a precondition the caller can resolve, not a fault.
-            Self::Task(TaskError::Message(message)) => {
-                (StatusCode::UNPROCESSABLE_ENTITY, message, None, Vec::new())
+            Self::Task(error) => {
+                let (status, body) = task_error(error);
+                return (status, Json(body)).into_response();
             }
-            Self::Task(TaskError::Json(error)) => {
-                (StatusCode::BAD_REQUEST, error.to_string(), None, Vec::new())
-            }
-            Self::Task(
-                error @ (TaskError::ConfigInvalidJson { .. }
-                | TaskError::ConfigUnsupportedVersion { .. }
-                | TaskError::ConfigDuplicate { .. }
-                | TaskError::ConfigUnknownField { .. }
-                | TaskError::ConfigInvalidValue { .. }),
-            ) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                error.to_string(),
-                None,
-                Vec::new(),
-            ),
-            Self::Task(
-                error @ (TaskError::Io { .. }
-                | TaskError::ConfigIo { .. }
-                | TaskError::ProjectNotFound { .. }),
-            ) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                error.to_string(),
-                None,
-                Vec::new(),
-            ),
-            Self::Task(error) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                error.to_string(),
-                None,
-                Vec::new(),
-            ),
         };
         (
             status,
             Json(ErrorBody {
                 error,
+                code: None,
+                field: None,
+                context: None,
                 project,
                 issues,
             }),
         )
             .into_response()
     }
+}
+
+fn task_error(error: TaskError) -> (StatusCode, ErrorBody) {
+    let status = match &error {
+        TaskError::TaskNotFound { .. } => StatusCode::NOT_FOUND,
+        TaskError::CriterionContentMismatch { .. } => StatusCode::PRECONDITION_FAILED,
+        TaskError::Json(_) => StatusCode::BAD_REQUEST,
+        TaskError::Io { .. } | TaskError::ConfigIo { .. } | TaskError::ProjectNotFound { .. } => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        _ => StatusCode::UNPROCESSABLE_ENTITY,
+    };
+    let code = error.code().to_string();
+    let field = match code.as_str() {
+        "id_exists" => Some("number".to_string()),
+        "prefix_not_allowed" => Some("prefix".to_string()),
+        "tag_rejected" => Some("tags".to_string()),
+        _ => None,
+    };
+    let context = error.context();
+    let message = error.to_string();
+    let issues = match error {
+        TaskError::Validation(errors) => errors.into_iter().map(ValidationIssue::from).collect(),
+        _ => Vec::new(),
+    };
+    (
+        status,
+        ErrorBody {
+            error: message,
+            code: Some(code),
+            field,
+            context: Some(context),
+            project: None,
+            issues,
+        },
+    )
 }

@@ -81,10 +81,20 @@ pub enum TaskError {
         source_domain: Option<String>,
         root: PathBuf,
     },
+    IdExists {
+        task: String,
+        path: PathBuf,
+    },
     CriterionIndexOutOfRange {
         task: String,
         index: usize,
         count: usize,
+    },
+    CriterionContentMismatch {
+        task: String,
+        index: usize,
+        expected_hash: String,
+        actual_hash: String,
     },
     AmbiguousReference {
         reference: String,
@@ -321,9 +331,21 @@ impl fmt::Display for TaskError {
                 }
                 write!(f, " in {}", root.display())
             }
+            Self::IdExists { task, path } => {
+                write!(f, "task {task} already exists at {}", path.display())
+            }
             Self::CriterionIndexOutOfRange { task, index, count } => write!(
                 f,
                 "criteria index {index} is out of range for {task}; task has {count} criteria item(s)"
+            ),
+            Self::CriterionContentMismatch {
+                task,
+                index,
+                expected_hash,
+                actual_hash,
+            } => write!(
+                f,
+                "criterion {index} for {task} has content hash {actual_hash}, not {expected_hash}"
             ),
             Self::AmbiguousReference {
                 reference,
@@ -369,7 +391,9 @@ impl Error for TaskError {
             | Self::PrefixNotAllowed(_)
             | Self::Validation(_)
             | Self::TaskNotFound { .. }
+            | Self::IdExists { .. }
             | Self::CriterionIndexOutOfRange { .. }
+            | Self::CriterionContentMismatch { .. }
             | Self::AmbiguousReference { .. }
             | Self::Message(_) => None,
         }
@@ -400,7 +424,9 @@ impl TaskError {
             Self::Io { .. } => "io",
             Self::Json(_) => "invalid_json",
             Self::TaskNotFound { .. } => "task_not_found",
+            Self::IdExists { .. } => "id_exists",
             Self::CriterionIndexOutOfRange { .. } => "criterion_index_out_of_range",
+            Self::CriterionContentMismatch { .. } => "criterion_content_mismatch",
             Self::AmbiguousReference { .. } => "ambiguous_reference",
             Self::Message(_) => "invalid_operation",
         }
@@ -516,10 +542,25 @@ impl TaskError {
                 "source_domain": source_domain,
                 "root": root
             }),
+            Self::IdExists { task, path } => serde_json::json!({
+                "task": task,
+                "path": path
+            }),
             Self::CriterionIndexOutOfRange { task, index, count } => serde_json::json!({
                 "task": task,
                 "index": index,
                 "count": count
+            }),
+            Self::CriterionContentMismatch {
+                task,
+                index,
+                expected_hash,
+                actual_hash,
+            } => serde_json::json!({
+                "task": task,
+                "index": index,
+                "expected_hash": expected_hash,
+                "actual_hash": actual_hash
             }),
             Self::AmbiguousReference {
                 reference,

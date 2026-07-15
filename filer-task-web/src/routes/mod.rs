@@ -4,8 +4,10 @@
 //! rules (validation, criteria checks) live in the library, so the web layer
 //! cannot drift from the CLI.
 
+pub mod task_writes;
 pub mod tasks;
 pub mod transitions;
+mod write;
 
 use crate::error::WebError;
 

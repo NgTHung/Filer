@@ -46,7 +46,14 @@ impl RegisteredProject {
     }
 
     pub fn validate(&self) -> Result<ValidatedRepository, WebError> {
-        let report = validate_repo(&self.task_project)?;
+        self.validate_project(&self.task_project)
+    }
+
+    pub(crate) fn validate_project(
+        &self,
+        project: &TaskProject,
+    ) -> Result<ValidatedRepository, WebError> {
+        let report = validate_repo(project)?;
         if report.errors.is_empty() {
             Ok(ValidatedRepository {
                 tasks: report.tasks,

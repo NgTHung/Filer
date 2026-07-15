@@ -25,12 +25,12 @@ use crate::{
     atomic_write, error::TaskError, markdown::replace_or_append_section, model::TaskStatus,
 };
 
-pub(super) fn write_new_task(path: &Path, content: &str) -> Result<(), TaskError> {
+pub(super) fn write_new_task(path: &Path, content: &str, task: &str) -> Result<(), TaskError> {
     if path.exists() {
-        return Err(TaskError::Message(format!(
-            "task file already exists: {}",
-            path.display()
-        )));
+        return Err(TaskError::IdExists {
+            task: task.to_string(),
+            path: path.to_path_buf(),
+        });
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| TaskError::Io {
@@ -38,9 +38,18 @@ pub(super) fn write_new_task(path: &Path, content: &str) -> Result<(), TaskError
             source,
         })?;
     }
-    atomic_write::create(path, content).map_err(|source| TaskError::Io {
-        path: path.to_path_buf(),
-        source,
+    atomic_write::create(path, content).map_err(|source| {
+        if source.kind() == std::io::ErrorKind::AlreadyExists {
+            TaskError::IdExists {
+                task: task.to_string(),
+                path: path.to_path_buf(),
+            }
+        } else {
+            TaskError::Io {
+                path: path.to_path_buf(),
+                source,
+            }
+        }
     })
 }
 

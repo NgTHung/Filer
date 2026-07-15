@@ -17,7 +17,9 @@ use crate::{
     error::TaskError,
     graph::TaskGraph,
     identity::TaskIdentity,
-    markdown::{ChecklistItem, MarkdownSection, checklist_items, level_two_sections, section},
+    markdown::{
+        HashedChecklistItem, MarkdownSection, hashed_checklist_items, level_two_sections, section,
+    },
     model::{Priority, Task, TaskMetadata, TaskStatus},
     project::TaskProject,
     taxonomy::{criteria_heading, is_milestone_type, validate_tag},
@@ -85,7 +87,7 @@ pub struct TaskDetail {
     pub task: TaskView,
     pub sections: Vec<MarkdownSection>,
     pub criteria_heading: String,
-    pub criteria: Vec<ChecklistItem>,
+    pub criteria: Vec<HashedChecklistItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -279,7 +281,7 @@ fn task_detail(
         task: task_view(project.root(), graph, task),
         sections,
         criteria_heading: criteria_heading.to_string(),
-        criteria: checklist_items(&content, criteria_heading),
+        criteria: hashed_checklist_items(&content, criteria_heading),
     })
 }
 

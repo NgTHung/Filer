@@ -1,8 +1,8 @@
-//! # Criteria Toggles
+//! # Criteria Updates
 //!
-//! This module flips one checklist marker while preserving the rest of the task
-//! file byte-for-byte. The updated content is validated before replacement so a
-//! toggle cannot silently leave the repository invalid.
+//! This module changes one checklist marker while preserving the rest of the
+//! task file byte-for-byte. Conditional updates also reject stale content before
+//! replacement, so an index cannot silently target a changed checklist item.
 //!
 //! ```
 //! use filer_task::{
@@ -52,7 +52,18 @@ pub fn toggle_criterion(
             Some(&identity.domain),
             Some(&identity.to_string()),
         )?;
-        let toggled = toggle_marker(&content, heading, index, &identity.to_string())?;
+        let Some(toggled) = update_marker(
+            &content,
+            heading,
+            index,
+            &identity.to_string(),
+            CriterionUpdate::Toggle,
+        )?
+        else {
+            return Err(TaskError::Message(
+                "criterion toggle did not produce an updated marker".to_string(),
+            ));
+        };
         require_valid_report(validate_task_candidate(
             project,
             &path,
@@ -67,18 +78,95 @@ pub fn toggle_criterion(
     })
 }
 
-fn toggle_marker(
+/// Set one zero-based criteria item when its exact source content still matches.
+pub fn set_criterion_checked(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+    index: usize,
+    expected_hash: &str,
+    checked: bool,
+) -> Result<PathBuf, TaskError> {
+    let path = project.task_path(identity)?;
+    project.with_write_lock(|| {
+        let content = fs::read_to_string(&path).map_err(|source| TaskError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        let metadata =
+            parse_metadata(&path, &content).map_err(|error| TaskError::Validation(vec![error]))?;
+        let heading = criteria_heading(
+            project,
+            &metadata.task_type,
+            Some(&identity.domain),
+            Some(&identity.to_string()),
+        )?;
+        let Some(updated) = update_marker(
+            &content,
+            heading,
+            index,
+            &identity.to_string(),
+            CriterionUpdate::Set {
+                expected_hash,
+                checked,
+            },
+        )?
+        else {
+            return Ok(path.clone());
+        };
+        require_valid_report(validate_task_candidate(
+            project,
+            &path,
+            &updated,
+            CandidateScope::Target,
+        )?)?;
+        atomic_write::replace(&path, &updated).map_err(|source| TaskError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        Ok(path.clone())
+    })
+}
+
+enum CriterionUpdate<'a> {
+    Toggle,
+    Set {
+        expected_hash: &'a str,
+        checked: bool,
+    },
+}
+
+fn update_marker(
     content: &str,
     heading: &str,
     wanted: usize,
     identity: &str,
-) -> Result<String, TaskError> {
+    update: CriterionUpdate<'_>,
+) -> Result<Option<String>, TaskError> {
     let matches = checklist_matches(content, heading);
     if let Some(matched) = matches.get(wanted) {
-        let mut toggled = content.to_string();
-        let replacement = if matched.item.checked { " " } else { "x" };
-        toggled.replace_range(matched.marker.clone(), replacement);
-        return Ok(toggled);
+        let checked = match update {
+            CriterionUpdate::Toggle => !matched.item.checked,
+            CriterionUpdate::Set {
+                expected_hash,
+                checked,
+            } => {
+                if matched.content_hash != expected_hash {
+                    return Err(TaskError::CriterionContentMismatch {
+                        task: identity.to_string(),
+                        index: wanted,
+                        expected_hash: expected_hash.to_string(),
+                        actual_hash: matched.content_hash.clone(),
+                    });
+                }
+                checked
+            }
+        };
+        if checked == matched.item.checked {
+            return Ok(None);
+        }
+        let mut updated = content.to_string();
+        updated.replace_range(matched.marker.clone(), if checked { "x" } else { " " });
+        return Ok(Some(updated));
     }
 
     Err(TaskError::CriterionIndexOutOfRange {

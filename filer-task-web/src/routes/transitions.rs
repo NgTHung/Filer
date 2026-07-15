@@ -4,14 +4,12 @@
 //! per-project lock keeps the mutation and refreshed response together without
 //! serializing unrelated repositories.
 
-use std::path::PathBuf;
-
 use axum::{
     Json,
     extract::{Path, State},
 };
 use filer_task::{
-    agent_context::{ShowView, build_show},
+    agent_context::ShowView,
     error::TaskError,
     identity::TaskIdentity,
     lifecycle::{block_task, defer_task, done_task, obsolete_task, start_task},
@@ -22,7 +20,7 @@ use crate::{
     app::AppState,
     dto::ReasonRequest,
     error::WebError,
-    routes::{blocking, tasks::resolve_identity},
+    routes::{tasks::resolve_identity, write},
 };
 
 pub(crate) async fn start(
@@ -82,22 +80,14 @@ async fn transition<F>(
     op: F,
 ) -> Result<Json<ShowView>, WebError>
 where
-    F: FnOnce(&TaskProject, &TaskIdentity) -> Result<PathBuf, TaskError> + Send + 'static,
+    F: FnOnce(&TaskProject, &TaskIdentity) -> Result<std::path::PathBuf, TaskError>
+        + Send
+        + 'static,
 {
-    let registered = state.registry.resolve(&project_name)?.clone();
-    let write_lock = registered.write_lock();
-    let _guard = write_lock.lock().await;
-    let view = blocking(move || {
-        let before = registered.validate()?;
-        let identity = resolve_identity(registered.task_project(), &before.tasks, &id)?;
-        op(registered.task_project(), &identity)?;
-        let after = registered.validate()?;
-        Ok(build_show(
-            registered.task_project(),
-            &after.tasks,
-            &identity,
-            &after.warnings,
-        )?)
+    let view = write::mutate(state, project_name, move |project, tasks| {
+        let identity = resolve_identity(project, tasks, &id)?;
+        op(project, &identity)?;
+        Ok(identity)
     })
     .await?;
     Ok(Json(view))

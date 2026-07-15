@@ -8,7 +8,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 
 use crate::{error::WebError, registry::ProjectRegistry, routes, storage::Storage};
@@ -44,7 +44,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/projects", get(routes::tasks::list_projects))
         .route(
             "/api/projects/{project}/tasks",
-            get(routes::tasks::list_tasks),
+            get(routes::tasks::list_tasks).post(routes::task_writes::create_task),
         )
         .route(
             "/api/projects/{project}/ready",
@@ -57,6 +57,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/projects/{project}/tasks/{id}",
             get(routes::tasks::get_task),
+        )
+        .route(
+            "/api/projects/{project}/tasks/{id}/criteria/{index}",
+            put(routes::task_writes::set_criterion),
         )
         .route(
             "/api/projects/{project}/tasks/{id}/start",

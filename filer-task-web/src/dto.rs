@@ -5,12 +5,33 @@
 
 use std::path::PathBuf;
 
-use filer_task::error::ValidationError;
+use filer_task::{
+    error::ValidationError,
+    model::{Priority, TaskType},
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct ReasonRequest {
     pub reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateTaskRequest {
+    pub domain: String,
+    pub prefix: String,
+    pub number: String,
+    pub title: String,
+    #[serde(rename = "type")]
+    pub task_type: TaskType,
+    pub priority: Priority,
+    pub milestone: Option<String>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetCriterionRequest {
+    pub checked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

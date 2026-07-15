@@ -75,6 +75,19 @@ fn new_task(domain: &str, id: &str, task_type: &str) -> NewTask {
 }
 
 #[test]
+fn duplicate_creation_has_a_stable_reason_code() {
+    let temp = project(&config(r#"{"policy": "open"}"#));
+    let project = TaskProject::open(temp.path()).expect("project opens");
+    add_task(&project, new_task("backend", "WORK-001", "Change")).expect("task created");
+
+    let error = add_task(&project, new_task("backend", "WORK-001", "Change"))
+        .expect_err("duplicate rejected");
+
+    assert_eq!(error.code(), "id_exists");
+    assert_eq!(error.context()["task"], "backend:WORK-001");
+}
+
+#[test]
 fn prefixes_are_domain_scoped_and_report_structured_failures() {
     let temp = project(&config(r#"{"policy": "open"}"#));
     write_task(

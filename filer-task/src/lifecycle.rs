@@ -38,7 +38,7 @@ mod criteria;
 mod edit;
 mod write;
 
-pub use criteria::toggle_criterion;
+pub use criteria::{set_criterion_checked, toggle_criterion};
 pub use edit::{FieldPatch, TaskPatch, edit_task};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -74,7 +74,7 @@ pub fn add_task(project: &TaskProject, mut task: NewTask) -> Result<PathBuf, Tas
     project.with_write_lock(|| {
         validate_new_tasks(project, std::slice::from_mut(&mut task), false)?;
         let (path, content) = render_task(project, &task)?;
-        write_new_task(&path, &content)?;
+        write_new_task(&path, &content, &format!("{}:{}", task.domain, task.id))?;
         Ok(path)
     })
 }
@@ -115,8 +115,8 @@ fn import_tasks_unlocked(
     if dry_run {
         return Ok(rendered.into_iter().map(|(path, _)| path).collect());
     }
-    for (path, content) in &rendered {
-        write_new_task(path, content)?;
+    for (task, (path, content)) in tasks_to_write.iter().zip(&rendered) {
+        write_new_task(path, content, &format!("{}:{}", task.domain, task.id))?;
     }
     Ok(rendered.into_iter().map(|(path, _)| path).collect())
 }
@@ -145,15 +145,16 @@ fn validate_new_tasks(
         let identity = validate_new_task_shape(project, task)?;
         let path = new_task_path(project.root(), task);
         if path.exists() && !skip_existing {
-            return Err(TaskError::Message(format!(
-                "task file already exists: {}",
-                path.display()
-            )));
+            return Err(TaskError::IdExists {
+                task: identity.to_string(),
+                path,
+            });
         }
         if known_identities.contains(&identity) && !skip_existing {
-            return Err(TaskError::Message(format!(
-                "task {identity} already exists"
-            )));
+            return Err(TaskError::IdExists {
+                task: identity.to_string(),
+                path,
+            });
         }
         if !batch_ids.insert(identity.clone()) {
             return Err(TaskError::Message(format!(

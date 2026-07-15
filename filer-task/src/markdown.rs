@@ -13,15 +13,25 @@
 
 use std::ops::Range;
 
+use sha2::{Digest, Sha256};
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ChecklistItem {
     pub checked: bool,
     pub text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct HashedChecklistItem {
+    pub checked: bool,
+    pub text: String,
+    pub content_hash: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ChecklistMatch {
     pub(crate) item: ChecklistItem,
+    pub(crate) content_hash: String,
     pub(crate) marker: Range<usize>,
 }
 
@@ -79,6 +89,17 @@ pub fn checklist_items(content: &str, heading: &str) -> Vec<ChecklistItem> {
     checklist_matches(content, heading)
         .into_iter()
         .map(|matched| matched.item)
+        .collect()
+}
+
+pub fn hashed_checklist_items(content: &str, heading: &str) -> Vec<HashedChecklistItem> {
+    checklist_matches(content, heading)
+        .into_iter()
+        .map(|matched| HashedChecklistItem {
+            checked: matched.item.checked,
+            text: matched.item.text,
+            content_hash: matched.content_hash,
+        })
         .collect()
 }
 
@@ -140,6 +161,8 @@ pub fn replace_or_append_section(content: &str, heading: &str, replacement: &str
 }
 
 fn parse_checklist_match(line: &str, offset: usize) -> Option<ChecklistMatch> {
+    let source_line = line.strip_suffix('\n').unwrap_or(line);
+    let source_line = source_line.strip_suffix('\r').unwrap_or(source_line);
     let trimmed = line.trim_start();
     let indentation = line.len() - trimmed.len();
     let rest = trimmed.strip_prefix("- [")?;
@@ -155,6 +178,7 @@ fn parse_checklist_match(line: &str, offset: usize) -> Option<ChecklistMatch> {
             checked,
             text: text.trim().to_string(),
         },
+        content_hash: format!("{:x}", Sha256::digest(source_line.as_bytes())),
         marker: marker_start..marker_start + 1,
     })
 }
