@@ -21,5 +21,5 @@ web:WEB-002 builds the multi-project registry from an in-memory list of roots an
 - [ ] The registry loads persisted roots at startup and reopens each project, keeping broken ones visible per web:WEB-002.
 - [ ] A project registered through POST /api/projects is still registered after a server restart.
 - [ ] A persisted root that no longer exists on disk appears as a broken project and does not prevent startup.
-- [ ] DELETE /api/projects/{name} removes the registration row and the project disappears from GET /api/projects.
+- [ ] DELETE /api/projects/{project} removes the registration row and the project disappears from GET /api/projects.
 - [ ] Tests cover the restart round-trip, a vanished root, and deregistration.

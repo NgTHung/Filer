@@ -1,24 +1,25 @@
 ---
 id: WEB-007
-title: Build the v2 Milestones screen and New-task form
+title: Build the Milestones screen and New-task form
 status: To Do
 priority: Medium
 type: Feature
 parent: WEB-001
-depends_on: [WEB-003, WEB-004]
+depends_on: [WEB-003, WEB-004, WEB-005, WEB-021]
 risk: Low
-impact: "Adds the two screens v1 never had: a milestone progress view and an in-app task-creation form, closing the human-in-the-loop gap UTILS-004 left open for creation."
+impact: "Adds the two screens the old UI never had: a milestone progress view over the aggregation endpoint and an in-app creation form over the existing POST endpoint, closing the human-in-the-loop gap for creation."
 tags: [web, tasks]
-last_updated: 2026-07-14
+last_updated: 2026-07-15
 ---
 
 ## Summary
 
-Milestones screen: one card per GET /api/milestones entry with its exit/acceptance criteria, a progress bar from the done/total count, and its tasks grouped by status. New-task screen: domain, then prefix (scoped to the chosen domain's allowed prefixes), an auto-suggested next number, title, type, priority, optional milestone, and tags (chip picker under strict policy, free-text input under open policy), with a live preview of the qualified id and file path, submitting to POST /api/tasks and rendering field-scoped errors from its response inline.
+Milestones screen: one card per GET /api/projects/{project}/milestones entry, rendering the aggregation's milestone status, a progress bar from its done/total count, its criteria checklist, and its tasks grouped by status. New-task screen: a form whose fields mirror CreateTaskRequest exactly (domain, prefix, number, title, type, priority, optional milestone, tags), submitting to POST /api/projects/{project}/tasks. The domain, prefix, task type, and tag options come from GET /api/projects/{project}/policy (web:WEB-021): prefix options are scoped to the chosen domain, tags are a catalog picker under strict policy and free text under open policy. The number field defaults to one past the highest existing number for the chosen domain and prefix, with a live preview of the qualified id and file path. A rejected creation renders the structured error next to the field it names (the error body maps id_exists to number, prefix_not_allowed to prefix, tag_rejected to tags), never as a modal or toast. Success opens the new task's detail drawer using the ShowView the endpoint returns.
 
 ## Acceptance Criteria
 
-- [ ] The Milestones screen renders one card per milestone-role task with its progress bar and criteria checklist sourced from GET /api/milestones.
-- [ ] The New-task form's prefix options update when the domain changes, and the number field defaults to one past the highest existing number for that domain/prefix.
-- [ ] A field-scoped error returned by POST /api/tasks (id_exists, prefix_not_allowed, tag_rejected) renders next to its field, never as a modal or toast.
-- [ ] A successful submission navigates to the Tasks screen with the new task's detail drawer open.
+- [ ] The Milestones screen renders one card per GET /api/projects/{project}/milestones entry with its progress bar, criteria checklist, and tasks grouped by status.
+- [ ] The New-task form's domain, prefix, type, and tag options come from GET /api/projects/{project}/policy, with prefix options scoped to the chosen domain and the tag input strict-or-open per the policy.
+- [ ] The number field defaults to one past the highest existing number for the chosen domain and prefix, with a live preview of the qualified id and file path.
+- [ ] A rejected POST /api/projects/{project}/tasks renders its structured error inline next to the field named by the error body's field mapping (id_exists to number, prefix_not_allowed to prefix, tag_rejected to tags).
+- [ ] A successful submission opens the new task's detail drawer from the returned ShowView.
