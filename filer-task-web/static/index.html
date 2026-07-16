@@ -5,60 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Filer Tasks</title>
     <link rel="stylesheet" href="/style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "preact": "/vendor/preact.module.js",
+          "preact/hooks": "/vendor/hooks.module.js"
+        }
+      }
+    </script>
   </head>
   <body>
-    <header>
-      <h1>Filer Tasks</h1>
-      <div class="filters">
-        <select id="status">
-          <option value="">Any status</option>
-          <option>To Do</option>
-          <option>In Progress</option>
-          <option>Blocked</option>
-          <option>Done</option>
-          <option>Deferred</option>
-          <option>Obsolete</option>
-        </select>
-        <select id="priority">
-          <option value="">Any priority</option>
-          <option>High</option>
-          <option>Medium</option>
-          <option>Low</option>
-        </select>
-        <input id="domain" type="text" placeholder="domain" />
-        <input id="milestone" type="text" placeholder="milestone" />
-        <input id="tag" type="text" placeholder="tag" />
-        <select id="sort_by">
-          <option value="Id">Sort: Id</option>
-          <option value="Status">Sort: Status</option>
-          <option value="Priority">Sort: Priority</option>
-          <option value="Domain">Sort: Domain</option>
-        </select>
-        <button id="refresh">Refresh</button>
-      </div>
-    </header>
-    <main>
-      <section id="list-panel">
-        <table id="tasks">
-          <thead>
-            <tr>
-              <th>Id</th>
-              <th>Title</th>
-              <th>Status</th>
-              <th>Priority</th>
-              <th>Domain</th>
-            </tr>
-          </thead>
-          <tbody id="task-rows"></tbody>
-        </table>
-        <p id="list-empty" class="hidden">No tasks match.</p>
-      </section>
-      <section id="detail-panel">
-        <p id="detail-placeholder">Select a task to see its detail.</p>
-        <article id="detail" class="hidden"></article>
-      </section>
-    </main>
-    <div id="error" class="hidden"></div>
-    <script src="/app.js"></script>
+    <div id="app"></div>
+    <script type="module" src="/js/app.js"></script>
   </body>
 </html>
