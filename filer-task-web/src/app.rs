@@ -41,10 +41,13 @@ impl AppState {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/api/projects", get(routes::tasks::list_projects))
+        .route(
+            "/api/projects",
+            get(routes::tasks::list_projects).post(routes::projects::register_project),
+        )
         .route(
             "/api/projects/{project}/policy",
-            get(routes::policy::get_policy),
+            get(routes::policy::get_policy).patch(routes::policy::mutate_policy),
         )
         .route(
             "/api/projects/{project}/tasks",

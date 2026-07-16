@@ -15,6 +15,77 @@ use filer_task::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
+pub struct RegisterProjectRequest {
+    pub path: PathBuf,
+    #[serde(default)]
+    pub init: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+pub enum PolicyMutationRequest {
+    AddDomain {
+        name: String,
+        prefixes: Vec<String>,
+    },
+    RemoveDomain {
+        name: String,
+    },
+    AddPrefix {
+        domain: String,
+        prefix: String,
+    },
+    RemovePrefix {
+        domain: String,
+        prefix: String,
+    },
+    AddTaskType {
+        name: String,
+        criteria: CriteriaPolicyRequest,
+        role: Option<TaskTypeRoleRequest>,
+    },
+    RemoveTaskType {
+        name: String,
+    },
+    AddTag {
+        tag: String,
+    },
+    RemoveTag {
+        tag: String,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CriteriaPolicyRequest {
+    Acceptance,
+    Exit,
+}
+
+impl From<CriteriaPolicyRequest> for CriteriaPolicy {
+    fn from(value: CriteriaPolicyRequest) -> Self {
+        match value {
+            CriteriaPolicyRequest::Acceptance => Self::Acceptance,
+            CriteriaPolicyRequest::Exit => Self::Exit,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskTypeRoleRequest {
+    Milestone,
+}
+
+impl From<TaskTypeRoleRequest> for TaskTypeRole {
+    fn from(value: TaskTypeRoleRequest) -> Self {
+        match value {
+            TaskTypeRoleRequest::Milestone => Self::Milestone,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ReasonRequest {
     pub reason: String,
 }

@@ -126,12 +126,10 @@ impl IntoResponse for WebError {
 
 fn task_error(error: TaskError) -> (StatusCode, ErrorBody) {
     let status = match &error {
-        TaskError::TaskNotFound { .. } => StatusCode::NOT_FOUND,
+        TaskError::TaskNotFound { .. } | TaskError::ProjectNotFound { .. } => StatusCode::NOT_FOUND,
         TaskError::CriterionContentMismatch { .. } => StatusCode::PRECONDITION_FAILED,
         TaskError::Json(_) => StatusCode::BAD_REQUEST,
-        TaskError::Io { .. } | TaskError::ConfigIo { .. } | TaskError::ProjectNotFound { .. } => {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        TaskError::Io { .. } | TaskError::ConfigIo { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         _ => StatusCode::UNPROCESSABLE_ENTITY,
     };
     let code = error.code().to_string();
