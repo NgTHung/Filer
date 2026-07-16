@@ -20,6 +20,7 @@ fn registry_registers_projects_and_replaces_open_handles() {
     );
     let fresh = registered
         .task_project()
+        .expect("registered project is available")
         .add_domain("backend", &["API".to_string()])
         .expect("policy changes");
     let write_lock = registered.write_lock();
@@ -29,7 +30,14 @@ fn registry_registers_projects_and_replaces_open_handles() {
     let resolved = registry
         .resolve(registered.name())
         .expect("project resolves");
-    assert!(resolved.task_project().policy().domain("backend").is_some());
+    assert!(
+        resolved
+            .task_project()
+            .expect("resolved project is available")
+            .policy()
+            .domain("backend")
+            .is_some()
+    );
     assert!(Arc::ptr_eq(&write_lock, &resolved.write_lock()));
 }
 

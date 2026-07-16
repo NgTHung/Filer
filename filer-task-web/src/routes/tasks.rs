@@ -56,10 +56,10 @@ pub(crate) async fn list_tasks(
     let sort_by = parse_sort(query.sort_by.as_deref())?;
     let tasks = blocking(move || {
         let validated = registered.validate()?;
-        let filter = build_filter(registered.task_project(), &validated.tasks, &query)?;
-        let graph = TaskGraph::new(registered.task_project(), &validated.tasks)?;
+        let filter = build_filter(registered.task_project()?, &validated.tasks, &query)?;
+        let graph = TaskGraph::new(registered.task_project()?, &validated.tasks)?;
         Ok(filter_tasks(
-            registered.task_project(),
+            registered.task_project()?,
             &validated.tasks,
             &graph,
             &filter,
@@ -79,7 +79,7 @@ pub(crate) async fn list_ready(
     let tasks = blocking(move || {
         let validated = registered.validate()?;
         Ok(build_ready(
-            registered.task_project(),
+            registered.task_project()?,
             &validated.tasks,
             &ReadyFilter {
                 domain: query.domain,
@@ -102,7 +102,7 @@ pub(crate) async fn list_milestones(
     let milestones = blocking(move || {
         let validated = registered.validate()?;
         Ok(build_milestone_aggregations(
-            registered.task_project(),
+            registered.task_project()?,
             &validated.tasks,
         )?)
     })
@@ -117,9 +117,9 @@ pub(crate) async fn get_task(
     let registered = state.registry.resolve(&project_name)?.clone();
     let view = blocking(move || {
         let validated = registered.validate()?;
-        let identity = resolve_identity(registered.task_project(), &validated.tasks, &id)?;
+        let identity = resolve_identity(registered.task_project()?, &validated.tasks, &id)?;
         Ok(build_show(
-            registered.task_project(),
+            registered.task_project()?,
             &validated.tasks,
             &identity,
             &validated.warnings,

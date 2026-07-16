@@ -1,9 +1,8 @@
 //! Serves the filer-task web interface on localhost only.
 //!
-//! Binds `127.0.0.1` so the task board is never exposed to the network. Repeat
-//! `--root <path>` to serve several repos (defaults to the working
-//! directory), pass `--port <port>` to change the port, and pass `--database
-//! <path>` to select the SQLite file.
+//! Binds `127.0.0.1` so the task board is never exposed to the network. Pass
+//! `--port <port>` to change the port and `--database <path>` to select the
+//! SQLite file. Project registrations are loaded from that database.
 
 use std::{net::SocketAddr, path::PathBuf};
 
@@ -24,11 +23,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let state = match AppState::from_roots(options.roots, storage) {
+    let state = match AppState::load(storage).await {
         Ok(state) => state,
         Err(error) => {
             eprintln!("failed to start: {error:?}");
-            return Err("could not locate a .tasks repository".into());
+            return Err("could not load the project registry".into());
         }
     };
 
@@ -43,24 +42,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 struct Options {
-    roots: Vec<PathBuf>,
     port: u16,
     database: PathBuf,
 }
 
 impl Options {
     fn from_args() -> Self {
-        let mut roots = Vec::new();
         let mut port = 7878;
         let mut database = PathBuf::from("filer-task-web.sqlite3");
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
-                "--root" => {
-                    if let Some(value) = args.next() {
-                        roots.push(PathBuf::from(value));
-                    }
-                }
                 "--port" => {
                     if let Some(value) = args.next().and_then(|raw| raw.parse().ok()) {
                         port = value;
@@ -74,13 +66,6 @@ impl Options {
                 _ => {}
             }
         }
-        if roots.is_empty() {
-            roots.push(PathBuf::from("."));
-        }
-        Self {
-            roots,
-            port,
-            database,
-        }
+        Self { port, database }
     }
 }

@@ -19,6 +19,7 @@ use std::{
 };
 
 use filer_task::{
+    error::ValidationError,
     project::TaskProject,
     repo::discover_project_root,
     validate::{ValidatedRepository, validate_repo},
@@ -28,31 +29,64 @@ use tokio::sync::Mutex;
 use crate::{
     dto::{ProjectSummary, ValidationIssue},
     error::WebError,
+    storage::ProjectRegistration,
 };
 
 #[derive(Debug, Clone)]
 pub struct RegisteredProject {
     name: String,
-    task_project: TaskProject,
+    root: PathBuf,
+    task_project: Option<TaskProject>,
+    open_issue: Option<ValidationIssue>,
     write_lock: Arc<Mutex<()>>,
 }
 
 impl RegisteredProject {
-    fn new(task_project: TaskProject) -> Result<Self, WebError> {
+    pub(crate) fn new(task_project: TaskProject) -> Result<Self, WebError> {
         let name = project_name(&task_project)?;
+        let root = task_project.root().to_path_buf();
         Ok(Self {
             name,
-            task_project,
+            root,
+            task_project: Some(task_project),
+            open_issue: None,
             write_lock: Arc::new(Mutex::new(())),
         })
+    }
+
+    fn reopen(registration: ProjectRegistration) -> Self {
+        match TaskProject::open(&registration.root) {
+            Ok(task_project) => Self {
+                name: registration.name,
+                root: registration.root,
+                task_project: Some(task_project),
+                open_issue: None,
+                write_lock: Arc::new(Mutex::new(())),
+            },
+            Err(error) => Self {
+                name: registration.name,
+                open_issue: Some(
+                    ValidationError::from_task_error(&registration.root, &error).into(),
+                ),
+                root: registration.root,
+                task_project: None,
+                write_lock: Arc::new(Mutex::new(())),
+            },
+        }
     }
 
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    pub fn task_project(&self) -> &TaskProject {
-        &self.task_project
+    pub fn task_project(&self) -> Result<&TaskProject, WebError> {
+        self.task_project
+            .as_ref()
+            .ok_or_else(|| self.broken_error())
+    }
+
+    pub fn registration(&self) -> ProjectRegistration {
+        ProjectRegistration::new(self.name.clone(), self.root.clone())
     }
 
     pub fn write_lock(&self) -> Arc<Mutex<()>> {
@@ -60,7 +94,7 @@ impl RegisteredProject {
     }
 
     pub fn validate(&self) -> Result<ValidatedRepository, WebError> {
-        self.validate_project(&self.task_project)
+        self.validate_project(self.task_project()?)
     }
 
     pub(crate) fn validate_project(
@@ -86,7 +120,21 @@ impl RegisteredProject {
     }
 
     pub(crate) fn summary(&self) -> Result<ProjectSummary, WebError> {
-        let report = validate_repo(&self.task_project)?;
+        let Some(task_project) = &self.task_project else {
+            return Ok(self.unavailable_summary());
+        };
+        let report = match validate_repo(task_project) {
+            Ok(report) => report,
+            Err(error) => {
+                return Ok(ProjectSummary {
+                    name: self.name.clone(),
+                    task_count: 0,
+                    domain_count: 0,
+                    broken: true,
+                    issues: vec![ValidationError::from_task_error(&self.root, &error).into()],
+                });
+            }
+        };
         let issues: Vec<_> = report
             .errors
             .into_iter()
@@ -95,10 +143,27 @@ impl RegisteredProject {
         Ok(ProjectSummary {
             name: self.name.clone(),
             task_count: report.tasks.len(),
-            domain_count: self.task_project.policy().domains().len(),
+            domain_count: task_project.policy().domains().len(),
             broken: !issues.is_empty(),
             issues,
         })
+    }
+
+    fn unavailable_summary(&self) -> ProjectSummary {
+        ProjectSummary {
+            name: self.name.clone(),
+            task_count: 0,
+            domain_count: 0,
+            broken: true,
+            issues: self.open_issue.clone().into_iter().collect(),
+        }
+    }
+
+    fn broken_error(&self) -> WebError {
+        WebError::ProjectBroken {
+            name: self.name.clone(),
+            issues: self.open_issue.clone().into_iter().collect(),
+        }
     }
 }
 
@@ -108,6 +173,17 @@ pub struct ProjectRegistry {
 }
 
 impl ProjectRegistry {
+    pub fn from_registrations(registrations: Vec<ProjectRegistration>) -> Self {
+        Self {
+            projects: Arc::new(RwLock::new(
+                registrations
+                    .into_iter()
+                    .map(RegisteredProject::reopen)
+                    .collect(),
+            )),
+        }
+    }
+
     /// Build a single-project registry from the nearest project containing
     /// `start`.
     pub fn single(start: PathBuf) -> Result<Self, WebError> {
@@ -170,6 +246,26 @@ impl ProjectRegistry {
         Ok(registered)
     }
 
+    pub(crate) fn ensure_name_available(&self, name: &str) -> Result<(), WebError> {
+        if read_projects(&self.projects)
+            .iter()
+            .any(|project| project.name == name)
+        {
+            return Err(WebError::DuplicateProjectName(name.to_string()));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn publish(&self, registered: RegisteredProject) {
+        let mut projects = write_projects(&self.projects);
+        projects.push(registered);
+    }
+
+    pub(crate) fn remove(&self, name: &str) {
+        let mut projects = write_projects(&self.projects);
+        projects.retain(|project| project.name != name);
+    }
+
     /// Publish a fresh handle without changing the project's write boundary.
     pub fn replace_task_project(
         &self,
@@ -187,14 +283,15 @@ impl ProjectRegistry {
             .iter_mut()
             .find(|project| project.name == name)
             .ok_or_else(|| WebError::ProjectNotFound(name.to_string()))?;
-        if registered.task_project.root() != task_project.root() {
+        if registered.root != task_project.root() {
             return Err(WebError::BadRequest(format!(
                 "replacement root {} does not match registered root {}",
                 task_project.root().display(),
-                registered.task_project.root().display()
+                registered.root.display()
             )));
         }
-        registered.task_project = task_project;
+        registered.task_project = Some(task_project);
+        registered.open_issue = None;
         Ok(registered.clone())
     }
 }

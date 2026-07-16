@@ -21,7 +21,7 @@ pub(crate) async fn get_policy(
     Path(project_name): Path<String>,
 ) -> Result<Json<ProjectPolicyResponse>, WebError> {
     let registered = state.registry.resolve(&project_name)?;
-    Ok(Json(registered.task_project().policy().into()))
+    Ok(Json(registered.task_project()?.policy().into()))
 }
 
 pub(crate) async fn mutate_policy(
@@ -34,7 +34,7 @@ pub(crate) async fn mutate_policy(
     let _guard = write_lock.lock().await;
     let registry = state.registry.clone();
     let response = blocking(move || {
-        let project = registered.task_project().reload()?;
+        let project = registered.task_project()?.reload()?;
         let fresh = apply_mutation(&project, request)?;
         let response = fresh.policy().into();
         registry.replace_task_project(&project_name, fresh)?;

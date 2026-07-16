@@ -1,7 +1,7 @@
 ---
 id: "WEB-016"
 title: "Persist the project registry in the database"
-status: "To Do"
+status: Done
 priority: "High"
 type: "Feature"
 parent: "WEB-014"
@@ -9,7 +9,7 @@ depends_on: ["WEB-015", "WEB-002", "WEB-009"]
 risk: "Medium"
 impact: "Makes the multi-project registry survive restarts, replacing web:WEB-002's in-memory root list as the deployment-facing configuration."
 tags: ["web", "tasks", "discovery", "state"]
-last_updated: "2026-07-14"
+last_updated: 2026-07-16
 ---
 
 ## Summary
@@ -18,8 +18,8 @@ web:WEB-002 builds the multi-project registry from an in-memory list of roots an
 
 ## Acceptance Criteria
 
-- [ ] The registry loads persisted roots at startup and reopens each project, keeping broken ones visible per web:WEB-002.
-- [ ] A project registered through POST /api/projects is still registered after a server restart.
-- [ ] A persisted root that no longer exists on disk appears as a broken project and does not prevent startup.
-- [ ] DELETE /api/projects/{project} removes the registration row and the project disappears from GET /api/projects.
-- [ ] Tests cover the restart round-trip, a vanished root, and deregistration.
+- [x] The registry loads persisted roots at startup and reopens each project, keeping broken ones visible per web:WEB-002.
+- [x] A project registered through POST /api/projects is still registered after a server restart.
+- [x] A persisted root that no longer exists on disk appears as a broken project and does not prevent startup.
+- [x] DELETE /api/projects/{project} removes the registration row and the project disappears from GET /api/projects.
+- [x] Tests cover the restart round-trip, a vanished root, and deregistration.

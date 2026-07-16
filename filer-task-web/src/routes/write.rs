@@ -25,7 +25,7 @@ where
     let write_lock = registered.write_lock();
     let _guard = write_lock.lock().await;
     blocking(move || {
-        let project = registered.task_project().reload()?;
+        let project = registered.task_project()?.reload()?;
         let before = registered.validate_project(&project)?;
         let identity = operation(&project, &before.tasks)?;
         let after = registered.validate_project(&project)?;

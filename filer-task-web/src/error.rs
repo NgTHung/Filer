@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use filer_task::error::TaskError;
 use serde::Serialize;
 
-use crate::dto::ValidationIssue;
+use crate::{dto::ValidationIssue, storage::StorageError};
 
 #[derive(Debug)]
 pub enum WebError {
@@ -31,11 +31,19 @@ pub enum WebError {
     },
     TaskEdit(TaskError),
     Task(TaskError),
+    Storage(StorageError),
+    Internal(String),
 }
 
 impl From<TaskError> for WebError {
     fn from(value: TaskError) -> Self {
         Self::Task(value)
+    }
+}
+
+impl From<StorageError> for WebError {
+    fn from(value: StorageError) -> Self {
+        Self::Storage(value)
     }
 }
 
@@ -112,6 +120,15 @@ impl IntoResponse for WebError {
             Self::Task(error) => {
                 let (status, body) = task_error(error);
                 return (status, Json(body)).into_response();
+            }
+            Self::Storage(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error.to_string(),
+                None,
+                Vec::new(),
+            ),
+            Self::Internal(message) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, message, None, Vec::new())
             }
         };
         (

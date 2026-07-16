@@ -12,7 +12,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let storage = Storage::open(directory.path().join("state.sqlite3")).await?;
-//! assert_eq!(storage.schema_version().await?, 1);
+//! assert_eq!(storage.schema_version().await?, 2);
 //! storage.close().await;
 //! # Ok(())
 //! # }
@@ -30,6 +30,10 @@ use sqlx::{
     migrate::{MigrateError, Migrator},
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
+
+mod projects;
+
+pub use projects::ProjectRegistration;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -78,8 +82,22 @@ impl Storage {
 
 #[derive(Debug)]
 pub enum StorageError {
-    Open { path: PathBuf, source: sqlx::Error },
-    Migrate { path: PathBuf, source: MigrateError },
+    Open {
+        path: PathBuf,
+        source: sqlx::Error,
+    },
+    Migrate {
+        path: PathBuf,
+        source: MigrateError,
+    },
+    Operation {
+        operation: &'static str,
+        source: sqlx::Error,
+    },
+    InvalidData {
+        operation: &'static str,
+        message: String,
+    },
 }
 
 impl fmt::Display for StorageError {
@@ -99,6 +117,12 @@ impl fmt::Display for StorageError {
                     path.display()
                 )
             }
+            Self::Operation { operation, source } => {
+                write!(formatter, "failed to {operation}: {source}")
+            }
+            Self::InvalidData { operation, message } => {
+                write!(formatter, "failed to {operation}: {message}")
+            }
         }
     }
 }
@@ -108,6 +132,8 @@ impl Error for StorageError {
         match self {
             Self::Open { source, .. } => Some(source),
             Self::Migrate { source, .. } => Some(source),
+            Self::Operation { source, .. } => Some(source),
+            Self::InvalidData { .. } => None,
         }
     }
 }

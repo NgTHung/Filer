@@ -8,18 +8,39 @@ use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
 };
+use filer_task::project::TaskProject;
+use tokio::sync::Mutex;
 
-use crate::{error::WebError, registry::ProjectRegistry, routes, storage::Storage};
+use crate::{
+    error::WebError,
+    registry::{ProjectRegistry, RegisteredProject},
+    routes,
+    storage::Storage,
+};
 
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) registry: Arc<ProjectRegistry>,
     storage: Storage,
+    registry_mutation: Arc<Mutex<()>>,
 }
 
 impl AppState {
+    pub async fn load(storage: Storage) -> Result<Self, WebError> {
+        let registrations = storage.project_registrations().await?;
+        let registry =
+            tokio::task::spawn_blocking(move || ProjectRegistry::from_registrations(registrations))
+                .await
+                .map_err(|join| WebError::Internal(format!("registry loader failed: {join}")))?;
+        Ok(Self {
+            registry: Arc::new(registry),
+            storage,
+            registry_mutation: Arc::new(Mutex::new(())),
+        })
+    }
+
     pub fn single(start: PathBuf, storage: Storage) -> Result<Self, WebError> {
         Self::from_roots([start], storage)
     }
@@ -31,11 +52,38 @@ impl AppState {
         Ok(Self {
             registry: Arc::new(ProjectRegistry::from_roots(roots)?),
             storage,
+            registry_mutation: Arc::new(Mutex::new(())),
         })
     }
 
     pub fn storage(&self) -> &Storage {
         &self.storage
+    }
+
+    pub(crate) async fn register_project(
+        &self,
+        task_project: TaskProject,
+    ) -> Result<RegisteredProject, WebError> {
+        let registered = RegisteredProject::new(task_project)?;
+        let _mutation = self.registry_mutation.lock().await;
+        self.registry.ensure_name_available(registered.name())?;
+        self.storage
+            .insert_project_registration(&registered.registration())
+            .await?;
+        self.registry.publish(registered.clone());
+        Ok(registered)
+    }
+
+    pub(crate) async fn deregister_project(&self, name: &str) -> Result<(), WebError> {
+        let _mutation = self.registry_mutation.lock().await;
+        self.registry.resolve(name)?;
+        if !self.storage.delete_project_registration(name).await? {
+            return Err(WebError::Internal(format!(
+                "project {name} is registered in memory but missing from persistent storage"
+            )));
+        }
+        self.registry.remove(name);
+        Ok(())
     }
 }
 
@@ -44,6 +92,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/projects",
             get(routes::tasks::list_projects).post(routes::projects::register_project),
+        )
+        .route(
+            "/api/projects/{project}",
+            delete(routes::projects::deregister_project),
         )
         .route(
             "/api/projects/{project}/policy",
