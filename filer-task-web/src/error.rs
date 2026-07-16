@@ -29,6 +29,7 @@ pub enum WebError {
         name: String,
         issues: Vec<ValidationIssue>,
     },
+    TaskEdit(TaskError),
     Task(TaskError),
 }
 
@@ -104,6 +105,10 @@ impl IntoResponse for WebError {
                 Some(name),
                 issues,
             ),
+            Self::TaskEdit(error) => {
+                let (status, body) = task_edit_error(error);
+                return (status, Json(body)).into_response();
+            }
             Self::Task(error) => {
                 let (status, body) = task_error(error);
                 return (status, Json(body)).into_response();
@@ -121,6 +126,57 @@ impl IntoResponse for WebError {
             }),
         )
             .into_response()
+    }
+}
+
+fn task_edit_error(error: TaskError) -> (StatusCode, ErrorBody) {
+    let TaskError::Validation(validation_errors) = error else {
+        return task_error(error);
+    };
+    let promoted = validation_errors.first().map(|issue| {
+        (
+            issue.code.clone(),
+            edit_issue_field(issue),
+            issue.context.clone(),
+        )
+    });
+    let message = TaskError::Validation(validation_errors.clone()).to_string();
+    let issues = validation_errors
+        .into_iter()
+        .map(ValidationIssue::from)
+        .collect();
+    let (code, field, context) =
+        promoted.unwrap_or_else(|| ("validation_failed".to_string(), None, serde_json::json!({})));
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorBody {
+            error: message,
+            code: Some(code),
+            field,
+            context: Some(context),
+            project: None,
+            issues,
+        },
+    )
+}
+
+fn edit_issue_field(issue: &filer_task::error::ValidationError) -> Option<String> {
+    if let Some(field) = issue.context.get("field").and_then(|value| value.as_str()) {
+        return Some(field.to_string());
+    }
+    let message = issue.message.as_str();
+    if message.starts_with("dependency ")
+        || message.starts_with("duplicate dependency")
+        || message.starts_with("dependency cycle detected:")
+        || message == "task cannot depend on itself"
+    {
+        Some("depends_on".to_string())
+    } else if message.starts_with("parent ") {
+        Some("parent".to_string())
+    } else if message.starts_with("milestone ") || message.starts_with("milestone-role task") {
+        Some("milestone".to_string())
+    } else {
+        None
     }
 }
 

@@ -153,7 +153,7 @@ fn build_filter(
     })
 }
 
-fn resolve_project_wide_identity(
+pub(crate) fn resolve_project_wide_identity(
     project: &TaskProject,
     tasks: &[Task],
     value: &str,

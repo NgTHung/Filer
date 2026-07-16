@@ -1,8 +1,8 @@
 //! # Task Write Routes
 //!
-//! Creation delegates rendering and validation to `filer-task`. Criterion
-//! updates require an exact source-line hash so a stale checklist index cannot
-//! target changed content.
+//! Creation and field edits delegate rendering and validation to `filer-task`.
+//! Criterion updates require an exact source-line hash so a stale checklist
+//! index cannot target changed content.
 
 use axum::{
     Json,
@@ -13,15 +13,18 @@ use filer_task::{
     agent_context::ShowView,
     error::TaskError,
     identity::TaskIdentity,
-    lifecycle::{NewTask, add_task, set_criterion_checked},
+    lifecycle::{NewTask, add_task, edit_task as apply_task_patch, set_criterion_checked},
     model::TaskStatus,
 };
 
 use crate::{
     app::AppState,
-    dto::{CreateTaskRequest, SetCriterionRequest},
+    dto::{CreateTaskRequest, EditTaskRequest, SetCriterionRequest},
     error::WebError,
-    routes::{tasks::resolve_identity, write},
+    routes::{
+        tasks::{resolve_identity, resolve_project_wide_identity},
+        write,
+    },
 };
 
 pub(crate) async fn create_task(
@@ -61,6 +64,21 @@ pub(crate) async fn create_task(
             }
         })?;
         add_task(project, task)?;
+        Ok(identity)
+    })
+    .await?;
+    Ok(Json(view))
+}
+
+pub(crate) async fn edit_task(
+    State(state): State<AppState>,
+    Path((project_name, id)): Path<(String, String)>,
+    Json(body): Json<EditTaskRequest>,
+) -> Result<Json<ShowView>, WebError> {
+    let patch = body.into();
+    let view = write::mutate(state, project_name, move |project, tasks| {
+        let identity = resolve_project_wide_identity(project, tasks, &id)?;
+        apply_task_patch(project, &identity, patch).map_err(WebError::TaskEdit)?;
         Ok(identity)
     })
     .await?;

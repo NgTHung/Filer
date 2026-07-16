@@ -7,7 +7,8 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use filer_task::{
     error::ValidationError,
-    model::{Priority, TaskType},
+    lifecycle::{FieldPatch, TaskPatch},
+    model::{Priority, Risk, TaskType},
     project::{
         CriteriaPolicy, DomainPolicy, ProjectPolicy, TagPolicy, TaskTypePolicy, TaskTypeRole,
     },
@@ -106,6 +107,101 @@ pub struct CreateTaskRequest {
 #[derive(Debug, Deserialize)]
 pub struct SetCriterionRequest {
     pub checked: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EditTaskRequest {
+    #[serde(default)]
+    title: PatchField<String>,
+    #[serde(default)]
+    summary: PatchField<String>,
+    #[serde(default)]
+    sections: PatchField<BTreeMap<String, String>>,
+    #[serde(default)]
+    risk: NullablePatchField<Risk>,
+    #[serde(default)]
+    impact: NullablePatchField<String>,
+    #[serde(default)]
+    tags: PatchField<Vec<String>>,
+    #[serde(default)]
+    milestone: NullablePatchField<String>,
+    #[serde(default)]
+    parent: NullablePatchField<String>,
+    #[serde(default)]
+    depends_on: PatchField<Vec<String>>,
+}
+
+#[derive(Debug, Default)]
+enum PatchField<T> {
+    #[default]
+    Keep,
+    Set(T),
+}
+
+impl<'de, T> Deserialize<'de> for PatchField<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        T::deserialize(deserializer).map(Self::Set)
+    }
+}
+
+#[derive(Debug, Default)]
+enum NullablePatchField<T> {
+    #[default]
+    Keep,
+    Set(T),
+    Clear,
+}
+
+impl<'de, T> Deserialize<'de> for NullablePatchField<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(match Option::<T>::deserialize(deserializer)? {
+            Some(value) => Self::Set(value),
+            None => Self::Clear,
+        })
+    }
+}
+
+impl From<EditTaskRequest> for TaskPatch {
+    fn from(request: EditTaskRequest) -> Self {
+        Self {
+            title: required_patch(request.title),
+            summary: required_patch(request.summary),
+            sections: required_patch(request.sections).unwrap_or_default(),
+            risk: nullable_patch(request.risk),
+            impact: nullable_patch(request.impact),
+            tags: required_patch(request.tags),
+            milestone: nullable_patch(request.milestone),
+            parent: nullable_patch(request.parent),
+            depends_on: required_patch(request.depends_on),
+        }
+    }
+}
+
+fn required_patch<T>(patch: PatchField<T>) -> Option<T> {
+    match patch {
+        PatchField::Keep => None,
+        PatchField::Set(value) => Some(value),
+    }
+}
+
+fn nullable_patch<T>(patch: NullablePatchField<T>) -> FieldPatch<T> {
+    match patch {
+        NullablePatchField::Keep => FieldPatch::Keep,
+        NullablePatchField::Set(value) => FieldPatch::Set(value),
+        NullablePatchField::Clear => FieldPatch::Clear,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

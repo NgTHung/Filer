@@ -63,7 +63,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/projects/{project}/tasks/{id}",
-            get(routes::tasks::get_task),
+            get(routes::tasks::get_task).patch(routes::task_writes::edit_task),
         )
         .route(
             "/api/projects/{project}/tasks/{id}/criteria/{index}",
