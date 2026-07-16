@@ -79,6 +79,24 @@ impl IdentityIndex {
         }
     }
 
+    /// Resolve a selector against every identity in the project.
+    pub fn resolve_project_wide(&self, value: &str) -> Result<TaskIdentity, TaskError> {
+        match self.parse(value)? {
+            TaskReference::Qualified(identity) if self.contains(&identity) => Ok(identity),
+            TaskReference::Qualified(identity) => Err(self.not_found(identity.to_string(), None)),
+            TaskReference::Local(local_id) => match self.candidates(&local_id) {
+                [identity] => Ok(identity.clone()),
+                [] => Err(self.not_found(local_id, None)),
+                candidates => Err(TaskError::AmbiguousReference {
+                    reference: local_id,
+                    source_domain: None,
+                    candidates: candidates.iter().map(ToString::to_string).collect(),
+                    root: self.root.clone(),
+                }),
+            },
+        }
+    }
+
     pub fn resolve_creation(
         &self,
         source_domain: &str,

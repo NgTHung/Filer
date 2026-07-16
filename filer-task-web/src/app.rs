@@ -43,6 +43,10 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/projects", get(routes::tasks::list_projects))
         .route(
+            "/api/projects/{project}/policy",
+            get(routes::policy::get_policy),
+        )
+        .route(
             "/api/projects/{project}/tasks",
             get(routes::tasks::list_tasks).post(routes::task_writes::create_task),
         )

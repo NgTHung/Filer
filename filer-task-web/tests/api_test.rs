@@ -7,7 +7,7 @@ use axum::{
 };
 use filer_task::project::TaskProject;
 use http_body_util::BodyExt;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
@@ -42,6 +42,177 @@ async fn list_filters_by_status() {
     let tasks = body.as_array().expect("array");
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0]["id"], "CORE-002");
+}
+
+#[tokio::test]
+async fn policy_returns_config_shaped_effective_policy() {
+    let repo = configured_repo(
+        r#"{
+          "version": 1,
+          "domains": {"backend": {"prefixes": ["API"]}},
+          "task_types": {
+            "Feature": {"criteria": "acceptance"},
+            "ReleaseGate": {"criteria": "exit", "role": "milestone"}
+          },
+          "tags": {"policy": "strict", "allowed": ["backend"]}
+        }"#,
+        &["backend"],
+    );
+
+    let (status, body) = get(&repo, "/policy").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        json!({
+            "domains": {
+                "backend": {"prefixes": ["API"]}
+            },
+            "task_types": {
+                "Feature": {"criteria": "acceptance"},
+                "ReleaseGate": {"criteria": "exit", "role": "milestone"}
+            },
+            "tags": {
+                "policy": "strict",
+                "allowed": ["backend"]
+            }
+        })
+    );
+}
+
+#[tokio::test]
+async fn policy_returns_compatibility_defaults_without_config() {
+    let repo = task_repo();
+
+    let (status, body) = get(&repo, "/policy").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.get("version").is_none());
+    assert_eq!(body["domains"].as_object().expect("domains").len(), 4);
+    assert_eq!(
+        body["domains"]["milestones"]["prefixes"],
+        json!(["MILESTONE"])
+    );
+    assert!(
+        body["domains"]["core"]["prefixes"]
+            .as_array()
+            .expect("core prefixes")
+            .contains(&json!("CORE"))
+    );
+    assert_eq!(body["task_types"]["Feature"]["criteria"], "acceptance");
+    assert_eq!(body["task_types"]["Epic"]["criteria"], "exit");
+    assert_eq!(body["task_types"]["Milestone"]["role"], "milestone");
+    assert_eq!(body["tags"], json!({"policy": "open"}));
+}
+
+#[tokio::test]
+async fn policy_does_not_require_valid_task_files() {
+    let repo = task_repo();
+    write_raw_task(&repo, "CORE-001", "status: Pending");
+
+    let (status, body) = get(&repo, "/policy").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["tags"], json!({"policy": "open"}));
+}
+
+#[tokio::test]
+async fn strict_policy_rejects_unknown_tag_filter_with_catalog_context() {
+    let repo = configured_repo(
+        r#"{
+          "version": 1,
+          "domains": {"backend": {"prefixes": ["WORK"]}},
+          "task_types": {"Feature": {"criteria": "acceptance"}},
+          "tags": {"policy": "strict", "allowed": ["backend", "tasks"]}
+        }"#,
+        &["backend"],
+    );
+
+    let (status, body) = get(&repo, "/tasks?tag=frontend").await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["code"], "tag_rejected");
+    assert_eq!(body["context"]["rejected_value"], "frontend");
+    assert_eq!(body["context"]["allowed"], json!(["backend", "tasks"]));
+}
+
+#[tokio::test]
+async fn open_policy_applies_unknown_tag_filter() {
+    let repo = task_repo();
+    write_task(&repo, "CORE-001", "Routing", "To Do", "High");
+
+    let (status, body) = get(&repo, "/tasks?tag=frontend").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, json!([]));
+}
+
+#[tokio::test]
+async fn ambiguous_bare_parent_filter_returns_sorted_candidates() {
+    let repo = duplicate_id_repo();
+    write_domain_task(&repo, "backend", "WORK-001", "Backend parent", "");
+    write_domain_task(&repo, "release", "WORK-001", "Release parent", "");
+
+    let (status, body) = get(&repo, "/tasks?parent=WORK-001").await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["code"], "ambiguous_reference");
+    assert_eq!(
+        body["context"]["candidates"],
+        json!(["backend:WORK-001", "release:WORK-001"])
+    );
+}
+
+#[tokio::test]
+async fn unique_bare_parent_filter_resolves_project_wide() {
+    let repo = duplicate_id_repo();
+    write_domain_task(&repo, "backend", "WORK-001", "Backend parent", "");
+    write_domain_task(
+        &repo,
+        "backend",
+        "WORK-002",
+        "Backend child",
+        "parent: WORK-001\n",
+    );
+
+    let (status, body) = get(&repo, "/tasks?parent=WORK-001").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let tasks = body.as_array().expect("task array");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["qualified_id"], "backend:WORK-002");
+}
+
+#[tokio::test]
+async fn qualified_parent_filter_still_targets_exact_identity() {
+    let repo = duplicate_id_repo();
+    write_domain_task(&repo, "backend", "WORK-001", "Backend parent", "");
+    write_domain_task(&repo, "release", "WORK-001", "Release parent", "");
+    write_domain_task(
+        &repo,
+        "backend",
+        "WORK-002",
+        "Backend child",
+        "parent: WORK-001\n",
+    );
+
+    let (status, body) = get(&repo, "/tasks?parent=backend:WORK-001").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let tasks = body.as_array().expect("task array");
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["qualified_id"], "backend:WORK-002");
+}
+
+#[tokio::test]
+async fn missing_parent_filter_returns_task_not_found() {
+    let repo = duplicate_id_repo();
+
+    let (status, body) = get(&repo, "/tasks?parent=WORK-999").await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["code"], "task_not_found");
+    assert_eq!(body["context"]["reference"], "WORK-999");
 }
 
 #[tokio::test]
@@ -417,6 +588,32 @@ fn task_repo() -> TempDir {
     temp
 }
 
+fn configured_repo(config: &str, domains: &[&str]) -> TempDir {
+    let temp = tempfile::tempdir().expect("temp dir created");
+    let tasks = temp.path().join(".tasks");
+    fs::create_dir(&tasks).expect("task directory created");
+    fs::write(tasks.join("config.json"), config).expect("configuration written");
+    for domain in domains {
+        fs::create_dir(tasks.join(domain)).expect("domain directory created");
+    }
+    temp
+}
+
+fn duplicate_id_repo() -> TempDir {
+    configured_repo(
+        r#"{
+          "version": 1,
+          "domains": {
+            "backend": {"prefixes": ["WORK"]},
+            "release": {"prefixes": ["WORK"]}
+          },
+          "task_types": {"Feature": {"criteria": "acceptance"}},
+          "tags": {"policy": "open"}
+        }"#,
+        &["backend", "release"],
+    )
+}
+
 fn create_task_repo(root: &std::path::Path) {
     for domain in ["core", "app", "ecosystem"] {
         fs::create_dir_all(root.join(".tasks").join(domain)).expect("domain dir created");
@@ -454,6 +651,19 @@ fn write_task(repo: &TempDir, id: &str, title: &str, status: &str, priority: &st
         task_file(repo, id),
         format!(
             "---\nid: {id}\ntitle: {title}\nstatus: {status}\npriority: {priority}\ntype: Feature\n---\n\n## Acceptance Criteria\n\n- [ ] Works\n"
+        ),
+    )
+    .expect("task written");
+}
+
+fn write_domain_task(repo: &TempDir, domain: &str, id: &str, title: &str, extra: &str) {
+    fs::write(
+        repo.path()
+            .join(".tasks")
+            .join(domain)
+            .join(format!("{id}-task.md")),
+        format!(
+            "---\nid: {id}\ntitle: {title}\nstatus: To Do\npriority: High\ntype: Feature\n{extra}---\n\n## Acceptance Criteria\n\n- [ ] Works\n"
         ),
     )
     .expect("task written");

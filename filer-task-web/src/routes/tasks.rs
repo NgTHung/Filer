@@ -14,6 +14,7 @@ use filer_task::{
     model::{Priority, SortBy, Task, TaskStatus},
     project::TaskProject,
     reference::IdentityIndex,
+    taxonomy::validate_tag,
     validate::{TaskFilter, filter_tasks},
 };
 use serde::Deserialize;
@@ -133,10 +134,13 @@ fn build_filter(
     tasks: &[Task],
     query: &TaskQuery,
 ) -> Result<TaskFilter, WebError> {
+    if let Some(tag) = query.tag.as_deref() {
+        validate_tag(project, tag, "tag", None, None)?;
+    }
     let parent = query
         .parent
         .as_deref()
-        .map(|value| resolve_identity(project, tasks, value))
+        .map(|value| resolve_project_wide_identity(project, tasks, value))
         .transpose()?;
     Ok(TaskFilter {
         status: parse_opt::<TaskStatus>(query.status.as_deref())?,
@@ -147,6 +151,15 @@ fn build_filter(
         tag: query.tag.clone(),
         blocked: query.blocked.unwrap_or(false),
     })
+}
+
+fn resolve_project_wide_identity(
+    project: &TaskProject,
+    tasks: &[Task],
+    value: &str,
+) -> Result<filer_task::identity::TaskIdentity, WebError> {
+    let index = IdentityIndex::new(project.root(), tasks.iter().map(Task::identity));
+    Ok(index.resolve_project_wide(value)?)
 }
 
 pub(crate) fn resolve_identity(

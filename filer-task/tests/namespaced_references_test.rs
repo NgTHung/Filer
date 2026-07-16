@@ -548,6 +548,58 @@ fn namespace_errors_and_help_expose_actionable_identity_context() {
     }
 }
 
+#[test]
+fn project_wide_resolution_accepts_qualified_and_unique_bare_selectors() {
+    let index = IdentityIndex::new(
+        "/project",
+        [
+            TaskIdentity::new("backend", "WORK-001").expect("valid identity"),
+            TaskIdentity::new("release", "WORK-002").expect("valid identity"),
+        ],
+    );
+
+    assert_eq!(
+        index
+            .resolve_project_wide("backend:WORK-001")
+            .expect("qualified identity resolves")
+            .to_string(),
+        "backend:WORK-001"
+    );
+    assert_eq!(
+        index
+            .resolve_project_wide("WORK-002")
+            .expect("unique bare identity resolves")
+            .to_string(),
+        "release:WORK-002"
+    );
+}
+
+#[test]
+fn project_wide_resolution_reports_ambiguous_and_missing_selectors() {
+    let index = IdentityIndex::new(
+        "/project",
+        [
+            TaskIdentity::new("release", "WORK-001").expect("valid identity"),
+            TaskIdentity::new("backend", "WORK-001").expect("valid identity"),
+        ],
+    );
+
+    let ambiguous = index
+        .resolve_project_wide("WORK-001")
+        .expect_err("duplicate bare identity is ambiguous");
+    assert_eq!(ambiguous.code(), "ambiguous_reference");
+    assert_eq!(
+        ambiguous.context()["candidates"],
+        serde_json::json!(["backend:WORK-001", "release:WORK-001"])
+    );
+
+    let missing = index
+        .resolve_project_wide("WORK-999")
+        .expect_err("missing bare identity is rejected");
+    assert_eq!(missing.code(), "task_not_found");
+    assert_eq!(missing.context()["reference"], "WORK-999");
+}
+
 fn configured_project(domains: &[(&str, &str)]) -> TempDir {
     let repo = tempfile::tempdir().expect("temporary project created");
     fs::create_dir(repo.path().join(".tasks")).expect("task directory created");
