@@ -11,12 +11,9 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use filer_task_web::{
-    app::{AppState, router},
-    error::WebError,
-    registry::ProjectRegistry,
-    storage::Storage,
-};
+use filer_task_web::{app::AppState, error::WebError, registry::ProjectRegistry, storage::Storage};
+
+mod common;
 
 #[tokio::test]
 async fn list_returns_seeded_tasks() {
@@ -507,13 +504,13 @@ fn registry_preserves_multiple_projects_in_input_order() {
 async fn app(repo: &TempDir) -> Router {
     let storage = test_storage(repo.path()).await;
     let state = AppState::single(repo.path().to_path_buf(), storage).expect("state builds");
-    router(state)
+    common::authenticated_router(state).await
 }
 
 async fn app_from_roots(roots: &[PathBuf]) -> Router {
     let storage = test_storage(&roots[0]).await;
     let state = AppState::from_roots(roots.to_vec(), storage).expect("state builds");
-    router(state)
+    common::authenticated_router(state).await
 }
 
 async fn test_storage(root: &std::path::Path) -> Storage {

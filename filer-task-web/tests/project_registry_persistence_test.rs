@@ -15,6 +15,8 @@ use filer_task_web::{
     storage::Storage,
 };
 
+mod common;
+
 #[tokio::test]
 async fn empty_database_starts_with_an_empty_registry() {
     let database = tempfile::tempdir().expect("database directory created");
@@ -212,7 +214,7 @@ async fn failed_deregistration_keeps_the_project_in_memory() {
 async fn open_app(database_path: &std::path::Path) -> (Router, Storage) {
     let storage = Storage::open(database_path).await.expect("storage opens");
     let state = AppState::load(storage.clone()).await.expect("state loads");
-    (router(state), storage)
+    (common::authenticated_router(state).await, storage)
 }
 
 async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Value) {

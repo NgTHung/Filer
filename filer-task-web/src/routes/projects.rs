@@ -18,11 +18,13 @@ use crate::{
     app::AppState,
     dto::{ProjectSummary, RegisterProjectRequest},
     error::WebError,
+    identity::Actor,
     routes::blocking,
 };
 
 pub(crate) async fn register_project(
     State(state): State<AppState>,
+    actor: Actor,
     Json(request): Json<RegisterProjectRequest>,
 ) -> Result<Json<ProjectSummary>, WebError> {
     let project = blocking(move || {
@@ -34,7 +36,7 @@ pub(crate) async fn register_project(
         })
     })
     .await?;
-    let registered = state.register_project(project).await?;
+    let registered = state.register_project(&actor, project).await?;
     let summary = blocking(move || registered.summary()).await?;
     Ok(Json(summary))
 }
@@ -42,7 +44,8 @@ pub(crate) async fn register_project(
 pub(crate) async fn deregister_project(
     State(state): State<AppState>,
     Path(project): Path<String>,
+    actor: Actor,
 ) -> Result<StatusCode, WebError> {
-    state.deregister_project(&project).await?;
+    state.deregister_project(&actor, &project).await?;
     Ok(StatusCode::NO_CONTENT)
 }

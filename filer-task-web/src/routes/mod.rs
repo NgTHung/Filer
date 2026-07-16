@@ -4,6 +4,7 @@
 //! rules (validation, criteria checks) live in the library, so the web layer
 //! cannot drift from the CLI.
 
+pub mod identity;
 pub mod policy;
 pub mod projects;
 pub mod task_writes;

@@ -10,10 +10,9 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use filer_task_web::{
-    app::{AppState, router},
-    storage::Storage,
-};
+use filer_task_web::{app::AppState, storage::Storage};
+
+mod common;
 
 #[tokio::test]
 async fn registers_an_existing_project_and_serves_it_immediately() {
@@ -216,7 +215,10 @@ async fn app(repo: &TempDir) -> Router {
     let storage = Storage::open(repo.path().join("project-policy-api-test.sqlite3"))
         .await
         .expect("storage opens");
-    router(AppState::single(repo.path().to_path_buf(), storage).expect("state builds"))
+    common::authenticated_router(
+        AppState::single(repo.path().to_path_buf(), storage).expect("state builds"),
+    )
+    .await
 }
 
 async fn patch_policy(app: &Router, repo: &TempDir, operation: Value) -> (StatusCode, Value) {

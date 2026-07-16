@@ -12,7 +12,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let storage = Storage::open(directory.path().join("state.sqlite3")).await?;
-//! assert_eq!(storage.schema_version().await?, 2);
+//! assert_eq!(storage.schema_version().await?, 3);
 //! storage.close().await;
 //! # Ok(())
 //! # }
@@ -31,8 +31,10 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 
+mod identities;
 mod projects;
 
+pub use identities::{IdentitySession, StoredIdentity};
 pub use projects::ProjectRegistration;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -98,6 +100,8 @@ pub enum StorageError {
         operation: &'static str,
         message: String,
     },
+    UsernameTaken,
+    IdentityNotFound(i64),
 }
 
 impl fmt::Display for StorageError {
@@ -123,6 +127,10 @@ impl fmt::Display for StorageError {
             Self::InvalidData { operation, message } => {
                 write!(formatter, "failed to {operation}: {message}")
             }
+            Self::UsernameTaken => write!(formatter, "username is already in use"),
+            Self::IdentityNotFound(user_id) => {
+                write!(formatter, "identity {user_id} does not exist")
+            }
         }
     }
 }
@@ -133,7 +141,7 @@ impl Error for StorageError {
             Self::Open { source, .. } => Some(source),
             Self::Migrate { source, .. } => Some(source),
             Self::Operation { source, .. } => Some(source),
-            Self::InvalidData { .. } => None,
+            Self::InvalidData { .. } | Self::UsernameTaken | Self::IdentityNotFound(_) => None,
         }
     }
 }

@@ -11,10 +11,11 @@ use filer_task::{
     project::TaskProject,
 };
 
-use crate::{app::AppState, error::WebError, routes::blocking};
+use crate::{app::AppState, error::WebError, identity::Actor, routes::blocking};
 
 pub(crate) async fn mutate<F>(
     state: AppState,
+    _actor: Actor,
     project_name: String,
     operation: F,
 ) -> Result<ShowView, WebError>

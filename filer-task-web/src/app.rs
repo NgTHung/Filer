@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     error::WebError,
+    identity::Actor,
     registry::{ProjectRegistry, RegisteredProject},
     routes,
     storage::Storage,
@@ -62,6 +63,7 @@ impl AppState {
 
     pub(crate) async fn register_project(
         &self,
+        _actor: &Actor,
         task_project: TaskProject,
     ) -> Result<RegisteredProject, WebError> {
         let registered = RegisteredProject::new(task_project)?;
@@ -74,7 +76,11 @@ impl AppState {
         Ok(registered)
     }
 
-    pub(crate) async fn deregister_project(&self, name: &str) -> Result<(), WebError> {
+    pub(crate) async fn deregister_project(
+        &self,
+        _actor: &Actor,
+        name: &str,
+    ) -> Result<(), WebError> {
         let _mutation = self.registry_mutation.lock().await;
         self.registry.resolve(name)?;
         if !self.storage.delete_project_registration(name).await? {
@@ -89,6 +95,10 @@ impl AppState {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route(
+            "/api/identity",
+            get(routes::identity::get_identity).put(routes::identity::put_identity),
+        )
         .route(
             "/api/projects",
             get(routes::tasks::list_projects).post(routes::projects::register_project),

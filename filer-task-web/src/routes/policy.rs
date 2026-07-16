@@ -13,6 +13,7 @@ use crate::{
     app::AppState,
     dto::{PolicyMutationRequest, ProjectPolicyResponse},
     error::WebError,
+    identity::Actor,
     routes::blocking,
 };
 
@@ -27,6 +28,7 @@ pub(crate) async fn get_policy(
 pub(crate) async fn mutate_policy(
     State(state): State<AppState>,
     Path(project_name): Path<String>,
+    _actor: Actor,
     Json(request): Json<PolicyMutationRequest>,
 ) -> Result<Json<ProjectPolicyResponse>, WebError> {
     let registered = state.registry.resolve(&project_name)?;

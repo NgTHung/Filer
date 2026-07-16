@@ -20,6 +20,9 @@ use crate::{dto::ValidationIssue, storage::StorageError};
 #[derive(Debug)]
 pub enum WebError {
     BadRequest(String),
+    IdentityRequired,
+    InvalidUsername(String),
+    UsernameTaken,
     PreconditionRequired(String),
     DuplicateProjectName(String),
     InvalidProjectName(PathBuf),
@@ -43,7 +46,10 @@ impl From<TaskError> for WebError {
 
 impl From<StorageError> for WebError {
     fn from(value: StorageError) -> Self {
-        Self::Storage(value)
+        match value {
+            StorageError::UsernameTaken => Self::UsernameTaken,
+            other => Self::Storage(other),
+        }
     }
 }
 
@@ -66,6 +72,30 @@ impl IntoResponse for WebError {
     fn into_response(self) -> Response {
         let (status, error, project, issues) = match self {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message, None, Vec::new()),
+            Self::IdentityRequired => {
+                return client_error(
+                    StatusCode::UNAUTHORIZED,
+                    "pick a username before making changes",
+                    "identity_required",
+                    None,
+                );
+            }
+            Self::InvalidUsername(message) => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    message,
+                    "invalid_username",
+                    Some("username"),
+                );
+            }
+            Self::UsernameTaken => {
+                return client_error(
+                    StatusCode::CONFLICT,
+                    "username is already in use",
+                    "username_taken",
+                    Some("username"),
+                );
+            }
             Self::PreconditionRequired(message) => {
                 return (
                     StatusCode::PRECONDITION_REQUIRED,
@@ -144,6 +174,26 @@ impl IntoResponse for WebError {
         )
             .into_response()
     }
+}
+
+fn client_error(
+    status: StatusCode,
+    error: impl Into<String>,
+    code: &str,
+    field: Option<&str>,
+) -> Response {
+    (
+        status,
+        Json(ErrorBody {
+            error: error.into(),
+            code: Some(code.to_string()),
+            field: field.map(str::to_string),
+            context: None,
+            project: None,
+            issues: Vec::new(),
+        }),
+    )
+        .into_response()
 }
 
 fn task_edit_error(error: TaskError) -> (StatusCode, ErrorBody) {

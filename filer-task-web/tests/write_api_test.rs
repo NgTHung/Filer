@@ -10,10 +10,9 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use filer_task_web::{
-    app::{AppState, router},
-    storage::Storage,
-};
+use filer_task_web::{app::AppState, storage::Storage};
+
+mod common;
 
 #[tokio::test]
 async fn project_task_collection_creates_a_task_and_preserves_number_text() {
@@ -379,7 +378,7 @@ async fn app_from_roots(roots: &[PathBuf]) -> Router {
         .await
         .expect("storage opens");
     let state = AppState::from_roots(roots.to_vec(), storage).expect("state builds");
-    router(state)
+    common::authenticated_router(state).await
 }
 
 fn project() -> TempDir {

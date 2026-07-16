@@ -10,10 +10,9 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use filer_task_web::{
-    app::{AppState, router},
-    storage::Storage,
-};
+use filer_task_web::{app::AppState, storage::Storage};
+
+mod common;
 
 #[tokio::test]
 async fn patch_applies_all_fields_and_returns_the_refreshed_show_view() {
@@ -311,7 +310,7 @@ async fn app(repo: &TempDir) -> Router {
         .await
         .expect("storage opens");
     let state = AppState::single(repo.path().to_path_buf(), storage).expect("state builds");
-    router(state)
+    common::authenticated_router(state).await
 }
 
 fn project() -> TempDir {

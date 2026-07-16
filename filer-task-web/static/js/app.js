@@ -1,9 +1,11 @@
 import { html, render, useState } from "../vendor/preact-htm.js";
 import { activeProject, loadProjects, useProjectStore } from "./store/project.js";
 import { Sidebar } from "./components/Sidebar.js";
+import { IdentityPrompt } from "./components/IdentityPrompt.js";
 import { ProjectSwitcher } from "./components/ProjectSwitcher.js";
 import { ReadyScreen } from "./screens/Ready.js";
 import { BrokenScreen } from "./screens/Broken.js";
+import { loadIdentity, useIdentityStore } from "./store/identity.js";
 
 function Screen({ screen, project }) {
   if (screen === "ready") {
@@ -14,10 +16,23 @@ function Screen({ screen, project }) {
 }
 
 function App() {
+  const identityStore = useIdentityStore();
   const store = useProjectStore();
   const [screen, setScreen] = useState("ready");
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const project = activeProject();
+
+  if (identityStore.loading) {
+    return html`<div class="app-loading">Loading identity…</div>`;
+  }
+
+  if (identityStore.error) {
+    return html`<div class="app-loading">Could not load identity: ${identityStore.error.message}</div>`;
+  }
+
+  if (!identityStore.identity) {
+    return html`<${IdentityPrompt} onComplete=${loadProjects} />`;
+  }
 
   if (store.loading && store.projects.length === 0) {
     return html`<div class="app-loading">Loading projects…</div>`;
@@ -48,5 +63,9 @@ function App() {
   `;
 }
 
-loadProjects();
+loadIdentity().then((identity) => {
+  if (identity) {
+    loadProjects();
+  }
+});
 render(html`<${App} />`, document.getElementById("app"));

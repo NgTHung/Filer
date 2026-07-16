@@ -20,30 +20,34 @@ use crate::{
     app::AppState,
     dto::ReasonRequest,
     error::WebError,
+    identity::Actor,
     routes::{tasks::resolve_identity, write},
 };
 
 pub(crate) async fn start(
     State(state): State<AppState>,
     Path((project, id)): Path<(String, String)>,
+    actor: Actor,
 ) -> Result<Json<ShowView>, WebError> {
-    transition(state, project, id, start_task).await
+    transition(state, actor, project, id, start_task).await
 }
 
 pub(crate) async fn done(
     State(state): State<AppState>,
     Path((project, id)): Path<(String, String)>,
+    actor: Actor,
 ) -> Result<Json<ShowView>, WebError> {
-    transition(state, project, id, done_task).await
+    transition(state, actor, project, id, done_task).await
 }
 
 pub(crate) async fn block(
     State(state): State<AppState>,
     Path((project, id)): Path<(String, String)>,
+    actor: Actor,
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, project, id, move |task_project, identity| {
+    transition(state, actor, project, id, move |task_project, identity| {
         block_task(task_project, identity, &reason)
     })
     .await
@@ -52,10 +56,11 @@ pub(crate) async fn block(
 pub(crate) async fn defer(
     State(state): State<AppState>,
     Path((project, id)): Path<(String, String)>,
+    actor: Actor,
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, project, id, move |task_project, identity| {
+    transition(state, actor, project, id, move |task_project, identity| {
         defer_task(task_project, identity, &reason)
     })
     .await
@@ -64,10 +69,11 @@ pub(crate) async fn defer(
 pub(crate) async fn obsolete(
     State(state): State<AppState>,
     Path((project, id)): Path<(String, String)>,
+    actor: Actor,
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, project, id, move |task_project, identity| {
+    transition(state, actor, project, id, move |task_project, identity| {
         obsolete_task(task_project, identity, &reason)
     })
     .await
@@ -75,6 +81,7 @@ pub(crate) async fn obsolete(
 
 async fn transition<F>(
     state: AppState,
+    actor: Actor,
     project_name: String,
     id: String,
     op: F,
@@ -84,7 +91,7 @@ where
         + Send
         + 'static,
 {
-    let view = write::mutate(state, project_name, move |project, tasks| {
+    let view = write::mutate(state, actor, project_name, move |project, tasks| {
         let identity = resolve_identity(project, tasks, &id)?;
         op(project, &identity)?;
         Ok(identity)

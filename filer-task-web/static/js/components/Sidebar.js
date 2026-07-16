@@ -1,6 +1,7 @@
 import { html, useEffect, useState } from "../../vendor/preact-htm.js";
 import { projectScoped } from "../api/client.js";
 import { activeProject, setActiveProject, useProjectStore } from "../store/project.js";
+import { IdentityFooter } from "./IdentityFooter.js";
 
 const NAV_ITEMS = [
   { id: "ready", label: "Ready" },
@@ -93,6 +94,7 @@ export function Sidebar({ screen, onSelectScreen, onSwitchProject }) {
         )}
         ${domains.size === 0 ? html`<p class="domain-empty">No domains yet.</p>` : null}
       </div>
+      <${IdentityFooter} />
     </aside>
   `;
 }

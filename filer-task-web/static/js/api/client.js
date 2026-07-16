@@ -42,6 +42,14 @@ export function putJson(path, body, headers) {
   return request("PUT", path, body ?? {}, headers);
 }
 
+export function getIdentity() {
+  return getJson("/api/identity");
+}
+
+export function putIdentity(username) {
+  return putJson("/api/identity", { username });
+}
+
 // Root-level endpoint, not project-scoped.
 export function listProjects() {
   return getJson("/api/projects");
