@@ -15,6 +15,8 @@ use filer_task::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::storage::ActivityRecord;
+
 #[derive(Debug, Deserialize)]
 pub struct RegisterProjectRequest {
     pub path: PathBuf,
@@ -313,6 +315,33 @@ impl From<TaskTypeRole> for TaskTypeRoleResponse {
     fn from(role: TaskTypeRole) -> Self {
         match role {
             TaskTypeRole::Milestone => Self::Milestone,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ActivityEntry {
+    pub id: i64,
+    pub created_at: i64,
+    pub username: String,
+    pub project: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl From<ActivityRecord> for ActivityEntry {
+    fn from(record: ActivityRecord) -> Self {
+        Self {
+            id: record.id,
+            created_at: record.created_at,
+            username: record.username,
+            project: record.project,
+            task_id: record.task_id,
+            action: record.action,
+            detail: record.detail,
         }
     }
 }

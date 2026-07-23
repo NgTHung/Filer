@@ -145,6 +145,82 @@ async fn open_policy_applies_unknown_tag_filter() {
 }
 
 #[tokio::test]
+async fn list_defaults_to_id_order() {
+    let repo = task_repo();
+    write_task(&repo, "CORE-002", "Caching", "To Do", "Low");
+    write_checked_task(&repo, "CORE-001", "Routing", "Done", "High");
+
+    let (status, body) = get(&repo, "/tasks").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sorted_ids(&body), vec!["CORE-001", "CORE-002"]);
+}
+
+#[tokio::test]
+async fn sort_by_status_orders_by_lifecycle_position() {
+    let repo = task_repo();
+    write_task(&repo, "CORE-001", "Routing", "To Do", "High");
+    write_checked_task(&repo, "CORE-002", "Caching", "Done", "High");
+    write_task(&repo, "CORE-003", "Indexing", "In Progress", "High");
+
+    let (status, body) = get(&repo, "/tasks?sort_by=Status").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sorted_ids(&body), vec!["CORE-002", "CORE-003", "CORE-001"]);
+}
+
+#[tokio::test]
+async fn sort_by_priority_orders_high_first() {
+    let repo = task_repo();
+    write_task(&repo, "CORE-001", "Routing", "To Do", "Low");
+    write_task(&repo, "CORE-002", "Caching", "To Do", "High");
+    write_task(&repo, "CORE-003", "Indexing", "To Do", "Medium");
+
+    let (status, body) = get(&repo, "/tasks?sort_by=Priority").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sorted_ids(&body), vec!["CORE-002", "CORE-003", "CORE-001"]);
+}
+
+#[tokio::test]
+async fn sort_by_domain_groups_tasks_by_domain() {
+    let repo = duplicate_id_repo();
+    write_domain_task(&repo, "release", "WORK-002", "Release work", "");
+    write_domain_task(&repo, "backend", "WORK-001", "Backend work", "");
+
+    let (status, body) = get(&repo, "/tasks?sort_by=Domain").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let tasks = body.as_array().expect("task array");
+    assert_eq!(tasks[0]["qualified_id"], "backend:WORK-001");
+    assert_eq!(tasks[1]["qualified_id"], "release:WORK-002");
+}
+
+#[tokio::test]
+async fn sort_by_applies_together_with_a_filter() {
+    let repo = task_repo();
+    write_task(&repo, "CORE-001", "Routing", "To Do", "Low");
+    write_task(&repo, "CORE-002", "Caching", "To Do", "High");
+    write_checked_task(&repo, "CORE-003", "Indexing", "Done", "High");
+
+    let (status, body) = get(&repo, "/tasks?status=To%20Do&sort_by=Priority").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sorted_ids(&body), vec!["CORE-002", "CORE-001"]);
+}
+
+#[tokio::test]
+async fn unknown_sort_by_is_rejected() {
+    let repo = task_repo();
+    write_task(&repo, "CORE-001", "Routing", "To Do", "High");
+
+    let (status, body) = get(&repo, "/tasks?sort_by=Title").await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid sort_by: Title");
+}
+
+#[tokio::test]
 async fn ambiguous_bare_parent_filter_returns_sorted_candidates() {
     let repo = duplicate_id_repo();
     write_domain_task(&repo, "backend", "WORK-001", "Backend parent", "");
@@ -615,6 +691,14 @@ fn create_task_repo(root: &std::path::Path) {
     for domain in ["core", "app", "ecosystem"] {
         fs::create_dir_all(root.join(".tasks").join(domain)).expect("domain dir created");
     }
+}
+
+fn sorted_ids(body: &Value) -> Vec<String> {
+    body.as_array()
+        .expect("task array")
+        .iter()
+        .map(|task| task["id"].as_str().unwrap_or_default().to_string())
+        .collect()
 }
 
 fn project_name(repo: &TempDir) -> String {

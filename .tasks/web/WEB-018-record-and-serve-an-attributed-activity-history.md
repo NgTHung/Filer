@@ -1,15 +1,15 @@
 ---
 id: "WEB-018"
 title: "Record and serve an attributed activity history"
-status: "To Do"
+status: "In Progress"
 priority: "Medium"
 type: "Feature"
 parent: "WEB-014"
-depends_on: ["WEB-015", "WEB-017", "WEB-004", "WEB-009", "WEB-010"]
+depends_on: ["WEB-015", "WEB-017", "WEB-004", "WEB-008", "WEB-009", "WEB-010"]
 risk: "Low"
 impact: "Adds the audit trail for team use: every web write becomes an attributed, queryable activity row with a feed UI."
 tags: ["web", "tasks", "audit", "state"]
-last_updated: "2026-07-14"
+last_updated: "2026-07-23"
 ---
 
 ## Summary
@@ -18,8 +18,9 @@ Nothing records what the team changes through the browser. Record one activity r
 
 ## Acceptance Criteria
 
-- [ ] Each successful write endpoint records exactly one activity row with timestamp, username, project, action, and task id where applicable.
-- [ ] A rejected or failed write records no activity row.
-- [ ] GET /api/activity returns newest-first pages and filters by project and task.
+- [x] Each successful write endpoint records exactly one activity row with timestamp, username, project, action, and task id where applicable.
+- [x] A rejected or failed write records no activity row.
+- [x] GET /api/activity returns newest-first pages and filters by project and task.
 - [ ] An Activity screen renders the feed and links task entries to the detail drawer.
-- [ ] Tests cover recording for each write endpoint, a failed write recording nothing, and pagination.
+  - The feed screen is built and renders task ids as plain text. Linking them requires the detail drawer from web:WEB-008, which is still To Do, so there is nothing to link to. Check this once WEB-008 lands.
+- [x] Tests cover recording for each write endpoint, a failed write recording nothing, and pagination.

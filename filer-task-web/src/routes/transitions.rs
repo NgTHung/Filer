@@ -29,7 +29,7 @@ pub(crate) async fn start(
     Path((project, id)): Path<(String, String)>,
     actor: Actor,
 ) -> Result<Json<ShowView>, WebError> {
-    transition(state, actor, project, id, start_task).await
+    transition(state, actor, project, id, "task.start", None, start_task).await
 }
 
 pub(crate) async fn done(
@@ -37,7 +37,7 @@ pub(crate) async fn done(
     Path((project, id)): Path<(String, String)>,
     actor: Actor,
 ) -> Result<Json<ShowView>, WebError> {
-    transition(state, actor, project, id, done_task).await
+    transition(state, actor, project, id, "task.done", None, done_task).await
 }
 
 pub(crate) async fn block(
@@ -47,9 +47,16 @@ pub(crate) async fn block(
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, actor, project, id, move |task_project, identity| {
-        block_task(task_project, identity, &reason)
-    })
+    let detail = Some(reason.clone());
+    transition(
+        state,
+        actor,
+        project,
+        id,
+        "task.block",
+        detail,
+        move |task_project, identity| block_task(task_project, identity, &reason),
+    )
     .await
 }
 
@@ -60,9 +67,16 @@ pub(crate) async fn defer(
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, actor, project, id, move |task_project, identity| {
-        defer_task(task_project, identity, &reason)
-    })
+    let detail = Some(reason.clone());
+    transition(
+        state,
+        actor,
+        project,
+        id,
+        "task.defer",
+        detail,
+        move |task_project, identity| defer_task(task_project, identity, &reason),
+    )
     .await
 }
 
@@ -73,17 +87,27 @@ pub(crate) async fn obsolete(
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
-    transition(state, actor, project, id, move |task_project, identity| {
-        obsolete_task(task_project, identity, &reason)
-    })
+    let detail = Some(reason.clone());
+    transition(
+        state,
+        actor,
+        project,
+        id,
+        "task.obsolete",
+        detail,
+        move |task_project, identity| obsolete_task(task_project, identity, &reason),
+    )
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn transition<F>(
     state: AppState,
     actor: Actor,
     project_name: String,
     id: String,
+    action: &'static str,
+    detail: Option<String>,
     op: F,
 ) -> Result<Json<ShowView>, WebError>
 where
@@ -91,11 +115,18 @@ where
         + Send
         + 'static,
 {
-    let view = write::mutate(state, actor, project_name, move |project, tasks| {
-        let identity = resolve_identity(project, tasks, &id)?;
-        op(project, &identity)?;
-        Ok(identity)
-    })
+    let view = write::mutate(
+        state,
+        actor,
+        project_name,
+        action,
+        detail,
+        move |project, tasks| {
+            let identity = resolve_identity(project, tasks, &id)?;
+            op(project, &identity)?;
+            Ok(identity)
+        },
+    )
     .await?;
     Ok(Json(view))
 }

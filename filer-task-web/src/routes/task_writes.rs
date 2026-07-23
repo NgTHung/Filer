@@ -57,17 +57,24 @@ pub(crate) async fn create_task(
         rationale: None,
         blocked_reason: None,
     };
-    let view = write::mutate(state, actor, project_name, move |project, _| {
-        let identity = TaskIdentity::new(identity_domain, identity_id).map_err(|error| {
-            TaskError::InvalidReference {
-                reference: error.value().to_string(),
-                constraint: error.constraint().to_string(),
-                root: project.root().to_path_buf(),
-            }
-        })?;
-        add_task(project, task)?;
-        Ok(identity)
-    })
+    let view = write::mutate(
+        state,
+        actor,
+        project_name,
+        "task.create",
+        None,
+        move |project, _| {
+            let identity = TaskIdentity::new(identity_domain, identity_id).map_err(|error| {
+                TaskError::InvalidReference {
+                    reference: error.value().to_string(),
+                    constraint: error.constraint().to_string(),
+                    root: project.root().to_path_buf(),
+                }
+            })?;
+            add_task(project, task)?;
+            Ok(identity)
+        },
+    )
     .await?;
     Ok(Json(view))
 }
@@ -79,11 +86,18 @@ pub(crate) async fn edit_task(
     Json(body): Json<EditTaskRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let patch = body.into();
-    let view = write::mutate(state, actor, project_name, move |project, tasks| {
-        let identity = resolve_project_wide_identity(project, tasks, &id)?;
-        apply_task_patch(project, &identity, patch).map_err(WebError::TaskEdit)?;
-        Ok(identity)
-    })
+    let view = write::mutate(
+        state,
+        actor,
+        project_name,
+        "task.edit",
+        None,
+        move |project, tasks| {
+            let identity = resolve_project_wide_identity(project, tasks, &id)?;
+            apply_task_patch(project, &identity, patch).map_err(WebError::TaskEdit)?;
+            Ok(identity)
+        },
+    )
     .await?;
     Ok(Json(view))
 }
@@ -96,11 +110,19 @@ pub(crate) async fn set_criterion(
     Json(body): Json<SetCriterionRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let expected_hash = if_match(&headers)?;
-    let view = write::mutate(state, actor, project_name, move |project, tasks| {
-        let identity = resolve_identity(project, tasks, &id)?;
-        set_criterion_checked(project, &identity, index, &expected_hash, body.checked)?;
-        Ok(identity)
-    })
+    let detail = Some(format!("index {index} = {}", body.checked));
+    let view = write::mutate(
+        state,
+        actor,
+        project_name,
+        "task.criterion",
+        detail,
+        move |project, tasks| {
+            let identity = resolve_identity(project, tasks, &id)?;
+            set_criterion_checked(project, &identity, index, &expected_hash, body.checked)?;
+            Ok(identity)
+        },
+    )
     .await?;
     Ok(Json(view))
 }

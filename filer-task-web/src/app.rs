@@ -18,7 +18,7 @@ use crate::{
     identity::Actor,
     registry::{ProjectRegistry, RegisteredProject},
     routes,
-    storage::Storage,
+    storage::{NewActivity, Storage},
 };
 
 #[derive(Clone)]
@@ -63,22 +63,33 @@ impl AppState {
 
     pub(crate) async fn register_project(
         &self,
-        _actor: &Actor,
+        actor: &Actor,
         task_project: TaskProject,
     ) -> Result<RegisteredProject, WebError> {
         let registered = RegisteredProject::new(task_project)?;
         let _mutation = self.registry_mutation.lock().await;
         self.registry.ensure_name_available(registered.name())?;
+        let registration = registered.registration();
         self.storage
-            .insert_project_registration(&registered.registration())
+            .insert_project_registration(&registration)
             .await?;
         self.registry.publish(registered.clone());
+        self.storage
+            .record_committed_activity(NewActivity {
+                user_id: actor.user_id,
+                username: &actor.username,
+                project: &registration.name,
+                task_id: None,
+                action: "project.register",
+                detail: Some(&registration.root.display().to_string()),
+            })
+            .await;
         Ok(registered)
     }
 
     pub(crate) async fn deregister_project(
         &self,
-        _actor: &Actor,
+        actor: &Actor,
         name: &str,
     ) -> Result<(), WebError> {
         let _mutation = self.registry_mutation.lock().await;
@@ -89,6 +100,16 @@ impl AppState {
             )));
         }
         self.registry.remove(name);
+        self.storage
+            .record_committed_activity(NewActivity {
+                user_id: actor.user_id,
+                username: &actor.username,
+                project: name,
+                task_id: None,
+                action: "project.deregister",
+                detail: None,
+            })
+            .await;
         Ok(())
     }
 }
@@ -99,6 +120,7 @@ pub fn router(state: AppState) -> Router {
             "/api/identity",
             get(routes::identity::get_identity).put(routes::identity::put_identity),
         )
+        .route("/api/activity", get(routes::activity::list_activity))
         .route(
             "/api/projects",
             get(routes::tasks::list_projects).post(routes::projects::register_project),

@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { id: "tasks", label: "Tasks" },
   { id: "milestones", label: "Milestones" },
   { id: "new-task", label: "New task" },
+  { id: "activity", label: "Activity" },
 ];
 
 function summarize(tasks) {
@@ -61,7 +62,13 @@ export function Sidebar({ screen, onSelectScreen, onSwitchProject }) {
   }, [project?.name]);
 
   const domains = summarize(tasks);
-  const navCounts = { ready: readyCount, tasks: tasks.length, milestones: milestoneCount, "new-task": null };
+  const navCounts = {
+    ready: readyCount,
+    tasks: tasks.length,
+    milestones: milestoneCount,
+    "new-task": null,
+    activity: null,
+  };
 
   return html`
     <aside class="sidebar">

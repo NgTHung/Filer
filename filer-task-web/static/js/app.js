@@ -5,13 +5,21 @@ import { IdentityPrompt } from "./components/IdentityPrompt.js";
 import { ProjectSwitcher } from "./components/ProjectSwitcher.js";
 import { ReadyScreen } from "./screens/Ready.js";
 import { BrokenScreen } from "./screens/Broken.js";
+import { ActivityScreen } from "./screens/Activity.js";
+import { TasksScreen } from "./screens/Tasks.js";
 import { loadIdentity, useIdentityStore } from "./store/identity.js";
 
 function Screen({ screen, project }) {
   if (screen === "ready") {
     return html`<${ReadyScreen} projectName=${project.name} />`;
   }
-  // Tasks, Milestones, and New task ship in WEB-006/007.
+  if (screen === "activity") {
+    return html`<${ActivityScreen} projectName=${project.name} />`;
+  }
+  if (screen === "tasks") {
+    return html`<${TasksScreen} projectName=${project.name} />`;
+  }
+  // Milestones and New task ship in WEB-007.
   return html`<p class="empty-state">This screen is not built yet.</p>`;
 }
 

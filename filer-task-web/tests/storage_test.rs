@@ -4,14 +4,14 @@ use filer_task_web::storage::{ProjectRegistration, Storage, StorageError};
 use sqlx::{Connection, Executor, SqliteConnection, sqlite::SqliteConnectOptions};
 
 #[tokio::test]
-async fn nonexistent_path_creates_database_at_schema_version_three() {
+async fn nonexistent_path_creates_database_at_current_schema_version() {
     let temp = tempfile::tempdir().expect("temp dir created");
     let path = temp.path().join("state.sqlite3");
 
     let storage = Storage::open(&path).await.expect("storage opens");
 
     assert!(path.is_file());
-    assert_eq!(storage.schema_version().await.expect("version reads"), 3);
+    assert_eq!(storage.schema_version().await.expect("version reads"), 4);
     storage.close().await;
 }
 
@@ -24,12 +24,12 @@ async fn reopening_migrated_database_is_idempotent() {
 
     let reopened = Storage::open(&path).await.expect("storage reopens");
 
-    assert_eq!(reopened.schema_version().await.expect("version reads"), 3);
+    assert_eq!(reopened.schema_version().await.expect("version reads"), 4);
     reopened.close().await;
 }
 
 #[tokio::test]
-async fn preexisting_version_zero_database_migrates_to_version_three() {
+async fn preexisting_version_zero_database_migrates_to_current_version() {
     let temp = tempfile::tempdir().expect("temp dir created");
     let path = temp.path().join("state.sqlite3");
     let mut connection = sqlite_connection(&path).await;
@@ -41,7 +41,7 @@ async fn preexisting_version_zero_database_migrates_to_version_three() {
 
     let storage = Storage::open(&path).await.expect("storage opens");
 
-    assert_eq!(storage.schema_version().await.expect("version reads"), 3);
+    assert_eq!(storage.schema_version().await.expect("version reads"), 4);
     storage.close().await;
 }
 

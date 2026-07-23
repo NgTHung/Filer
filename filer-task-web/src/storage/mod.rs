@@ -12,7 +12,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let storage = Storage::open(directory.path().join("state.sqlite3")).await?;
-//! assert_eq!(storage.schema_version().await?, 3);
+//! assert_eq!(storage.schema_version().await?, 4);
 //! storage.close().await;
 //! # Ok(())
 //! # }
@@ -31,9 +31,11 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 
+mod activity;
 mod identities;
 mod projects;
 
+pub use activity::{ActivityFilter, ActivityRecord, NewActivity};
 pub use identities::{IdentitySession, StoredIdentity};
 pub use projects::ProjectRegistration;
 

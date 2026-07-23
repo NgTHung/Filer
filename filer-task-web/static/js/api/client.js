@@ -55,6 +55,11 @@ export function listProjects() {
   return getJson("/api/projects");
 }
 
+// Root-level endpoint: project is a query filter, not a path segment.
+export function getActivity(query) {
+  return getJson(`/api/activity${toQueryString(query)}`);
+}
+
 export function projectScoped(projectName) {
   const base = `/api/projects/${encodeURIComponent(projectName)}`;
   return {
@@ -92,7 +97,7 @@ export function projectScoped(projectName) {
   };
 }
 
-function toQueryString(query) {
+export function toQueryString(query) {
   if (!query) {
     return "";
   }
