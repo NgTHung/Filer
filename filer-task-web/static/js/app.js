@@ -8,9 +8,11 @@ import { BrokenScreen } from "./screens/Broken.js";
 import { ActivityScreen } from "./screens/Activity.js";
 import { TasksScreen } from "./screens/Tasks.js";
 import { MilestonesScreen } from "./screens/Milestones.js";
+import { NewTaskScreen } from "./screens/NewTask.js";
+import { TaskDrawer } from "./components/TaskDrawer.js";
 import { loadIdentity, useIdentityStore } from "./store/identity.js";
 
-function Screen({ screen, project }) {
+function Screen({ screen, project, onCreated }) {
   if (screen === "ready") {
     return html`<${ReadyScreen} projectName=${project.name} />`;
   }
@@ -23,8 +25,7 @@ function Screen({ screen, project }) {
   if (screen === "milestones") {
     return html`<${MilestonesScreen} projectName=${project.name} />`;
   }
-  // New task ships later in WEB-007.
-  return html`<p class="empty-state">This screen is not built yet.</p>`;
+  return html`<${NewTaskScreen} projectName=${project.name} onCreated=${onCreated} />`;
 }
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
   const store = useProjectStore();
   const [screen, setScreen] = useState("ready");
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [drawerView, setDrawerView] = useState(null);
   const project = activeProject();
 
   if (identityStore.loading) {
@@ -68,8 +70,9 @@ function App() {
       <main class="app-main">
         ${project.broken
           ? html`<${BrokenScreen} project=${project} onSwitchProject=${() => setSwitcherOpen(true)} />`
-          : html`<${Screen} screen=${screen} project=${project} />`}
+          : html`<${Screen} screen=${screen} project=${project} onCreated=${setDrawerView} />`}
       </main>
+      <${TaskDrawer} view=${drawerView} onClose=${() => setDrawerView(null)} />
       ${switcherOpen ? html`<${ProjectSwitcher} onClose=${() => setSwitcherOpen(false)} />` : null}
     </div>
   `;
