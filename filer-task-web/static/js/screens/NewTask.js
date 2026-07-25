@@ -1,4 +1,4 @@
-import { html, useEffect, useMemo, useState } from "../../vendor/preact-htm.js";
+import { html, useEffect, useMemo, useRef, useState } from "../../vendor/preact-htm.js";
 import { projectScoped } from "../api/client.js";
 import { Header } from "../components/Header.js";
 import { fieldError, nextNumber, preview } from "../lib/newTask.js";
@@ -15,27 +15,41 @@ export function NewTaskScreen({ projectName, onCreated }) {
   const [numberEdited, setNumberEdited] = useState(false);
   const [rejection, setRejection] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // Tracks whether the project active when a load/submit started is still the
+  // active one, so a response that outlives a project switch cannot open the
+  // wrong project's task drawer or repaint this screen with stale data.
+  const guardRef = useRef({ cancelled: false });
 
-  async function load() {
+  async function load(guard = guardRef.current) {
     try {
       const [loadedPolicy, loadedTasks, loadedMilestones] = await Promise.all([
         api.getPolicy(),
         api.getTasks(),
         api.getMilestones(),
       ]);
+      if (guard.cancelled) {
+        return;
+      }
       setPolicy(loadedPolicy);
       setTasks(loadedTasks);
       setMilestones(loadedMilestones);
       setRejection(null);
     } catch (err) {
-      setRejection(fieldError(err));
+      if (!guard.cancelled) {
+        setRejection(fieldError(err));
+      }
     }
   }
 
   useEffect(() => {
+    const guard = { cancelled: false };
+    guardRef.current = guard;
     setDraft(emptyDraft());
     setNumberEdited(false);
-    load();
+    load(guard);
+    return () => {
+      guard.cancelled = true;
+    };
   }, [projectName]);
 
   const domains = domainNames(policy);
@@ -72,6 +86,7 @@ export function NewTaskScreen({ projectName, onCreated }) {
 
   async function submit(event) {
     event.preventDefault();
+    const guard = guardRef.current;
     setSubmitting(true);
     try {
       const view = await api.createTask({
@@ -84,15 +99,25 @@ export function NewTaskScreen({ projectName, onCreated }) {
         milestone: draft.milestone || null,
         tags: draft.tags,
       });
+      if (guard.cancelled) {
+        return;
+      }
       setRejection(null);
       setDraft(emptyDraft());
       setNumberEdited(false);
-      await load();
+      await load(guard);
+      if (guard.cancelled) {
+        return;
+      }
       onCreated(view);
     } catch (err) {
-      setRejection(fieldError(err));
+      if (!guard.cancelled) {
+        setRejection(fieldError(err));
+      }
     } finally {
-      setSubmitting(false);
+      if (!guard.cancelled) {
+        setSubmitting(false);
+      }
     }
   }
 
