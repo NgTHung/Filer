@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { ApiError } from "../../static/js/api/client.js";
-import { fieldError, nextNumber, preview, slugify } from "../../static/js/lib/newTask.js";
+import { fieldError, nextNumber, parseTags, preview, slugify } from "../../static/js/lib/newTask.js";
 
 function task(domain, id) {
   return { domain, id, qualified_id: `${domain}:${id}`, title: id, status: "To Do" };
@@ -111,4 +111,25 @@ test("an error naming no field falls back to a form-level message", () => {
     allowed: [],
   });
   assert.deepEqual(fieldError(offline), { field: null, message: "Failed to fetch", allowed: [] });
+});
+
+test("comma-separated tags are split and trimmed", () => {
+  assert.deepEqual(parseTags("web, tasks ,  ui"), ["web", "tasks", "ui"]);
+});
+
+test("empty segments from a trailing or doubled comma are dropped", () => {
+  assert.deepEqual(parseTags("web,"), ["web"]);
+  assert.deepEqual(parseTags("web,,tasks"), ["web", "tasks"]);
+});
+
+test("a string of only separators yields an empty array", () => {
+  assert.deepEqual(parseTags(",,,"), []);
+});
+
+test("the empty string yields an empty array", () => {
+  assert.deepEqual(parseTags(""), []);
+});
+
+test("surrounding whitespace on each tag is trimmed", () => {
+  assert.deepEqual(parseTags("  web  ,  tasks-ui  "), ["web", "tasks-ui"]);
 });

@@ -1,7 +1,7 @@
 import { html, useEffect, useMemo, useRef, useState } from "../../vendor/preact-htm.js";
 import { projectScoped } from "../api/client.js";
 import { Header } from "../components/Header.js";
-import { fieldError, nextNumber, preview } from "../lib/newTask.js";
+import { fieldError, nextNumber, parseTags, preview } from "../lib/newTask.js";
 import { domainNames, prefixesFor, tagCatalog, taskTypeNames } from "../lib/policy.js";
 
 const PRIORITY_OPTIONS = ["High", "Medium", "Low"];
@@ -97,7 +97,7 @@ export function NewTaskScreen({ projectName, onCreated }) {
         type: draft.type,
         priority: draft.priority,
         milestone: draft.milestone || null,
-        tags: draft.tags,
+        tags: catalog === null ? parseTags(draft.tagsText) : draft.tags,
       });
       if (guard.cancelled) {
         return;
@@ -197,8 +197,8 @@ export function NewTaskScreen({ projectName, onCreated }) {
                 <input
                   type="text"
                   placeholder="comma separated"
-                  value=${draft.tags.join(", ")}
-                  onInput=${(event) => update("tags", parseTags(event.target.value))}
+                  value=${draft.tagsText}
+                  onInput=${(event) => update("tagsText", event.target.value)}
                 />
               `
             : html`
@@ -256,16 +256,12 @@ function emptyDraft() {
     priority: "Medium",
     milestone: "",
     tags: [],
+    // Raw text for the open-catalog input: round-tripping keystrokes through
+    // the parsed `tags` array rewrites the value under the cursor mid-type.
+    tagsText: "",
   };
 }
 
 function milestoneValues(aggregations) {
   return aggregations.map((entry) => entry.milestone.milestone).filter(Boolean);
-}
-
-function parseTags(value) {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
 }

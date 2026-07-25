@@ -53,6 +53,13 @@ export function preview(domain, prefix, number, title) {
   };
 }
 
+export function parseTags(value) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
 // The server already names the offending input on the error body, so the form
 // only routes it; anything unattributed belongs above the form, not beside an
 // arbitrary field.

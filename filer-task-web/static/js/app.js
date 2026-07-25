@@ -1,4 +1,4 @@
-import { html, render, useState } from "../vendor/preact-htm.js";
+import { html, render, useEffect, useState } from "../vendor/preact-htm.js";
 import { activeProject, loadProjects, useProjectStore } from "./store/project.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { IdentityPrompt } from "./components/IdentityPrompt.js";
@@ -35,6 +35,12 @@ function App() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [drawerView, setDrawerView] = useState(null);
   const project = activeProject();
+
+  // A drawer left open across a project switch would show the old project's
+  // task while the shell has already moved to the new one.
+  useEffect(() => {
+    setDrawerView(null);
+  }, [project?.name]);
 
   if (identityStore.loading) {
     return html`<div class="app-loading">Loading identity…</div>`;
