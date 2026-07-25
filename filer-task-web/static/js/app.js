@@ -7,6 +7,7 @@ import { ReadyScreen } from "./screens/Ready.js";
 import { BrokenScreen } from "./screens/Broken.js";
 import { ActivityScreen } from "./screens/Activity.js";
 import { TasksScreen } from "./screens/Tasks.js";
+import { MilestonesScreen } from "./screens/Milestones.js";
 import { loadIdentity, useIdentityStore } from "./store/identity.js";
 
 function Screen({ screen, project }) {
@@ -19,7 +20,10 @@ function Screen({ screen, project }) {
   if (screen === "tasks") {
     return html`<${TasksScreen} projectName=${project.name} />`;
   }
-  // Milestones and New task ship in WEB-007.
+  if (screen === "milestones") {
+    return html`<${MilestonesScreen} projectName=${project.name} />`;
+  }
+  // New task ships later in WEB-007.
   return html`<p class="empty-state">This screen is not built yet.</p>`;
 }
 
