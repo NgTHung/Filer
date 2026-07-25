@@ -511,14 +511,14 @@ th {
   color: var(--muted);
 }
 
-.milestone-criteria,
+.criteria-list,
 .milestone-task-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.milestone-criteria li,
+.criteria-list li,
 .milestone-task-list li {
   display: flex;
   gap: 8px;
@@ -543,7 +543,7 @@ th {
   font-variant-numeric: tabular-nums;
 }
 
-.milestone-empty {
+.muted-note {
   margin: 0;
   color: var(--muted);
 }

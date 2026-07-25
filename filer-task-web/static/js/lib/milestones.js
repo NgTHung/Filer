@@ -2,6 +2,9 @@
 // a Rust BTreeMap, so its keys are alphabetical and empty statuses are absent;
 // both need fixing before a reader can scan a milestone top to bottom.
 
+// Deliberately not shared with FilterMenu's STATUS_OPTIONS: that list is a query
+// vocabulary the list endpoint accepts, this is a display order, and the two are
+// free to diverge without either module needing to know about the other.
 const STATUS_ORDER = ["To Do", "In Progress", "Blocked", "Done", "Deferred", "Obsolete"];
 
 export function progressPercent(done, total) {

@@ -169,7 +169,6 @@ export function NewTaskScreen({ projectName, onCreated }) {
         <label>
           Title
           <input type="text" value=${draft.title} onInput=${(event) => update("title", event.target.value)} />
-          <${FieldError} rejection=${rejection} field="title" />
         </label>
         <label>
           Type
@@ -190,7 +189,6 @@ export function NewTaskScreen({ projectName, onCreated }) {
             <option value="">None</option>
             ${milestoneValues(milestones).map((value) => html`<option key=${value} value=${value}>${value}</option>`)}
           </select>
-          <${FieldError} rejection=${rejection} field="milestone" />
         </label>
         <div class="new-task-tags">
           <span class="new-task-tags-label">Tags</span>
@@ -206,7 +204,7 @@ export function NewTaskScreen({ projectName, onCreated }) {
             : html`
                 <div class="chip-row">
                   ${catalog.length === 0
-                    ? html`<span class="milestone-empty">This project's tag catalog is empty.</span>`
+                    ? html`<span class="muted-note">This project's tag catalog is empty.</span>`
                     : catalog.map(
                         (tag) => html`
                           <button

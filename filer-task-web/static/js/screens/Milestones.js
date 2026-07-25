@@ -40,7 +40,7 @@ function MilestoneCard({ aggregation }) {
   return html`
     <article class="milestone-card">
       <header class="milestone-card-header">
-        <h3>${milestone.milestone ?? milestone.id}</h3>
+        <h3>${milestone.milestone}</h3>
         <span class="milestone-title">${milestone.title}</span>
         <span class="milestone-status">${milestone.status}</span>
       </header>
@@ -50,9 +50,9 @@ function MilestoneCard({ aggregation }) {
       <p class="milestone-progress-label">${done} of ${total} done (${percent}%)</p>
       <h4>${criteria_heading}</h4>
       ${criteria.length === 0
-        ? html`<p class="milestone-empty">No ${criteria_heading.toLowerCase()} listed.</p>`
+        ? html`<p class="muted-note">No ${criteria_heading.toLowerCase()} listed.</p>`
         : html`
-            <ul class="milestone-criteria">
+            <ul class="criteria-list">
               ${criteria.map(
                 (item, index) => html`
                   <li key=${index} class=${item.checked ? "criterion-checked" : ""}>

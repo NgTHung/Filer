@@ -30,8 +30,8 @@ export function TaskDrawer({ view, onClose }) {
           <dd class="drawer-path">${task.path}</dd>
         </dl>
         ${sections.map(
-          (section) => html`
-            <section key=${section.heading} class="drawer-section">
+          (section, index) => html`
+            <section key=${`${index}-${section.heading}`} class="drawer-section">
               <h4>${section.heading}</h4>
               <p>${section.content}</p>
             </section>
@@ -40,12 +40,12 @@ export function TaskDrawer({ view, onClose }) {
         <section class="drawer-section">
           <h4>${criteria_heading}</h4>
           ${criteria.length === 0
-            ? html`<p class="milestone-empty">None listed.</p>`
+            ? html`<p class="muted-note">None listed.</p>`
             : html`
-                <ul class="milestone-criteria">
+                <ul class="criteria-list">
                   ${criteria.map(
-                    (item) => html`
-                      <li key=${item.content_hash} class=${item.checked ? "criterion-checked" : ""}>
+                    (item, index) => html`
+                      <li key=${`${index}-${item.content_hash}`} class=${item.checked ? "criterion-checked" : ""}>
                         <span class="criterion-marker">${item.checked ? "✓" : "○"}</span>
                         ${item.text}
                       </li>
