@@ -1,7 +1,7 @@
 ---
 id: WEB-007
 title: Build the Milestones screen and New-task form
-status: To Do
+status: In Progress
 priority: Medium
 type: Feature
 parent: WEB-001
@@ -9,7 +9,7 @@ depends_on: [WEB-003, WEB-004, WEB-005, WEB-021]
 risk: Low
 impact: "Adds the two screens the old UI never had: a milestone progress view over the aggregation endpoint and an in-app creation form over the existing POST endpoint, closing the human-in-the-loop gap for creation."
 tags: [web, tasks]
-last_updated: 2026-07-15
+last_updated: 2026-07-25
 ---
 
 ## Summary
