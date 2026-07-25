@@ -115,9 +115,7 @@ export function NewTaskScreen({ projectName, onCreated }) {
         setRejection(fieldError(err));
       }
     } finally {
-      if (!guard.cancelled) {
-        setSubmitting(false);
-      }
+      setSubmitting(false);
     }
   }
 
