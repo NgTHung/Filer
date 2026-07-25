@@ -1,5 +1,6 @@
 import { html, useState } from "../../vendor/preact-htm.js";
 import { activeFilterEntries } from "../lib/filters.js";
+import { tagCatalog } from "../lib/policy.js";
 
 const STATUS_OPTIONS = ["To Do", "In Progress", "Blocked", "Done", "Deferred", "Obsolete"];
 const PRIORITY_OPTIONS = ["High", "Medium", "Low"];
@@ -51,8 +52,7 @@ export function FilterMenu({ policy, applied, rejected, onApply, onClear }) {
     setOpen(false);
   }
 
-  const strictTags = policy && policy.tags && policy.tags.policy === "strict";
-  const tagOptions = strictTags ? policy.tags.allowed ?? [] : null;
+  const tagOptions = tagCatalog(policy);
 
   const appliedEntries = activeFilterEntries(applied);
   const rejections = rejected ?? [];
