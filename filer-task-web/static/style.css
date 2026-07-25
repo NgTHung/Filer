@@ -547,3 +547,85 @@ th {
   margin: 0;
   color: var(--muted);
 }
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  width: min(520px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-id {
+  font-weight: 600;
+}
+
+.drawer-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.drawer-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.drawer-title {
+  margin: 8px 0 16px;
+  font-size: 16px;
+}
+
+.drawer-meta {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 4px 12px;
+  margin: 0 0 16px;
+}
+
+.drawer-meta dt {
+  color: var(--muted);
+}
+
+.drawer-meta dd {
+  margin: 0;
+}
+
+.drawer-path {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.drawer-section h4 {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.drawer-section p {
+  margin: 0;
+  white-space: pre-wrap;
+}
