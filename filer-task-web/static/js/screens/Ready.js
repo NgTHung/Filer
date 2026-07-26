@@ -14,7 +14,7 @@ function sortRows(rows) {
   });
 }
 
-export function ReadyScreen({ projectName }) {
+export function ReadyScreen({ projectName, onSelectTask }) {
   const api = useMemo(() => projectScoped(projectName), [projectName]);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
@@ -86,7 +86,11 @@ export function ReadyScreen({ projectName }) {
               <tbody>
                 ${sorted.map(
                   (row) => html`
-                    <tr key=${row.qualified_id}>
+                    <tr
+                      key=${row.qualified_id}
+                      class="task-row"
+                      onClick=${() => onSelectTask(row.qualified_id)}
+                    >
                       <td>${row.qualified_id}</td>
                       <td>${row.title}</td>
                       <td>${row.priority}</td>

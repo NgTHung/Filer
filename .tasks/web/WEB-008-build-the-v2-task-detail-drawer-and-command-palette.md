@@ -18,9 +18,9 @@ Task detail drawer over GET /api/projects/{project}/tasks/{id}: render the ShowV
 
 ## Acceptance Criteria
 
-- [ ] The drawer's five lifecycle actions call the existing POST /api/projects/{project}/tasks/{id} transition endpoints and refresh the drawer from the returned ShowView, with inline reason forms for block, defer, and obsolete.
-- [ ] Clicking Done with unchecked criteria shows the refusal banner and never calls the done endpoint; checking every item first allows Done to succeed.
-- [ ] Toggling a criterion sends PUT /api/projects/{project}/tasks/{id}/criteria/{index} with If-Match set to that criterion's content_hash and persists across a refresh.
-- [ ] A 412 or 428 response to a criteria toggle refreshes the drawer and surfaces a conflict notice instead of silently retrying.
-- [ ] Parent chain, children, dependencies, dependents, and blocked-by chips are each clickable and reselect the drawer to that task.
-- [ ] Cmd/Ctrl-K opens the palette, arrow keys move selection, enter switches the active project and rescopes API paths, and escape closes it.
+- [x] The drawer's five lifecycle actions call the existing POST /api/projects/{project}/tasks/{id} transition endpoints and refresh the drawer from the returned ShowView, with inline reason forms for block, defer, and obsolete.
+- [x] Clicking Done with unchecked criteria shows the refusal banner and never calls the done endpoint; checking every item first allows Done to succeed.
+- [x] Toggling a criterion sends PUT /api/projects/{project}/tasks/{id}/criteria/{index} with If-Match set to that criterion's content_hash and persists across a refresh.
+- [x] A 412 or 428 response to a criteria toggle refreshes the drawer and surfaces a conflict notice instead of silently retrying.
+- [x] Parent chain, children, dependencies, dependents, and blocked-by chips are each clickable and reselect the drawer to that task.
+- [x] Cmd/Ctrl-K opens the palette, arrow keys move selection, enter switches the active project and rescopes API paths, and escape closes it.

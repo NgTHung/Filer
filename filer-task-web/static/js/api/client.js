@@ -75,9 +75,6 @@ export function projectScoped(projectName) {
     getPolicy() {
       return getJson(`${base}/policy`);
     },
-    getTask(id) {
-      return getJson(`${base}/tasks/${encodeURIComponent(id)}`);
-    },
     getTaskContext(id) {
       return getJson(`${base}/tasks/${encodeURIComponent(id)}/context`);
     },

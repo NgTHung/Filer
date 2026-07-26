@@ -107,7 +107,7 @@ export function NewTaskScreen({ projectName, onCreated }) {
       if (guard.cancelled) {
         return;
       }
-      onCreated(view);
+      onCreated(view.detail.task.qualified_id);
     } catch (err) {
       if (!guard.cancelled) {
         setRejection(fieldError(err));

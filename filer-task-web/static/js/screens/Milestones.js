@@ -3,7 +3,7 @@ import { projectScoped } from "../api/client.js";
 import { Header } from "../components/Header.js";
 import { progressPercent, statusGroups } from "../lib/milestones.js";
 
-export function MilestonesScreen({ projectName }) {
+export function MilestonesScreen({ projectName, onSelectTask }) {
   const api = useMemo(() => projectScoped(projectName), [projectName]);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
@@ -28,12 +28,20 @@ export function MilestonesScreen({ projectName }) {
       ${rows.length === 0 && !error
         ? html`<p class="empty-state">No milestone-role tasks are declared in this project.</p>`
         : null}
-      ${rows.map((row) => html`<${MilestoneCard} key=${row.milestone.qualified_id} aggregation=${row} />`)}
+      ${rows.map(
+        (row) => html`
+          <${MilestoneCard}
+            key=${row.milestone.qualified_id}
+            aggregation=${row}
+            onSelectTask=${onSelectTask}
+          />
+        `,
+      )}
     </section>
   `;
 }
 
-function MilestoneCard({ aggregation }) {
+function MilestoneCard({ aggregation, onSelectTask }) {
   const { milestone, criteria, criteria_heading, done, total } = aggregation;
   const percent = progressPercent(done, total);
 
@@ -71,8 +79,14 @@ function MilestoneCard({ aggregation }) {
               ${tasks.map(
                 (task) => html`
                   <li key=${task.qualified_id}>
-                    <span class="milestone-task-id">${task.qualified_id}</span>
-                    <span class="milestone-task-title">${task.title}</span>
+                    <button
+                      type="button"
+                      class="milestone-task"
+                      onClick=${() => onSelectTask(task.qualified_id)}
+                    >
+                      <span class="milestone-task-id">${task.qualified_id}</span>
+                      <span class="milestone-task-title">${task.title}</span>
+                    </button>
                   </li>
                 `,
               )}
