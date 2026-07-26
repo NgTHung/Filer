@@ -1,7 +1,7 @@
 ---
 id: WEB-008
 title: Build the task detail drawer and command palette
-status: In Progress
+status: Done
 priority: Medium
 type: Feature
 parent: WEB-001
