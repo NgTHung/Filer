@@ -287,6 +287,63 @@ fn context_reports_dependency_and_ancestor_blockers() {
     assert_eq!(blockers[1]["task_id"], "core:CORE-001");
 }
 
+#[test]
+fn context_returns_the_ancestor_chain_root_first() {
+    let repo = task_repo();
+    write_task(
+        &repo,
+        "core/CORE-001-root.md",
+        "CORE-001",
+        "Root task",
+        "In Progress",
+        "High",
+        "",
+    );
+    write_task(
+        &repo,
+        "core/CORE-002-middle.md",
+        "CORE-002",
+        "Middle task",
+        "In Progress",
+        "High",
+        "parent: CORE-001\n",
+    );
+    write_task(
+        &repo,
+        "core/CORE-003-leaf.md",
+        "CORE-003",
+        "Leaf task",
+        "To Do",
+        "High",
+        "parent: CORE-002\n",
+    );
+
+    let json = run_json(&repo, ["context", "core:CORE-003", "--format", "json"]);
+    let ancestors = json["ancestors"]
+        .as_array()
+        .expect("ancestors should be an array");
+
+    assert_eq!(
+        ancestors
+            .iter()
+            .map(|ancestor| ancestor["qualified_id"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["core:CORE-001", "core:CORE-002"]
+    );
+
+    let human = run_stdout(&repo, ["context", "core:CORE-003"]);
+    assert!(human.contains("Ancestors\ncore:CORE-001"));
+
+    let root = run_json(&repo, ["context", "core:CORE-001", "--format", "json"]);
+    assert!(
+        root["ancestors"]
+            .as_array()
+            .expect("ancestors should be an array")
+            .is_empty(),
+        "a task without a parent has no ancestors"
+    );
+}
+
 fn task_repo() -> TempDir {
     let temp = tempfile::tempdir().expect("temp dir should be created");
     fs::create_dir_all(temp.path().join(".tasks/core")).expect("core task dir should exist");

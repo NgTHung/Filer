@@ -1,7 +1,7 @@
 ---
 id: WEB-008
 title: Build the task detail drawer and command palette
-status: To Do
+status: In Progress
 priority: Medium
 type: Feature
 parent: WEB-001
@@ -9,7 +9,7 @@ depends_on: [WEB-002, WEB-004, WEB-005]
 risk: Medium
 impact: "Replaces the old static detail panel and window.prompt transitions with a right-side drawer wired to the project-scoped transition and criteria endpoints, and adds the cmd-K project switcher."
 tags: [web, tasks]
-last_updated: 2026-07-15
+last_updated: 2026-07-26
 ---
 
 ## Summary

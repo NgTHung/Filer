@@ -77,9 +77,7 @@ fn policy_entry(request: &PolicyMutationRequest) -> (&'static str, String) {
             ("policy.remove_prefix", format!("{domain}/{prefix}"))
         }
         PolicyMutationRequest::AddTaskType { name, .. } => ("policy.add_task_type", name.clone()),
-        PolicyMutationRequest::RemoveTaskType { name } => {
-            ("policy.remove_task_type", name.clone())
-        }
+        PolicyMutationRequest::RemoveTaskType { name } => ("policy.remove_task_type", name.clone()),
         PolicyMutationRequest::AddTag { tag } => ("policy.add_tag", tag.clone()),
         PolicyMutationRequest::RemoveTag { tag } => ("policy.remove_tag", tag.clone()),
     }

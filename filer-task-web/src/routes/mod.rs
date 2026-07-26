@@ -5,6 +5,7 @@
 //! cannot drift from the CLI.
 
 pub mod activity;
+pub mod context;
 pub mod identity;
 pub mod policy;
 pub mod projects;

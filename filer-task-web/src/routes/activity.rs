@@ -10,12 +10,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{
-    app::AppState,
-    dto::ActivityEntry,
-    error::WebError,
-    storage::ActivityFilter,
-};
+use crate::{app::AppState, dto::ActivityEntry, error::WebError, storage::ActivityFilter};
 
 #[derive(Debug, Deserialize)]
 pub struct ActivityQuery {

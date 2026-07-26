@@ -364,7 +364,7 @@ cargo run -p filer-task -- show core:PROVIDER-001
 cargo run -p filer-task -- show core:PROVIDER-001 --format json
 ```
 
-Use `context` before implementation. It returns the target task, readiness blockers, direct task relationships, milestone, referenced architecture rule text, and whitepaper path. It does not infer source files.
+Use `context` before implementation. It returns the target task, readiness blockers, direct task relationships, the root-first `ancestors` chain, milestone, referenced architecture rule text, and whitepaper path. It does not infer source files.
 
 ```bash
 cargo run -p filer-task -- context core:PROVIDER-001

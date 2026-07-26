@@ -7,7 +7,13 @@ async fn open_storage() -> Storage {
         .expect("storage opens")
 }
 
-async fn record(storage: &Storage, user_id: i64, project: &str, task_id: Option<&str>, action: &str) {
+async fn record(
+    storage: &Storage,
+    user_id: i64,
+    project: &str,
+    task_id: Option<&str>,
+    action: &str,
+) {
     storage
         .record_activity(NewActivity {
             user_id,
@@ -38,7 +44,10 @@ async fn recording_a_committed_write_absorbs_a_storage_failure() {
         .await;
 
     assert!(
-        storage.list_activity(ActivityFilter::default()).await.is_err(),
+        storage
+            .list_activity(ActivityFilter::default())
+            .await
+            .is_err(),
         "the pool stays closed, so the call absorbed a real failure"
     );
 }
@@ -108,7 +117,10 @@ async fn list_activity_filters_by_task_id() {
         .expect("activity lists");
 
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|row| row.task_id.as_deref() == Some("core:CORE-001")));
+    assert!(
+        rows.iter()
+            .all(|row| row.task_id.as_deref() == Some("core:CORE-001"))
+    );
 }
 
 #[tokio::test]

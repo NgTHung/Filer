@@ -12,11 +12,7 @@ use filer_task::{
 };
 
 use crate::{
-    app::AppState,
-    error::WebError,
-    identity::Actor,
-    routes::blocking,
-    storage::NewActivity,
+    app::AppState, error::WebError, identity::Actor, routes::blocking, storage::NewActivity,
 };
 
 pub(crate) async fn mutate<F>(

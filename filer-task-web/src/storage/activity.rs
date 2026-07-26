@@ -107,9 +107,7 @@ impl Storage {
                 operation: "list activity",
                 source,
             })?;
-        rows.into_iter()
-            .map(|row| decode_activity(&row))
-            .collect()
+        rows.into_iter().map(|row| decode_activity(&row)).collect()
     }
 }
 

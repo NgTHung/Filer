@@ -177,6 +177,7 @@ pub(crate) fn render_ready(view: &ReadyView) -> String {
 pub(crate) fn render_context(view: &ContextView) -> String {
     let mut sections = vec![render_detail(&view.detail)];
     sections.push(render_readiness(&view.readiness));
+    sections.push(render_ancestors(&view.ancestors));
     sections.push(render_relation("Parent", view.parent.as_ref().into_iter()));
     sections.push(render_relation("Children", view.children.iter()));
     sections.push(render_relation("Dependencies", view.dependencies.iter()));
@@ -328,6 +329,25 @@ fn render_values(values: &[String]) -> String {
     } else {
         values.join(", ")
     }
+}
+
+fn render_ancestors(ancestors: &[TaskView]) -> String {
+    if ancestors.is_empty() {
+        return "Ancestors\nNone".to_string();
+    }
+    let rendered = ancestors
+        .iter()
+        .map(|ancestor| {
+            format!(
+                "{}  {}  {}",
+                ancestor.qualified_id(),
+                ancestor.metadata.status,
+                ancestor.metadata.title
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("Ancestors\n{rendered}")
 }
 
 fn render_relation<'a>(heading: &str, tasks: impl Iterator<Item = &'a RelatedTaskView>) -> String {

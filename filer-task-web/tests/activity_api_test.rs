@@ -47,7 +47,13 @@ async fn failed_task_creation_records_no_activity_row() {
 #[tokio::test]
 async fn field_edit_records_one_activity_row() {
     let repo = project();
-    write_task(&repo, "CORE-001", "Original title", "To Do", "- [ ] Works\n");
+    write_task(
+        &repo,
+        "CORE-001",
+        "Original title",
+        "To Do",
+        "- [ ] Works\n",
+    );
     let app = app(&repo).await;
 
     let (status, _) = send(
@@ -72,7 +78,11 @@ async fn criterion_toggle_records_one_activity_row_with_detail() {
     let repo = project();
     write_task(&repo, "CORE-001", "Criteria task", "To Do", "- [ ] Works\n");
     let app = app(&repo).await;
-    let (_, shown) = send(&app, get_request(&project_uri(&repo, "/tasks/core:CORE-001"))).await;
+    let (_, shown) = send(
+        &app,
+        get_request(&project_uri(&repo, "/tasks/core:CORE-001")),
+    )
+    .await;
     let hash = shown["detail"]["criteria"][0]["content_hash"]
         .as_str()
         .expect("hash returned")
@@ -100,8 +110,20 @@ async fn each_lifecycle_transition_records_its_own_action() {
     write_task(&repo, "CORE-001", "Start me", "To Do", "- [ ] Works\n");
     write_task(&repo, "CORE-002", "Block me", "To Do", "- [ ] Works\n");
     write_task(&repo, "CORE-003", "Defer me", "To Do", "- [ ] Works\n");
-    write_task(&repo, "CORE-004", "Make me obsolete", "To Do", "- [ ] Works\n");
-    write_task(&repo, "CORE-005", "Finish me", "In Progress", "- [x] Works\n");
+    write_task(
+        &repo,
+        "CORE-004",
+        "Make me obsolete",
+        "To Do",
+        "- [ ] Works\n",
+    );
+    write_task(
+        &repo,
+        "CORE-005",
+        "Finish me",
+        "In Progress",
+        "- [x] Works\n",
+    );
     let app = app(&repo).await;
 
     let (status, _) = send(
@@ -176,7 +198,13 @@ async fn each_lifecycle_transition_records_its_own_action() {
 async fn project_register_and_deregister_record_activity_without_a_task_id() {
     let host = project();
     let added = project();
-    write_task(&added, "CORE-001", "Registered task", "To Do", "- [ ] Works\n");
+    write_task(
+        &added,
+        "CORE-001",
+        "Registered task",
+        "To Do",
+        "- [ ] Works\n",
+    );
     let app = app(&host).await;
 
     let (status, _) = send(

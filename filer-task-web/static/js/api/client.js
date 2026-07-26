@@ -78,6 +78,9 @@ export function projectScoped(projectName) {
     getTask(id) {
       return getJson(`${base}/tasks/${encodeURIComponent(id)}`);
     },
+    getTaskContext(id) {
+      return getJson(`${base}/tasks/${encodeURIComponent(id)}/context`);
+    },
     createTask(body) {
       return postJson(`${base}/tasks`, body);
     },

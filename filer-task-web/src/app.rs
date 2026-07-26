@@ -150,6 +150,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::tasks::get_task).patch(routes::task_writes::edit_task),
         )
         .route(
+            "/api/projects/{project}/tasks/{id}/context",
+            get(routes::context::get_context),
+        )
+        .route(
             "/api/projects/{project}/tasks/{id}/criteria/{index}",
             put(routes::task_writes::set_criterion),
         )

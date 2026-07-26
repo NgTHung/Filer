@@ -150,6 +150,10 @@ pub struct ContextView {
     pub detail: TaskDetail,
     pub readiness: ReadinessView,
     pub parent: Option<RelatedTaskView>,
+    /// Root-first breadcrumb of every ancestor. Plain views, not related views:
+    /// a breadcrumb needs identity and status, and per-ancestor readiness would
+    /// invite reading a parent's blockers as the target task's own.
+    pub ancestors: Vec<TaskView>,
     pub children: Vec<RelatedTaskView>,
     pub dependencies: Vec<RelatedTaskView>,
     pub dependents: Vec<RelatedTaskView>,
@@ -234,6 +238,14 @@ pub fn build_context(
     let parent = graph
         .parent(identity)
         .map(|candidate| related_task_view(project, &graph, candidate));
+    let mut ancestors = graph
+        .ancestor_identities(identity)
+        .ancestors
+        .iter()
+        .filter_map(|ancestor| graph.task(ancestor))
+        .map(|ancestor| task_view(root, &graph, ancestor))
+        .collect::<Vec<_>>();
+    ancestors.reverse();
     let milestone = task.metadata.milestone.as_ref().and_then(|milestone| {
         tasks.iter().find(|candidate| {
             is_milestone_type(project, &candidate.metadata.task_type)
@@ -247,6 +259,7 @@ pub fn build_context(
         detail: task_detail(project, &graph, task)?,
         readiness: readiness(project, &graph, task),
         parent,
+        ancestors,
         children,
         dependencies,
         dependents,
