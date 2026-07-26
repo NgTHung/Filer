@@ -1,7 +1,7 @@
 ---
 id: "WEB-018"
 title: "Record and serve an attributed activity history"
-status: "In Progress"
+status: Done
 priority: "Medium"
 type: "Feature"
 parent: "WEB-014"
@@ -9,7 +9,7 @@ depends_on: ["WEB-015", "WEB-017", "WEB-004", "WEB-008", "WEB-009", "WEB-010"]
 risk: "Low"
 impact: "Adds the audit trail for team use: every web write becomes an attributed, queryable activity row with a feed UI."
 tags: ["web", "tasks", "audit", "state"]
-last_updated: "2026-07-23"
+last_updated: 2026-07-26
 ---
 
 ## Summary
