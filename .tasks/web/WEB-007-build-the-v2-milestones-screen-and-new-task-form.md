@@ -1,7 +1,7 @@
 ---
 id: WEB-007
 title: Build the Milestones screen and New-task form
-status: In Progress
+status: Done
 priority: Medium
 type: Feature
 parent: WEB-001
@@ -9,7 +9,7 @@ depends_on: [WEB-003, WEB-004, WEB-005, WEB-021]
 risk: Low
 impact: "Adds the two screens the old UI never had: a milestone progress view over the aggregation endpoint and an in-app creation form over the existing POST endpoint, closing the human-in-the-loop gap for creation."
 tags: [web, tasks]
-last_updated: 2026-07-25
+last_updated: 2026-07-26
 ---
 
 ## Summary
@@ -18,8 +18,8 @@ Milestones screen: one card per GET /api/projects/{project}/milestones entry, re
 
 ## Acceptance Criteria
 
-- [ ] The Milestones screen renders one card per GET /api/projects/{project}/milestones entry with its progress bar, criteria checklist, and tasks grouped by status.
-- [ ] The New-task form's domain, prefix, type, and tag options come from GET /api/projects/{project}/policy, with prefix options scoped to the chosen domain and the tag input strict-or-open per the policy.
-- [ ] The number field defaults to one past the highest existing number for the chosen domain and prefix.
-- [ ] A rejected POST /api/projects/{project}/tasks renders its structured error inline next to the field named by the error body's field mapping (id_exists to number, prefix_not_allowed to prefix, tag_rejected to tags).
-- [ ] A successful submission opens the new task's detail drawer from the returned ShowView.
+- [x] The Milestones screen renders one card per GET /api/projects/{project}/milestones entry with its progress bar, criteria checklist, and tasks grouped by status.
+- [x] The New-task form's domain, prefix, type, and tag options come from GET /api/projects/{project}/policy, with prefix options scoped to the chosen domain and the tag input strict-or-open per the policy.
+- [x] The number field defaults to one past the highest existing number for the chosen domain and prefix.
+- [x] A rejected POST /api/projects/{project}/tasks renders its structured error inline next to the field named by the error body's field mapping (id_exists to number, prefix_not_allowed to prefix, tag_rejected to tags).
+- [x] A successful submission opens the new task's detail drawer from the returned ShowView.
