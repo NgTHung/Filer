@@ -2,26 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { ApiError } from "../../static/js/api/client.js";
-import { fieldError, nextNumber, parseTags, preview, slugify } from "../../static/js/lib/newTask.js";
+import { fieldError, nextNumber, parseTags } from "../../static/js/lib/newTask.js";
 
 function task(domain, id) {
   return { domain, id, qualified_id: `${domain}:${id}`, title: id, status: "To Do" };
 }
-
-test("the slug lowercases alphanumerics and collapses everything else to one dash", () => {
-  assert.equal(slugify("Build the Milestones screen"), "build-the-milestones-screen");
-  assert.equal(slugify("Serve ready-work  &  milestone endpoints"), "serve-ready-work-milestone-endpoints");
-  assert.equal(slugify("Filer 2.0: what's next?"), "filer-2-0-what-s-next");
-});
-
-test("leading and trailing separators are trimmed off the slug", () => {
-  assert.equal(slugify("  --Trailing punctuation!!  "), "trailing-punctuation");
-  assert.equal(slugify("!!!"), "");
-});
-
-test("non-ascii characters become separators, matching the server", () => {
-  assert.equal(slugify("Café résumé"), "caf-r-sum");
-});
 
 test("the next number is one past the highest id sharing the domain and prefix", () => {
   const tasks = [task("web", "WEB-001"), task("web", "WEB-021"), task("web", "WEB-007")];
@@ -49,26 +34,6 @@ test("ids whose suffix is not a plain number are ignored", () => {
   const tasks = [task("web", "WEB-A12"), task("web", "WEB-1-2"), task("web", "WEB-002")];
 
   assert.equal(nextNumber(tasks, "web", "WEB"), "003");
-});
-
-test("the preview shows the qualified id and the path the server will write", () => {
-  assert.deepEqual(preview("web", "WEB", "030", "Build the Milestones screen"), {
-    qualifiedId: "web:WEB-030",
-    path: ".tasks/web/WEB-030-build-the-milestones-screen.md",
-  });
-});
-
-test("a title with no slug-able characters still previews a valid path", () => {
-  assert.deepEqual(preview("web", "WEB", "030", ""), {
-    qualifiedId: "web:WEB-030",
-    path: ".tasks/web/WEB-030-.md",
-  });
-});
-
-test("an incomplete form previews nothing rather than a wrong path", () => {
-  assert.equal(preview("", "WEB", "030", "Title"), null);
-  assert.equal(preview("web", "", "030", "Title"), null);
-  assert.equal(preview("web", "WEB", "", "Title"), null);
 });
 
 test("a rejection is routed to the field the server named", () => {

@@ -668,12 +668,6 @@ th {
   color: var(--muted);
 }
 
-.new-task-preview {
-  margin: 0;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
 .new-task-actions {
   display: flex;
   justify-content: flex-end;

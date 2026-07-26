@@ -1,7 +1,7 @@
 import { html, useEffect, useMemo, useRef, useState } from "../../vendor/preact-htm.js";
 import { projectScoped } from "../api/client.js";
 import { Header } from "../components/Header.js";
-import { fieldError, nextNumber, parseTags, preview } from "../lib/newTask.js";
+import { fieldError, nextNumber, parseTags } from "../lib/newTask.js";
 import { domainNames, prefixesFor, tagCatalog, taskTypeNames } from "../lib/policy.js";
 
 const PRIORITY_OPTIONS = ["High", "Medium", "Low"];
@@ -81,8 +81,6 @@ export function NewTaskScreen({ projectName, onCreated }) {
     }
     setDraft((current) => ({ ...current, number: nextNumber(tasks, draft.domain, draft.prefix) }));
   }, [tasks, draft.domain, draft.prefix, numberEdited]);
-
-  const identity = preview(draft.domain, draft.prefix, draft.number, draft.title);
 
   async function submit(event) {
     event.preventDefault();
@@ -221,11 +219,6 @@ export function NewTaskScreen({ projectName, onCreated }) {
               `}
           <${FieldError} rejection=${rejection} field="tags" />
         </div>
-        <p class="new-task-preview">
-          ${identity
-            ? html`Creates <code>${identity.qualifiedId}</code> at <code>${identity.path}</code>`
-            : "Pick a domain, prefix and number to preview the id and path."}
-        </p>
         <div class="new-task-actions">
           <button type="submit" disabled=${!ready || submitting}>${submitting ? "Creating…" : "Create task"}</button>
         </div>
