@@ -18,7 +18,7 @@ function Screen({ screen, project, onSelectTask }) {
     return html`<${ReadyScreen} projectName=${project.name} onSelectTask=${onSelectTask} />`;
   }
   if (screen === "activity") {
-    return html`<${ActivityScreen} projectName=${project.name} />`;
+    return html`<${ActivityScreen} projectName=${project.name} onSelectTask=${onSelectTask} />`;
   }
   if (screen === "tasks") {
     return html`<${TasksScreen} projectName=${project.name} onSelectTask=${onSelectTask} />`;
@@ -42,6 +42,18 @@ function App() {
   useEffect(() => {
     setSelectedTaskId(null);
   }, [project?.name]);
+
+  // Loading from inside the component, after useIdentityStore and
+  // useProjectStore have registered their listeners: a module-level load can
+  // resolve before those effects run, and the store notification it fires is
+  // then delivered to nobody, stranding the app on "Loading identity…".
+  useEffect(() => {
+    loadIdentity().then((identity) => {
+      if (identity) {
+        loadProjects();
+      }
+    });
+  }, []);
 
   useEffect(() => {
     function onKeyDown(event) {
@@ -101,9 +113,4 @@ function App() {
   `;
 }
 
-loadIdentity().then((identity) => {
-  if (identity) {
-    loadProjects();
-  }
-});
 render(html`<${App} />`, document.getElementById("app"));

@@ -6,7 +6,7 @@ function formatTime(unixSeconds) {
   return new Date(unixSeconds * 1000).toLocaleString();
 }
 
-export function ActivityScreen({ projectName }) {
+export function ActivityScreen({ projectName, onSelectTask }) {
   const query = useMemo(() => ({ project: projectName, limit: 50 }), [projectName]);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
@@ -51,7 +51,19 @@ export function ActivityScreen({ projectName }) {
                       <td>${formatTime(row.created_at)}</td>
                       <td>${row.username}</td>
                       <td>${row.action}</td>
-                      <td>${row.task_id ? html`<code>${row.task_id}</code>` : ""}</td>
+                      <td>
+                        ${row.task_id
+                          ? html`
+                              <button
+                                type="button"
+                                class="activity-task"
+                                onClick=${() => onSelectTask(row.task_id)}
+                              >
+                                ${row.task_id}
+                              </button>
+                            `
+                          : ""}
+                      </td>
                       <td>${row.detail ?? ""}</td>
                     </tr>
                   `,

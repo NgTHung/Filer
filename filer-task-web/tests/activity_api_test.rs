@@ -298,6 +298,35 @@ async fn activity_list_paginates_newest_first() {
     assert_eq!(task_ids, vec!["core:CORE-002", "core:CORE-001"]);
 }
 
+#[tokio::test]
+async fn activity_list_filters_by_task() {
+    let repo = project();
+    let app = app(&repo).await;
+    for number in ["001", "002"] {
+        let (status, _) = send(&app, create_request(&repo, "CORE", number)).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = send(
+        &app,
+        post_request(&project_uri(&repo, "/tasks/core:CORE-001/start"), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let rows = activity(&app, "/api/activity?task=core:CORE-001").await;
+    let actions: Vec<&str> = rows
+        .iter()
+        .map(|row| row["action"].as_str().expect("action is a string"))
+        .collect();
+
+    assert_eq!(actions, vec!["task.start", "task.create"]);
+    assert!(
+        rows.iter()
+            .all(|row| row["task_id"] == "core:CORE-001"),
+        "the task filter must exclude every other task"
+    );
+}
+
 fn create_request(repo: &TempDir, prefix: &str, number: &str) -> Request<Body> {
     json_request(
         "POST",

@@ -21,6 +21,6 @@ Nothing records what the team changes through the browser. Record one activity r
 - [x] Each successful write endpoint records exactly one activity row with timestamp, username, project, action, and task id where applicable.
 - [x] A rejected or failed write records no activity row.
 - [x] GET /api/activity returns newest-first pages and filters by project and task.
-- [ ] An Activity screen renders the feed and links task entries to the detail drawer.
+- [x] An Activity screen renders the feed and links task entries to the detail drawer.
   - The feed screen is built and renders task ids as plain text. Linking them requires the detail drawer from web:WEB-008, which is still To Do, so there is nothing to link to. Check this once WEB-008 lands.
 - [x] Tests cover recording for each write endpoint, a failed write recording nothing, and pagination.
