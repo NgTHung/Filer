@@ -110,12 +110,24 @@ impl IntoResponse for WebError {
                 )
                     .into_response();
             }
-            Self::DuplicateProjectName(name) => (
-                StatusCode::BAD_REQUEST,
-                format!("project name {name:?} is registered more than once"),
-                None,
-                Vec::new(),
-            ),
+            // The name travels as data, not only inside the message: a client
+            // registering a path that resolves to an already-registered project
+            // has no other way to learn which project to switch to, because the
+            // root is discovered by walking up from the path it sent.
+            Self::DuplicateProjectName(name) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorBody {
+                        error: format!("project name {name:?} is registered more than once"),
+                        code: Some("duplicate_project_name".to_string()),
+                        field: None,
+                        context: None,
+                        project: Some(name),
+                        issues: Vec::new(),
+                    }),
+                )
+                    .into_response();
+            }
             Self::InvalidProjectName(root) => (
                 StatusCode::BAD_REQUEST,
                 format!(

@@ -44,12 +44,14 @@ async fn registers_an_existing_project_and_serves_it_immediately() {
     assert_eq!(status, StatusCode::OK, "{tasks}");
     assert_eq!(tasks[0]["id"], "CORE-001");
 
-    let (status, _) = send(
+    let (status, body) = send(
         &app,
         json_request("POST", "/api/projects", json!({"path": added.path()})),
     )
     .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["code"], "duplicate_project_name");
+    assert_eq!(body["project"], project_name(&added));
 }
 
 #[tokio::test]
