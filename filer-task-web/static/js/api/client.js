@@ -42,6 +42,10 @@ export function putJson(path, body, headers) {
   return request("PUT", path, body ?? {}, headers);
 }
 
+export function patchJson(path, body) {
+  return request("PATCH", path, body ?? {});
+}
+
 export function getIdentity() {
   return getJson("/api/identity");
 }
@@ -53,6 +57,12 @@ export function putIdentity(username) {
 // Root-level endpoint, not project-scoped.
 export function listProjects() {
   return getJson("/api/projects");
+}
+
+// Root-level endpoint. The server discovers the project root by walking up from
+// this path, so the registered name is not always the path's last segment.
+export function registerProject(path, init) {
+  return postJson("/api/projects", { path, init });
 }
 
 // Root-level endpoint: project is a query filter, not a path segment.
@@ -74,6 +84,10 @@ export function projectScoped(projectName) {
     },
     getPolicy() {
       return getJson(`${base}/policy`);
+    },
+    // One operation per request; the response is the whole refreshed policy.
+    patchPolicy(operation) {
+      return patchJson(`${base}/policy`, operation);
     },
     getTaskContext(id) {
       return getJson(`${base}/tasks/${encodeURIComponent(id)}/context`);

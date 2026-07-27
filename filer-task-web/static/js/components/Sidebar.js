@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { id: "milestones", label: "Milestones" },
   { id: "new-task", label: "New task" },
   { id: "activity", label: "Activity" },
+  { id: "settings", label: "Settings" },
 ];
 
 function summarize(tasks) {
@@ -68,6 +69,7 @@ export function Sidebar({ screen, onSelectScreen, onSwitchProject }) {
     milestones: milestoneCount,
     "new-task": null,
     activity: null,
+    settings: null,
   };
 
   return html`

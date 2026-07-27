@@ -9,11 +9,16 @@ import { ActivityScreen } from "./screens/Activity.js";
 import { TasksScreen } from "./screens/Tasks.js";
 import { MilestonesScreen } from "./screens/Milestones.js";
 import { NewTaskScreen } from "./screens/NewTask.js";
+import { SettingsScreen } from "./screens/Settings.js";
 import { TaskDrawer } from "./components/TaskDrawer.js";
 import { isPaletteShortcut } from "./lib/palette.js";
 import { loadIdentity, useIdentityStore } from "./store/identity.js";
 
 function Screen({ screen, project, onSelectTask }) {
+  // First, because it is the one screen that renders without a project.
+  if (screen === "settings") {
+    return html`<${SettingsScreen} projectName=${project?.name} />`;
+  }
   if (screen === "ready") {
     return html`<${ReadyScreen} projectName=${project.name} onSelectTask=${onSelectTask} />`;
   }
@@ -55,6 +60,16 @@ function App() {
     });
   }, []);
 
+  // Sticky, so that opening the first project from the forced Settings screen
+  // leaves the user on Settings instead of bouncing them to Ready. Gated on the
+  // load finishing, because every page load starts with no project and would
+  // otherwise strand the user on Settings.
+  useEffect(() => {
+    if (!store.loading && !project) {
+      setScreen("settings");
+    }
+  }, [store.loading, Boolean(project)]);
+
   useEffect(() => {
     function onKeyDown(event) {
       if (isPaletteShortcut(event)) {
@@ -86,24 +101,29 @@ function App() {
     return html`<div class="app-loading">Could not load projects: ${store.error.message}</div>`;
   }
 
-  if (!project) {
-    return html`<div class="app-loading">No projects registered.</div>`;
-  }
+  // Settings is the only screen that works without a project, and it is where
+  // the first one gets registered, so an empty registry lands there instead of
+  // on a dead end. A broken project needs the same escape.
+  const active = project ? screen : "settings";
 
   return html`
     <div class="app-shell">
       <${Sidebar}
-        screen=${screen}
+        screen=${active}
         onSelectScreen=${setScreen}
         onSwitchProject=${() => setPaletteOpen(true)}
       />
       <main class="app-main">
-        ${project.broken
-          ? html`<${BrokenScreen} project=${project} onSwitchProject=${() => setPaletteOpen(true)} />`
-          : html`<${Screen} screen=${screen} project=${project} onSelectTask=${setSelectedTaskId} />`}
+        ${project && project.broken && active !== "settings"
+          ? html`<${BrokenScreen}
+              project=${project}
+              onSwitchProject=${() => setPaletteOpen(true)}
+              onOpenSettings=${() => setScreen("settings")}
+            />`
+          : html`<${Screen} screen=${active} project=${project} onSelectTask=${setSelectedTaskId} />`}
       </main>
       <${TaskDrawer}
-        projectName=${project.name}
+        projectName=${project?.name}
         taskId=${selectedTaskId}
         onClose=${() => setSelectedTaskId(null)}
         onSelect=${setSelectedTaskId}

@@ -833,3 +833,128 @@ th {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.settings-heading {
+  margin: 24px 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 480px;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.settings-form input[type="text"],
+.settings-form select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+}
+
+.settings-form .settings-checkbox,
+.policy-add .settings-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-form .settings-checkbox input,
+.policy-add .settings-checkbox input {
+  width: 13px;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rejection-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.policy-section {
+  margin-bottom: 8px;
+  max-width: 640px;
+}
+
+.policy-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.policy-row-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.policy-name {
+  flex: 1;
+  font-size: 13px;
+}
+
+.policy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  font-size: 12px;
+}
+
+.chip-remove {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.chip-remove:hover {
+  color: var(--danger-text);
+}
+
+.policy-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.policy-add input[type="text"],
+.policy-add select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+}
+
+.policy-add button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

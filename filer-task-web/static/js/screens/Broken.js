@@ -3,7 +3,7 @@ import { loadProjects } from "../store/project.js";
 
 // Renders for a ProjectSummary with broken: true, or after catching a 422
 // ProjectBroken response, instead of the Ready screen.
-export function BrokenScreen({ project, onSwitchProject }) {
+export function BrokenScreen({ project, onSwitchProject, onOpenSettings }) {
   const issues = project?.issues ?? [];
 
   return html`
@@ -32,6 +32,7 @@ export function BrokenScreen({ project, onSwitchProject }) {
       <div class="broken-actions">
         <button onClick=${() => loadProjects()}>Re-validate</button>
         <button onClick=${onSwitchProject}>Switch project</button>
+        <button onClick=${onOpenSettings}>Open another project</button>
       </div>
     </section>
   `;
