@@ -4,10 +4,10 @@ title: "Make filer-task-web a persistent team webapp"
 status: "To Do"
 priority: "High"
 type: "Epic"
-risk: "Medium"
+risk: "High"
 impact: "Turns filer-task-web from a stateless local executable into a self-hosted team webapp with an embedded SQLite layer for registry, identity, activity, index, and saved views, while .tasks/ files remain the source of truth."
 tags: ["web", "tasks", "server", "state"]
-last_updated: "2026-07-14"
+last_updated: "2026-08-02"
 ---
 
 ## Summary

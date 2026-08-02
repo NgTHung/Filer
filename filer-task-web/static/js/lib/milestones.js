@@ -7,6 +7,14 @@
 // free to diverge without either module needing to know about the other.
 const STATUS_ORDER = ["To Do", "In Progress", "Blocked", "Done", "Deferred", "Obsolete"];
 
+// The milestone names a form may offer. `current` is folded in so a task
+// already carrying a milestone the aggregation no longer lists keeps it as a
+// selectable option instead of silently resetting to None.
+export function milestoneOptions(aggregations, current) {
+  const values = (aggregations ?? []).map((entry) => entry.milestone.milestone).filter(Boolean);
+  return current && !values.includes(current) ? [current, ...values] : values;
+}
+
 export function progressPercent(done, total) {
   if (!total) {
     return 0;

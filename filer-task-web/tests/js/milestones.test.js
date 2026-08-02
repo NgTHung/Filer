@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { progressPercent, statusGroups } from "../../static/js/lib/milestones.js";
+import { milestoneOptions, progressPercent, statusGroups } from "../../static/js/lib/milestones.js";
+
+function aggregation(name) {
+  return { milestone: { milestone: name }, tasks_by_status: {} };
+}
+
+test("the offered milestones are the aggregation's own names", () => {
+  const aggregations = [aggregation("0.2.0"), aggregation("0.3.0")];
+
+  assert.deepEqual(milestoneOptions(aggregations, ""), ["0.2.0", "0.3.0"]);
+  assert.deepEqual(milestoneOptions([], ""), []);
+  assert.deepEqual(milestoneOptions(undefined, ""), []);
+});
+
+test("a current milestone the aggregation no longer lists is still offered first", () => {
+  assert.deepEqual(milestoneOptions([aggregation("0.3.0")], "0.1.0"), ["0.1.0", "0.3.0"]);
+});
+
+test("a current milestone the aggregation already lists is not duplicated", () => {
+  assert.deepEqual(milestoneOptions([aggregation("0.3.0")], "0.3.0"), ["0.3.0"]);
+});
 
 test("progress is a whole percent of the aggregation's own counts", () => {
   assert.equal(progressPercent(1, 3), 33);

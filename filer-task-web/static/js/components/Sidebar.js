@@ -78,32 +78,36 @@ export function Sidebar({ screen, onSelectScreen, onSwitchProject }) {
         <span class="project-name">${project ? project.name : "No project"}</span>
         <span class="switcher-caret">⌄</span>
       </button>
-      <nav class="nav-list">
-        ${NAV_ITEMS.map(
-          (item) => html`
-            <button
-              class="nav-item ${screen === item.id ? "active" : ""}"
-              onClick=${() => onSelectScreen(item.id)}
-            >
-              <span>${item.label}</span>
-              ${navCounts[item.id] !== null ? html`<span class="nav-count">${navCounts[item.id]}</span>` : null}
-            </button>
-          `,
-        )}
-      </nav>
-      <div class="domain-list">
-        <h3>Domains</h3>
-        ${[...domains.entries()].map(
-          ([name, info]) => html`
-            <div class="domain-row">
-              <span class="domain-name">${info.blocked ? html`<span class="blocked-dot"></span>` : null}${name}</span>
-              <span class="domain-count">${info.count}</span>
-            </div>
-          `,
-        )}
-        ${domains.size === 0 ? html`<p class="domain-empty">No domains yet.</p>` : null}
+      <div class="sidebar-scroll">
+        <nav class="nav-list">
+          ${NAV_ITEMS.map(
+            (item) => html`
+              <button
+                class="nav-item ${screen === item.id ? "active" : ""}"
+                onClick=${() => onSelectScreen(item.id)}
+              >
+                <span>${item.label}</span>
+                ${navCounts[item.id] !== null ? html`<span class="nav-count">${navCounts[item.id]}</span>` : null}
+              </button>
+            `,
+          )}
+        </nav>
+        <div class="domain-list">
+          <h3>Domains</h3>
+          ${[...domains.entries()].map(
+            ([name, info]) => html`
+              <div class="domain-row">
+                <span class="domain-name">${info.blocked ? html`<span class="blocked-dot"></span>` : null}${name}</span>
+                <span class="domain-count">${info.count}</span>
+              </div>
+            `,
+          )}
+          ${domains.size === 0 ? html`<p class="domain-empty">No domains yet.</p>` : null}
+        </div>
       </div>
-      <${IdentityFooter} />
+      <div class="sidebar-footer">
+        <${IdentityFooter} />
+      </div>
     </aside>
   `;
 }

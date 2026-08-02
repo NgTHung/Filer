@@ -1,8 +1,11 @@
 import { html, useEffect, useMemo, useRef, useState } from "../../vendor/preact-htm.js";
 import { projectScoped } from "../api/client.js";
+import { FieldError } from "../components/FieldError.js";
 import { Header } from "../components/Header.js";
-import { fieldError, nextNumber, parseTags } from "../lib/newTask.js";
+import { milestoneOptions } from "../lib/milestones.js";
+import { nextNumber, parseTags } from "../lib/newTask.js";
 import { domainNames, prefixesFor, tagCatalog, taskTypeNames } from "../lib/policy.js";
+import { fieldError } from "../lib/rejection.js";
 
 const PRIORITY_OPTIONS = ["High", "Medium", "Low"];
 
@@ -185,7 +188,7 @@ export function NewTaskScreen({ projectName, onCreated }) {
           Milestone
           <select value=${draft.milestone} onChange=${(event) => update("milestone", event.target.value)}>
             <option value="">None</option>
-            ${milestoneValues(milestones).map((value) => html`<option key=${value} value=${value}>${value}</option>`)}
+            ${milestoneOptions(milestones, draft.milestone).map((value) => html`<option key=${value} value=${value}>${value}</option>`)}
           </select>
         </label>
         <div class="new-task-tags">
@@ -227,18 +230,6 @@ export function NewTaskScreen({ projectName, onCreated }) {
   `;
 }
 
-function FieldError({ rejection, field }) {
-  if (!rejection || rejection.field !== field) {
-    return null;
-  }
-  return html`
-    <span class="field-error">
-      ${rejection.message}
-      ${rejection.allowed.length > 0 ? html`<span class="field-allowed">Allowed: ${rejection.allowed.join(", ")}</span>` : null}
-    </span>
-  `;
-}
-
 function emptyDraft() {
   return {
     domain: "",
@@ -253,8 +244,4 @@ function emptyDraft() {
     // the parsed `tags` array rewrites the value under the cursor mid-type.
     tagsText: "",
   };
-}
-
-function milestoneValues(aggregations) {
-  return aggregations.map((entry) => entry.milestone.milestone).filter(Boolean);
 }

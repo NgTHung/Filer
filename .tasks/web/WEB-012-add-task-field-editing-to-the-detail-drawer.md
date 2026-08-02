@@ -1,7 +1,7 @@
 ---
 id: WEB-012
 title: Add task field editing to the detail drawer
-status: To Do
+status: Done
 priority: Medium
 type: Feature
 parent: WEB-001
@@ -9,7 +9,7 @@ depends_on: [WEB-008, WEB-010]
 risk: Low
 impact: "Adds edit-in-place to the read-plus-lifecycle drawer, closing the last human-in-the-loop gap: changing a task's own fields after creation."
 tags: [web, tasks]
-last_updated: 2026-07-15
+last_updated: 2026-08-02
 ---
 
 ## Summary
@@ -18,7 +18,7 @@ The drawer (web:WEB-008) renders title, summary, type/milestone/risk/impact/tags
 
 ## Acceptance Criteria
 
-- [ ] An edit affordance in the drawer turns title, summary, risk, impact, tags, milestone, parent, and depends_on into editable inputs pre-filled with current values.
-- [ ] Saving posts only the changed fields to PATCH /api/projects/{project}/tasks/{id} and the drawer refreshes from the response.
-- [ ] A rejected edit renders its field-scoped error inline on the offending input, matching the New-task form's error rendering pattern.
-- [ ] Canceling an edit discards changes and restores the read-only view without a network call.
+- [x] An edit affordance in the drawer turns title, summary, risk, impact, tags, milestone, parent, and depends_on into editable inputs pre-filled with current values.
+- [x] Saving posts only the changed fields to PATCH /api/projects/{project}/tasks/{id} and the drawer refreshes from the response.
+- [x] A rejected edit renders its field-scoped error inline on the offending input, matching the New-task form's error rendering pattern.
+- [x] Canceling an edit discards changes and restores the read-only view without a network call.

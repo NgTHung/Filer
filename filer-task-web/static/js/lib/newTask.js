@@ -1,6 +1,5 @@
 // Everything the creation form derives before it posts.
 
-import { ApiError } from "../api/client.js";
 import { splitList } from "./text.js";
 
 const DIGITS = /^[0-9]+$/;
@@ -29,19 +28,4 @@ export function nextNumber(tasks, domain, prefix) {
 
 export function parseTags(value) {
   return splitList(value);
-}
-
-// The server already names the offending input on the error body, so the form
-// only routes it; anything unattributed belongs above the form, not beside an
-// arbitrary field.
-export function fieldError(error) {
-  if (!(error instanceof ApiError)) {
-    return { field: null, message: error.message, allowed: [] };
-  }
-  const allowed = error.context && error.context.allowed;
-  return {
-    field: error.field ?? null,
-    message: error.message,
-    allowed: Array.isArray(allowed) ? allowed : [],
-  };
 }

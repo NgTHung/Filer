@@ -44,6 +44,27 @@ select {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .identity-onboarding {
@@ -73,7 +94,6 @@ select {
 }
 
 .identity-footer {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -85,7 +105,6 @@ select {
 }
 
 .identity-editor {
-  margin-top: auto;
   display: flex;
   flex-direction: column;
 }
@@ -101,6 +120,7 @@ select {
   padding: 8px 10px;
   cursor: pointer;
   text-align: left;
+  flex-shrink: 0;
 }
 
 .project-switcher:hover {
@@ -111,6 +131,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .nav-item {
@@ -177,6 +198,7 @@ select {
 
 .app-main {
   padding: 20px 24px;
+  min-width: 0;
 }
 
 .screen-header {
@@ -640,11 +662,45 @@ th {
   white-space: pre-wrap;
 }
 
+.drawer-action-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
 .drawer-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 12px;
+}
+
+.drawer-edit-open {
+  margin-left: auto;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.drawer-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.drawer-edit-form textarea {
+  resize: vertical;
+}
+
+.drawer-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.drawer-edit-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .drawer-action-open {
@@ -794,6 +850,7 @@ th {
 }
 
 .new-task-form label,
+.drawer-edit-form label,
 .new-task-tags {
   display: flex;
   flex-direction: column;
@@ -803,7 +860,10 @@ th {
 }
 
 .new-task-form input,
-.new-task-form select {
+.new-task-form select,
+.drawer-edit-form input,
+.drawer-edit-form select,
+.drawer-edit-form textarea {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;

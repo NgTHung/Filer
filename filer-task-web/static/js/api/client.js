@@ -95,6 +95,11 @@ export function projectScoped(projectName) {
     createTask(body) {
       return postJson(`${base}/tasks`, body);
     },
+    // Partial by construction: an absent key keeps the stored field, so the
+    // body must carry only what changed.
+    patchTask(id, body) {
+      return patchJson(`${base}/tasks/${encodeURIComponent(id)}`, body);
+    },
     setCriterion(id, index, checked, contentHash) {
       return putJson(
         `${base}/tasks/${encodeURIComponent(id)}/criteria/${index}`,

@@ -10,7 +10,8 @@ use filer_task_web::{
     app::{AppState, router},
     storage::Storage,
 };
-use tower_http::services::ServeDir;
+use axum::http::{HeaderValue, header};
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,7 +33,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let static_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("static");
-    let app = router(state).fallback_service(ServeDir::new(static_dir));
+    // Without an explicit header the browser applies heuristic caching and keeps
+    // serving a stale stylesheet or module after the file on disk changes.
+    let app = router(state)
+        .fallback_service(ServeDir::new(static_dir))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-cache"),
+        ));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], options.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
