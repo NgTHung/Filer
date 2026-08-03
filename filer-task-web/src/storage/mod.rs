@@ -12,7 +12,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let storage = Storage::open(directory.path().join("state.sqlite3")).await?;
-//! assert_eq!(storage.schema_version().await?, 4);
+//! assert_eq!(storage.schema_version().await?, 5);
 //! storage.close().await;
 //! # Ok(())
 //! # }
@@ -22,7 +22,7 @@ use std::{
     error::Error,
     fmt,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use sqlx::{
@@ -33,10 +33,12 @@ use sqlx::{
 
 mod activity;
 mod identities;
+mod pairing;
 mod projects;
 
 pub use activity::{ActivityFilter, ActivityRecord, NewActivity};
-pub use identities::{IdentitySession, StoredIdentity};
+pub use identities::{IdentitySession, ResolvedSession, StoredIdentity};
+pub use pairing::{PairingPin, RedeemOutcome};
 pub use projects::ProjectRegistration;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
@@ -84,6 +86,16 @@ impl Storage {
     }
 }
 
+pub(crate) fn unix_now() -> Result<i64, StorageError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .map_err(|source| StorageError::Internal {
+            operation: "read system clock",
+            message: source.to_string(),
+        })
+}
+
 #[derive(Debug)]
 pub enum StorageError {
     Open {
@@ -99,6 +111,10 @@ pub enum StorageError {
         source: sqlx::Error,
     },
     InvalidData {
+        operation: &'static str,
+        message: String,
+    },
+    Internal {
         operation: &'static str,
         message: String,
     },
@@ -129,6 +145,9 @@ impl fmt::Display for StorageError {
             Self::InvalidData { operation, message } => {
                 write!(formatter, "failed to {operation}: {message}")
             }
+            Self::Internal { operation, message } => {
+                write!(formatter, "failed to {operation}: {message}")
+            }
             Self::UsernameTaken => write!(formatter, "username is already in use"),
             Self::IdentityNotFound(user_id) => {
                 write!(formatter, "identity {user_id} does not exist")
@@ -143,7 +162,10 @@ impl Error for StorageError {
             Self::Open { source, .. } => Some(source),
             Self::Migrate { source, .. } => Some(source),
             Self::Operation { source, .. } => Some(source),
-            Self::InvalidData { .. } | Self::UsernameTaken | Self::IdentityNotFound(_) => None,
+            Self::InvalidData { .. }
+            | Self::Internal { .. }
+            | Self::UsernameTaken
+            | Self::IdentityNotFound(_) => None,
         }
     }
 }

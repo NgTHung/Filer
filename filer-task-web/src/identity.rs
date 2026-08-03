@@ -10,7 +10,7 @@ use axum::{
     http::{HeaderMap, header::COOKIE, request::Parts},
 };
 
-use crate::{app::AppState, error::WebError, storage::StoredIdentity};
+use crate::{app::AppState, error::WebError, storage::ResolvedSession};
 
 pub const IDENTITY_COOKIE: &str = "filer_task_identity";
 
@@ -18,13 +18,15 @@ pub const IDENTITY_COOKIE: &str = "filer_task_identity";
 pub struct Actor {
     pub user_id: i64,
     pub username: String,
+    pub session_id: i64,
 }
 
-impl From<StoredIdentity> for Actor {
-    fn from(identity: StoredIdentity) -> Self {
+impl From<ResolvedSession> for Actor {
+    fn from(session: ResolvedSession) -> Self {
         Self {
-            user_id: identity.user_id,
-            username: identity.username,
+            user_id: session.identity.user_id,
+            username: session.identity.username,
+            session_id: session.session_id,
         }
     }
 }

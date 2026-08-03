@@ -35,6 +35,7 @@ async fn identities_are_unique_stable_resolvable_and_persistent() {
             .await
             .expect("identity resolves")
             .expect("identity exists")
+            .identity
             .username,
         "Bob"
     );
@@ -45,7 +46,8 @@ async fn identities_are_unique_stable_resolvable_and_persistent() {
         reopened
             .resolve_identity(&created.session_token)
             .await
-            .expect("renamed identity resolves"),
+            .expect("renamed identity resolves")
+            .map(|session| session.identity),
         Some(renamed)
     );
     assert_eq!(

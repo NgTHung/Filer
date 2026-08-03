@@ -99,6 +99,37 @@ select {
   align-items: flex-start;
 }
 
+.identity-pair {
+  align-self: flex-start;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.pairing-code {
+  font-family: var(--mono);
+  font-size: 36px;
+  letter-spacing: 0.25em;
+  text-align: center;
+  margin: 12px 0;
+}
+
+.pairing-loading {
+  color: var(--muted);
+  text-align: center;
+  margin: 12px 0;
+}
+
+.identity-modes {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.identity-mode-selected {
+  font-weight: 600;
+  background: var(--accent-soft);
+}
+
 .identity-editor label {
   color: var(--muted);
   font-size: 12px;

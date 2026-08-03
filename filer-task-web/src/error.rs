@@ -23,6 +23,11 @@ pub enum WebError {
     IdentityRequired,
     InvalidUsername(String),
     UsernameTaken,
+    PairingUnknownUsername,
+    PairingPinWrong,
+    PairingPinExpired,
+    PairingPinConsumed,
+    PairingPinLocked,
     PreconditionRequired(String),
     DuplicateProjectName(String),
     InvalidNewProjectName(String),
@@ -96,6 +101,46 @@ impl IntoResponse for WebError {
                     "username is already in use",
                     "username_taken",
                     Some("username"),
+                );
+            }
+            Self::PairingUnknownUsername => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "no identity uses that username",
+                    "pairing_username_unknown",
+                    Some("username"),
+                );
+            }
+            Self::PairingPinWrong => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "that pairing code does not match the username",
+                    "pairing_pin_wrong",
+                    Some("pin"),
+                );
+            }
+            Self::PairingPinExpired => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "that pairing code has expired, mint a fresh one",
+                    "pairing_pin_expired",
+                    Some("pin"),
+                );
+            }
+            Self::PairingPinConsumed => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "that pairing code was already used",
+                    "pairing_pin_consumed",
+                    Some("pin"),
+                );
+            }
+            Self::PairingPinLocked => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "too many failed pairing attempts, wait a few minutes before trying again",
+                    "pairing_pin_locked",
+                    Some("pin"),
                 );
             }
             Self::PreconditionRequired(message) => {

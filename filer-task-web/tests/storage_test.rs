@@ -11,7 +11,7 @@ async fn nonexistent_path_creates_database_at_current_schema_version() {
     let storage = Storage::open(&path).await.expect("storage opens");
 
     assert!(path.is_file());
-    assert_eq!(storage.schema_version().await.expect("version reads"), 4);
+    assert_eq!(storage.schema_version().await.expect("version reads"), 5);
     storage.close().await;
 }
 
@@ -24,7 +24,7 @@ async fn reopening_migrated_database_is_idempotent() {
 
     let reopened = Storage::open(&path).await.expect("storage reopens");
 
-    assert_eq!(reopened.schema_version().await.expect("version reads"), 4);
+    assert_eq!(reopened.schema_version().await.expect("version reads"), 5);
     reopened.close().await;
 }
 
@@ -41,7 +41,7 @@ async fn preexisting_version_zero_database_migrates_to_current_version() {
 
     let storage = Storage::open(&path).await.expect("storage opens");
 
-    assert_eq!(storage.schema_version().await.expect("version reads"), 4);
+    assert_eq!(storage.schema_version().await.expect("version reads"), 5);
     storage.close().await;
 }
 

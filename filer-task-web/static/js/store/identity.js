@@ -1,5 +1,5 @@
 import { useEffect, useState } from "../../vendor/preact-htm.js";
-import { getIdentity, putIdentity } from "../api/client.js";
+import { getIdentity, pairIdentity as requestPair, putIdentity } from "../api/client.js";
 const state = {
   identity: null,
   loading: true,
@@ -31,6 +31,13 @@ export async function loadIdentity() {
 }
 export async function saveUsername(username) {
   const identity = await putIdentity(username);
+  state.identity = identity;
+  state.error = null;
+  notify();
+  return identity;
+}
+export async function pairIdentity(username, pin) {
+  const identity = await requestPair(username, pin);
   state.identity = identity;
   state.error = null;
   notify();

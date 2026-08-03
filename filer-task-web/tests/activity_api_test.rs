@@ -321,8 +321,7 @@ async fn activity_list_filters_by_task() {
 
     assert_eq!(actions, vec!["task.start", "task.create"]);
     assert!(
-        rows.iter()
-            .all(|row| row["task_id"] == "core:CORE-001"),
+        rows.iter().all(|row| row["task_id"] == "core:CORE-001"),
         "the task filter must exclude every other task"
     );
 }

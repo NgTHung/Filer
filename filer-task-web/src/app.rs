@@ -120,6 +120,11 @@ pub fn router(state: AppState) -> Router {
             "/api/identity",
             get(routes::identity::get_identity).put(routes::identity::put_identity),
         )
+        .route(
+            "/api/identity/pin",
+            post(routes::identity::mint_pairing_pin),
+        )
+        .route("/api/identity/pair", post(routes::identity::pair_identity))
         .route("/api/activity", get(routes::activity::list_activity))
         .route(
             "/api/projects",

@@ -1,12 +1,16 @@
 //! # Identity Storage
 //!
-//! Persists a stable user ID behind an opaque session token. Display names use
-//! a Rust-lowercased key so uniqueness follows the same Unicode behavior as the
+//! Persists a stable user behind many browser sessions. Each session is one
+//! row in `sessions`, so switching browsers no longer loses the identity and
+//! a user can hold several cookies at once. Display names use a
+//! Rust-lowercased key so uniqueness follows the same Unicode behavior as the
 //! request layer without depending on SQLite's ASCII-only `NOCASE` collation.
 
-use sqlx::Row;
+use sqlx::{Row, Sqlite, Transaction};
 
-use super::{Storage, StorageError};
+use super::{Storage, StorageError, unix_now};
+
+const LAST_SEEN_WINDOW_SECONDS: i64 = 5 * 60;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoredIdentity {
@@ -20,17 +24,31 @@ pub struct IdentitySession {
     pub session_token: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedSession {
+    pub identity: StoredIdentity,
+    pub session_id: i64,
+    pub last_seen: i64,
+}
+
 impl Storage {
     pub async fn create_identity(&self, username: &str) -> Result<IdentitySession, StorageError> {
+        let mut transaction =
+            self.pool
+                .begin()
+                .await
+                .map_err(|source| StorageError::Operation {
+                    operation: "begin create identity",
+                    source,
+                })?;
         let row = sqlx::query(
-            "INSERT INTO users (session_token, display_name, name_key) \
-             VALUES (lower(hex(randomblob(32))), ?, ?) \
+            "INSERT INTO users (display_name, name_key) VALUES (?, ?) \
              ON CONFLICT(name_key) DO NOTHING \
-             RETURNING id, session_token, display_name",
+             RETURNING id, display_name",
         )
         .bind(username)
         .bind(username.to_lowercase())
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *transaction)
         .await
         .map_err(|source| StorageError::Operation {
             operation: "create identity",
@@ -40,12 +58,14 @@ impl Storage {
             return Err(StorageError::UsernameTaken);
         };
         let identity = decode_identity(&row, "decode created identity")?;
-        let session_token =
-            row.try_get("session_token")
-                .map_err(|source| StorageError::Operation {
-                    operation: "decode identity session token",
-                    source,
-                })?;
+        let session_token = insert_session(&mut transaction, identity.user_id).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "commit create identity",
+                source,
+            })?;
         Ok(IdentitySession {
             identity,
             session_token,
@@ -55,17 +75,43 @@ impl Storage {
     pub async fn resolve_identity(
         &self,
         session_token: &str,
-    ) -> Result<Option<StoredIdentity>, StorageError> {
-        let row = sqlx::query("SELECT id, display_name FROM users WHERE session_token = ?")
+    ) -> Result<Option<ResolvedSession>, StorageError> {
+        let row = sqlx::query(
+            "SELECT s.id AS session_id, s.last_seen AS last_seen, u.id AS user_id, \
+                    u.display_name \
+             FROM sessions s JOIN users u ON u.id = s.user_id \
+             WHERE s.token = ?",
+        )
+        .bind(session_token)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|source| StorageError::Operation {
+            operation: "resolve identity",
+            source,
+        })?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let mut session = decode_resolved(&row, "decode resolved identity")?;
+        let now = unix_now()?;
+        // The UPDATE is a write transaction in SQLite, so skip it when the row
+        // just read already proves last_seen is fresh.
+        if session.last_seen < now - LAST_SEEN_WINDOW_SECONDS {
+            sqlx::query(
+                "UPDATE sessions SET last_seen = unixepoch() \
+                 WHERE token = ? AND last_seen < unixepoch() - ?",
+            )
             .bind(session_token)
-            .fetch_optional(&self.pool)
+            .bind(LAST_SEEN_WINDOW_SECONDS)
+            .execute(&self.pool)
             .await
             .map_err(|source| StorageError::Operation {
-                operation: "resolve identity",
+                operation: "refresh session last-seen",
                 source,
             })?;
-        row.map(|row| decode_identity(&row, "decode resolved identity"))
-            .transpose()
+            session.last_seen = now;
+        }
+        Ok(Some(session))
     }
 
     pub async fn rename_identity(
@@ -100,6 +146,134 @@ impl Storage {
             }),
         }
     }
+
+    pub async fn mint_recovery_session(
+        &self,
+        username: &str,
+    ) -> Result<IdentitySession, StorageError> {
+        let mut transaction =
+            self.pool
+                .begin()
+                .await
+                .map_err(|source| StorageError::Operation {
+                    operation: "begin recovery session",
+                    source,
+                })?;
+        let existing = find_user(&mut transaction, username).await?;
+        let identity = match existing {
+            Some(identity) => identity,
+            None => {
+                let created = insert_user(&mut transaction, username).await?;
+                match created {
+                    Some(identity) => identity,
+                    // A concurrent insert won the key between the lookup and
+                    // the insert; the recovery path resolves to that identity.
+                    None => find_user(&mut transaction, username).await?.ok_or(
+                        StorageError::InvalidData {
+                            operation: "mint recovery session",
+                            message: "username disappeared during creation".to_string(),
+                        },
+                    )?,
+                }
+            }
+        };
+        let session_token = insert_session(&mut transaction, identity.user_id).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "commit recovery session",
+                source,
+            })?;
+        Ok(IdentitySession {
+            identity,
+            session_token,
+        })
+    }
+
+    pub async fn clear_user_sessions(&self, username: &str) -> Result<usize, StorageError> {
+        let mut transaction =
+            self.pool
+                .begin()
+                .await
+                .map_err(|source| StorageError::Operation {
+                    operation: "begin clear sessions",
+                    source,
+                })?;
+        let Some(identity) = find_user(&mut transaction, username).await? else {
+            return Ok(0);
+        };
+        let result = sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+            .bind(identity.user_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "clear user sessions",
+                source,
+            })?;
+        transaction
+            .commit()
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "commit clear sessions",
+                source,
+            })?;
+        Ok(result.rows_affected() as usize)
+    }
+}
+
+pub(crate) async fn find_user(
+    transaction: &mut Transaction<'_, Sqlite>,
+    username: &str,
+) -> Result<Option<StoredIdentity>, StorageError> {
+    let row = sqlx::query("SELECT id, display_name FROM users WHERE name_key = ?")
+        .bind(username.to_lowercase())
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(|source| StorageError::Operation {
+            operation: "find user",
+            source,
+        })?;
+    row.map(|row| decode_identity(&row, "decode found user"))
+        .transpose()
+}
+
+pub(crate) async fn insert_user(
+    transaction: &mut Transaction<'_, Sqlite>,
+    username: &str,
+) -> Result<Option<StoredIdentity>, StorageError> {
+    let row = sqlx::query(
+        "INSERT INTO users (display_name, name_key) VALUES (?, ?) \
+         ON CONFLICT(name_key) DO NOTHING \
+         RETURNING id, display_name",
+    )
+    .bind(username)
+    .bind(username.to_lowercase())
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(|source| StorageError::Operation {
+        operation: "insert user",
+        source,
+    })?;
+    row.map(|row| decode_identity(&row, "decode inserted user"))
+        .transpose()
+}
+
+pub(crate) async fn insert_session(
+    transaction: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+) -> Result<String, StorageError> {
+    sqlx::query_scalar(
+        "INSERT INTO sessions (user_id, token) VALUES (?, lower(hex(randomblob(32)))) \
+         RETURNING token",
+    )
+    .bind(user_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(|source| StorageError::Operation {
+        operation: "insert session",
+        source,
+    })
 }
 
 fn decode_identity(
@@ -113,4 +287,27 @@ fn decode_identity(
         .try_get("display_name")
         .map_err(|source| StorageError::Operation { operation, source })?;
     Ok(StoredIdentity { user_id, username })
+}
+
+fn decode_resolved(
+    row: &sqlx::sqlite::SqliteRow,
+    operation: &'static str,
+) -> Result<ResolvedSession, StorageError> {
+    let user_id = row
+        .try_get("user_id")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    let username = row
+        .try_get("display_name")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    let session_id = row
+        .try_get("session_id")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    let last_seen = row
+        .try_get("last_seen")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    Ok(ResolvedSession {
+        identity: StoredIdentity { user_id, username },
+        session_id,
+        last_seen,
+    })
 }

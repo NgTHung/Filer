@@ -54,6 +54,16 @@ export function putIdentity(username) {
   return putJson("/api/identity", { username });
 }
 
+// Root-level endpoints, not project-scoped. Minting asks the server for a fresh
+// six-digit pairing code; pairing hands the current identity to this browser.
+export function mintPairingPin() {
+  return postJson("/api/identity/pin");
+}
+
+export function pairIdentity(username, pin) {
+  return postJson("/api/identity/pair", { username, pin });
+}
+
 // Root-level endpoint, not project-scoped.
 export function listProjects() {
   return getJson("/api/projects");

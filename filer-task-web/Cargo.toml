@@ -12,6 +12,7 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tower-http = { version = "0.7", features = ["fs", "set-header"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+rand = "0.9"
 
 [dev-dependencies]
 tempfile = "3.27.0"
