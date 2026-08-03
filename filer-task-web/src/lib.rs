@@ -9,6 +9,7 @@ pub mod app;
 mod dto;
 pub mod error;
 pub mod identity;
+pub mod project_name;
 pub mod registry;
 mod routes;
 pub mod storage;

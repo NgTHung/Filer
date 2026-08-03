@@ -25,6 +25,8 @@ pub enum WebError {
     UsernameTaken,
     PreconditionRequired(String),
     DuplicateProjectName(String),
+    InvalidNewProjectName(String),
+    NameRequiresInit,
     InvalidProjectName(PathBuf),
     NoProjects,
     ProjectNotFound(String),
@@ -127,6 +129,22 @@ impl IntoResponse for WebError {
                     }),
                 )
                     .into_response();
+            }
+            Self::InvalidNewProjectName(name) => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("{name:?} is not a directory name a project can be created under"),
+                    "invalid_project_name",
+                    Some("name"),
+                );
+            }
+            Self::NameRequiresInit => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "a project can only be named while it is being created",
+                    "name_requires_init",
+                    Some("name"),
+                );
             }
             Self::InvalidProjectName(root) => (
                 StatusCode::BAD_REQUEST,

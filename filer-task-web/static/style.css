@@ -361,10 +361,18 @@ th {
   width: 100%;
   display: flex;
   justify-content: space-between;
+  gap: 8px;
+  text-align: left;
   background: transparent;
   border: none;
   padding: 8px 10px;
   border-radius: 6px;
+}
+
+/* A pasted path is long and has no spaces, so it has to break mid-token to
+   stay inside the 320px panel. */
+.switcher-item code {
+  word-break: break-all;
 }
 
 .switcher-item:hover,
@@ -379,6 +387,70 @@ th {
 .switcher-broken {
   color: #d9534f;
   font-size: 12px;
+}
+
+.switcher-create {
+  color: var(--accent);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 120px;
+}
+
+.dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+}
+
+.dialog-title {
+  margin: 0;
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialog-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dialog-panel input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.dialog-panel .muted-note {
+  word-break: break-all;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .filter-menu-trigger {
@@ -900,45 +972,19 @@ th {
   color: var(--muted);
 }
 
-.settings-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 480px;
-}
-
-.settings-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.settings-form input[type="text"],
-.settings-form select {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  padding: 6px 8px;
-}
-
-.settings-form .settings-checkbox,
 .policy-add .settings-checkbox {
   flex-direction: row;
   align-items: center;
   gap: 8px;
 }
 
-.settings-form .settings-checkbox input,
 .policy-add .settings-checkbox input {
   width: 13px;
 }
 
 .settings-actions {
   display: flex;
-  justify-content: flex-end;
+  gap: 8px;
 }
 
 .settings-actions button[disabled] {

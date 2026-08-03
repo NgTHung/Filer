@@ -61,8 +61,10 @@ export function listProjects() {
 
 // Root-level endpoint. The server discovers the project root by walking up from
 // this path, so the registered name is not always the path's last segment.
-export function registerProject(path, init) {
-  return postJson("/api/projects", { path, init });
+// A name is only meaningful while creating: it is the directory the server
+// makes under path, and the name the project is then registered under.
+export function registerProject(path, init, name) {
+  return postJson("/api/projects", { path, init, name });
 }
 
 // Root-level endpoint: project is a query filter, not a path segment.

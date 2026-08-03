@@ -89,6 +89,123 @@ async fn initializes_an_empty_directory_with_the_default_policy() {
 }
 
 #[tokio::test]
+async fn initializes_a_named_directory_created_under_the_given_path() {
+    let host = compatibility_project();
+    let parent = tempfile::tempdir().expect("parent directory created");
+    let app = app(&host).await;
+
+    let (status, summary) = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/projects",
+            json!({"path": parent.path(), "init": true, "name": "new-thing"}),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert_eq!(summary["name"], "new-thing");
+    assert!(parent.path().join("new-thing/.tasks/config.json").is_file());
+}
+
+// A name whose directory is already there is the ordinary case of naming a
+// project you have just made room for, so it initializes in place.
+#[tokio::test]
+async fn initializes_a_named_directory_that_already_exists() {
+    let host = compatibility_project();
+    let parent = tempfile::tempdir().expect("parent directory created");
+    fs::create_dir(parent.path().join("existing")).expect("project directory created");
+    let app = app(&host).await;
+
+    let (status, summary) = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/projects",
+            json!({"path": parent.path(), "init": true, "name": "existing"}),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert_eq!(summary["name"], "existing");
+}
+
+// Naming a project that turns out to be there already is the find half of
+// find-or-create: the caller wanted that project, so it opens instead of
+// refusing.
+#[tokio::test]
+async fn opens_a_named_directory_that_already_holds_a_project() {
+    let host = compatibility_project();
+    let parent = tempfile::tempdir().expect("parent directory created");
+    fs::create_dir_all(parent.path().join("existing/.tasks")).expect("project created");
+    let app = app(&host).await;
+
+    let (status, summary) = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/projects",
+            json!({"path": parent.path(), "init": true, "name": "existing"}),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{summary}");
+    assert_eq!(summary["name"], "existing");
+}
+
+#[tokio::test]
+async fn rejects_a_name_that_is_empty_or_reaches_outside_the_given_path() {
+    let host = compatibility_project();
+    let parent = tempfile::tempdir().expect("parent directory created");
+    let app = app(&host).await;
+
+    for name in ["", "   ", "nested/deep", "nested\\deep", ".", ".."] {
+        let (status, body) = send(
+            &app,
+            json_request(
+                "POST",
+                "/api/projects",
+                json!({"path": parent.path(), "init": true, "name": name}),
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{name:?}: {body}");
+        assert_eq!(body["code"], "invalid_project_name");
+        assert_eq!(body["field"], "name");
+    }
+
+    let entries = fs::read_dir(parent.path()).expect("parent directory read");
+    assert_eq!(entries.count(), 0);
+}
+
+// Naming a project only means something while creating one, so a name sent
+// without init is a mistake worth reporting rather than dropping.
+#[tokio::test]
+async fn rejects_a_name_sent_without_initialization() {
+    let host = compatibility_project();
+    let added = compatibility_project();
+    let app = app(&host).await;
+
+    let (status, body) = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/projects",
+            json!({"path": added.path(), "name": "renamed"}),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["code"], "name_requires_init");
+    assert_eq!(body["field"], "name");
+}
+
+#[tokio::test]
 async fn rejects_a_non_project_path_without_initialization() {
     let host = compatibility_project();
     let standalone = tempfile::tempdir().expect("standalone directory created");

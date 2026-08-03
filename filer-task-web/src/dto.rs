@@ -22,6 +22,9 @@ pub struct RegisterProjectRequest {
     pub path: PathBuf,
     #[serde(default)]
     pub init: bool,
+    // The directory to create under `path`, which becomes the project's name.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

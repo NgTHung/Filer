@@ -1,14 +1,17 @@
 import { html, useEffect, useMemo, useRef, useState } from "../../vendor/preact-htm.js";
-import { ApiError, projectScoped, registerProject } from "../api/client.js";
+import { projectScoped } from "../api/client.js";
 import { Header } from "../components/Header.js";
 import { PolicyDomains } from "../components/PolicyDomains.js";
 import { PolicyTags } from "../components/PolicyTags.js";
 import { PolicyTaskTypes } from "../components/PolicyTaskTypes.js";
-import { ProjectOpenForm } from "../components/ProjectOpenForm.js";
+import { ProjectCreateDialog } from "../components/ProjectCreateDialog.js";
+import { ProjectOpenDialog } from "../components/ProjectOpenDialog.js";
 import { RejectionNotice } from "../components/RejectionNotice.js";
 import { sectionForOperation } from "../lib/policyOps.js";
 import { policyRejection, sectionRejection } from "../lib/policyRejection.js";
-import { loadProjects, setActiveProject } from "../store/project.js";
+import { openProject } from "../lib/projectOpen.js";
+import { fieldError } from "../lib/rejection.js";
+import { loadProjects } from "../store/project.js";
 
 export function SettingsScreen({ projectName }) {
   const api = useMemo(() => (projectName ? projectScoped(projectName) : null), [projectName]);
@@ -16,6 +19,7 @@ export function SettingsScreen({ projectName }) {
   const [rejection, setRejection] = useState(null);
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(null);
+  const [dialog, setDialog] = useState(null);
   // A response that outlives a project switch would repaint this screen with
   // the policy of the project the user has already left.
   const guardRef = useRef({ cancelled: false });
@@ -49,25 +53,22 @@ export function SettingsScreen({ projectName }) {
     };
   }, [projectName]);
 
-  async function open(path, init) {
-    setBusy(true);
-    setRejection(null);
-    try {
-      const summary = await registerProject(path, init);
-      await activate(summary.name);
-      return true;
-    } catch (error) {
-      // A path that resolves to an already-registered project is the "find"
-      // half of find-or-create, so it switches instead of reporting a failure.
-      if (error instanceof ApiError && error.code === "duplicate_project_name" && error.project) {
-        await activate(error.project);
-        return true;
-      }
-      setRejection({ section: "project", ...policyRejection(error) });
-      return false;
-    } finally {
-      setBusy(false);
+  // Both dialogs report their own refusal, so the screen only has to close them
+  // once the project they asked for is the active one.
+  async function open(path) {
+    return dismissOnSuccess(await openProject(path, false), policyRejection);
+  }
+
+  async function create(location, name) {
+    return dismissOnSuccess(await openProject(location, true, name), fieldError);
+  }
+
+  function dismissOnSuccess(result, normalize) {
+    if (result.ok) {
+      setDialog(null);
+      return { ok: true };
     }
+    return { ok: false, rejection: normalize(result.error) };
   }
 
   // The response carries the whole refreshed policy, so an accepted change
@@ -101,12 +102,11 @@ export function SettingsScreen({ projectName }) {
   return html`
     <section class="screen">
       <${Header} title="Settings" onRefresh=${load} />
-      <h3 class="settings-heading">Open a project</h3>
-      <${ProjectOpenForm}
-        onOpen=${open}
-        busy=${busy}
-        rejection=${sectionRejection(rejection, "project")}
-      />
+      <h3 class="settings-heading">Projects</h3>
+      <div class="settings-actions">
+        <button type="button" onClick=${() => setDialog("open")}>Open a project…</button>
+        <button type="button" onClick=${() => setDialog("create")}>Create a project…</button>
+      </div>
       <${RejectionNotice} rejection=${sectionRejection(rejection, "policy")} />
       ${policy
         ? html`
@@ -127,13 +127,12 @@ export function SettingsScreen({ projectName }) {
             <${PolicyTags} policy=${policy} rejection=${rejection} onSubmit=${submit} busy=${busy} />
           `
         : null}
+      ${dialog === "open"
+        ? html`<${ProjectOpenDialog} onOpen=${open} onCancel=${() => setDialog(null)} />`
+        : null}
+      ${dialog === "create"
+        ? html`<${ProjectCreateDialog} onCreate=${create} onCancel=${() => setDialog(null)} />`
+        : null}
     </section>
   `;
-}
-
-// loadProjects only re-picks a default when the active name has disappeared, so
-// the switch to a freshly opened project has to be explicit.
-async function activate(name) {
-  await loadProjects();
-  setActiveProject(name);
 }

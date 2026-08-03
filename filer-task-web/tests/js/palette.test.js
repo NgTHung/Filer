@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { filterProjects, isPaletteShortcut, moveSelection } from "../../static/js/lib/palette.js";
+import {
+  filterProjects,
+  isPaletteShortcut,
+  moveSelection,
+  paletteRows,
+} from "../../static/js/lib/palette.js";
 
 const PROJECTS = [
   { name: "filer", broken: false },
@@ -42,6 +47,23 @@ test("selection stays at zero when there is nothing to select", () => {
 
 test("a selection past the end of a shrunken list comes back in range", () => {
   assert.equal(moveSelection(9, 1, 3), 0);
+});
+
+test("rows are the matching projects while the query still matches something", () => {
+  assert.deepEqual(paletteRows(PROJECTS, "box"), [{ kind: "project", project: PROJECTS[2] }]);
+});
+
+test("a query matching nothing offers creating a project under that name", () => {
+  assert.deepEqual(paletteRows(PROJECTS, "new-thing"), [{ kind: "create", name: "new-thing" }]);
+});
+
+test("the create row uses the trimmed query as the proposed name", () => {
+  assert.deepEqual(paletteRows(PROJECTS, "  new-thing  "), [{ kind: "create", name: "new-thing" }]);
+});
+
+test("an empty query never offers a create row, even with no projects registered", () => {
+  assert.deepEqual(paletteRows([], ""), []);
+  assert.deepEqual(paletteRows([], "   "), []);
 });
 
 test("the shortcut is cmd-K or ctrl-K and nothing else", () => {
