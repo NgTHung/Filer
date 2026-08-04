@@ -1,7 +1,7 @@
 ---
 id: "WEB-031"
 title: "List and revoke active browser sessions"
-status: "To Do"
+status: In Progress
 priority: "Medium"
 type: "Feature"
 parent: "WEB-014"
@@ -9,7 +9,7 @@ depends_on: ["WEB-030"]
 risk: "Low"
 impact: "Gives each person visibility and control over which browsers hold their identity, and a way to cut off a browser they no longer have."
 tags: ["web", "sessions", "state"]
-last_updated: "2026-08-03"
+last_updated: 2026-08-04
 ---
 
 ## Summary
