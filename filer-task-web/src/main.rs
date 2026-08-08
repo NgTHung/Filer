@@ -82,7 +82,9 @@ async fn session_mint(
     database: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let storage = Storage::open(database).await?;
-    let session = storage.mint_recovery_session(username).await?;
+    let session = storage
+        .mint_recovery_session(username, filer_task_web::device_label::RECOVERY_CLI_LABEL)
+        .await?;
     println!("{}", session.session_token);
     eprintln!("minted a fresh session for {}", session.identity.username);
     Ok(())

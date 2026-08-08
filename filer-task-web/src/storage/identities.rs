@@ -31,8 +31,20 @@ pub struct ResolvedSession {
     pub last_seen: i64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionSummary {
+    pub session_id: i64,
+    pub device_label: String,
+    pub created_at: i64,
+    pub last_seen: i64,
+}
+
 impl Storage {
-    pub async fn create_identity(&self, username: &str) -> Result<IdentitySession, StorageError> {
+    pub async fn create_identity(
+        &self,
+        username: &str,
+        device_label: &str,
+    ) -> Result<IdentitySession, StorageError> {
         let mut transaction =
             self.pool
                 .begin()
@@ -58,7 +70,8 @@ impl Storage {
             return Err(StorageError::UsernameTaken);
         };
         let identity = decode_identity(&row, "decode created identity")?;
-        let session_token = insert_session(&mut transaction, identity.user_id).await?;
+        let session_token =
+            insert_session(&mut transaction, identity.user_id, device_label).await?;
         transaction
             .commit()
             .await
@@ -150,6 +163,7 @@ impl Storage {
     pub async fn mint_recovery_session(
         &self,
         username: &str,
+        device_label: &str,
     ) -> Result<IdentitySession, StorageError> {
         let mut transaction =
             self.pool
@@ -177,7 +191,8 @@ impl Storage {
                 }
             }
         };
-        let session_token = insert_session(&mut transaction, identity.user_id).await?;
+        let session_token =
+            insert_session(&mut transaction, identity.user_id, device_label).await?;
         transaction
             .commit()
             .await
@@ -219,6 +234,40 @@ impl Storage {
                 source,
             })?;
         Ok(result.rows_affected() as usize)
+    }
+
+    pub async fn list_sessions(&self, user_id: i64) -> Result<Vec<SessionSummary>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT id, device_label, created_at, last_seen \
+             FROM sessions WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|source| StorageError::Operation {
+            operation: "list sessions",
+            source,
+        })?;
+        rows.iter()
+            .map(|row| decode_session_summary(row, "decode listed session"))
+            .collect()
+    }
+
+    pub async fn revoke_session(
+        &self,
+        user_id: i64,
+        session_id: i64,
+    ) -> Result<bool, StorageError> {
+        let result = sqlx::query("DELETE FROM sessions WHERE id = ? AND user_id = ?")
+            .bind(session_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "revoke session",
+                source,
+            })?;
+        Ok(result.rows_affected() > 0)
     }
 }
 
@@ -262,12 +311,15 @@ pub(crate) async fn insert_user(
 pub(crate) async fn insert_session(
     transaction: &mut Transaction<'_, Sqlite>,
     user_id: i64,
+    device_label: &str,
 ) -> Result<String, StorageError> {
     sqlx::query_scalar(
-        "INSERT INTO sessions (user_id, token) VALUES (?, lower(hex(randomblob(32)))) \
+        "INSERT INTO sessions (user_id, token, device_label) \
+         VALUES (?, lower(hex(randomblob(32))), ?) \
          RETURNING token",
     )
     .bind(user_id)
+    .bind(device_label)
     .fetch_one(&mut **transaction)
     .await
     .map_err(|source| StorageError::Operation {
@@ -287,6 +339,30 @@ fn decode_identity(
         .try_get("display_name")
         .map_err(|source| StorageError::Operation { operation, source })?;
     Ok(StoredIdentity { user_id, username })
+}
+
+fn decode_session_summary(
+    row: &sqlx::sqlite::SqliteRow,
+    operation: &'static str,
+) -> Result<SessionSummary, StorageError> {
+    let session_id = row
+        .try_get("id")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    let device_label = row
+        .try_get("device_label")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    let created_at = row
+        .try_get("created_at")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    let last_seen = row
+        .try_get("last_seen")
+        .map_err(|source| StorageError::Operation { operation, source })?;
+    Ok(SessionSummary {
+        session_id,
+        device_label,
+        created_at,
+        last_seen,
+    })
 }
 
 fn decode_resolved(

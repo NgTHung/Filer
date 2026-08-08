@@ -9,7 +9,10 @@
 use axum::{
     Json,
     extract::State,
-    http::{HeaderMap, HeaderValue, header::SET_COOKIE},
+    http::{
+        HeaderMap, HeaderValue,
+        header::{SET_COOKIE, USER_AGENT},
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -57,9 +60,10 @@ pub(crate) async fn put_identity(
 ) -> Result<(HeaderMap, Json<IdentityResponse>), WebError> {
     let username = validate_username(&request.username)?;
     let existing = resolve_optional(&headers, &state).await?;
+    let device_label = device_label_from(&headers);
     let (identity, token) = match existing {
-        Some(actor) => rename_or_recover(&state, &headers, actor, &username).await?,
-        None => create(&state, &username).await?,
+        Some(actor) => rename_or_recover(&state, &headers, actor, &username, &device_label).await?,
+        None => create(&state, &username, &device_label).await?,
     };
     let mut response_headers = HeaderMap::new();
     response_headers.insert(SET_COOKIE, identity_cookie(&token)?);
@@ -87,11 +91,16 @@ pub(crate) async fn mint_pairing_pin(
 
 pub(crate) async fn pair_identity(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<PairRequest>,
 ) -> Result<(HeaderMap, Json<IdentityResponse>), WebError> {
     let username = validate_username(&request.username)?;
     let pin = validate_pin(&request.pin)?;
-    let outcome = state.storage().redeem_pairing_pin(&username, &pin).await?;
+    let device_label = device_label_from(&headers);
+    let outcome = state
+        .storage()
+        .redeem_pairing_pin(&username, &pin, &device_label)
+        .await?;
     let session = match outcome {
         RedeemOutcome::Session(session) => session,
         RedeemOutcome::UnknownUsername => return Err(WebError::PairingUnknownUsername),
@@ -115,6 +124,7 @@ async fn rename_or_recover(
     headers: &HeaderMap,
     actor: Actor,
     username: &str,
+    device_label: &str,
 ) -> Result<(StoredIdentity, String), WebError> {
     match state
         .storage()
@@ -126,17 +136,32 @@ async fn rename_or_recover(
                 .ok_or_else(|| WebError::Internal("resolved identity had no cookie".to_string()))?;
             Ok((identity, token.to_string()))
         }
-        Err(StorageError::IdentityNotFound(_)) => create(state, username).await,
+        Err(StorageError::IdentityNotFound(_)) => create(state, username, device_label).await,
         Err(error) => Err(error.into()),
     }
 }
 
-async fn create(state: &AppState, username: &str) -> Result<(StoredIdentity, String), WebError> {
+async fn create(
+    state: &AppState,
+    username: &str,
+    device_label: &str,
+) -> Result<(StoredIdentity, String), WebError> {
     let IdentitySession {
         identity,
         session_token,
-    } = state.storage().create_identity(username).await?;
+    } = state
+        .storage()
+        .create_identity(username, device_label)
+        .await?;
     Ok((identity, session_token))
+}
+
+fn device_label_from(headers: &HeaderMap) -> String {
+    crate::device_label::from_user_agent(
+        headers
+            .get(USER_AGENT)
+            .and_then(|value| value.to_str().ok()),
+    )
 }
 
 fn validate_username(value: &str) -> Result<String, WebError> {

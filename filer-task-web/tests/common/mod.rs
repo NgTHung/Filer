@@ -15,7 +15,7 @@ pub async fn authenticated_router(state: AppState) -> Router {
     let username = format!("Test User {}", NEXT_USER.fetch_add(1, Ordering::Relaxed));
     let session = state
         .storage()
-        .create_identity(&username)
+        .create_identity(&username, "Test browser")
         .await
         .expect("test identity creates");
     let cookie = HeaderValue::from_str(&format!("{IDENTITY_COOKIE}={}", session.session_token))

@@ -109,6 +109,7 @@ impl Storage {
         &self,
         username: &str,
         pin: &str,
+        device_label: &str,
     ) -> Result<RedeemOutcome, StorageError> {
         let user = sqlx::query("SELECT id, display_name FROM users WHERE name_key = ?")
             .bind(username.to_lowercase())
@@ -194,7 +195,8 @@ impl Storage {
                 })?;
             return Ok(RedeemOutcome::Consumed);
         }
-        let session_token = insert_session(&mut transaction, identity.user_id).await?;
+        let session_token =
+            insert_session(&mut transaction, identity.user_id, device_label).await?;
         sqlx::query("DELETE FROM pairing_attempts WHERE user_id = ?")
             .bind(identity.user_id)
             .execute(&mut *transaction)

@@ -3,7 +3,10 @@ use std::{fs, path::Path, time::UNIX_EPOCH};
 use sqlx::{Connection, SqliteConnection, migrate::Migrator, sqlite::SqliteConnectOptions};
 use tempfile::TempDir;
 
-use filer_task_web::storage::{RedeemOutcome, Storage};
+use filer_task_web::{
+    device_label::FALLBACK_LABEL,
+    storage::{RedeemOutcome, Storage},
+};
 
 #[tokio::test]
 async fn sessions_are_many_per_user_and_resolve_alongside_identity() {
@@ -12,11 +15,11 @@ async fn sessions_are_many_per_user_and_resolve_alongside_identity() {
         .await
         .expect("storage opens");
     let first = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let second = storage
-        .mint_recovery_session("Alice")
+        .mint_recovery_session("Alice", "Recovery CLI")
         .await
         .expect("recovery session mints");
 
@@ -45,7 +48,7 @@ async fn resolve_identity_advances_last_seen_at_most_once_every_five_minutes() {
     let db = temp.path().join("state.sqlite3");
     let storage = Storage::open(&db).await.expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
 
@@ -78,11 +81,11 @@ async fn renaming_a_user_is_seen_by_every_session() {
         .await
         .expect("storage opens");
     let first = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let second = storage
-        .mint_recovery_session("Alice")
+        .mint_recovery_session("Alice", "Recovery CLI")
         .await
         .expect("recovery session mints");
 
@@ -109,7 +112,7 @@ async fn pre_migration_identity_cookie_becomes_a_session_row() {
     stage_schema_four(&temp, &db).await;
 
     let storage = Storage::open(&db).await.expect("storage migrates");
-    assert_eq!(storage.schema_version().await.expect("version reads"), 5);
+    assert_eq!(storage.schema_version().await.expect("version reads"), 6);
 
     let cookie = "a".repeat(64);
     let resolved = storage
@@ -118,6 +121,13 @@ async fn pre_migration_identity_cookie_becomes_a_session_row() {
         .expect("old cookie lookup succeeds")
         .expect("old cookie keeps working");
     assert_eq!(resolved.identity.username, "Alice");
+
+    let listed = storage
+        .list_sessions(resolved.identity.user_id)
+        .await
+        .expect("legacy session lists");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].device_label, FALLBACK_LABEL);
 
     let mut connection = sqlite_connection(&db).await;
     let session_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
@@ -143,7 +153,7 @@ async fn pairing_pin_mints_six_digits_and_the_newest_mint_replaces_the_live_one(
         .await
         .expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let session_id = storage
@@ -166,11 +176,15 @@ async fn pairing_pin_mints_six_digits_and_the_newest_mint_replaces_the_live_one(
         .await
         .expect("replacement pin mints");
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &first.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &first.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::WrongPin)
     ));
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &second.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &second.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Session(_))
     ));
     storage.close().await;
@@ -182,7 +196,7 @@ async fn expired_pairing_pin_is_rejected() {
     let db = temp.path().join("state.sqlite3");
     let storage = Storage::open(&db).await.expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let session_id = storage
@@ -205,7 +219,9 @@ async fn expired_pairing_pin_is_rejected() {
     connection.close().await.expect("connection closes");
 
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &pin.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &pin.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Expired)
     ));
     storage.close().await;
@@ -218,7 +234,7 @@ async fn pairing_pin_is_consumed_by_its_first_successful_redemption() {
         .await
         .expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let session_id = storage
@@ -232,7 +248,10 @@ async fn pairing_pin_is_consumed_by_its_first_successful_redemption() {
         .await
         .expect("pin mints");
 
-    match storage.redeem_pairing_pin("Alice", &pin.pin).await {
+    match storage
+        .redeem_pairing_pin("Alice", &pin.pin, "Pairing browser")
+        .await
+    {
         Ok(RedeemOutcome::Session(session)) => {
             assert_eq!(session.identity.user_id, created.identity.user_id);
             assert_eq!(session.session_token.len(), 64);
@@ -241,7 +260,9 @@ async fn pairing_pin_is_consumed_by_its_first_successful_redemption() {
         other => panic!("first redemption must succeed, got {other:?}"),
     }
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &pin.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &pin.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Consumed)
     ));
     storage.close().await;
@@ -254,11 +275,11 @@ async fn wrong_pairing_pins_are_rejected_with_a_distinct_outcome() {
         .await
         .expect("storage opens");
     let alice = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     storage
-        .create_identity("Bob")
+        .create_identity("Bob", "Test browser")
         .await
         .expect("identity creates");
     let alice_session = storage
@@ -278,15 +299,21 @@ async fn wrong_pairing_pins_are_rejected_with_a_distinct_outcome() {
         "000000"
     };
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", unknown).await,
+        storage
+            .redeem_pairing_pin("Alice", unknown, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::WrongPin)
     ));
     assert!(matches!(
-        storage.redeem_pairing_pin("Bob", &pin.pin).await,
+        storage
+            .redeem_pairing_pin("Bob", &pin.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::WrongPin)
     ));
     assert!(matches!(
-        storage.redeem_pairing_pin("Carol", &pin.pin).await,
+        storage
+            .redeem_pairing_pin("Carol", &pin.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::UnknownUsername)
     ));
     storage.close().await;
@@ -299,11 +326,11 @@ async fn pairing_pin_is_invalidated_after_five_failed_attempts_and_re_minting_re
         .await
         .expect("storage opens");
     let alice = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     storage
-        .create_identity("Bob")
+        .create_identity("Bob", "Test browser")
         .await
         .expect("identity creates");
     let session_id = storage
@@ -319,12 +346,16 @@ async fn pairing_pin_is_invalidated_after_five_failed_attempts_and_re_minting_re
 
     for _ in 0..5 {
         assert!(matches!(
-            storage.redeem_pairing_pin("Bob", &pin.pin).await,
+            storage
+                .redeem_pairing_pin("Bob", &pin.pin, "Pairing browser")
+                .await,
             Ok(RedeemOutcome::WrongPin)
         ));
     }
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &pin.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &pin.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Locked)
     ));
 
@@ -333,7 +364,9 @@ async fn pairing_pin_is_invalidated_after_five_failed_attempts_and_re_minting_re
         .await
         .expect("replacement pin mints");
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &fresh.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &fresh.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Session(_))
     ));
     storage.close().await;
@@ -346,14 +379,14 @@ async fn recovery_mint_creates_a_missing_user_and_adds_sessions_to_an_existing_o
         .await
         .expect("storage opens");
     let first = storage
-        .mint_recovery_session("Carol")
+        .mint_recovery_session("Carol", "Recovery CLI")
         .await
         .expect("recovery mint creates the user");
     assert_eq!(first.identity.username, "Carol");
     assert_eq!(first.session_token.len(), 64);
 
     let second = storage
-        .mint_recovery_session("Carol")
+        .mint_recovery_session("Carol", "Recovery CLI")
         .await
         .expect("recovery mint adds a session");
     let first_resolved = storage
@@ -381,11 +414,11 @@ async fn clearing_a_users_sessions_revokes_every_cookie_and_missing_users_clear_
         .await
         .expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     storage
-        .mint_recovery_session("Alice")
+        .mint_recovery_session("Alice", "Recovery CLI")
         .await
         .expect("second session mints");
 
@@ -411,7 +444,7 @@ async fn clearing_a_users_sessions_revokes_every_cookie_and_missing_users_clear_
         0
     );
     let recovery = storage
-        .mint_recovery_session("Alice")
+        .mint_recovery_session("Alice", "Recovery CLI")
         .await
         .expect("the identity can still gain a fresh session");
     assert_eq!(recovery.identity.user_id, created.identity.user_id);
@@ -425,7 +458,7 @@ async fn concurrent_redemptions_of_the_same_pin_yield_exactly_one_session() {
         .await
         .expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let session_id = storage
@@ -440,8 +473,8 @@ async fn concurrent_redemptions_of_the_same_pin_yield_exactly_one_session() {
         .expect("pin mints");
 
     let (first, second) = tokio::join!(
-        storage.redeem_pairing_pin("Alice", &pin.pin),
-        storage.redeem_pairing_pin("Alice", &pin.pin),
+        storage.redeem_pairing_pin("Alice", &pin.pin, "Pairing browser"),
+        storage.redeem_pairing_pin("Alice", &pin.pin, "Pairing browser"),
     );
     let outcomes = [first, second];
     let sessions = outcomes
@@ -464,7 +497,7 @@ async fn guessing_nonexistent_pins_locks_the_username_and_a_correct_pin_resets_i
         .await
         .expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let session_id = storage
@@ -480,21 +513,29 @@ async fn guessing_nonexistent_pins_locks_the_username_and_a_correct_pin_resets_i
 
     for _ in 0..5 {
         assert!(matches!(
-            storage.redeem_pairing_pin("Alice", "000000").await,
+            storage
+                .redeem_pairing_pin("Alice", "000000", "Pairing browser")
+                .await,
             Ok(RedeemOutcome::WrongPin)
         ));
     }
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", "111111").await,
+        storage
+            .redeem_pairing_pin("Alice", "111111", "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Locked)
     ));
 
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &pin.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &pin.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Session(_))
     ));
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", "222222").await,
+        storage
+            .redeem_pairing_pin("Alice", "222222", "Pairing browser")
+            .await,
         Ok(RedeemOutcome::WrongPin)
     ));
     storage.close().await;
@@ -506,7 +547,7 @@ async fn minting_purges_consumed_and_expired_pins() {
     let db = temp.path().join("state.sqlite3");
     let storage = Storage::open(&db).await.expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     let session_id = storage
@@ -521,7 +562,9 @@ async fn minting_purges_consumed_and_expired_pins() {
         .await
         .expect("pin mints");
     assert!(matches!(
-        storage.redeem_pairing_pin("Alice", &consumed.pin).await,
+        storage
+            .redeem_pairing_pin("Alice", &consumed.pin, "Pairing browser")
+            .await,
         Ok(RedeemOutcome::Session(_))
     ));
 
@@ -553,6 +596,183 @@ async fn minting_purges_consumed_and_expired_pins() {
     assert_eq!(
         dead_rows, 0,
         "consumed and expired pins are purged on the next mint"
+    );
+    storage.close().await;
+}
+
+#[tokio::test]
+async fn list_sessions_returns_only_the_users_own_sessions_newest_first() {
+    let temp = tempfile::tempdir().expect("temp dir created");
+    let storage = Storage::open(temp.path().join("state.sqlite3"))
+        .await
+        .expect("storage opens");
+    let alice_first = storage
+        .create_identity("Alice", "Alice browser")
+        .await
+        .expect("identity creates");
+    let alice_second = storage
+        .mint_recovery_session("Alice", "Recovery CLI")
+        .await
+        .expect("recovery session mints");
+    let bob = storage
+        .create_identity("Bob", "Bob browser")
+        .await
+        .expect("identity creates");
+
+    let alice_first_resolved = storage
+        .resolve_identity(&alice_first.session_token)
+        .await
+        .expect("first session resolves")
+        .expect("first session exists");
+    let alice_second_resolved = storage
+        .resolve_identity(&alice_second.session_token)
+        .await
+        .expect("second session resolves")
+        .expect("second session exists");
+    let sessions = storage
+        .list_sessions(alice_first.identity.user_id)
+        .await
+        .expect("sessions list");
+
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions[0].session_id, alice_second_resolved.session_id);
+    assert_eq!(sessions[0].device_label, "Recovery CLI");
+    assert_eq!(sessions[1].session_id, alice_first_resolved.session_id);
+    assert_eq!(sessions[1].device_label, "Alice browser");
+    assert!(sessions[0].created_at >= sessions[1].created_at);
+    assert!(sessions[0].last_seen >= sessions[1].last_seen);
+    assert_ne!(
+        sessions[0].session_id,
+        storage
+            .resolve_identity(&bob.session_token)
+            .await
+            .expect("Bob session resolves")
+            .expect("Bob session exists")
+            .session_id
+    );
+    storage.close().await;
+}
+
+#[tokio::test]
+async fn revoke_session_deletes_only_that_session_and_its_pins() {
+    let temp = tempfile::tempdir().expect("temp dir created");
+    let db = temp.path().join("state.sqlite3");
+    let storage = Storage::open(&db).await.expect("storage opens");
+    let browser_a = storage
+        .create_identity("Alice", "Browser A")
+        .await
+        .expect("identity creates");
+    let browser_b = storage
+        .mint_recovery_session("Alice", "Browser B")
+        .await
+        .expect("recovery session mints");
+    let session_a = storage
+        .resolve_identity(&browser_a.session_token)
+        .await
+        .expect("session A resolves")
+        .expect("session A exists");
+    let session_b = storage
+        .resolve_identity(&browser_b.session_token)
+        .await
+        .expect("session B resolves")
+        .expect("session B exists");
+    let pin = storage
+        .mint_pairing_pin(session_a.identity.user_id, session_a.session_id)
+        .await
+        .expect("pin mints");
+
+    assert!(
+        storage
+            .revoke_session(session_a.identity.user_id, session_a.session_id)
+            .await
+            .expect("session revokes")
+    );
+    assert!(
+        storage
+            .resolve_identity(&browser_a.session_token)
+            .await
+            .expect("revoked session lookup succeeds")
+            .is_none()
+    );
+    assert_eq!(
+        storage
+            .resolve_identity(&browser_b.session_token)
+            .await
+            .expect("remaining session lookup succeeds")
+            .expect("remaining session exists")
+            .session_id,
+        session_b.session_id
+    );
+    assert!(matches!(
+        storage
+            .redeem_pairing_pin("Alice", &pin.pin, "Pairing browser")
+            .await,
+        Ok(RedeemOutcome::WrongPin)
+    ));
+
+    let mut connection = sqlite_connection(&db).await;
+    let pin_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM pairing_pins WHERE session_id = ?")
+            .bind(session_a.session_id)
+            .fetch_one(&mut connection)
+            .await
+            .expect("pin count reads");
+    assert_eq!(pin_rows, 0);
+    connection.close().await.expect("connection closes");
+    storage.close().await;
+}
+
+#[tokio::test]
+async fn revoke_session_on_a_foreign_or_missing_session_returns_false() {
+    let temp = tempfile::tempdir().expect("temp dir created");
+    let storage = Storage::open(temp.path().join("state.sqlite3"))
+        .await
+        .expect("storage opens");
+    let alice = storage
+        .create_identity("Alice", "Alice browser")
+        .await
+        .expect("identity creates");
+    let bob = storage
+        .create_identity("Bob", "Bob browser")
+        .await
+        .expect("identity creates");
+    let alice_session = storage
+        .resolve_identity(&alice.session_token)
+        .await
+        .expect("Alice session resolves")
+        .expect("Alice session exists");
+    let bob_session = storage
+        .resolve_identity(&bob.session_token)
+        .await
+        .expect("Bob session resolves")
+        .expect("Bob session exists");
+
+    assert!(
+        !storage
+            .revoke_session(alice_session.identity.user_id, bob_session.session_id)
+            .await
+            .expect("foreign session revoke checks")
+    );
+    assert!(
+        !storage
+            .revoke_session(alice_session.identity.user_id, -1)
+            .await
+            .expect("missing session revoke checks")
+    );
+    assert_eq!(
+        storage
+            .list_sessions(alice_session.identity.user_id)
+            .await
+            .expect("Alice sessions list")
+            .len(),
+        1
+    );
+    assert!(
+        storage
+            .resolve_identity(&bob.session_token)
+            .await
+            .expect("Bob session remains resolvable")
+            .is_some()
     );
     storage.close().await;
 }

@@ -12,7 +12,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let storage = Storage::open(directory.path().join("state.sqlite3")).await?;
-//! assert_eq!(storage.schema_version().await?, 5);
+//! assert_eq!(storage.schema_version().await?, 6);
 //! storage.close().await;
 //! # Ok(())
 //! # }
@@ -37,7 +37,7 @@ mod pairing;
 mod projects;
 
 pub use activity::{ActivityFilter, ActivityRecord, NewActivity};
-pub use identities::{IdentitySession, ResolvedSession, StoredIdentity};
+pub use identities::{IdentitySession, ResolvedSession, SessionSummary, StoredIdentity};
 pub use pairing::{PairingPin, RedeemOutcome};
 pub use projects::ProjectRegistration;
 

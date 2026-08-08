@@ -6,17 +6,17 @@ async fn identities_are_unique_stable_resolvable_and_persistent() {
     let path = temp.path().join("state.sqlite3");
     let storage = Storage::open(&path).await.expect("storage opens");
     let created = storage
-        .create_identity("Alice")
+        .create_identity("Alice", "Test browser")
         .await
         .expect("identity creates");
     assert_eq!(created.identity.username, "Alice");
     assert_eq!(created.session_token.len(), 64);
     storage
-        .create_identity("Straße")
+        .create_identity("Straße", "Test browser")
         .await
         .expect("second identity creates");
     assert!(matches!(
-        storage.create_identity("STRAßE").await,
+        storage.create_identity("STRAßE", "Test browser").await,
         Err(StorageError::UsernameTaken)
     ));
 

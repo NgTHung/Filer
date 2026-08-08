@@ -6,6 +6,7 @@
 //! through `filer-task`, so validation and file layout stay authoritative here.
 
 pub mod app;
+pub mod device_label;
 mod dto;
 pub mod error;
 pub mod identity;
