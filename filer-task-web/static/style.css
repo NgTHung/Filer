@@ -1095,3 +1095,50 @@ th {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.session-label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+}
+
+.session-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.session-current {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.session-revoke {
+  color: var(--danger-text);
+}
+
+.session-revoke[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

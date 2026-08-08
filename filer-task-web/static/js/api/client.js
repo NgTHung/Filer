@@ -54,6 +54,16 @@ export function putIdentity(username) {
   return putJson("/api/identity", { username });
 }
 
+// Root-level endpoints, not project-scoped. Sessions belong to the identity,
+// not to one project, and the settings screen works without a project.
+export function listSessions() {
+  return getJson("/api/sessions");
+}
+
+export function revokeSession(id) {
+  return request("DELETE", `/api/sessions/${id}`);
+}
+
 // Root-level endpoints, not project-scoped. Minting asks the server for a fresh
 // six-digit pairing code; pairing hands the current identity to this browser.
 export function mintPairingPin() {

@@ -1,5 +1,5 @@
 import { html, useEffect, useMemo, useRef, useState } from "../../vendor/preact-htm.js";
-import { projectScoped } from "../api/client.js";
+import { listSessions, projectScoped } from "../api/client.js";
 import { Header } from "../components/Header.js";
 import { PolicyDomains } from "../components/PolicyDomains.js";
 import { PolicyTags } from "../components/PolicyTags.js";
@@ -7,6 +7,7 @@ import { PolicyTaskTypes } from "../components/PolicyTaskTypes.js";
 import { ProjectCreateDialog } from "../components/ProjectCreateDialog.js";
 import { ProjectOpenDialog } from "../components/ProjectOpenDialog.js";
 import { RejectionNotice } from "../components/RejectionNotice.js";
+import { SessionList } from "../components/SessionList.js";
 import { sectionForOperation } from "../lib/policyOps.js";
 import { policyRejection, sectionRejection } from "../lib/policyRejection.js";
 import { openProject } from "../lib/projectOpen.js";
@@ -18,6 +19,9 @@ export function SettingsScreen({ projectName }) {
   const [policy, setPolicy] = useState(null);
   const [rejection, setRejection] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [sessionsError, setSessionsError] = useState(null);
+  const [sessionBusy, setSessionBusy] = useState(false);
   const [armed, setArmed] = useState(null);
   const [dialog, setDialog] = useState(null);
   // A response that outlives a project switch would repaint this screen with
@@ -43,11 +47,36 @@ export function SettingsScreen({ projectName }) {
     }
   }
 
+  async function loadSessions(guard = guardRef.current) {
+    setSessionBusy(true);
+    try {
+      const response = await listSessions();
+      if (!guard.cancelled) {
+        setSessions(response.sessions);
+        setSessionsError(null);
+      }
+    } catch (error) {
+      if (!guard.cancelled) {
+        setSessions([]);
+        setSessionsError(error);
+      }
+    } finally {
+      if (!guard.cancelled) {
+        setSessionBusy(false);
+      }
+    }
+  }
+
+  async function refresh() {
+    await Promise.all([load(), loadSessions()]);
+  }
+
   useEffect(() => {
     const guard = { cancelled: false };
     guardRef.current = guard;
     setArmed(null);
     load(guard);
+    loadSessions(guard);
     return () => {
       guard.cancelled = true;
     };
@@ -101,7 +130,7 @@ export function SettingsScreen({ projectName }) {
 
   return html`
     <section class="screen">
-      <${Header} title="Settings" onRefresh=${load} />
+      <${Header} title="Settings" onRefresh=${refresh} />
       <h3 class="settings-heading">Projects</h3>
       <div class="settings-actions">
         <button type="button" onClick=${() => setDialog("open")}>Open a project…</button>
@@ -127,6 +156,13 @@ export function SettingsScreen({ projectName }) {
             <${PolicyTags} policy=${policy} rejection=${rejection} onSubmit=${submit} busy=${busy} />
           `
         : null}
+      <h3 class="settings-heading">Active sessions</h3>
+      <${SessionList}
+        sessions=${sessions}
+        error=${sessionsError}
+        busy=${sessionBusy}
+        onRevoked=${loadSessions}
+      />
       ${dialog === "open"
         ? html`<${ProjectOpenDialog} onOpen=${open} onCancel=${() => setDialog(null)} />`
         : null}
