@@ -9,7 +9,6 @@ mod rename_tests {
         let session = SessionId::new();
 
         let src_path = PathBuf::from("/home/user/old_name.txt");
-        let _src_id = register(&registry, &src_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
@@ -17,7 +16,7 @@ mod rename_tests {
             .send(OpsCommand::Rename {
                 source: local_ref(&src_path),
                 new_name: "new_name.txt".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -27,13 +26,13 @@ mod rename_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Rename));
                 assert!(success);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         let renames = provider.get_rename_calls();
@@ -53,7 +52,6 @@ mod rename_tests {
         let session = SessionId::new();
 
         let src_path = PathBuf::from("/home/user/old_dir");
-        let _src_id = register(&registry, &src_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
@@ -61,7 +59,7 @@ mod rename_tests {
             .send(OpsCommand::Rename {
                 source: local_ref(&src_path),
                 new_name: "new_dir".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -71,13 +69,13 @@ mod rename_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Rename));
                 assert!(success);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         let renames = provider.get_rename_calls();
@@ -91,7 +89,6 @@ mod rename_tests {
         let session = SessionId::new();
 
         let src_path = PathBuf::from("/home/user/file_a.txt");
-        let _src_id = register(&registry, &src_path);
 
         let collision_path = PathBuf::from("/home/user/file_b.txt");
         provider.add_existing(&collision_path);
@@ -104,7 +101,7 @@ mod rename_tests {
             .send(OpsCommand::Rename {
                 source: local_ref(&src_path),
                 new_name: "file_b.txt".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: request_id,
                 operation: operation_id,

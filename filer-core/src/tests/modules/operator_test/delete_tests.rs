@@ -9,7 +9,6 @@ mod delete_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/old.txt");
-        let _node_id = register(&registry, &path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
@@ -17,7 +16,7 @@ mod delete_tests {
             .send(OpsCommand::Delete {
                 targets: vec![local_ref(&path)],
                 trash: false,
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -27,7 +26,7 @@ mod delete_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation,
                 success,
                 affected,
@@ -39,7 +38,7 @@ mod delete_tests {
                 assert_eq!(affected.len(), 1);
                 assert_eq!(s, session);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         let deletes = provider.get_delete_calls();
@@ -54,7 +53,6 @@ mod delete_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/old.txt");
-        let _node_id = register(&registry, &path);
 
         let (trash_fn, trash_calls) = tracking_trash_fn();
         let (cmd_tx, evt_rx) = spawn_operator_with_trash(provider.clone(), registry, trash_fn);
@@ -63,7 +61,7 @@ mod delete_tests {
             .send(OpsCommand::Delete {
                 targets: vec![local_ref(&path)],
                 trash: true,
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -73,13 +71,13 @@ mod delete_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Delete));
                 assert!(success);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         // Should have called trash_fn, not provider.delete()
@@ -103,9 +101,6 @@ mod delete_tests {
         let p2 = PathBuf::from("/home/user/b.txt");
         let p3 = PathBuf::from("/home/user/c.txt");
 
-        let _id1 = register(&registry, &p1);
-        let _id2 = register(&registry, &p2);
-        let _id3 = register(&registry, &p3);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
@@ -113,7 +108,7 @@ mod delete_tests {
             .send(OpsCommand::Delete {
                 targets: vec![local_ref(&p1), local_ref(&p2), local_ref(&p3)],
                 trash: false,
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -123,13 +118,13 @@ mod delete_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 success, affected, ..
             } => {
                 assert!(success);
                 assert_eq!(affected.len(), 3);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         assert_eq!(provider.get_delete_calls().len(), 3);
@@ -142,7 +137,6 @@ mod delete_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/protected.txt");
-        let _node_id = register(&registry, &path);
 
         provider.add_fail_path(&path);
 
@@ -154,7 +148,7 @@ mod delete_tests {
             .send(OpsCommand::Delete {
                 targets: vec![local_ref(&path)],
                 trash: false,
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: request_id,
                 operation: operation_id,

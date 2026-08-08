@@ -4,72 +4,70 @@ mod navigator_state_tests {
 
     use super::*;
 
-    /// Helper to create test NodeIds
-    fn node(id: u64) -> NodeId {
-        NodeId(id)
+    fn location(id: u64) -> LocationRef {
+        LocationRef::descriptor_only(LocationDescriptor::local(format!("/tmp/navigator-{id}")))
     }
 
     #[test]
     fn test_navigate_updates_current() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
+        let first = location(1);
+        let second = location(2);
 
-        assert_eq!(state.current, None);
+        assert_eq!(state.current_location(), None);
 
-        state.navigate(node(1));
-        assert_eq!(state.current, Some(node(1)));
+        state.navigate_location(first.clone(), None);
+        assert_eq!(state.current_location(), Some(&first));
 
-        state.navigate(node(2));
-        assert_eq!(state.current, Some(node(2)));
+        state.navigate_location(second.clone(), None);
+        assert_eq!(state.current_location(), Some(&second));
     }
 
     #[test]
     fn test_navigate_adds_to_history() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
+        let first = location(1);
+        let second = location(2);
+        let third = location(3);
 
-        state.navigate(node(1));
-        assert_eq!(state.history.len(), 1);
-        assert_eq!(state.history[0], node(1));
+        state.navigate_location(first.clone(), None);
+        state.navigate_location(second.clone(), None);
+        state.navigate_location(third.clone(), None);
 
-        state.navigate(node(2));
-        assert_eq!(state.history.len(), 2);
-        assert_eq!(state.history[0], node(1));
-        assert_eq!(state.history[1], node(2));
-
-        state.navigate(node(3));
         assert_eq!(state.history.len(), 3);
-        assert_eq!(state.history[2], node(3));
+        assert_eq!(state.current_location(), Some(&third));
+        assert_eq!(state.back(1), None);
+        assert_eq!(state.current_location(), Some(&second));
+        assert_eq!(state.back(1), None);
+        assert_eq!(state.current_location(), Some(&first));
     }
 
     #[test]
     fn test_back_moves_history_index() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
+        let first = location(1);
+        let second = location(2);
+        let third = location(3);
 
-        // Navigate to build history
-        state.navigate(node(1));
-        state.navigate(node(2));
-        state.navigate(node(3));
+        state.navigate_location(first.clone(), None);
+        state.navigate_location(second, None);
+        state.navigate_location(third, None);
 
-        assert_eq!(state.history_index, 0); // At position 2 (node 3)
-        assert_eq!(state.current, Some(node(3)));
+        assert_eq!(state.history_index, 0);
+        assert_eq!(state.current_location(), Some(&location(3)));
 
-        // Go back
-        let result = state.back(1);
-        assert_eq!(result, Some(node(2)));
+        assert_eq!(state.back(1), None);
         assert_eq!(state.history_index, 1);
-        assert_eq!(state.current, Some(node(2)));
+        assert_eq!(state.current_location(), Some(&location(2)));
 
-        // Go back again
-        let result = state.back(1);
-        assert_eq!(result, Some(node(1)));
+        assert_eq!(state.back(1), None);
         assert_eq!(state.history_index, 2);
-        assert_eq!(state.current, Some(node(1)));
+        assert_eq!(state.current_location(), Some(&first));
 
-        // Can't go back anymore
-        let result = state.back(1);
-        assert_eq!(result, None);
+        assert_eq!(state.back(1), None);
         assert_eq!(state.history_index, 2);
     }
 
@@ -78,32 +76,24 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        // Build history
-        state.navigate(node(1));
-        state.navigate(node(2));
-        state.navigate(node(3));
+        state.navigate_location(location(1), None);
+        state.navigate_location(location(2), None);
+        state.navigate_location(location(3), None);
 
-        // Go back twice
         state.back(1);
         state.back(1);
-        assert_eq!(state.current, Some(node(1)));
+        assert_eq!(state.current_location(), Some(&location(1)));
         assert_eq!(state.history_index, 2);
 
-        // Go forward
-        let result = state.forward();
-        assert_eq!(result, Some(node(2)));
+        assert_eq!(state.forward(), None);
         assert_eq!(state.history_index, 1);
-        assert_eq!(state.current, Some(node(2)));
+        assert_eq!(state.current_location(), Some(&location(2)));
 
-        // Go forward again
-        let result = state.forward();
-        assert_eq!(result, Some(node(3)));
+        assert_eq!(state.forward(), None);
         assert_eq!(state.history_index, 0);
-        assert_eq!(state.current, Some(node(3)));
+        assert_eq!(state.current_location(), Some(&location(3)));
 
-        // Can't go forward anymore
-        let result = state.forward();
-        assert_eq!(result, None);
+        assert_eq!(state.forward(), None);
         assert_eq!(state.history_index, 0);
     }
 
@@ -112,11 +102,10 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        // Navigate to a directory
-        state.navigate(node(100));
-        state.navigate(node(200));
+        state.navigate_location(location(100), None);
+        state.navigate_location(location(200), None);
 
-        assert_eq!(state.current, Some(node(200)));
+        assert_eq!(state.current_location(), Some(&location(200)));
         assert_eq!(state.history.len(), 2);
     }
 
@@ -125,24 +114,20 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::with_history_limit(5, reg);
 
-        // Navigate 10 times
-        for i in 1..=10 {
-            state.navigate(node(i));
+        for id in 1..=10 {
+            state.navigate_location(location(id), None);
         }
 
-        // History should be capped at 5
         assert_eq!(state.history.len(), 5);
+        assert_eq!(state.current_location(), Some(&location(10)));
 
-        // Should contain the most recent 5
-        assert_eq!(state.history[0], node(6));
-        assert_eq!(state.history[1], node(7));
-        assert_eq!(state.history[2], node(8));
-        assert_eq!(state.history[3], node(9));
-        assert_eq!(state.history[4], node(10));
-
-        // Current should be at the end
-        assert_eq!(state.current, Some(node(10)));
-        assert_eq!(state.history_index, 0);
+        for id in (6..=9).rev() {
+            assert_eq!(state.back(1), None);
+            assert_eq!(state.current_location(), Some(&location(id)));
+        }
+        assert_eq!(state.back(1), None);
+        assert_eq!(state.current_location(), Some(&location(6)));
+        assert_eq!(state.history_index, 4);
     }
 
     #[test]
@@ -150,27 +135,18 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        // Build history
-        state.navigate(node(1));
-        state.navigate(node(2));
-        state.navigate(node(3));
+        state.navigate_location(location(1), None);
+        state.navigate_location(location(2), None);
+        state.navigate_location(location(3), None);
 
-        // Go back
         state.back(1);
-        assert_eq!(state.current, Some(node(2)));
-        assert_eq!(state.history.len(), 3); // Still have forward history
-
-        // Navigate to new location (should clear forward history)
-        state.navigate(node(4));
+        assert_eq!(state.current_location(), Some(&location(2)));
         assert_eq!(state.history.len(), 3);
-        assert_eq!(state.history[0], node(1));
-        assert_eq!(state.history[1], node(2));
-        assert_eq!(state.history[2], node(4));
-        assert_eq!(state.current, Some(node(4)));
 
-        // Forward should not be possible
-        let result = state.forward();
-        assert_eq!(result, None);
+        state.navigate_location(location(4), None);
+        assert_eq!(state.history.len(), 3);
+        assert_eq!(state.current_location(), Some(&location(4)));
+        assert_eq!(state.forward(), None);
     }
 
     #[test]
@@ -178,20 +154,16 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        // No history yet
         assert!(!state.can_back());
 
-        // Navigate once
-        state.navigate(node(1));
-        assert!(!state.can_back()); // Still at first position
+        state.navigate_location(location(1), None);
+        assert!(!state.can_back());
 
-        // Navigate again
-        state.navigate(node(2));
-        assert!(state.can_back()); // Now can go back
+        state.navigate_location(location(2), None);
+        assert!(state.can_back());
 
-        // Go back to start
         state.back(1);
-        assert!(!state.can_back()); // At start again
+        assert!(!state.can_back());
     }
 
     #[test]
@@ -199,21 +171,17 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        // No history
         assert!(!state.can_forward());
 
-        // Navigate
-        state.navigate(node(1));
-        state.navigate(node(2));
-        assert!(!state.can_forward()); // At the end
+        state.navigate_location(location(1), None);
+        state.navigate_location(location(2), None);
+        assert!(!state.can_forward());
 
-        // Go back
         state.back(1);
-        assert!(state.can_forward()); // Can go forward now
+        assert!(state.can_forward());
 
-        // Go forward to end
         state.forward();
-        assert!(!state.can_forward()); // At end again
+        assert!(!state.can_forward());
     }
 
     #[test]
@@ -221,7 +189,6 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        // Initial snapshot
         let snap = state.snapshot();
         assert_eq!(snap.current, None);
         assert_eq!(snap.current_location, None);
@@ -229,91 +196,85 @@ mod navigator_state_tests {
         assert!(!snap.can_forward);
         assert_eq!(snap.selected.len(), 0);
 
-        // After navigation
-        state.navigate(node(1));
-        state.navigate(node(2));
+        state.navigate_location(location(1), None);
+        state.navigate_location(location(2), None);
         let snap = state.snapshot();
-        assert_eq!(snap.current, Some(node(2)));
-        assert_eq!(snap.current_location, None);
+        assert_eq!(snap.current, None);
+        assert_eq!(snap.current_location, Some(location(2)));
         assert!(snap.can_back);
         assert!(!snap.can_forward);
 
-        // After going back
         state.back(1);
         let snap = state.snapshot();
-        assert_eq!(snap.current, Some(node(1)));
-        assert_eq!(snap.current_location, None);
+        assert_eq!(snap.current, None);
+        assert_eq!(snap.current_location, Some(location(1)));
         assert!(!snap.can_back);
         assert!(snap.can_forward);
     }
 
     #[test]
-    fn test_navigate_with_location_updates_current_location() {
+    // Compatibility pin for API-006: navigate_with_location still carries NodeId identity.
+    fn test_compat_navigate_with_location_updates_both_identities() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
-        let location = Location::local("/tmp/location-current");
-        let location_ref = LocationRef::from_location(&location);
+        let location = location(10);
+        let node = NodeId(10);
 
-        state.navigate_with_location(node(1), Some(location_ref.clone()));
+        state.navigate_with_location(node, Some(location.clone()));
 
-        assert_eq!(state.current, Some(node(1)));
-        assert_eq!(state.current_location, Some(location_ref));
+        assert_eq!(state.current_compat_node(), Some(node));
+        assert_eq!(state.current_location(), Some(&location));
     }
 
     #[test]
-    fn test_navigate_node_populates_location_from_registry_when_available() {
+    fn test_location_navigation_stores_provider_location() {
         let reg = NodeRegistry::new();
         let path = std::path::PathBuf::from("/tmp/location-node");
-        let node = reg.clone().register(path.clone());
+        let location = LocationRef::from_location(&Location::local(path.clone()));
         let mut state = NavigatorState::new(reg);
 
-        state.navigate(node);
+        state.navigate_location(location.clone(), None);
 
-        assert_eq!(state.current, Some(node));
-        assert_eq!(
-            state.current_location.as_ref().and_then(|r| r.descriptor()),
-            Some(&LocationDescriptor::local(path))
-        );
+        assert_eq!(state.current_location(), Some(&location));
     }
 
     #[test]
     fn test_back_and_forward_restore_current_location() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
-        let first = LocationRef::from_location(&Location::local("/tmp/first"));
-        let second = LocationRef::from_location(&Location::local("/tmp/second"));
+        let first = location(1);
+        let second = location(2);
 
-        state.navigate_with_location(node(1), Some(first.clone()));
-        state.navigate_with_location(node(2), Some(second.clone()));
+        state.navigate_location(first.clone(), None);
+        state.navigate_location(second.clone(), None);
 
-        assert_eq!(state.back(1), Some(node(1)));
-        assert_eq!(state.current_location, Some(first));
+        assert_eq!(state.back(1), None);
+        assert_eq!(state.current_location(), Some(&first));
 
-        assert_eq!(state.forward(), Some(node(2)));
-        assert_eq!(state.current_location, Some(second));
+        assert_eq!(state.forward(), None);
+        assert_eq!(state.current_location(), Some(&second));
     }
 
     #[test]
     fn test_navigate_after_back_clears_forward_location_history() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
-        let first = LocationRef::from_location(&Location::local("/tmp/first"));
-        let second = LocationRef::from_location(&Location::local("/tmp/second"));
-        let replacement = LocationRef::from_location(&Location::local("/tmp/replacement"));
+        let first = location(1);
+        let second = location(2);
+        let replacement = location(3);
 
-        state.navigate_with_location(node(1), Some(first.clone()));
-        state.navigate_with_location(node(2), Some(second));
+        state.navigate_location(first, None);
+        state.navigate_location(second, None);
         state.back(1);
-        state.navigate_with_location(node(3), Some(replacement.clone()));
+        state.navigate_location(replacement.clone(), None);
 
         assert_eq!(state.history.len(), 2);
-        assert_eq!(state.current, Some(node(3)));
-        assert_eq!(state.current_location, Some(replacement));
+        assert_eq!(state.current_location(), Some(&replacement));
         assert_eq!(state.forward(), None);
     }
 
     #[test]
-    fn test_location_navigation_can_store_without_compat_node() {
+    fn test_location_navigation_can_store_without_node_identity() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
         let location = LocationRef::descriptor_only(
@@ -330,7 +291,7 @@ mod navigator_state_tests {
     }
 
     #[test]
-    fn test_location_history_restores_without_compat_nodes() {
+    fn test_location_history_restores_without_node_identity() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
         let first = LocationRef::descriptor_only(
@@ -381,6 +342,7 @@ mod navigator_state_tests {
         let state = NavigatorState::new(reg);
 
         assert_eq!(state.current, None);
+        assert_eq!(state.current_location(), None);
         assert_eq!(state.history.len(), 0);
         assert_eq!(state.history_index, 0);
         assert_eq!(state.history_limit, 100);
@@ -393,7 +355,7 @@ mod navigator_state_tests {
         let state = NavigatorState::with_history_limit(10, reg);
 
         assert_eq!(state.history_limit, 10);
-        assert_eq!(state.current, None);
+        assert_eq!(state.current_location(), None);
     }
 
     #[test]
@@ -408,28 +370,25 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        // Build history
-        state.navigate(node(1));
-        state.navigate(node(2));
-        state.navigate(node(3));
-        state.navigate(node(4));
+        for id in 1..=4 {
+            state.navigate_location(location(id), None);
+        }
 
-        // Complex navigation pattern
-        state.back(1); // -> 3
-        state.back(1); // -> 2
-        assert_eq!(state.current, Some(node(2)));
+        state.back(1);
+        state.back(1);
+        assert_eq!(state.current_location(), Some(&location(2)));
 
-        state.forward(); // -> 3
-        assert_eq!(state.current, Some(node(3)));
+        state.forward();
+        assert_eq!(state.current_location(), Some(&location(3)));
 
-        state.back(1); // -> 2
-        state.back(1); // -> 1
-        assert_eq!(state.current, Some(node(1)));
+        state.back(1);
+        state.back(1);
+        assert_eq!(state.current_location(), Some(&location(1)));
 
-        state.forward(); // -> 2
-        state.forward(); // -> 3
-        state.forward(); // -> 4
-        assert_eq!(state.current, Some(node(4)));
+        state.forward();
+        state.forward();
+        state.forward();
+        assert_eq!(state.current_location(), Some(&location(4)));
         assert!(!state.can_forward());
     }
 
@@ -438,15 +397,15 @@ mod navigator_state_tests {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
 
-        let nodes = vec![node(100), node(200), node(300), node(400)];
-
-        for &n in &nodes {
-            state.navigate(n);
+        for id in 1..=4 {
+            state.navigate_location(location(id), None);
         }
 
-        assert_eq!(state.history.len(), 4);
-        for (i, &n) in nodes.iter().enumerate() {
-            assert_eq!(state.history[i], n);
+        for id in (1..=4).rev() {
+            assert_eq!(state.current_location(), Some(&location(id)));
+            if id > 1 {
+                state.back(1);
+            }
         }
     }
 
@@ -454,13 +413,14 @@ mod navigator_state_tests {
     fn test_navigate_same_directory_twice() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);
+        let location = location(1);
 
-        state.navigate(node(1));
-        state.navigate(node(1));
+        state.navigate_location(location.clone(), None);
+        state.navigate_location(location.clone(), None);
 
-        // Should add to history even if same
         assert_eq!(state.history.len(), 2);
-        assert_eq!(state.history[0], node(1));
-        assert_eq!(state.history[1], node(1));
+        assert_eq!(state.current_location(), Some(&location));
+        state.back(1);
+        assert_eq!(state.current_location(), Some(&location));
     }
 }

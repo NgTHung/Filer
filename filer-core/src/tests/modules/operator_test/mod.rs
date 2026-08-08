@@ -42,6 +42,7 @@ const TIMEOUT: Duration = Duration::from_millis(3000);
 
 /// Mock filesystem provider for testing Operator behavior.
 /// Tracks all write-method calls and supports configurable results.
+/// FileNode values stay at the FsProvider boundary; assertions use native operation events.
 #[derive(Clone)]
 struct MockOpsProvider {
     /// Directory listings, keyed by path (for recursive copy)
@@ -437,16 +438,11 @@ fn spawn_operator_with_cache(
     (cmd_tx, evt_rx)
 }
 
-/// Register a path in the registry and return its NodeId.
-fn register(registry: &NodeRegistry, path: impl Into<PathBuf>) -> NodeId {
-    registry.clone().register(path.into())
-}
-
 fn local_ref(path: impl Into<PathBuf>) -> LocationRef {
     LocationRef::from_location(&Location::local(path.into()))
 }
 
-/// Collect all events until an OperationCompleteCompat or Error is received.
+/// Collect all events until a Location-native OperationComplete or Error is received.
 /// Returns (progress_events, final_event).
 async fn wait_for_completion(
     evt_rx: &Receiver<Event>,
@@ -456,8 +452,7 @@ async fn wait_for_completion(
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(event @ Event::OperationCompleteCompat { session, .. }))
-            | Ok(Ok(event @ Event::OperationComplete { session, .. }))
+            Ok(Ok(event @ Event::OperationComplete { session, .. }))
                 if session == expected_session =>
             {
                 return (progress_events, event);
@@ -468,8 +463,8 @@ async fn wait_for_completion(
             Ok(Ok(event)) => {
                 progress_events.push(event);
             }
-            Ok(Err(_)) => panic!("event channel closed while waiting for OperationCompleteCompat"),
-            Err(_) => panic!("timed out waiting for OperationCompleteCompat"),
+            Ok(Err(_)) => panic!("event channel closed while waiting for OperationComplete"),
+            Err(_) => panic!("timed out waiting for OperationComplete"),
         }
     }
 }

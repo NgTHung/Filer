@@ -16,16 +16,15 @@ mod searcher_limit_tests {
         provider.add_dir("/root", files);
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("file max:3").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -50,29 +49,28 @@ mod searcher_limit_tests {
         provider.add_dir("/root", files);
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("item").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
-        // Count the number of SearchResultsCompat events
+        // Count the number of SearchResults events
         let mut batch_count = 0;
         let mut total_matches = 0;
         let deadline = tokio::time::Instant::now() + TIMEOUT;
 
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::SearchResultsCompat {
+                Ok(Ok(Event::SearchResults {
                     matches,
                     complete,
                     session: s,

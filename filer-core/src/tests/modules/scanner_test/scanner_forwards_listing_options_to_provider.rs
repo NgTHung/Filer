@@ -12,8 +12,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(std::path::PathBuf::from("/tmp/dir")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(std::path::PathBuf::from("/tmp/dir")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::unbounded(ListingOptions::metadata()),
@@ -45,8 +45,8 @@
         let path = std::path::PathBuf::from("/tmp/dir");
         let fast_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session: fast_session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::unbounded(ListingOptions::fast()),
@@ -57,8 +57,8 @@
 
         let metadata_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path),
                 session: metadata_session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::unbounded(ListingOptions::metadata()),
@@ -89,8 +89,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(std::path::PathBuf::from("/tmp/bounded")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(std::path::PathBuf::from("/tmp/bounded")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::bounded(2),
@@ -158,8 +158,8 @@
         for _ in 0..2 {
             let session = SessionId::new();
             cmd_tx
-            .send(ScanCommand::ScanCompat {
-                    location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                    location: location_ref(path.clone()),
                     session,
                     pipeline: default_pipeline(),
                     load: crate::DirectoryLoadOptions::bounded(1),
@@ -194,8 +194,8 @@
         let path = std::path::PathBuf::from("/tmp/reuse-cache");
         let full_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session: full_session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -206,8 +206,8 @@
 
         let bounded_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path),
                 session: bounded_session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::bounded(1),
@@ -272,9 +272,9 @@
     }
 
     #[tokio::test]
-    async fn test_scan_compat_emits_compat_directory_loaded() {
+    async fn test_scan_location_emits_directory_loaded_from_provider() {
         let provider = MockProvider::new();
-        provider.add_file(make_file("compat.txt", "/tmp/compat-location", 10, false));
+        provider.add_file(make_file("native.txt", "/tmp/native-location", 10, false));
 
         let registry = NodeRegistry::new();
         let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
@@ -284,9 +284,9 @@
         tokio::spawn(async move { scanner.run().await });
 
         let session = SessionId::new();
-        let location = Location::local("/tmp/compat-location");
+        let location = Location::local("/tmp/native-location");
         cmd_tx
-            .send(ScanCommand::ScanCompat {
+            .send(ScanCommand::ScanLocation {
                 location: LocationRef::from_location(&location),
                 session,
                 pipeline: default_pipeline(),
@@ -297,7 +297,7 @@
 
         let groups = wait_for_dir_loaded(&evt_rx, session).await;
         assert_eq!(groups.total_count, 1);
-        assert_eq!(groups.groups[0].nodes[0].name, "compat.txt");
+        assert_eq!(groups.groups[0].nodes[0].name, "native.txt");
     }
 
     #[tokio::test]
@@ -330,7 +330,7 @@
     }
 
     #[tokio::test]
-    async fn test_legacy_scan_reuses_cache_populated_by_scan_location() {
+    async fn test_scan_location_reuses_cache_populated_by_same_location() {
         let provider = MockProvider::new();
         provider.add_file(make_file(
             "cached.txt",
@@ -363,24 +363,24 @@
             .unwrap();
         wait_for_location_dir_loaded(&evt_rx, location_session).await;
 
-        let legacy_session = SessionId::new();
+        let second_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
-                session: legacy_session,
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path),
+                session: second_session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
                 request: RequestId::new(),
             })
             .unwrap();
-        let groups = wait_for_dir_loaded(&evt_rx, legacy_session).await;
+        let groups = wait_for_dir_loaded(&evt_rx, second_session).await;
 
         assert_eq!(groups.total_count, 1);
         assert_eq!(provider.get_list_calls().len(), 1);
     }
 
     #[tokio::test]
-    async fn test_scan_location_reuses_cache_populated_by_legacy_scan() {
+    async fn test_scan_location_reuses_cache_populated_by_location_ref() {
         let provider = MockProvider::new();
         provider.add_file(make_file(
             "cached.txt",
@@ -399,17 +399,17 @@
         tokio::spawn(async move { scanner.run().await });
 
         let path = PathBuf::from("/tmp/path-to-location-cache");
-        let legacy_session = SessionId::new();
+        let first_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
-                session: legacy_session,
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
+                session: first_session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
                 request: RequestId::new(),
             })
             .unwrap();
-        wait_for_dir_loaded(&evt_rx, legacy_session).await;
+        wait_for_dir_loaded(&evt_rx, first_session).await;
 
         let location_session = SessionId::new();
         let location = Location::local(path);
@@ -484,20 +484,20 @@
         assert_eq!(provider.get_list_calls().len(), 2);
         assert_eq!(groups.total_count, 2);
 
-        let legacy_session = SessionId::new();
+        let path_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
-                session: legacy_session,
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path),
+                session: path_session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
                 request: RequestId::new(),
             })
             .unwrap();
-        let legacy_groups = wait_for_dir_loaded(&evt_rx, legacy_session).await;
+        let path_groups = wait_for_dir_loaded(&evt_rx, path_session).await;
 
         assert_eq!(provider.get_list_calls().len(), 2);
-        assert_eq!(legacy_groups.total_count, 2);
+        assert_eq!(path_groups.total_count, 2);
     }
 
     #[tokio::test]
@@ -522,8 +522,8 @@
         let path = std::path::PathBuf::from("/tmp/dir2");
         let s1 = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session: s1,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -537,8 +537,8 @@
 
         let s2 = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session: s2,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -556,7 +556,7 @@
     }
 
     #[tokio::test]
-    async fn test_refresh_node_bypasses_cache_after_location_scan() {
+    async fn test_refresh_location_bypasses_cache_after_location_scan() {
         let provider = MockProvider::new();
         provider.add_file(make_file("before.txt", "/tmp/location-refresh", 10, false));
 
@@ -575,7 +575,6 @@
         tokio::spawn(async move { scanner.run().await });
 
         let path = PathBuf::from("/tmp/location-refresh");
-        let node = registry.clone().register(path.clone());
         let location = Location::local(path);
         let s1 = SessionId::new();
         let s2 = SessionId::new();
@@ -594,8 +593,8 @@
         provider.add_file(make_file("after.txt", "/tmp/location-refresh", 20, false));
 
         cmd_tx
-            .send(ScanCommand::RefreshCompat {
-                location: registry.resolve_node_location(node).unwrap(),
+            .send(ScanCommand::RefreshLocation {
+                location: LocationRef::from_location(&location),
                 session: s2,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -607,14 +606,14 @@
         assert_eq!(provider.get_list_calls().len(), 2);
         assert_eq!(
             groups.total_count, 2,
-            "RefreshNode should bypass cache populated by ScanLocation"
+            "RefreshLocation should bypass cache populated by ScanLocation"
         );
     }
 
     #[tokio::test]
-    async fn test_refresh_compat_bypasses_cache_and_emits_compat_events() {
+    async fn test_refresh_location_bypasses_cache_and_emits_location_events() {
         let provider = MockProvider::new();
-        provider.add_file(make_file("before.txt", "/tmp/compat-refresh", 10, false));
+        provider.add_file(make_file("before.txt", "/tmp/location-refresh", 10, false));
 
         let registry = NodeRegistry::new();
         let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
@@ -625,12 +624,12 @@
             Scanner::with_cache(cmd_rx, evt_tx, Arc::new(provider.clone()), registry, cache);
         tokio::spawn(async move { scanner.run().await });
 
-        let location = Location::local("/tmp/compat-refresh");
+        let location = Location::local("/tmp/location-refresh");
         let s1 = SessionId::new();
         let s2 = SessionId::new();
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
+            .send(ScanCommand::ScanLocation {
                 location: LocationRef::from_location(&location),
                 session: s1,
                 pipeline: default_pipeline(),
@@ -640,10 +639,10 @@
             .unwrap();
         wait_for_dir_loaded(&evt_rx, s1).await;
 
-        provider.add_file(make_file("after.txt", "/tmp/compat-refresh", 20, false));
+        provider.add_file(make_file("after.txt", "/tmp/location-refresh", 20, false));
 
         cmd_tx
-            .send(ScanCommand::RefreshCompat {
+            .send(ScanCommand::RefreshLocation {
                 location: LocationRef::from_location(&location),
                 session: s2,
                 pipeline: default_pipeline(),
@@ -658,7 +657,7 @@
     }
 
     #[tokio::test]
-    async fn test_refresh_node_invalidates_cache_before_scan() {
+    async fn test_refresh_location_invalidates_cache_before_scan() {
         let provider = MockProvider::new();
         provider.add_file(make_file("before.txt", "/tmp/refresh", 10, false));
 
@@ -677,13 +676,13 @@
         tokio::spawn(async move { scanner.run().await });
 
         let path = std::path::PathBuf::from("/tmp/refresh");
-        let node = registry.clone().register(path);
+        let location = LocationRef::from_location(&Location::local(path));
         let s1 = SessionId::new();
         let s2 = SessionId::new();
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: registry.resolve_node_location(node).unwrap(),
+            .send(ScanCommand::ScanLocation {
+                location: location.clone(),
                 session: s1,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -695,8 +694,8 @@
         provider.add_file(make_file("after.txt", "/tmp/refresh", 20, false));
 
         cmd_tx
-            .send(ScanCommand::RefreshCompat {
-                location: registry.resolve_node_location(node).unwrap(),
+            .send(ScanCommand::RefreshLocation {
+                location,
                 session: s2,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -709,10 +708,10 @@
         assert_eq!(
             calls.len(),
             2,
-            "RefreshNode should bypass cached directory entries"
+            "RefreshLocation should bypass cached directory entries"
         );
         assert_eq!(
             groups.total_count, 2,
-            "RefreshNode should emit the fresh provider listing"
+            "RefreshLocation should emit the fresh provider listing"
         );
     }

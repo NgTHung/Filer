@@ -11,8 +11,6 @@ mod move_tests {
         let src_path = PathBuf::from("/home/user/doc.txt");
         let dst_path = PathBuf::from("/home/user/archive");
 
-        let _src_id = register(&registry, &src_path);
-        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -25,7 +23,7 @@ mod move_tests {
             .send(OpsCommand::Move {
                 sources: vec![local_ref(&src_path)],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -55,13 +53,13 @@ mod move_tests {
         }));
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Move));
                 assert!(success);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         // Should have used rename, not copy
@@ -85,8 +83,6 @@ mod move_tests {
         let src_path = PathBuf::from("/mnt/usb/doc.txt");
         let dst_path = PathBuf::from("/home/user/archive");
 
-        let _src_id = register(&registry, &src_path);
-        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -100,7 +96,7 @@ mod move_tests {
             .send(OpsCommand::Move {
                 sources: vec![local_ref(&src_path)],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -110,13 +106,13 @@ mod move_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation, success, ..
             } => {
                 assert!(matches!(operation, OperationKind::Move));
                 assert!(success);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         // Should have fallen back to copy + delete
@@ -141,8 +137,6 @@ mod move_tests {
         let src_path = PathBuf::from("/home/user/locked.txt");
         let dst_path = PathBuf::from("/home/user/archive");
 
-        let _src_id = register(&registry, &src_path);
-        let _dst_id = register(&registry, &dst_path);
         provider.add_fail_path(&src_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
@@ -153,7 +147,7 @@ mod move_tests {
             .send(OpsCommand::Move {
                 sources: vec![local_ref(&src_path)],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: request_id,
                 operation: operation_id,

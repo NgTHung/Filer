@@ -79,8 +79,8 @@
         let path = PathBuf::from("/tmp/stale");
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -89,8 +89,8 @@
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path),
                 session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -101,7 +101,7 @@
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryLoadedCompat {
+            if let Event::DirectoryLoaded {
                 session: s,
                 request,
                 ..
@@ -118,7 +118,7 @@
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale scan request should not emit DirectoryLoadedCompat"
+            "stale scan request should not emit DirectoryLoaded"
         );
     }
 
@@ -141,8 +141,8 @@
         let path = PathBuf::from("/tmp/stale-page");
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -151,8 +151,8 @@
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -163,7 +163,7 @@
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryPageLoadedCompat {
+            if let Event::DirectoryPageLoaded {
                 session: s,
                 request,
                 ..
@@ -180,7 +180,7 @@
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale scan request should not emit DirectoryPageLoadedCompat"
+            "stale scan request should not emit DirectoryPageLoaded"
         );
     }
 
@@ -206,8 +206,8 @@
             PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -216,8 +216,8 @@
             .unwrap();
         tokio::task::yield_now().await;
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path),
                 session,
                 pipeline,
                 load: crate::DirectoryLoadOptions::default(),
@@ -228,7 +228,7 @@
         let mut loaded_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::DirectoryPageLoadedCompat {
+            if let Event::DirectoryPageLoaded {
                 session: s,
                 request,
                 ..
@@ -245,7 +245,7 @@
         assert_eq!(loaded_requests, vec![fresh_request]);
         assert!(
             !loaded_requests.contains(&stale_request),
-            "stale filtered scan request should not emit DirectoryPageLoadedCompat"
+            "stale filtered scan request should not emit DirectoryPageLoaded"
         );
     }
 

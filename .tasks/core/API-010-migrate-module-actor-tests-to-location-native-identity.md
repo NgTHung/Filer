@@ -1,7 +1,7 @@
 ---
 id: API-010
 title: Migrate module actor tests to Location-native identity
-status: To Do
+status: Done
 priority: High
 type: TestDebt
 parent: API-005
@@ -11,14 +11,15 @@ rules: [CORE-LIBRARY]
 risk: Medium
 impact: "Ports navigator, scanner, search, operator, and watcher tests off NodeId so actor coverage survives NodeId removal."
 tags: [api, nodeid, location, testing]
-last_updated: 2026-07-09
+last_updated: 2026-08-08
 ---
 
 ## Summary
 
-Port the module actor tests that assert on NodeId or FileNode identity to LocationRef or NodeEntry identity. As of 2026-07-09 this cluster is the navigator_test modules (12 sites across 4 files), scanner_test modules (5 sites across 2 files), search_test (3), operator_test (5), and watcher_test (1) under filer-core/src/tests/modules. Depends on API-009 because these tests consume the shared fixtures it migrates.
+Port the navigator, scanner, search, operator, and watcher module tests under `filer-core/src/tests/modules` to the Location-native commands, events, and assertions introduced by API-005/API-009. Preserve the existing behavior coverage and use the shared API-009 fixtures for provider-shaped setup. This task changes tests and test fixtures only; previewer, router, and top-level integration tests belong to API-011/API-012. Compatibility-only tests may remain when a production command or event has no native replacement yet, but each such test must be isolated and explicitly marked for API-006.
 
 ## Acceptance Criteria
 
-- [ ] No module actor test addresses nodes by NodeId or FileNode identity; each asserts on LocationRef or NodeEntry identity instead.
-- [ ] The full filer-core suite passes with no reduction in test count.
+- [x] Behavior assertions in the navigator, scanner, search, operator, and watcher module tests use LocationRef or NodeEntry identity and the corresponding Location-native command/event variants; FileNode remains only where an FsProvider mock requires that provider-shaped input.
+- [x] Every intentional NodeId/FileNode compatibility pin is isolated and explicitly labeled for API-006; no unmarked compatibility identity assertion remains.
+- [x] The full filer-core suite passes with no reduction in test count.

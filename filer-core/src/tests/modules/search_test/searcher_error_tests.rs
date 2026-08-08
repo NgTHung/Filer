@@ -6,7 +6,7 @@ mod searcher_error_tests {
     async fn test_search_unresolvable_root_emits_error() {
         let provider = MockProvider::new();
         let registry = NodeRegistry::new();
-        // Don't register any path — root_id won't resolve
+        // Keep the location unresolved so the provider error path is exercised.
         let fake_root = crate::model::location::LocationId(99999);
         let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
@@ -16,7 +16,7 @@ mod searcher_error_tests {
             .send(SearchCommand::Search {
                 query,
                 root: LocationRef::id_only(fake_root),
-                event_mode: SearchEventMode::Compat,
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -27,15 +27,15 @@ mod searcher_error_tests {
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
                 Ok(Ok(Event::Error { session: s, .. })) if s == session => {
-                    return; // Test passes — got expected error
+                    return;
                 }
-                Ok(Ok(Event::SearchResultsCompat {
+                Ok(Ok(Event::SearchResults {
                     session: s,
                     complete,
                     ..
                 })) if s == session => {
                     if complete {
-                        panic!("got SearchResultsCompat instead of Error for unresolvable root");
+                        panic!("got SearchResults instead of Error for unresolvable root");
                     }
                 }
                 Ok(Ok(_)) => {}
@@ -68,16 +68,15 @@ mod searcher_error_tests {
         provider.add_fail_path("/root/forbidden");
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("found").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })

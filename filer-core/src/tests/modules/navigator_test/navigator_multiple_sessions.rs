@@ -4,8 +4,6 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, _scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let first = reg.clone().register("/tmp/session-one".into());
-        let second = reg.clone().register("/tmp/session-two".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
 
         tokio::spawn(async move {
@@ -15,18 +13,17 @@
         let session1 = session(1);
         let session2 = session(2);
 
-        // Navigate in both sessions
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session: session1,
-                node: first,
+                location: LocationRef::from_location(&Location::local("/tmp/session-one")),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session: session2,
-                node: second,
+                location: LocationRef::from_location(&Location::local("/tmp/session-two")),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -61,6 +58,7 @@
         });
 
         let session = session(1);
+        // Compatibility pin for API-006: selection is still represented by NodeId.
         let nodes = vec![node(1), node(2), node(3)];
 
         // Set selection
@@ -80,9 +78,6 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let first = reg.clone().register("/tmp/order-one".into());
-        let second = reg.clone().register("/tmp/order-two".into());
-        let third = reg.clone().register("/tmp/order-three".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
@@ -91,45 +86,33 @@
 
         let session = session(1);
 
-        // Send multiple commands in sequence
-        cmd_tx
-            .send(NavCommand::Navigate {
-                session,
-                node: first,
-                request: crate::model::request::RequestId::new(),
-            })
-            .unwrap();
-        cmd_tx
-            .send(NavCommand::Navigate {
-                session,
-                node: second,
-                request: crate::model::request::RequestId::new(),
-            })
-            .unwrap();
-        cmd_tx
-            .send(NavCommand::Navigate {
-                session,
-                node: third,
-                request: crate::model::request::RequestId::new(),
-            })
-            .unwrap();
+        let locations = [
+            Location::local("/tmp/order-one"),
+            Location::local("/tmp/order-two"),
+            Location::local("/tmp/order-three"),
+        ];
+        for location in &locations {
+            cmd_tx
+                .send(NavCommand::NavigateToLocation {
+                    session,
+                    location: LocationRef::from_location(location),
+                    request: crate::model::request::RequestId::new(),
+                })
+                .unwrap();
+        }
 
         // Should receive scan commands in order
-        for expected_node in [first, second, third] {
+        for expected_location in &locations {
             let scan_cmd = timeout(Duration::from_millis(100), scanner_rx.recv_async())
                 .await
                 .expect("Should receive scan command")
                 .expect("Channel should not be closed");
 
             match scan_cmd {
-                ScanCommand::ScanCompat { location, .. } => {
-                    assert_eq!(
-                        location,
-                        reg.resolve_node_location(expected_node).unwrap(),
-                        "Commands should be processed in order"
-                    );
+                ScanCommand::ScanLocation { location, .. } => {
+                    assert_eq!(location.descriptor(), Some(expected_location.descriptor()));
                 }
-                _ => panic!("Expected Scan command"),
+                _ => panic!("Expected ScanLocation command"),
             }
         }
     }

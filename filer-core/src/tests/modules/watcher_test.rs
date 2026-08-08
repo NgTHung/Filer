@@ -57,6 +57,17 @@ fn setup_watcher(
     Watcher::new(cmd_rx, evt_tx, registry, provider)
 }
 
+fn location_watch(location: LocationRef, session: SessionId) -> WatchCommand {
+    WatchCommand::Watch {
+        location,
+        session,
+        request: None,
+        event_mode: WatchEventMode::Location,
+    }
+}
+
+// Compatibility pin for API-006: preserve the NodeId event fan-out until the
+// compatibility variant is removed.
 fn compat_watch(
     location: LocationRef,
     node: crate::model::node::NodeId,
@@ -70,7 +81,7 @@ fn compat_watch(
     }
 }
 
-fn compat_unwatch(location: LocationRef) -> WatchCommand {
+fn unwatch_location(location: LocationRef) -> WatchCommand {
     WatchCommand::Unwatch {
         location,
         scope: UnwatchScope::All,
@@ -176,6 +187,7 @@ async fn test_watch_location_emits_location_event_and_refresh_invalidation() {
 }
 
 #[tokio::test]
+// Compatibility pin for API-006: verify native and NodeId subscriptions share one provider watch.
 async fn test_watch_location_and_compat_watch_share_provider_entry() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -297,17 +309,14 @@ async fn test_watch_command() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     let watcher = setup_watcher(cmd_rx, evt_tx, registry.clone());
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -324,7 +333,7 @@ async fn test_watch_command() {
     let has_create_event = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChangedCompat {
+            Event::FsChanged {
                 kind: FsChangeKind::Created,
                 session,
                 ..
@@ -332,10 +341,7 @@ async fn test_watch_command() {
         )
     });
 
-    assert!(
-        has_create_event,
-        "Should receive FsChangedCompat::Created event"
-    );
+    assert!(has_create_event, "Should receive FsChanged::Created event");
 
     // Cleanup
     cmd_tx.send(WatchCommand::UnwatchAll).unwrap();
@@ -352,8 +358,6 @@ async fn test_unwatch_command() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     let watcher = setup_watcher(cmd_rx, evt_tx, registry.clone());
     let handle = tokio::spawn(async move {
         watcher.run().await;
@@ -361,9 +365,8 @@ async fn test_unwatch_command() {
 
     // Start watching
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -381,9 +384,9 @@ async fn test_unwatch_command() {
 
     // Unwatch
     cmd_tx
-        .send(compat_unwatch(
-            registry.resolve_node_location(test_node).unwrap(),
-        ))
+        .send(unwatch_location(LocationRef::from_location(
+            &Location::local(test_path.clone()),
+        )))
         .unwrap();
     sleep(Duration::from_millis(100)).await;
 
@@ -408,17 +411,14 @@ async fn test_fs_changed_create() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     let watcher = setup_watcher(cmd_rx, evt_tx, registry.clone());
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -434,13 +434,13 @@ async fn test_fs_changed_create() {
     let has_create = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChangedCompat {
+            Event::FsChanged {
                 kind: FsChangeKind::Created,
                 ..
             }
         )
     });
-    assert!(has_create, "Should receive FsChangedCompat::Created");
+    assert!(has_create, "Should receive FsChanged::Created");
 
     // Cleanup
     drop(cmd_tx);
@@ -455,8 +455,6 @@ async fn test_fs_changed_modify() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     // Create file before watching
     let test_file = test_path.join("modify_me.txt");
     fs::write(&test_file, "initial").unwrap();
@@ -467,9 +465,8 @@ async fn test_fs_changed_modify() {
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -487,13 +484,13 @@ async fn test_fs_changed_modify() {
     let has_modify = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChangedCompat {
+            Event::FsChanged {
                 kind: FsChangeKind::Modified,
                 ..
             }
         )
     });
-    assert!(has_modify, "Should receive FsChangedCompat::Modified");
+    assert!(has_modify, "Should receive FsChanged::Modified");
 
     // Cleanup
     drop(cmd_tx);
@@ -508,8 +505,6 @@ async fn test_fs_changed_delete() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     // Create file before watching
     let test_file = test_path.join("delete_me.txt");
     fs::write(&test_file, "content").unwrap();
@@ -520,9 +515,8 @@ async fn test_fs_changed_delete() {
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -540,13 +534,13 @@ async fn test_fs_changed_delete() {
     let has_delete = events.iter().any(|e| {
         matches!(
             e,
-            Event::FsChangedCompat {
+            Event::FsChanged {
                 kind: FsChangeKind::Deleted,
                 ..
             }
         )
     });
-    assert!(has_delete, "Should receive FsChangedCompat::Deleted");
+    assert!(has_delete, "Should receive FsChanged::Deleted");
 
     // Cleanup
     drop(cmd_tx);
@@ -561,17 +555,14 @@ async fn test_debouncing_rapid_changes() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     let watcher = setup_watcher(cmd_rx, evt_tx, registry.clone());
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -617,9 +608,6 @@ async fn test_unwatch_session() {
     let path1 = temp_dir1.path().to_path_buf();
     let path2 = temp_dir2.path().to_path_buf();
 
-    let node1 = registry.clone().register(path1.clone());
-    let node2 = registry.clone().register(path2.clone());
-
     let watcher = setup_watcher(cmd_rx, evt_tx, registry.clone());
     let handle = tokio::spawn(async move {
         watcher.run().await;
@@ -627,16 +615,14 @@ async fn test_unwatch_session() {
 
     // Watch two directories with same session
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(node1).unwrap(),
-            node1,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(path1.clone())),
             SessionId(1),
         ))
         .unwrap();
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(node2).unwrap(),
-            node2,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(path2.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -675,8 +661,6 @@ async fn test_multiple_sessions_watching_same_path() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     let watcher = setup_watcher(cmd_rx, evt_tx, registry.clone());
     let handle = tokio::spawn(async move {
         watcher.run().await;
@@ -684,16 +668,14 @@ async fn test_multiple_sessions_watching_same_path() {
 
     // Two sessions watch the same path
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(2),
         ))
         .unwrap();
@@ -709,12 +691,12 @@ async fn test_multiple_sessions_watching_same_path() {
     // Both sessions should receive the event
     let session1_events: Vec<_> = events
         .iter()
-        .filter(|e| matches!(e, Event::FsChangedCompat { session, .. } if *session == SessionId(1)))
+        .filter(|e| matches!(e, Event::FsChanged { session, .. } if *session == SessionId(1)))
         .collect();
 
     let session2_events: Vec<_> = events
         .iter()
-        .filter(|e| matches!(e, Event::FsChangedCompat { session, .. } if *session == SessionId(2)))
+        .filter(|e| matches!(e, Event::FsChanged { session, .. } if *session == SessionId(2)))
         .collect();
 
     assert!(
@@ -743,17 +725,14 @@ async fn test_watch_subdirectories() {
     let subdir = test_path.join("subdir");
     fs::create_dir(&subdir).unwrap();
 
-    let test_node = registry.clone().register(test_path.clone());
-
     let watcher = setup_watcher(cmd_rx, evt_tx, registry.clone());
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -780,6 +759,7 @@ async fn test_watch_subdirectories() {
 }
 
 #[tokio::test]
+// Compatibility pin for API-006: the refresh sink still emits NodeId-only invalidation commands.
 async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -789,23 +769,20 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
     let test_node = registry.clone().register(test_path.clone());
-
     let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry.clone(), provider.clone(), nav_tx);
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(2),
         ))
         .unwrap();
@@ -819,10 +796,10 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
     assert_eq!(
         events
             .iter()
-            .filter(|event| matches!(event, Event::FsChangedCompat { .. }))
+            .filter(|event| matches!(event, Event::FsChanged { .. }))
             .count(),
         2,
-        "both watching sessions should still receive FsChangedCompat"
+        "both watching sessions should still receive FsChanged"
     );
 
     let invalidate = timeout(Duration::from_millis(100), nav_rx.recv_async())
@@ -843,6 +820,7 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
 }
 
 #[tokio::test]
+// Compatibility pin for API-006: the refresh sink still emits NodeId-only invalidation commands.
 async fn test_watcher_refresh_sink_invalidates_for_delete_and_rename() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, _evt_rx) = flume::unbounded();
@@ -852,16 +830,14 @@ async fn test_watcher_refresh_sink_invalidates_for_delete_and_rename() {
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
     let test_node = registry.clone().register(test_path.clone());
-
     let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry.clone(), provider.clone(), nav_tx);
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(test_node).unwrap(),
-            test_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(test_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -906,17 +882,14 @@ async fn test_watcher_refresh_sink_ignores_unrelated_sibling_paths() {
     let sibling_path = temp_dir.path().join("watched-sibling");
     fs::create_dir(&watched_path).unwrap();
     fs::create_dir(&sibling_path).unwrap();
-    let watched_node = registry.clone().register(watched_path);
-
     let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry.clone(), provider.clone(), nav_tx);
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(compat_watch(
-            registry.resolve_node_location(watched_node).unwrap(),
-            watched_node,
+        .send(location_watch(
+            LocationRef::from_location(&Location::local(watched_path.clone())),
             SessionId(1),
         ))
         .unwrap();
@@ -929,7 +902,7 @@ async fn test_watcher_refresh_sink_ignores_unrelated_sibling_paths() {
 
     assert!(
         collect_available_events(&evt_rx).is_empty(),
-        "sibling paths should not produce FsChangedCompat for the watched node"
+        "sibling paths should not produce FsChanged for the watched node"
     );
     assert!(
         nav_rx.try_recv().is_err(),

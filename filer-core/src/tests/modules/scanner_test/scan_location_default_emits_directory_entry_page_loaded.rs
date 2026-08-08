@@ -47,8 +47,8 @@
         let path = PathBuf::from("/tmp/repeated-page");
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page(2),
@@ -64,8 +64,8 @@
         assert_eq!(emitted_first_request, first_request);
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page_after(2, next_cursor.clone()),
@@ -106,8 +106,8 @@
         for _ in 0..2 {
             let session = SessionId::new();
             cmd_tx
-            .send(ScanCommand::ScanCompat {
-                    location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                    location: location_ref(path.clone()),
                     session,
                     pipeline: default_pipeline(),
                     load: crate::DirectoryLoadOptions::page(2),
@@ -144,8 +144,8 @@
         for _ in 0..2 {
             let session = SessionId::new();
             cmd_tx
-            .send(ScanCommand::ScanCompat {
-                    location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                    location: location_ref(path.clone()),
                     session,
                     pipeline: default_pipeline(),
                     load: crate::DirectoryLoadOptions::page(10),
@@ -165,7 +165,7 @@
     }
 
     #[tokio::test]
-    async fn test_refresh_node_page_invalidates_cached_complete_page() {
+    async fn test_refresh_location_page_invalidates_cached_complete_page() {
         let provider = MockProvider::new();
         provider.add_file(make_file("before.txt", "/tmp/page-refresh", 10, false));
 
@@ -184,12 +184,11 @@
         tokio::spawn(async move { scanner.run().await });
 
         let path = PathBuf::from("/tmp/page-refresh");
-        let node = registry.clone().register(path.clone());
 
         let scan_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session: scan_session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page(10),
@@ -202,8 +201,8 @@
 
         let refresh_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::RefreshCompat {
-                location: registry.resolve_node_location(node).unwrap(),
+            .send(ScanCommand::RefreshLocation {
+                location: location_ref(path.clone()),
                 session: refresh_session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page(10),
@@ -235,9 +234,6 @@
         ));
 
         let registry = NodeRegistry::new();
-        let node = registry
-            .clone()
-            .register(PathBuf::from("/tmp/page-refresh-generation"));
         let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
         let (evt_tx, evt_rx) = flume::unbounded::<Event>();
         let scanner = Scanner::new(cmd_rx, evt_tx, Arc::new(provider.clone()), registry.clone());
@@ -245,8 +241,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::RefreshCompat {
-                location: registry.resolve_node_location(node).unwrap(),
+            .send(ScanCommand::RefreshLocation {
+                location: location_ref(PathBuf::from("/tmp/page-refresh-generation")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page(1),
@@ -261,8 +257,8 @@
             make_file("0.txt", "/tmp/page-refresh-generation", 5, false),
         );
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: registry.resolve_node_location(node).unwrap(),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/page-refresh-generation")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page(1),
@@ -275,8 +271,8 @@
 
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: registry.resolve_node_location(node).unwrap(),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/page-refresh-generation")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page_after(1, stale_cursor),
@@ -309,8 +305,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/page-fallback")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/page-fallback")),
                 session,
                 pipeline: PipelineConfig::with_default_sort(),
                 load: crate::DirectoryLoadOptions::page(1),
@@ -341,8 +337,8 @@
         let session = SessionId::new();
         let pipeline = PipelineConfig::default().sort(SortField::Name, SortOrder::Ascending, true);
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/sorted-page")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/sorted-page")),
                 session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::page(2),
@@ -361,8 +357,8 @@
         let cursor = state.next_cursor.expect("sorted page should continue");
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/sorted-page")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/sorted-page")),
                 session,
                 pipeline,
                 load: crate::DirectoryLoadOptions::page_after(2, cursor),
@@ -392,8 +388,8 @@
         let session = SessionId::new();
         let pipeline = PipelineConfig::default().group_by(GroupBy::Extension);
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/grouped-page")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/grouped-page")),
                 session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::page(2),
@@ -413,8 +409,8 @@
         let cursor = state.next_cursor.expect("grouped page should continue");
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/grouped-page")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/grouped-page")),
                 session,
                 pipeline,
                 load: crate::DirectoryLoadOptions::page_after(2, cursor),
@@ -453,8 +449,8 @@
 
         let snapshot_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session: snapshot_session,
                 pipeline: pipeline.clone(),
                 load: snapshot_load(),
@@ -465,13 +461,18 @@
         let snapshot_names = snapshot.groups[0]
             .nodes
             .iter()
-            .map(|node| node.path.to_string_lossy().into_owned())
+            .map(|node| {
+                node.location
+                    .descriptor()
+                    .map(|descriptor| descriptor.display_path())
+                    .unwrap_or_default()
+            })
             .collect::<Vec<_>>();
 
         let paged_session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(path.clone()),
                 session: paged_session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::page(2),
@@ -482,15 +483,20 @@
         let mut paged_names = first.groups[0]
             .nodes
             .iter()
-            .map(|node| node.path.to_string_lossy().into_owned())
+            .map(|node| {
+                node.location
+                    .descriptor()
+                    .map(|descriptor| descriptor.display_path())
+                    .unwrap_or_default()
+            })
             .collect::<Vec<_>>();
         let mut next_cursor = state.next_cursor.clone();
 
         let mut state = state;
         while let Some(cursor) = next_cursor {
             cmd_tx
-            .send(ScanCommand::ScanCompat {
-                    location: compat_location(path.clone()),
+            .send(ScanCommand::ScanLocation {
+                    location: location_ref(path.clone()),
                     session: paged_session,
                     pipeline: pipeline.clone(),
                     load: crate::DirectoryLoadOptions::page_after(2, cursor),
@@ -502,7 +508,12 @@
                 page.groups[0]
                     .nodes
                     .iter()
-                    .map(|node| node.path.to_string_lossy().into_owned()),
+                    .map(|node| {
+                        node.location
+                            .descriptor()
+                            .map(|descriptor| descriptor.display_path())
+                            .unwrap_or_default()
+                    }),
             );
             next_cursor = page_state.next_cursor.clone();
             state = page_state;
@@ -537,8 +548,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/fallback-page")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/fallback-page")),
                 session,
                 pipeline: PipelineConfig::default().sort(
                     SortField::Size,
@@ -576,8 +587,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/filter-page")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/filter-page")),
                 session,
                 pipeline: PipelineConfig::default()
                     .filter(FilterConfig::only_extensions(vec!["rs".into()])),
@@ -615,8 +626,8 @@
             PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/filter-cursor")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/filter-cursor")),
                 session,
                 pipeline: pipeline.clone(),
                 load: crate::DirectoryLoadOptions::page(2),
@@ -636,8 +647,8 @@
         let next_cursor = first_page.next_cursor.expect("first page should continue");
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/filter-cursor")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/filter-cursor")),
                 session,
                 pipeline,
                 load: crate::DirectoryLoadOptions::page_after(2, next_cursor),
@@ -674,8 +685,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/filter-budget")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/filter-budget")),
                 session,
                 pipeline: PipelineConfig::default()
                     .filter(FilterConfig::only_extensions(vec!["rs".into()])),

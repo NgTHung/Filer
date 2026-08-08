@@ -11,8 +11,6 @@ mod cancel_tests {
         let src_dir = PathBuf::from("/home/user/big_project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let _src_id = register(&registry, &src_dir);
-        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(
             &src_dir,
@@ -35,7 +33,7 @@ mod cancel_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src_dir)],
                 destination: local_ref(&dst_dir),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -46,13 +44,12 @@ mod cancel_tests {
         tokio::task::yield_now().await;
         cmd_tx.send(OpsCommand::Cancel(session)).unwrap();
 
-        // Collect events — should NOT get a successful OperationCompleteCompat
         let events = collect_events_for(&evt_rx, Duration::from_millis(500)).await;
 
         let has_successful_complete = events.iter().any(|e| {
             matches!(
                 e,
-                Event::OperationCompleteCompat {
+                Event::OperationComplete {
                     success: true,
                     session: s,
                     ..
@@ -62,7 +59,7 @@ mod cancel_tests {
 
         assert!(
             !has_successful_complete,
-            "Cancelled copy should not emit OperationCompleteCompat with success"
+            "Cancelled copy should not emit OperationComplete with success"
         );
 
         // Should have copied fewer than 50 files
@@ -82,8 +79,6 @@ mod cancel_tests {
 
         let src_path = PathBuf::from("/home/user/doc.txt");
         let dst_path = PathBuf::from("/home/user/backup");
-        let _src_id = register(&registry, &src_path);
-        let _dst_id = register(&registry, &dst_path);
         provider.set_rename_delay_ms(200);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
@@ -92,7 +87,7 @@ mod cancel_tests {
             .send(OpsCommand::Move {
                 sources: vec![local_ref(&src_path)],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation,
@@ -106,7 +101,7 @@ mod cancel_tests {
         let has_successful_complete = events.iter().any(|event| {
             matches!(
                 event,
-                Event::OperationCompleteCompat {
+                Event::OperationComplete {
                     operation_id,
                     success: true,
                     session: s,
@@ -117,7 +112,7 @@ mod cancel_tests {
 
         assert!(
             !has_successful_complete,
-            "Cancelled move should not emit OperationCompleteCompat with success"
+            "Cancelled move should not emit OperationComplete with success"
         );
     }
 
@@ -128,7 +123,6 @@ mod cancel_tests {
         let session = SessionId::new();
 
         let path = PathBuf::from("/home/user/doc.txt");
-        let _node_id = register(&registry, &path);
         provider.set_delete_delay_ms(200);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
@@ -137,7 +131,7 @@ mod cancel_tests {
             .send(OpsCommand::Delete {
                 targets: vec![local_ref(&path)],
                 trash: false,
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation,
@@ -151,7 +145,7 @@ mod cancel_tests {
         let has_successful_complete = events.iter().any(|event| {
             matches!(
                 event,
-                Event::OperationCompleteCompat {
+                Event::OperationComplete {
                     operation_id,
                     success: true,
                     session: s,
@@ -162,7 +156,7 @@ mod cancel_tests {
 
         assert!(
             !has_successful_complete,
-            "Cancelled delete should not emit OperationCompleteCompat with success"
+            "Cancelled delete should not emit OperationComplete with success"
         );
     }
 
@@ -176,8 +170,6 @@ mod cancel_tests {
         let src_dir = PathBuf::from("/home/user/project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let _src_id = register(&registry, &src_dir);
-        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(&src_dir, MockOpsProvider::make_dir("project", "/home/user"));
 
@@ -194,7 +186,7 @@ mod cancel_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src_dir)],
                 destination: local_ref(&dst_dir),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation,
@@ -214,7 +206,7 @@ mod cancel_tests {
         let has_successful_complete = events.iter().any(|e| {
             matches!(
                 e,
-                Event::OperationCompleteCompat {
+                Event::OperationComplete {
                     operation_id,
                     success: true,
                     session: s,
@@ -238,8 +230,6 @@ mod cancel_tests {
         let src_dir = PathBuf::from("/home/user/big_project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let _src_id = register(&registry, &src_dir);
-        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(
             &src_dir,
@@ -262,7 +252,7 @@ mod cancel_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src_dir)],
                 destination: local_ref(&dst_dir),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),

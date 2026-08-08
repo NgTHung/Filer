@@ -11,8 +11,6 @@ mod copy_tests {
         let src_path = PathBuf::from("/home/user/doc.txt");
         let dst_path = PathBuf::from("/home/user/backup");
 
-        let _src_id = register(&registry, &src_path);
-        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -26,7 +24,7 @@ mod copy_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src_path)],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: operation_id,
@@ -36,7 +34,7 @@ mod copy_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation_id: id,
                 operation,
                 success,
@@ -50,7 +48,7 @@ mod copy_tests {
                 assert!(!affected.is_empty());
                 assert_eq!(s, session);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         let copies = provider.get_copy_calls();
@@ -68,8 +66,6 @@ mod copy_tests {
         let src_dir = PathBuf::from("/home/user/project");
         let dst_dir = PathBuf::from("/home/user/backup");
 
-        let _src_id = register(&registry, &src_dir);
-        let _dst_id = register(&registry, &dst_dir);
 
         provider.add_metadata(&src_dir, MockOpsProvider::make_dir("project", "/home/user"));
 
@@ -89,7 +85,7 @@ mod copy_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src_dir)],
                 destination: local_ref(&dst_dir),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: operation_id,
@@ -138,7 +134,7 @@ mod copy_tests {
         }
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation,
                 operation_id: id,
                 success,
@@ -148,7 +144,7 @@ mod copy_tests {
                 assert_eq!(id, operation_id);
                 assert!(success);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         // All 3 files should have been copied
@@ -170,9 +166,6 @@ mod copy_tests {
         let src2 = PathBuf::from("/home/user/b.txt");
         let dst = PathBuf::from("/home/user/backup");
 
-        let _src1_id = register(&registry, &src1);
-        let _src2_id = register(&registry, &src2);
-        let _dst_id = register(&registry, &dst);
 
         provider.add_metadata(
             &src1,
@@ -189,7 +182,7 @@ mod copy_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src1), local_ref(&src2)],
                 destination: local_ref(&dst),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -199,13 +192,13 @@ mod copy_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 success, affected, ..
             } => {
                 assert!(success);
                 assert_eq!(affected.len(), 2);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         let copies = provider.get_copy_calls();
@@ -221,8 +214,6 @@ mod copy_tests {
         let src_path = PathBuf::from("/home/user/locked.txt");
         let dst_path = PathBuf::from("/home/user/backup");
 
-        let _src_id = register(&registry, &src_path);
-        let _dst_id = register(&registry, &dst_path);
 
         provider.add_metadata(
             &src_path,
@@ -238,7 +229,7 @@ mod copy_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src_path)],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: request_id,
                 operation: operation_id,
@@ -271,7 +262,6 @@ mod copy_tests {
         let session = SessionId::new();
 
         let dst_path = PathBuf::from("/home/user/backup");
-        let _dst_id = register(&registry, &dst_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider, registry);
         let request_id = RequestId::new();
@@ -281,7 +271,7 @@ mod copy_tests {
             .send(OpsCommand::Copy {
                 sources: vec![LocationRef::id_only(LocationId(404))],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: request_id,
                 operation: operation_id,

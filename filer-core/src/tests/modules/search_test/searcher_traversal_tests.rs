@@ -18,16 +18,15 @@ mod searcher_traversal_tests {
         );
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("txt").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -71,8 +70,7 @@ mod searcher_traversal_tests {
         );
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         // depth:1 means traverse root (depth 0) and one level down (depth 1)
@@ -80,8 +78,8 @@ mod searcher_traversal_tests {
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -128,16 +126,15 @@ mod searcher_traversal_tests {
         );
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("rs").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })

@@ -1,7 +1,7 @@
     use super::*;
     use crate::{Event, model::registry::NodeRegistry, modules::scan::scanner::ScanCommand};
 
-    /// Helper to create test NodeIds
+    // Compatibility-only fixtures for the NodeId command pins below.
     fn node(id: u64) -> NodeId {
         NodeId(id)
     }
@@ -41,7 +41,6 @@
         let (event_tx, event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let target_node = reg.clone().register("/tmp/nav-target".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
@@ -49,11 +48,11 @@
         });
 
         let session = session(1);
-        // Send navigate command
+        let target = Location::local("/tmp/nav-target");
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: target_node,
+                location: LocationRef::from_location(&target),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -65,15 +64,15 @@
             .expect("Channel should not be closed");
 
         match scan_cmd {
-            ScanCommand::ScanCompat {
+            ScanCommand::ScanLocation {
                 session: s,
                 location,
                 ..
             } => {
                 assert_eq!(s, session);
-                assert_eq!(location, reg.resolve_node_location(target_node).unwrap());
+                assert_eq!(location.descriptor(), Some(target.descriptor()));
             }
-            _ => panic!("Expected Scan command"),
+            _ => panic!("Expected ScanLocation command"),
         }
 
         // Should emit NavigationChanged event or similar
@@ -85,7 +84,8 @@
     }
 
     #[tokio::test]
-    async fn test_navigator_rejects_unresolved_node_before_scan_dispatch() {
+    // Compatibility pin for API-006: NavCommand::Navigate is NodeId-only.
+    async fn test_compat_navigate_rejects_unresolved_node_before_scan_dispatch() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
@@ -109,7 +109,7 @@
 
         let event = timeout(Duration::from_millis(100), event_rx.recv_async())
             .await
-            .expect("unresolved NodeId should emit an error")
+            .expect("unresolved compatibility node should emit an error")
             .expect("event channel should remain open");
 
         match event {
@@ -128,7 +128,7 @@
 
         assert!(
             scanner_rx.try_recv().is_err(),
-            "unresolved NodeId must not dispatch a scanner command"
+            "unresolved compatibility node must not dispatch a scanner command"
         );
     }
 
@@ -177,7 +177,6 @@
                     state.current_location.as_ref().and_then(|r| r.descriptor()),
                     Some(location.descriptor())
                 );
-                assert!(state.current.is_some());
             }
             other => panic!("Expected CurrentNavigateState, got {other:?}"),
         }
@@ -230,7 +229,6 @@
                     state.current_location.as_ref().and_then(|r| r.descriptor()),
                     Some(&descriptor)
                 );
-                assert!(state.current.is_some());
             }
             other => panic!("Expected CurrentNavigateState, got {other:?}"),
         }
@@ -348,8 +346,6 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, _scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let current = reg.clone().register("/tmp/back-current".into());
-        let next = reg.clone().register("/tmp/back-next".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
 
         tokio::spawn(async move {
@@ -358,11 +354,10 @@
 
         let session = session(1);
 
-        // First navigate to build history
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: current,
+                location: LocationRef::from_location(&Location::local("/tmp/back-current")),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -370,9 +365,9 @@
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: next,
+                location: LocationRef::from_location(&Location::local("/tmp/back-next")),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -408,20 +403,19 @@
 
         let session = session(1);
 
-        // Build history and go back
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: node(100),
+                location: LocationRef::from_location(&Location::local("/tmp/forward-current")),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: node(200),
+                location: LocationRef::from_location(&Location::local("/tmp/forward-next")),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -507,7 +501,6 @@
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let current = reg.clone().register("/tmp/refresh-current".into());
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg);
 
         tokio::spawn(async move {
@@ -516,11 +509,10 @@
 
         let session = session(1);
 
-        // Navigate first
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: current,
+                location: LocationRef::from_location(&Location::local("/tmp/refresh-current")),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -543,7 +535,8 @@
     }
 
     #[tokio::test]
-    async fn test_navigator_invalidate_refreshes_current_directory() {
+    // Compatibility pin for API-006: NavCommand::Invalidate is NodeId-only.
+    async fn test_compat_invalidate_refreshes_current_directory() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
@@ -590,7 +583,8 @@
     }
 
     #[tokio::test]
-    async fn test_navigator_invalidate_refreshes_only_current_sessions_with_current_pipeline() {
+    // Compatibility pin for API-006: NavCommand::Invalidate is NodeId-only.
+    async fn test_compat_invalidate_refreshes_only_current_sessions_with_current_pipeline() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();

@@ -34,25 +34,25 @@
     async fn wait_for_dir_loaded(
         evt_rx: &Receiver<Event>,
         session: SessionId,
-    ) -> crate::pipeline::GroupedNodes {
+    ) -> crate::pipeline::GroupedEntries {
         wait_for_dir_loaded_with_state(evt_rx, session).await.0
     }
 
     async fn wait_for_dir_loaded_with_state(
         evt_rx: &Receiver<Event>,
         session: SessionId,
-    ) -> (crate::pipeline::GroupedNodes, crate::DirectoryLoadState) {
+    ) -> (crate::pipeline::GroupedEntries, crate::DirectoryLoadState) {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryLoadedCompat {
+                Ok(Ok(Event::DirectoryLoaded {
                     session: s,
                     groups,
                     load,
                     ..
                 })) if s == session => return (groups, load),
                 Ok(Ok(_)) => {}
-                _ => panic!("timed out or channel closed waiting for DirectoryLoadedCompat"),
+                _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
             }
         }
     }
@@ -88,7 +88,7 @@
     async fn wait_for_dir_page_loaded(
         evt_rx: &Receiver<Event>,
         session: SessionId,
-    ) -> (crate::pipeline::GroupedNodes, crate::DirectoryPageState) {
+    ) -> (crate::pipeline::GroupedEntries, crate::DirectoryPageState) {
         let (groups, page, _) = wait_for_dir_page_loaded_with_request(evt_rx, session).await;
         (groups, page)
     }
@@ -97,14 +97,14 @@
         evt_rx: &Receiver<Event>,
         session: SessionId,
     ) -> (
-        crate::pipeline::GroupedNodes,
+        crate::pipeline::GroupedEntries,
         crate::DirectoryPageState,
         RequestId,
     ) {
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryPageLoadedCompat {
+                Ok(Ok(Event::DirectoryPageLoaded {
                     session: s,
                     groups,
                     page,
@@ -112,7 +112,7 @@
                     ..
                 })) if s == session => return (groups, page, request),
                 Ok(Ok(_)) => {}
-                _ => panic!("timed out or channel closed waiting for DirectoryPageLoadedCompat"),
+                _ => panic!("timed out or channel closed waiting for DirectoryPageLoaded"),
             }
         }
     }
@@ -155,13 +155,13 @@
         let deadline = tokio::time::Instant::now() + SCAN_TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(event @ Event::DirectoryLoadedCompat { session: s, .. })) if s == session => {
+                Ok(Ok(event @ Event::DirectoryLoaded { session: s, .. })) if s == session => {
                     events.push(event);
                     events.extend(collect_for_duration(evt_rx, Duration::from_millis(50)).await);
                     return events;
                 }
                 Ok(Ok(event)) => events.push(event),
-                _ => panic!("timed out or channel closed waiting for DirectoryLoadedCompat"),
+                _ => panic!("timed out or channel closed waiting for DirectoryLoaded"),
             }
         }
     }
@@ -201,8 +201,8 @@
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/progress")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/progress")),
                 session,
                 pipeline: default_pipeline(),
                 load: snapshot_load(),
@@ -255,8 +255,8 @@
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/progress-cancel")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/progress-cancel")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -278,10 +278,10 @@
             )
         }));
         assert!(!events.iter().any(|event| {
-            matches!(event, Event::DirectoryLoadedCompat { session: s, .. } if *s == session)
+            matches!(event, Event::DirectoryLoaded { session: s, .. } if *s == session)
         }));
         assert!(!events.iter().any(|event| {
-            matches!(event, Event::DirectoryPageLoadedCompat { session: s, .. } if *s == session)
+            matches!(event, Event::DirectoryPageLoaded { session: s, .. } if *s == session)
         }));
         assert!(!events.iter().any(|event| {
             matches!(
@@ -471,8 +471,8 @@
         let session = SessionId::new();
         let request = RequestId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/progress-fail")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/progress-fail")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -523,8 +523,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/page")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/page")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::default(),
@@ -555,8 +555,8 @@
 
         let session = SessionId::new();
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/page-cursor")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/page-cursor")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page(2),
@@ -567,8 +567,8 @@
         let next_cursor = first_page.next_cursor.expect("first page should continue");
 
         cmd_tx
-            .send(ScanCommand::ScanCompat {
-                location: compat_location(PathBuf::from("/tmp/page-cursor")),
+            .send(ScanCommand::ScanLocation {
+                location: location_ref(PathBuf::from("/tmp/page-cursor")),
                 session,
                 pipeline: default_pipeline(),
                 load: crate::DirectoryLoadOptions::page_after(2, next_cursor),

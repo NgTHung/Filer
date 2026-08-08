@@ -18,6 +18,7 @@ mod nav_state_serialization_tests {
     fn test_nav_state_serializable() {
         use serde_json;
 
+        // Compatibility pin for API-006: NavState still serializes NodeId handles.
         let state = NavState {
             current: Some(NodeId(42)),
             current_location: Some(LocationRef::descriptor_only(LocationDescriptor::local(
@@ -49,7 +50,7 @@ mod nav_state_serialization_tests {
             Some(&LocationDescriptor::local("/tmp/nav-state"))
         );
         assert!(restored.can_back);
-        assert_eq!(restored.selected.len(), 2);
+        assert_eq!(restored.selected, vec![NodeId(1), NodeId(2)]);
     }
 
     #[test]

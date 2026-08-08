@@ -37,7 +37,7 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
     }
 }
 
-fn compat_location(path: impl Into<PathBuf>) -> LocationRef {
+fn location_ref(path: impl Into<PathBuf>) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
 }
 
@@ -83,7 +83,8 @@ fn _make_dir(name: &str, full_path: &str, hidden: bool) -> FileNode {
     }
 }
 
-/// Mock filesystem provider for testing Scanner behavior
+/// Mock filesystem provider for testing Scanner behavior.
+/// FileNode values stay at the FsProvider boundary; assertions use native locations and entries.
 #[derive(Clone)]
 struct MockProvider {
     files: Arc<Mutex<Vec<FileNode>>>,

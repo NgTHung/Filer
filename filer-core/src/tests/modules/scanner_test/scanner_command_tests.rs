@@ -10,7 +10,7 @@ mod scanner_command_tests {
     fn test_scan_command_clone() {
         let session = session::SessionId::new();
         let location = LocationRef::from_location(&Location::local(PathBuf::from("/test")));
-        let cmd = ScanCommand::ScanCompat {
+        let cmd = ScanCommand::ScanLocation {
             location: location.clone(),
             pipeline: crate::pipeline::PipelineConfig {
                 sort: None,
@@ -26,14 +26,14 @@ mod scanner_command_tests {
 
         match (cmd, cloned) {
             (
-                ScanCommand::ScanCompat {
+                ScanCommand::ScanLocation {
                     location: l1,
                     pipeline: pl1,
                     session: s1,
                     request: _,
                     ..
                 },
-                ScanCommand::ScanCompat {
+                ScanCommand::ScanLocation {
                     location: l2,
                     pipeline: pl2,
                     session: s2,
@@ -53,7 +53,7 @@ mod scanner_command_tests {
     #[test]
     fn test_scan_command_debug() {
         let session = session::SessionId::new();
-        let cmd = ScanCommand::ScanCompat {
+        let cmd = ScanCommand::ScanLocation {
             location: LocationRef::from_location(&Location::local(PathBuf::from("/test/path"))),
             pipeline: crate::pipeline::PipelineConfig {
                 sort: None,
@@ -66,16 +66,16 @@ mod scanner_command_tests {
         };
 
         let debug_str = format!("{:?}", cmd);
-        assert!(debug_str.contains("ScanCompat"));
+        assert!(debug_str.contains("ScanLocation"));
         assert!(debug_str.contains("/test/path"));
     }
 
     #[test]
-    fn test_refresh_compat_command_carries_location_ref() {
+    fn test_refresh_location_command_carries_location_ref() {
         let session = session::SessionId::new();
         let location =
             LocationRef::from_location(&Location::local(PathBuf::from("/test/refresh")));
-        let cmd = ScanCommand::RefreshCompat {
+        let cmd = ScanCommand::RefreshLocation {
             location: location.clone(),
             pipeline: crate::pipeline::PipelineConfig {
                 sort: None,
@@ -88,7 +88,7 @@ mod scanner_command_tests {
         };
 
         match cmd {
-            ScanCommand::RefreshCompat {
+            ScanCommand::RefreshLocation {
                 location: routed,
                 session: routed_session,
                 ..
@@ -96,7 +96,7 @@ mod scanner_command_tests {
                 assert_eq!(routed, location);
                 assert_eq!(routed_session, session);
             }
-            other => panic!("Expected ScanCommand::RefreshCompat, got {other:?}"),
+            other => panic!("Expected ScanCommand::RefreshLocation, got {other:?}"),
         }
     }
 

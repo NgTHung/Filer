@@ -10,8 +10,6 @@ mod operator_timeout_tests {
 
         let src_path = PathBuf::from("/home/user/doc.txt");
         let dst_path = PathBuf::from("/home/user/backup");
-        let _src_id = register(&registry, &src_path);
-        let _dst_id = register(&registry, &dst_path);
         provider.add_metadata(
             &src_path,
             MockOpsProvider::make_file("doc.txt", "/home/user", 1024),
@@ -26,7 +24,7 @@ mod operator_timeout_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src_path)],
                 destination: local_ref(&dst_path),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: operation_id,

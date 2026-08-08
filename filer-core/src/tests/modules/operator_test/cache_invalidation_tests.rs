@@ -47,7 +47,6 @@ mod cache_invalidation_tests {
         let cache = new_cache();
         let session = SessionId::new();
         let parent = PathBuf::from("/home/user");
-        let _parent_id = register(&registry, &parent);
         seed_cache(&cache, &parent);
 
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
@@ -55,7 +54,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::CreateFile {
                 parent: local_ref(&parent),
                 name: "new.txt".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -65,7 +64,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationCompleteCompat { success: true, .. }
+            Event::OperationComplete { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
     }
@@ -77,7 +76,6 @@ mod cache_invalidation_tests {
         let cache = new_cache();
         let session = SessionId::new();
         let parent = PathBuf::from("/home/user");
-        let _parent_id = register(&registry, &parent);
         seed_cache(&cache, &parent);
 
         let (cmd_tx, evt_rx) = spawn_operator_with_cache(provider, registry, cache.clone());
@@ -85,7 +83,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::CreateFolder {
                 parent: local_ref(&parent),
                 name: "new-folder".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -95,7 +93,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationCompleteCompat { success: true, .. }
+            Event::OperationComplete { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
     }
@@ -109,8 +107,6 @@ mod cache_invalidation_tests {
         let src = PathBuf::from("/home/user/doc.txt");
         let src_parent = PathBuf::from("/home/user");
         let dst_parent = PathBuf::from("/home/user/backup");
-        let _src_id = register(&registry, &src);
-        let _dst_id = register(&registry, &dst_parent);
         provider.add_metadata(&src, MockOpsProvider::make_file("doc.txt", "/home/user", 1));
         seed_cache(&cache, &src_parent);
         seed_cache(&cache, &dst_parent);
@@ -120,7 +116,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::Copy {
                 sources: vec![local_ref(&src)],
                 destination: local_ref(&dst_parent),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -130,7 +126,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationCompleteCompat { success: true, .. }
+            Event::OperationComplete { success: true, .. }
         ));
         assert_cached(&cache, src_parent);
         assert_invalidated(&cache, dst_parent);
@@ -145,8 +141,6 @@ mod cache_invalidation_tests {
         let src = PathBuf::from("/home/user/doc.txt");
         let src_parent = PathBuf::from("/home/user");
         let dst_parent = PathBuf::from("/mnt/archive");
-        let _src_id = register(&registry, &src);
-        let _dst_id = register(&registry, &dst_parent);
         seed_cache(&cache, &src_parent);
         seed_cache(&cache, &dst_parent);
 
@@ -155,7 +149,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::Move {
                 sources: vec![local_ref(&src)],
                 destination: local_ref(&dst_parent),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -165,7 +159,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationCompleteCompat { success: true, .. }
+            Event::OperationComplete { success: true, .. }
         ));
         assert_invalidated(&cache, src_parent);
         assert_invalidated(&cache, dst_parent);
@@ -181,7 +175,6 @@ mod cache_invalidation_tests {
         let dir = PathBuf::from("/home/user/project");
         let child = PathBuf::from("/home/user/project/src");
         let sibling = PathBuf::from("/home/user/project-old");
-        let _dir_id = register(&registry, &dir);
         seed_cache(&cache, &parent);
         seed_cache(&cache, &dir);
         seed_cache(&cache, &child);
@@ -192,7 +185,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::Delete {
                 targets: vec![local_ref(&dir)],
                 trash: false,
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -202,7 +195,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationCompleteCompat { success: true, .. }
+            Event::OperationComplete { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
         assert_invalidated(&cache, dir);
@@ -220,8 +213,6 @@ mod cache_invalidation_tests {
         let dst_parent = PathBuf::from("/mnt/archive");
         let dir = PathBuf::from("/home/user/project");
         let child = PathBuf::from("/home/user/project/src");
-        let _dir_id = register(&registry, &dir);
-        let _dst_id = register(&registry, &dst_parent);
         seed_cache(&cache, &src_parent);
         seed_cache(&cache, &dst_parent);
         seed_cache(&cache, &dir);
@@ -232,7 +223,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::Move {
                 sources: vec![local_ref(&dir)],
                 destination: local_ref(&dst_parent),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -242,7 +233,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationCompleteCompat { success: true, .. }
+            Event::OperationComplete { success: true, .. }
         ));
         assert_invalidated(&cache, src_parent);
         assert_invalidated(&cache, dst_parent);
@@ -259,7 +250,6 @@ mod cache_invalidation_tests {
         let parent = PathBuf::from("/home/user");
         let dir = PathBuf::from("/home/user/project");
         let child = PathBuf::from("/home/user/project/src");
-        let _dir_id = register(&registry, &dir);
         seed_cache(&cache, &parent);
         seed_cache(&cache, &dir);
         seed_cache(&cache, &child);
@@ -269,7 +259,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::Rename {
                 source: local_ref(&dir),
                 new_name: "renamed".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -279,7 +269,7 @@ mod cache_invalidation_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
         assert!(matches!(
             final_event,
-            Event::OperationCompleteCompat { success: true, .. }
+            Event::OperationComplete { success: true, .. }
         ));
         assert_invalidated(&cache, parent);
         assert_invalidated(&cache, dir);
@@ -294,7 +284,6 @@ mod cache_invalidation_tests {
         let session = SessionId::new();
         let parent = PathBuf::from("/home/user");
         let path = PathBuf::from("/home/user/protected.txt");
-        let _id = register(&registry, &path);
         provider.add_fail_path(&path);
         seed_cache(&cache, &parent);
 
@@ -303,7 +292,7 @@ mod cache_invalidation_tests {
             .send(OpsCommand::Delete {
                 targets: vec![local_ref(&path)],
                 trash: false,
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),

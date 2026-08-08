@@ -9,7 +9,6 @@ mod create_folder_tests {
         let session = SessionId::new();
 
         let parent_path = PathBuf::from("/home/user");
-        let _parent_id = register(&registry, &parent_path);
 
         let (cmd_tx, evt_rx) = spawn_operator(provider.clone(), registry);
 
@@ -17,7 +16,7 @@ mod create_folder_tests {
             .send(OpsCommand::CreateFolder {
                 parent: local_ref(&parent_path),
                 name: "new_folder".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: RequestId::new(),
                 operation: OperationId::new(),
@@ -27,7 +26,7 @@ mod create_folder_tests {
         let (_progress, final_event) = wait_for_completion(&evt_rx, session).await;
 
         match final_event {
-            Event::OperationCompleteCompat {
+            Event::OperationComplete {
                 operation,
                 success,
                 affected,
@@ -39,7 +38,7 @@ mod create_folder_tests {
                 assert!(!affected.is_empty());
                 assert_eq!(s, session);
             }
-            other => panic!("Expected OperationCompleteCompat, got: {other:?}"),
+            other => panic!("Expected OperationComplete, got: {other:?}"),
         }
 
         let mkdirs = provider.get_mkdir_calls();
@@ -54,7 +53,6 @@ mod create_folder_tests {
         let session = SessionId::new();
 
         let parent_path = PathBuf::from("/home/user");
-        let _parent_id = register(&registry, &parent_path);
 
         provider.add_existing(PathBuf::from("/home/user/existing_dir"));
 
@@ -66,7 +64,7 @@ mod create_folder_tests {
             .send(OpsCommand::CreateFolder {
                 parent: local_ref(&parent_path),
                 name: "existing_dir".to_string(),
-                event_mode: OperationEventMode::Compat,
+                event_mode: OperationEventMode::Location,
                 session,
                 request: request_id,
                 operation: operation_id,

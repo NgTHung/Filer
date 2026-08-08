@@ -15,16 +15,15 @@ mod searcher_basic_tests {
         );
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("readme").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -53,16 +52,15 @@ mod searcher_basic_tests {
         );
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("nonexistent").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -76,7 +74,7 @@ mod searcher_basic_tests {
     }
 
     #[tokio::test]
-    async fn test_search_path_returns_legacy_results() {
+    async fn test_search_location_returns_native_results() {
         let provider = MockProvider::new();
         provider.add_dir(
             "/root",
@@ -91,7 +89,7 @@ mod searcher_basic_tests {
             .send(SearchCommand::Search {
                 query: SearchQuery::parse("found").unwrap(),
                 root: LocationRef::from_location(&Location::local(PathBuf::from("/root"))),
-                event_mode: SearchEventMode::Compat,
+                event_mode: SearchEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
@@ -111,16 +109,15 @@ mod searcher_basic_tests {
         );
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("README").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -146,16 +143,15 @@ mod searcher_basic_tests {
         );
 
         let registry = NodeRegistry::new();
-        let root_id = registry.clone().register(PathBuf::from("/root"));
-        let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
+                let (cmd_tx, evt_rx) = spawn_searcher(provider, registry.clone());
 
         let session = SessionId::new();
         let query = SearchQuery::parse("README case:yes").unwrap();
         cmd_tx
             .send(SearchCommand::Search {
                 query,
-                root: registry.resolve_node_location(root_id).unwrap(),
-                event_mode: SearchEventMode::Compat,
+                root: LocationRef::from_location(&Location::local("/root")),
+                event_mode: SearchEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })

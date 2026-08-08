@@ -18,7 +18,7 @@ mod searcher_timeout_tests {
             .send(SearchCommand::Search {
                 query: SearchQuery::parse("a").unwrap(),
                 root: LocationRef::from_location(&Location::local(PathBuf::from("/slow"))),
-                event_mode: SearchEventMode::Compat,
+                event_mode: SearchEventMode::Location,
                 session,
                 request,
             })

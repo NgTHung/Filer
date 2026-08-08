@@ -39,6 +39,7 @@ const TIMEOUT: Duration = Duration::from_millis(3000);
 
 /// Hierarchical mock filesystem for search testing.
 /// Maps directory paths to their children, supporting recursive traversal.
+/// FileNode values stay at the FsProvider boundary; assertions use native locations and entries.
 #[derive(Clone)]
 struct MockProvider {
     files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<FileNode>)>>>,
@@ -210,16 +211,16 @@ impl FsProvider for MockProvider {
     }
 }
 
-/// Collect all SearchResultsCompat batches until `complete: true`.
+/// Collect all SearchResults batches until `complete: true`.
 async fn wait_for_search_complete(
     evt_rx: &Receiver<Event>,
     expected_session: SessionId,
-) -> Vec<FileNode> {
+) -> Vec<crate::NodeEntry> {
     let mut matches = Vec::new();
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(Event::SearchResultsCompat {
+            Ok(Ok(Event::SearchResults {
                 matches: batch,
                 complete,
                 session,
@@ -231,8 +232,8 @@ async fn wait_for_search_complete(
                 }
             }
             Ok(Ok(_)) => { /* skip non-search events */ }
-            Ok(Err(_)) => panic!("event channel closed while waiting for SearchResultsCompat"),
-            Err(_) => panic!("timed out waiting for SearchResultsCompat (complete: true)"),
+            Ok(Err(_)) => panic!("event channel closed while waiting for SearchResults"),
+            Err(_) => panic!("timed out waiting for SearchResults (complete: true)"),
         }
     }
 }
