@@ -9,7 +9,7 @@ depends_on: ["WEB-030"]
 risk: "Low"
 impact: "Gives each person visibility and control over which browsers hold their identity, and a way to cut off a browser they no longer have."
 tags: ["web", "sessions", "state"]
-last_updated: 2026-08-04
+last_updated: 2026-08-08
 ---
 
 ## Summary
@@ -18,10 +18,10 @@ web:WEB-030 lets one person hold many browser sessions but gives no way to see o
 
 ## Acceptance Criteria
 
-- [ ] Each session records a device label at creation time, derived from the request User-Agent and falling back to a stable placeholder when it is absent or unparsable.
+- [x] Each session records a device label at creation time, derived from the request User-Agent and falling back to a stable placeholder when it is absent or unparsable.
 - [ ] An authenticated user can list their active sessions with device label, created-at, and last-seen, with the session in use marked.
-- [ ] A user can revoke any session other than the one in use, and the revoked session is rejected on its next request.
-- [ ] Revoking a session invalidates every live pairing PIN that session minted.
-- [ ] A user cannot revoke the session they are using, and the attempt is rejected with a clear error.
-- [ ] The session list shows only the acting user's sessions and never another user's.
-- [ ] Tests cover label capture including the missing-User-Agent fallback, revoke-then-reject, pairing PIN invalidation on revoke, and the self-revoke rejection.
+- [x] A user can revoke any session other than the one in use, and the revoked session is rejected on its next request.
+- [x] Revoking a session invalidates every live pairing PIN that session minted.
+- [x] A user cannot revoke the session they are using, and the attempt is rejected with a clear error.
+- [x] The session list shows only the acting user's sessions and never another user's.
+- [x] Tests cover label capture including the missing-User-Agent fallback, revoke-then-reject, pairing PIN invalidation on revoke, and the self-revoke rejection.
