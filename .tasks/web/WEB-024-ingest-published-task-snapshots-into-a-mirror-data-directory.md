@@ -1,7 +1,7 @@
 ---
 id: "WEB-024"
 title: "Ingest published task snapshots into a mirror data directory"
-status: "To Do"
+status: Obsolete
 priority: "High"
 type: "Feature"
 parent: "WEB-022"
@@ -9,7 +9,7 @@ depends_on: ["WEB-023"]
 risk: "Medium"
 impact: "Gives the mirror its write-once entry point; a failed or hostile publish degrades to staleness instead of a broken or escaped project tree."
 tags: ["web", "server", "api", "sync"]
-last_updated: "2026-07-26"
+last_updated: 2026-08-08
 ---
 
 ## Summary
@@ -23,3 +23,7 @@ The mirror receives snapshots over HTTP and must turn them into a project root t
 - [ ] A failure partway through materialization leaves the previous snapshot intact and serving.
 - [ ] Per-project ingest tokens and last ingest timestamps persist in the database through the storage module.
 - [ ] Tests cover a successful ingest, each rejection case, and atomicity under a mid-write failure.
+
+## Rationale
+
+Receiver ingestion and persistence belong to the separate read-only service, not filer-task-web.

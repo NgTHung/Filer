@@ -1,7 +1,7 @@
 ---
 id: "WEB-025"
 title: "Serve the mirror in a structural read-only mode"
-status: "To Do"
+status: Obsolete
 priority: "High"
 type: "Feature"
 parent: "WEB-022"
@@ -9,7 +9,7 @@ depends_on: ["WEB-024"]
 risk: "Medium"
 impact: "Makes read-only structural rather than a runtime check per handler, so a future write route cannot reach the mirror by being forgotten, and keeps a writable server on loopback."
 tags: ["web", "server", "api", "validation"]
-last_updated: "2026-07-26"
+last_updated: 2026-08-08
 ---
 
 ## Summary
@@ -23,3 +23,7 @@ The mirror must serve every read screen and expose no write path. Split the rout
 - [ ] The frontend hides task creation, field edits, criteria toggles, and palette write commands when writes are unavailable.
 - [ ] A non-loopback bind is accepted only in read-only mode and refused otherwise with a clear error.
 - [ ] Tests assert every write route is absent in read-only mode, the capabilities response, and the bind gating.
+
+## Rationale
+
+Receiver hosting, read-only routing, and the mobile UI belong to the separate external project.
