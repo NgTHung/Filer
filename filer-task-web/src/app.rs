@@ -125,6 +125,11 @@ pub fn router(state: AppState) -> Router {
             post(routes::identity::mint_pairing_pin),
         )
         .route("/api/identity/pair", post(routes::identity::pair_identity))
+        .route("/api/sessions", get(routes::sessions::list_sessions))
+        .route(
+            "/api/sessions/{id}",
+            delete(routes::sessions::revoke_session),
+        )
         .route("/api/activity", get(routes::activity::list_activity))
         .route(
             "/api/projects",

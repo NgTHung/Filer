@@ -9,6 +9,7 @@ pub mod context;
 pub mod identity;
 pub mod policy;
 pub mod projects;
+pub mod sessions;
 pub mod task_writes;
 pub mod tasks;
 pub mod transitions;

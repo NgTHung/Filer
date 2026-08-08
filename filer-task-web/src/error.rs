@@ -28,6 +28,8 @@ pub enum WebError {
     PairingPinExpired,
     PairingPinConsumed,
     PairingPinLocked,
+    SessionRevokeCurrent,
+    SessionNotFound,
     PreconditionRequired(String),
     DuplicateProjectName(String),
     InvalidNewProjectName(String),
@@ -141,6 +143,22 @@ impl IntoResponse for WebError {
                     "too many failed pairing attempts, wait a few minutes before trying again",
                     "pairing_pin_locked",
                     Some("pin"),
+                );
+            }
+            Self::SessionRevokeCurrent => {
+                return client_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "you cannot revoke the session you are using",
+                    "session_revoke_current",
+                    None,
+                );
+            }
+            Self::SessionNotFound => {
+                return client_error(
+                    StatusCode::NOT_FOUND,
+                    "no such session for this user",
+                    "session_not_found",
+                    None,
                 );
             }
             Self::PreconditionRequired(message) => {
