@@ -45,8 +45,7 @@ pub fn from_user_agent(user_agent: Option<&str>) -> String {
     FALLBACK_LABEL.to_string()
 }
 
-fn major_version(rest: &str) -> Option<String> {
-    let digits = rest.trim_start_matches(|character: char| !character.is_ascii_digit());
-    let major = digits.split('.').next()?;
-    (!major.is_empty()).then(|| major.to_string())
+fn major_version(rest: &str) -> Option<&str> {
+    let major = rest.trim_start().split('.').next()?;
+    (!major.is_empty() && major.bytes().all(|byte| byte.is_ascii_digit())).then_some(major)
 }

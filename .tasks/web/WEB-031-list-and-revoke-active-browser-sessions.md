@@ -1,7 +1,7 @@
 ---
 id: "WEB-031"
 title: "List and revoke active browser sessions"
-status: In Progress
+status: Done
 priority: "Medium"
 type: "Feature"
 parent: "WEB-014"
@@ -19,7 +19,7 @@ web:WEB-030 lets one person hold many browser sessions but gives no way to see o
 ## Acceptance Criteria
 
 - [x] Each session records a device label at creation time, derived from the request User-Agent and falling back to a stable placeholder when it is absent or unparsable.
-- [ ] An authenticated user can list their active sessions with device label, created-at, and last-seen, with the session in use marked.
+- [x] An authenticated user can list their active sessions with device label, created-at, and last-seen, with the session in use marked.
 - [x] A user can revoke any session other than the one in use, and the revoked session is rejected on its next request.
 - [x] Revoking a session invalidates every live pairing PIN that session minted.
 - [x] A user cannot revoke the session they are using, and the attempt is rejected with a clear error.

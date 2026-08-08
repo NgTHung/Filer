@@ -45,6 +45,10 @@ fn known_browser_tokens_without_a_major_version_fall_back() {
         from_user_agent(Some("Mozilla/5.0 Safari/605.1.15")),
         FALLBACK_LABEL
     );
+    assert_eq!(
+        from_user_agent(Some("Mozilla/5.0 Chrome/131junk")),
+        FALLBACK_LABEL
+    );
 }
 
 #[test]

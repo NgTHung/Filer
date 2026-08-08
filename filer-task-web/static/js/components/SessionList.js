@@ -5,28 +5,22 @@ function formatTime(unixSeconds) {
   return new Date(unixSeconds * 1000).toLocaleString();
 }
 
-export function SessionList({ sessions, error, onRevoked, busy }) {
+export function SessionList({ sessions, error, onRevoked, onError, busy }) {
   const [busyId, setBusyId] = useState(null);
-  const [requestError, setRequestError] = useState(null);
   const rows = sessions ?? [];
-  const visibleError = requestError || error;
-  const errorMessage = requestError
-    ? `Could not update sessions: ${requestError.message}`
-    : error
-      ? `Could not load sessions: ${error.message}`
-      : null;
+  const errorMessage = error ? `Session request failed: ${error.message}` : null;
 
   async function revoke(id, deviceLabel) {
     if (!confirm(`Revoke ${deviceLabel}? This browser will lose access on its next request.`)) {
       return;
     }
     setBusyId(id);
-    setRequestError(null);
+    onError(null);
     try {
       await revokeSession(id);
       await onRevoked();
     } catch (requestError) {
-      setRequestError(requestError);
+      onError(requestError);
     } finally {
       setBusyId(null);
     }
@@ -34,16 +28,16 @@ export function SessionList({ sessions, error, onRevoked, busy }) {
 
   return html`
     <div class="session-list">
-      ${visibleError
+      ${error
         ? html`
             <p class="screen-error" role="alert">
               ${errorMessage}
             </p>
           `
         : null}
-      ${busy && rows.length === 0 && !visibleError
+      ${busy && rows.length === 0 && !error
         ? html`<p class="muted-note">Loading sessions…</p>`
-        : rows.length === 0 && !visibleError
+        : rows.length === 0 && !error
           ? html`<p class="empty-state">No active sessions.</p>`
           : rows.map(
               (session) => html`

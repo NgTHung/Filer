@@ -46,6 +46,8 @@ async fn a_list_marks_the_acting_session_and_never_another_users() {
     assert_eq!(alice_rows.len(), 1);
     assert_eq!(alice_rows[0]["device_label"], "Chrome 131");
     assert_eq!(alice_rows[0]["current"], true);
+    assert!(alice_rows[0]["created_at"].as_i64().is_some());
+    assert!(alice_rows[0]["last_seen"].as_i64().is_some());
 
     let bob_sessions = send(
         &app.router,

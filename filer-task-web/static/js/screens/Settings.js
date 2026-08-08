@@ -12,6 +12,7 @@ import { sectionForOperation } from "../lib/policyOps.js";
 import { policyRejection, sectionRejection } from "../lib/policyRejection.js";
 import { openProject } from "../lib/projectOpen.js";
 import { fieldError } from "../lib/rejection.js";
+import { sessionRequestFailed, sessionRequestSucceeded } from "../lib/sessions.js";
 import { loadProjects } from "../store/project.js";
 
 export function SettingsScreen({ projectName }) {
@@ -19,8 +20,7 @@ export function SettingsScreen({ projectName }) {
   const [policy, setPolicy] = useState(null);
   const [rejection, setRejection] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [sessions, setSessions] = useState([]);
-  const [sessionsError, setSessionsError] = useState(null);
+  const [sessionState, setSessionState] = useState(sessionRequestSucceeded([]));
   const [sessionBusy, setSessionBusy] = useState(false);
   const [armed, setArmed] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -52,13 +52,11 @@ export function SettingsScreen({ projectName }) {
     try {
       const response = await listSessions();
       if (!guard.cancelled) {
-        setSessions(response.sessions);
-        setSessionsError(null);
+        setSessionState(sessionRequestSucceeded(response.sessions));
       }
     } catch (error) {
       if (!guard.cancelled) {
-        setSessions([]);
-        setSessionsError(error);
+        setSessionState(sessionRequestFailed([], error));
       }
     } finally {
       if (!guard.cancelled) {
@@ -158,10 +156,16 @@ export function SettingsScreen({ projectName }) {
         : null}
       <h3 class="settings-heading">Active sessions</h3>
       <${SessionList}
-        sessions=${sessions}
-        error=${sessionsError}
+        sessions=${sessionState.sessions}
+        error=${sessionState.error}
         busy=${sessionBusy}
         onRevoked=${loadSessions}
+        onError=${(error) =>
+          setSessionState((current) =>
+            error
+              ? sessionRequestFailed(current.sessions, error)
+              : sessionRequestSucceeded(current.sessions),
+          )}
       />
       ${dialog === "open"
         ? html`<${ProjectOpenDialog} onOpen=${open} onCancel=${() => setDialog(null)} />`
