@@ -125,8 +125,8 @@
         let unknown = SessionId::new(); // Not registered in SessionManager
 
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/home"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/home")),
                 session: unknown,
                 request: RequestId::new(),
             })
@@ -218,12 +218,11 @@
     async fn test_unknown_session_search_emits_error() {
         let harness = RouterTestHarness::new();
         let unknown = SessionId::new();
-        let root = harness.registry.clone().register(PathBuf::from("/tmp"));
 
         harness
-            .send(Command::SearchNodeCompat {
+            .send(Command::Search {
                 query: "*.txt".to_string(),
-                root,
+                root: LocationRef::from_location(&Location::local("/tmp")),
                 session: unknown,
                 request: RequestId::new(),
             })
@@ -254,12 +253,12 @@
     async fn test_unknown_session_watch_emits_error() {
         let harness = RouterTestHarness::new();
         let unknown = SessionId::new();
-        let node = harness.registry.clone().register(PathBuf::from("/watched"));
 
         harness
-            .send(Command::WatchNodeCompat {
-                node,
+            .send(Command::Watch {
+                location: LocationRef::from_location(&Location::local("/watched")),
                 session: unknown,
+                request: RequestId::new(),
             })
             .await;
 
@@ -294,13 +293,12 @@
     async fn test_unknown_session_ops_emits_error() {
         let harness = RouterTestHarness::new();
         let unknown = SessionId::new();
-        let parent = harness.registry.clone().register(PathBuf::from("/home"));
         let request = RequestId::new();
         let operation = OperationId::new();
 
         harness
-            .send(Command::CreateFolderNodeCompat {
-                parent,
+            .send(Command::CreateFolder {
+                parent: LocationRef::from_location(&Location::local("/home")),
                 name: "new_dir".to_string(),
                 session: unknown,
                 request,
@@ -353,9 +351,10 @@
         };
 
         // Now use that session to navigate
+        let location = LocationRef::from_location(&Location::local("/home"));
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/home"),
+            .send(Command::Navigate {
+                location,
                 session,
                 request: RequestId::new(),
             })
@@ -367,13 +366,15 @@
             .expect("Nav channel closed");
 
         match nav_cmd {
-            NavCommand::NavigateToPath {
-                session: s, path, ..
+            NavCommand::NavigateToLocation {
+                session: s,
+                location,
+                ..
             } => {
                 assert_eq!(s, session);
-                assert_eq!(path, PathBuf::from("/home"));
+                assert_eq!(location, LocationRef::from_location(&Location::local("/home")));
             }
-            other => panic!("Expected NavigateToPath, got {:?}", other),
+            other => panic!("Expected NavigateToLocation, got {:?}", other),
         }
     }
 
@@ -384,8 +385,8 @@
 
         // Verify it works before destroy
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/before"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/before")),
                 session,
                 request: RequestId::new(),
             })
@@ -401,8 +402,8 @@
 
         // Now try to use the destroyed session
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/after"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/after")),
                 session,
                 request: RequestId::new(),
             })
@@ -464,8 +465,8 @@
         // Send multiple navigation commands rapidly
         for i in 0..5 {
             harness
-                .send(Command::NavigatePathCompat {
-                    path: PathBuf::from(format!("/dir/{}", i)),
+                .send(Command::Navigate {
+                    location: LocationRef::from_location(&Location::local(format!("/dir/{}", i))),
                     session,
                     request: RequestId::new(),
                 })
@@ -479,13 +480,18 @@
                 .expect("Timed out")
                 .expect("Channel closed");
             match cmd {
-                NavCommand::NavigateToPath {
-                    path, session: s, ..
+                NavCommand::NavigateToLocation {
+                    location,
+                    session: s,
+                    ..
                 } => {
                     assert_eq!(s, session);
-                    assert_eq!(path, PathBuf::from(format!("/dir/{}", i)));
+                    assert_eq!(
+                        location,
+                        LocationRef::from_location(&Location::local(format!("/dir/{}", i)))
+                    );
                 }
-                other => panic!("Expected NavigateToPath, got {:?}", other),
+                other => panic!("Expected NavigateToLocation, got {:?}", other),
             }
         }
     }
@@ -496,8 +502,8 @@
         let session = harness.create_valid_session();
 
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/test"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/test")),
                 session,
                 request: RequestId::new(),
             })
@@ -533,12 +539,11 @@
     async fn test_search_does_not_reach_navigator_or_watcher() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
-        let root = harness.registry.clone().register(PathBuf::from("/root"));
 
         harness
-            .send(Command::SearchNodeCompat {
+            .send(Command::Search {
                 query: "test".to_string(),
-                root,
+                root: LocationRef::from_location(&Location::local("/root")),
                 session,
                 request: RequestId::new(),
             })
@@ -561,10 +566,13 @@
     async fn test_watch_does_not_reach_navigator_or_searcher() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
-        let node = harness.registry.clone().register(PathBuf::from("/watched"));
 
         harness
-            .send(Command::WatchNodeCompat { node, session })
+            .send(Command::Watch {
+                location: LocationRef::from_location(&Location::local("/watched")),
+                session,
+                request: RequestId::new(),
+            })
             .await;
 
         // Watcher gets the command

@@ -19,51 +19,6 @@
     }
 
     #[tokio::test]
-    async fn test_route_load_preview_to_previewer() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let path = PathBuf::from("/home/user/photo.jpg");
-        let node = harness.registry.clone().register(path.clone());
-
-        harness
-            .send(Command::LoadPreviewNodeCompat {
-                id: node,
-                options: None,
-                session,
-                request: RequestId::new(),
-            })
-            .await;
-
-        let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
-            .await
-            .expect("Timed out waiting for PreviewCommand")
-            .expect("PreviewCommand channel closed");
-
-        match preview_cmd {
-            PreviewCommand::Generate {
-                location,
-                options,
-                event_mode,
-                session: s,
-                ..
-            } => {
-                assert_eq!(
-                    location,
-                    LocationRef::from_location(&Location::local(path)),
-                    "Preview location must resolve from request NodeId"
-                );
-                assert_eq!(event_mode, PreviewEventMode::Compat { node });
-                assert!(
-                    options.is_none(),
-                    "Options should be None when not provided"
-                );
-                assert_eq!(s, session, "Preview session id must match request command");
-            }
-            other => panic!("Expected PreviewCommand::Generate, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
     async fn test_route_load_preview_location_to_previewer() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -124,45 +79,6 @@
     }
 
     #[tokio::test]
-    async fn test_route_load_metadata_to_previewer() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let path = PathBuf::from("/home/user/document.pdf");
-        let node = harness.registry.clone().register(path.clone());
-
-        harness
-            .send(Command::LoadMetadataNodeCompat {
-                node,
-                session,
-                request: RequestId::new(),
-            })
-            .await;
-
-        let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
-            .await
-            .expect("Timed out waiting for PreviewCommand")
-            .expect("PreviewCommand channel closed");
-
-        match preview_cmd {
-            PreviewCommand::LoadMetadata {
-                location,
-                event_mode,
-                session: s,
-                ..
-            } => {
-                assert_eq!(
-                    location,
-                    LocationRef::from_location(&Location::local(path)),
-                    "Metadata location must resolve from request NodeId"
-                );
-                assert_eq!(event_mode, PreviewEventMode::Compat { node });
-                assert_eq!(s, session, "Load request session id must match the command");
-            }
-            other => panic!("Expected PreviewCommand::LoadMetadata, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
     async fn test_route_load_metadata_location_to_previewer() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -200,48 +116,6 @@
     }
 
     #[tokio::test]
-    async fn test_route_load_extended_metadata_to_previewer() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let path = PathBuf::from("/home/user/music.mp3");
-        let node = harness.registry.clone().register(path.clone());
-
-        harness
-            .send(Command::LoadExtendedMetadataNodeCompat {
-                node,
-                session,
-                request: RequestId::new(),
-            })
-            .await;
-
-        let preview_cmd = timeout(TEST_TIMEOUT, harness.preview_rx.recv_async())
-            .await
-            .expect("Timed out waiting for PreviewCommand")
-            .expect("PreviewCommand channel closed");
-
-        match preview_cmd {
-            PreviewCommand::LoadExtendedMetadata {
-                location,
-                event_mode,
-                session: s,
-                ..
-            } => {
-                assert_eq!(
-                    location,
-                    LocationRef::from_location(&Location::local(path)),
-                    "Extended metadata location must resolve from request NodeId"
-                );
-                assert_eq!(event_mode, PreviewEventMode::Compat { node });
-                assert_eq!(s, session, "Extended metadata session must match request");
-            }
-            other => panic!(
-                "Expected PreviewCommand::LoadExtendedMetadata, got {:?}",
-                other
-            ),
-        }
-    }
-
-    #[tokio::test]
     async fn test_route_load_extended_metadata_location_to_previewer() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -275,146 +149,6 @@
                 assert_eq!(r, request, "RequestId must be forwarded");
             }
             other => panic!("Expected PreviewCommand::LoadExtendedMetadata, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_route_copy_to_operator() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let src = harness
-            .registry
-            .clone()
-            .register(PathBuf::from("/a/file.txt"));
-        let dst = harness.registry.clone().register(PathBuf::from("/b"));
-        let src_location = harness.registry.resolve_node_location(src).unwrap();
-        let dst_location = harness.registry.resolve_node_location(dst).unwrap();
-        let request = RequestId::new();
-        let operation = OperationId::new();
-
-        harness
-            .send(Command::CopyNodeCompat {
-                sources: vec![src],
-                destination: dst,
-                session,
-                request,
-                operation,
-            })
-            .await;
-
-        let ops_cmd = timeout(TEST_TIMEOUT, harness.ops_rx.recv_async())
-            .await
-            .expect("Timed out waiting for OpsCommand")
-            .expect("OpsCommand channel closed");
-
-        match ops_cmd {
-            OpsCommand::Copy {
-                sources,
-                destination,
-                event_mode,
-                session: s,
-                request: r,
-                operation: op,
-            } => {
-                assert_eq!(sources, vec![src_location]);
-                assert_eq!(destination, dst_location);
-                assert_eq!(event_mode, OperationEventMode::Compat);
-                assert_eq!(s, session);
-                assert_eq!(r, request);
-                assert_eq!(op, operation);
-            }
-            other => panic!("Expected OpsCommand::Copy, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_route_unresolved_copy_node_compat_emits_error() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let missing = NodeId::from_path(&PathBuf::from("/missing/source.txt"));
-        let destination = harness.registry.clone().register(PathBuf::from("/b"));
-        let request = RequestId::new();
-        let operation = OperationId::new();
-
-        harness
-            .send(Command::CopyNodeCompat {
-                sources: vec![missing],
-                destination,
-                session,
-                request,
-                operation,
-            })
-            .await;
-
-        let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
-            .await
-            .expect("Timed out waiting for error event")
-            .expect("Event channel closed");
-
-        match event {
-            Event::Error {
-                session: s,
-                request: r,
-                operation: op,
-                ..
-            } => {
-                assert_eq!(s, session);
-                assert_eq!(r, Some(request));
-                assert_eq!(op, Some(operation));
-            }
-            other => panic!("Expected Event::Error, got {other:?}"),
-        }
-
-        assert!(
-            harness.ops_rx.try_recv().is_err(),
-            "unresolved compat nodes must not reach the operator"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_route_create_file_to_operator() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let parent = harness
-            .registry
-            .clone()
-            .register(PathBuf::from("/home/user"));
-        let parent_location = harness.registry.resolve_node_location(parent).unwrap();
-        let request = RequestId::new();
-        let operation = OperationId::new();
-
-        harness
-            .send(Command::CreateFileNodeCompat {
-                parent,
-                name: "notes.txt".to_string(),
-                session,
-                request,
-                operation,
-            })
-            .await;
-
-        let ops_cmd = timeout(TEST_TIMEOUT, harness.ops_rx.recv_async())
-            .await
-            .expect("Timed out waiting for OpsCommand")
-            .expect("OpsCommand channel closed");
-
-        match ops_cmd {
-            OpsCommand::CreateFile {
-                parent: p,
-                name,
-                event_mode,
-                session: s,
-                request: r,
-                operation: op,
-            } => {
-                assert_eq!(p, parent_location);
-                assert_eq!(name, "notes.txt");
-                assert_eq!(event_mode, OperationEventMode::Compat);
-                assert_eq!(s, session);
-                assert_eq!(r, request);
-                assert_eq!(op, operation);
-            }
-            other => panic!("Expected OpsCommand::CreateFile, got {:?}", other),
         }
     }
 
@@ -531,15 +265,15 @@
         let session_b = harness.create_valid_session();
 
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/a"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/a")),
                 session: session_a,
                 request: RequestId::new(),
             })
             .await;
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/b"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/b")),
                 session: session_b,
                 request: RequestId::new(),
             })
@@ -551,11 +285,11 @@
             .expect("Timed out")
             .expect("Channel closed");
         match cmd1 {
-            NavCommand::NavigateToPath { session, path, .. } => {
+            NavCommand::NavigateToLocation { session, location, .. } => {
                 assert_eq!(session, session_a);
-                assert_eq!(path, PathBuf::from("/a"));
+                assert_eq!(location, LocationRef::from_location(&Location::local("/a")));
             }
-            other => panic!("Expected NavigateToPath, got {:?}", other),
+            other => panic!("Expected NavigateToLocation, got {:?}", other),
         }
 
         // Second command should carry session_b
@@ -564,11 +298,11 @@
             .expect("Timed out")
             .expect("Channel closed");
         match cmd2 {
-            NavCommand::NavigateToPath { session, path, .. } => {
+            NavCommand::NavigateToLocation { session, location, .. } => {
                 assert_eq!(session, session_b);
-                assert_eq!(path, PathBuf::from("/b"));
+                assert_eq!(location, LocationRef::from_location(&Location::local("/b")));
             }
-            other => panic!("Expected NavigateToPath, got {:?}", other),
+            other => panic!("Expected NavigateToLocation, got {:?}", other),
         }
     }
 
@@ -580,22 +314,18 @@
 
         // Session A navigates
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/home/a"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/home/a")),
                 session: session_a,
                 request: RequestId::new(),
             })
             .await;
 
-        // Session B searches
-        let root = harness
-            .registry
-            .clone()
-            .register(PathBuf::from("/search/root"));
+        // Session B searches through the native Location contract.
         harness
-            .send(Command::SearchNodeCompat {
+            .send(Command::Search {
                 query: "find me".to_string(),
-                root,
+                root: LocationRef::from_location(&Location::local("/search/root")),
                 session: session_b,
                 request: RequestId::new(),
             })
@@ -607,10 +337,10 @@
             .expect("Timed out waiting for nav")
             .expect("Nav channel closed");
         match nav_cmd {
-            NavCommand::NavigateToPath { session, .. } => {
+            NavCommand::NavigateToLocation { session, .. } => {
                 assert_eq!(session, session_a, "Navigate must carry session A");
             }
-            other => panic!("Expected NavigateToPath, got {:?}", other),
+            other => panic!("Expected NavigateToLocation, got {:?}", other),
         }
 
         // Search should go to Searcher
@@ -635,22 +365,22 @@
 
         // Interleave commands from 3 sessions going to the same actor
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/s1"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/s1")),
                 session: session_1,
                 request: RequestId::new(),
             })
             .await;
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/s2"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/s2")),
                 session: session_2,
                 request: RequestId::new(),
             })
             .await;
         harness
-            .send(Command::NavigatePathCompat {
-                path: PathBuf::from("/s3"),
+            .send(Command::Navigate {
+                location: LocationRef::from_location(&Location::local("/s3")),
                 session: session_3,
                 request: RequestId::new(),
             })
@@ -664,10 +394,10 @@
                 .expect("Timed out")
                 .expect("Channel closed");
             match cmd {
-                NavCommand::NavigateToPath { session, .. } => {
+                NavCommand::NavigateToLocation { session, .. } => {
                     received_sessions.push(session);
                 }
-                other => panic!("Expected NavigateToPath, got {:?}", other),
+                other => panic!("Expected NavigateToLocation, got {:?}", other),
             }
         }
 

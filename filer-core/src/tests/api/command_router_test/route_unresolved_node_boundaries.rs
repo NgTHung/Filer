@@ -51,6 +51,8 @@
         }
     }
 
+    // Compatibility pin for API-006: unresolved NodeId scan requests must
+    // remain rejected until the compatibility route becomes an absence test.
     #[tokio::test]
     async fn test_unresolved_scan_node_compat_does_not_reach_scanner() {
         let harness = RouterTestHarness::new();
@@ -71,6 +73,8 @@
         assert!(harness.scan_rx.try_recv().is_err());
     }
 
+    // Compatibility pin for API-006: unresolved NodeId search requests must
+    // remain rejected until the compatibility route becomes an absence test.
     #[tokio::test]
     async fn test_unresolved_search_node_compat_does_not_reach_searcher() {
         let harness = RouterTestHarness::new();
@@ -90,6 +94,8 @@
         assert!(harness.search_rx.try_recv().is_err());
     }
 
+    // Compatibility pin for API-006: unresolved NodeId metadata requests must
+    // remain rejected until the compatibility route becomes an absence test.
     #[tokio::test]
     async fn test_unresolved_metadata_node_compat_does_not_reach_previewer() {
         let harness = RouterTestHarness::new();
@@ -108,6 +114,8 @@
         assert!(harness.preview_rx.try_recv().is_err());
     }
 
+    // Compatibility pin for API-006: unresolved NodeId extended-metadata
+    // requests must remain rejected until the route becomes an absence test.
     #[tokio::test]
     async fn test_unresolved_extended_metadata_node_compat_does_not_reach_previewer() {
         let harness = RouterTestHarness::new();
@@ -126,6 +134,8 @@
         assert!(harness.preview_rx.try_recv().is_err());
     }
 
+    // Compatibility pin for API-006: unresolved NodeId watch requests must
+    // remain rejected until the compatibility route becomes an absence test.
     #[tokio::test]
     async fn test_unresolved_watch_node_compat_does_not_reach_watcher() {
         let harness = RouterTestHarness::new();
@@ -155,6 +165,8 @@
         assert!(harness.watch_rx.try_recv().is_err());
     }
 
+    // Compatibility pin for API-006: unresolved NodeId operation requests must
+    // remain rejected until the compatibility routes become absence tests.
     #[tokio::test]
     async fn test_unresolved_operation_node_compat_commands_do_not_reach_operator() {
         let harness = RouterTestHarness::new();

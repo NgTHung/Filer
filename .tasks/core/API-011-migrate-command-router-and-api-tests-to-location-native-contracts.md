@@ -1,7 +1,7 @@
 ---
 id: API-011
 title: Migrate command router and API tests to Location-native contracts
-status: To Do
+status: Done
 priority: High
 type: TestDebt
 parent: API-005
@@ -11,7 +11,7 @@ rules: [CORE-LIBRARY]
 risk: Medium
 impact: "Ports command routing tests to LocationRef contracts and marks compatibility-only pins so API-006 can remove routes without silent coverage loss."
 tags: [api, nodeid, location, testing]
-last_updated: 2026-07-09
+last_updated: 2026-08-09
 ---
 
 ## Summary
@@ -20,6 +20,6 @@ Port the command router and API tests that exercise NodeId routes or compatibili
 
 ## Acceptance Criteria
 
-- [ ] Every router or API test that addresses nodes by NodeId asserts on LocationRef or NodeEntry identity instead, except tests that exist solely to pin compatibility routes.
-- [ ] Tests pinning compatibility-only routes are marked so API-006 can convert them to absence tests rather than delete them silently.
-- [ ] The full filer-core suite passes with no reduction in test count beyond compatibility-only pins.
+- [x] Every router or API test that addresses nodes by NodeId asserts on LocationRef or NodeEntry identity instead, except tests that exist solely to pin compatibility routes.
+- [x] Tests pinning compatibility-only routes are marked so API-006 can convert them to absence tests rather than delete them silently.
+- [x] The full filer-core suite passes with no reduction in test count beyond compatibility-only pins.

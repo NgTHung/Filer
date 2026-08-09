@@ -1,3 +1,5 @@
+    // Compatibility pin for API-006: preserve path navigation routing until
+    // the path compatibility command is removed and becomes an absence test.
     #[tokio::test]
     async fn test_route_navigate_path_to_navigator() {
         let harness = RouterTestHarness::new();
@@ -68,40 +70,6 @@
     }
 
     #[tokio::test]
-    async fn test_route_navigate_to_node_to_navigator() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let node = NodeId(42);
-
-        let request = RequestId::new();
-        harness
-            .send(Command::NavigateNodeCompat {
-                node,
-                session,
-                request,
-            })
-            .await;
-
-        let nav_cmd = timeout(TEST_TIMEOUT, harness.nav_rx.recv_async())
-            .await
-            .expect("Timed out waiting for NavCommand")
-            .expect("NavCommand channel closed");
-
-        match nav_cmd {
-            NavCommand::Navigate {
-                session: s,
-                node: n,
-                request: r,
-            } => {
-                assert_eq!(s, session, "SessionId must be preserved");
-                assert_eq!(n, node, "NodeId must be forwarded correctly");
-                assert_eq!(r, request, "RequestId must be forwarded correctly");
-            }
-            other => panic!("Expected NavCommand::Navigate, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
     async fn test_route_navigate_up_to_navigator() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
@@ -145,50 +113,8 @@
         }
     }
 
-    #[tokio::test]
-    async fn test_route_search_to_searcher() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-
-        // Register a path for the root NodeId so the router can resolve it
-        let path = PathBuf::from("/home/user/projects");
-        let registered_id = harness.registry.clone().register(path.clone());
-
-        harness
-            .send(Command::SearchNodeCompat {
-                query: "*.rs".to_string(),
-                root: registered_id,
-                session,
-                request: RequestId::new(),
-            })
-            .await;
-
-        let search_cmd = timeout(TEST_TIMEOUT, harness.search_rx.recv_async())
-            .await
-            .expect("Timed out waiting for SearchCommand")
-            .expect("SearchCommand channel closed");
-
-        match search_cmd {
-            SearchCommand::Search {
-                query,
-                root: r,
-                event_mode,
-                session: s,
-                ..
-            } => {
-                assert_eq!(query.text, "*.rs", "Query text must be forwarded");
-                assert_eq!(
-                    r,
-                    harness.registry.resolve_node_location(registered_id).unwrap(),
-                    "Root NodeId must be translated to LocationRef"
-                );
-                assert_eq!(event_mode, SearchEventMode::Compat);
-                assert_eq!(s, session, "Session must be the same for both command");
-            }
-            other => panic!("Expected SearchCommand::Search, got {:?}", other),
-        }
-    }
-
+    // Compatibility pin for API-006: preserve path search routing until the
+    // path compatibility command is removed and becomes an absence test.
     #[tokio::test]
     async fn test_route_search_path_to_searcher() {
         let harness = RouterTestHarness::new();
@@ -359,93 +285,15 @@
     }
 
     #[tokio::test]
-    async fn test_route_compat_scans_to_scanner() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let path = PathBuf::from("/tmp/compat-scan");
-        let node = harness.registry.clone().register(path.clone());
-        let pipeline = PipelineConfig::with_default_sort();
-        let load = crate::DirectoryLoadOptions::bounded(32);
-        let path_request = RequestId::new();
-        let node_request = RequestId::new();
-
-        harness
-            .send(Command::ScanPathCompat {
-                path: path.clone(),
-                session,
-                pipeline: pipeline.clone(),
-                load: load.clone(),
-                request: path_request,
-            })
-            .await;
-
-        match timeout(TEST_TIMEOUT, harness.scan_rx.recv_async())
-            .await
-            .expect("Timed out waiting for path ScanCommand")
-            .expect("ScanCommand channel closed")
-        {
-            ScanCommand::ScanCompat {
-                location,
-                session: routed_session,
-                pipeline: routed_pipeline,
-                load: routed_load,
-                request,
-            } => {
-                assert_eq!(
-                    location,
-                    LocationRef::from_location(&Location::local(path.clone()))
-                );
-                assert_eq!(routed_session, session);
-                assert_eq!(routed_pipeline, pipeline);
-                assert_eq!(routed_load, load);
-                assert_eq!(request, path_request);
-            }
-            other => panic!("Expected ScanCommand::ScanCompat, got {other:?}"),
-        }
-
-        harness
-            .send(Command::ScanNodeCompat {
-                node,
-                session,
-                pipeline: pipeline.clone(),
-                load: load.clone(),
-                request: node_request,
-            })
-            .await;
-
-        match timeout(TEST_TIMEOUT, harness.scan_rx.recv_async())
-            .await
-            .expect("Timed out waiting for node ScanCommand")
-            .expect("ScanCommand channel closed")
-        {
-            ScanCommand::ScanCompat {
-                location,
-                session: routed_session,
-                pipeline: routed_pipeline,
-                load: routed_load,
-                request,
-            } => {
-                assert_eq!(location, harness.registry.resolve_node_location(node).unwrap());
-                assert_eq!(routed_session, session);
-                assert_eq!(routed_pipeline, pipeline);
-                assert_eq!(routed_load, load);
-                assert_eq!(request, node_request);
-            }
-            other => panic!("Expected ScanCommand::ScanCompat, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
     async fn test_route_cancel_to_searcher_when_searching() {
         let harness = RouterTestHarness::new();
         let session = harness.create_valid_session();
 
-        // First start a search so the router knows this session is searching
-        let root = harness.registry.clone().register(PathBuf::from("/tmp"));
+        // First start a native search so the router knows this session is searching.
         harness
-            .send(Command::SearchNodeCompat {
+            .send(Command::Search {
                 query: "test".to_string(),
-                root,
+                root: LocationRef::from_location(&Location::local("/tmp")),
                 session,
                 request: RequestId::new(),
             })
@@ -467,69 +315,6 @@
                 assert_eq!(s, session, "Session must be the same for Cancel request");
             }
             other => panic!("Expected SearchCommand::Cancel, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_route_watch_to_watcher() {
-        let harness = RouterTestHarness::new();
-        let session = harness.create_valid_session();
-        let path = PathBuf::from("/home/user/watched");
-        let node = harness.registry.clone().register(path.clone());
-
-        harness
-            .send(Command::WatchNodeCompat { node, session })
-            .await;
-
-        let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
-            .await
-            .expect("Timed out waiting for WatchCommand")
-            .expect("WatchCommand channel closed");
-
-        match watch_cmd {
-            WatchCommand::Watch {
-                location,
-                session: s,
-                request,
-                event_mode,
-            } => {
-                assert_eq!(
-                    location,
-                    harness.registry.resolve_node_location(node).unwrap(),
-                    "Watch NodeId must resolve before reaching watcher"
-                );
-                assert_eq!(s, session, "Watch SessionId must be forwarded");
-                assert!(request.is_none(), "compat watch has no request id");
-                assert_eq!(event_mode, WatchEventMode::Compat { node });
-            }
-            other => panic!("Expected WatchCommand::Watch, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_route_unwatch_to_watcher() {
-        let harness = RouterTestHarness::new();
-        let path = PathBuf::from("/home/user/unwatched");
-        let node = harness.registry.clone().register(path.clone());
-
-        // Unwatch carries only NodeId, no SessionId
-        harness.send(Command::UnwatchNodeCompat { node }).await;
-
-        let watch_cmd = timeout(TEST_TIMEOUT, harness.watch_rx.recv_async())
-            .await
-            .expect("Timed out waiting for WatchCommand")
-            .expect("WatchCommand channel closed");
-
-        match watch_cmd {
-            WatchCommand::Unwatch { location, scope } => {
-                assert_eq!(
-                    location,
-                    harness.registry.resolve_node_location(node).unwrap(),
-                    "Unwatch NodeId must resolve before reaching watcher"
-                );
-                assert_eq!(scope, UnwatchScope::All);
-            }
-            other => panic!("Expected WatchCommand::Unwatch, got {:?}", other),
         }
     }
 

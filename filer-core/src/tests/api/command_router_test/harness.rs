@@ -13,6 +13,8 @@
     use crate::api::session_manager::SessionManager;
     use crate::errors::{CoreError, ErrorCode};
     use crate::model::location::{Location, LocationRef};
+    // Compatibility pin for API-006: the harness registry remains only for
+    // routing commands that still accept NodeId.
     use crate::model::node::NodeId;
     use crate::model::operation::OperationId;
     use crate::model::registry::NodeRegistry;
@@ -55,7 +57,7 @@
         preview_rx: Receiver<PreviewCommand>,
         /// Receive OpsCommands that the router dispatches
         ops_rx: Receiver<OpsCommand>,
-        /// The registry used for NodeId resolution
+        /// Compatibility-only registry used for NodeId resolution.
         registry: NodeRegistry,
         /// Session manager clone — shares state with the router
         session_manager: SessionManager,

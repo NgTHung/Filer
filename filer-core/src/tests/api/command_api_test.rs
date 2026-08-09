@@ -17,6 +17,8 @@ fn location(path: &str) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
 }
 
+// Compatibility pin for API-006: these NodeId fixtures keep wire labels and
+// dispatch keys covered until compatibility commands become absence tests.
 fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
     let session = SessionId(11);
     let request = RequestId(22);
