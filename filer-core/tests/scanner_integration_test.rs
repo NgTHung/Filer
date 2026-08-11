@@ -10,21 +10,22 @@ use std::time::{Duration, SystemTime};
 use async_trait::async_trait;
 use tokio::time::timeout;
 
-use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+mod support;
+
+use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
-use filer_core::{
-    Actor, Capabilities, CoreError, Event, FsProvider, Location, LocationRef, PipelineConfig,
-    SortConfig,
-};
+use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
+
+use support::{local_location, provider_node_id, wait_for_directory_entries};
 
 fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
     let extension = PathBuf::from(name)
         .extension()
         .map(|e| e.to_string_lossy().into_owned());
     FileNode {
-        id: NodeId(name.len() as u64),
+        id: provider_node_id(PathBuf::from(path).join(name)),
         name: name.to_string(),
         path: PathBuf::from(format!("{path}/{name}")),
         kind: NodeKind::File { extension },
@@ -41,10 +42,7 @@ fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
     }
 }
 
-fn compat_location(path: impl Into<PathBuf>) -> LocationRef {
-    LocationRef::from_location(&Location::local(path))
-}
-
+/// FileNode values stay at the FsProvider boundary; scanner asserts native entries.
 #[derive(Clone)]
 struct MockProvider {
     files: Arc<Mutex<Vec<FileNode>>>,
@@ -175,8 +173,8 @@ async fn test_scanner_processes_scan_command() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: compat_location(PathBuf::from("/test")),
+        .send(ScanCommand::ScanLocation {
+            location: local_location("/test"),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -188,10 +186,9 @@ async fn test_scanner_processes_scan_command() {
         })
         .expect("Failed to send scan command");
 
-    let event = timeout(Duration::from_secs(1), evt_rx.recv_async())
-        .await
-        .expect("Timeout waiting for event")
-        .expect("Failed to receive event");
+    let (location, total) = wait_for_directory_entries(&evt_rx, sess, Duration::from_secs(1)).await;
+    assert_eq!(location, local_location("/test"));
+    assert_eq!(total, 2);
 
     let calls = provider_clone.get_list_calls();
     assert!(
@@ -199,17 +196,6 @@ async fn test_scanner_processes_scan_command() {
         "Scanner should have called list() on provider"
     );
     assert_eq!(calls[0], PathBuf::from("/test"));
-
-    match event {
-        Event::DirectoryLoadedCompat { groups, .. } => {
-            let total: usize = groups.groups.iter().map(|g| g.nodes.len()).sum();
-            assert_eq!(total, 2);
-        }
-        Event::FilesBatch(entries, _) => {
-            assert_eq!(entries.len(), 2);
-        }
-        _ => {}
-    }
 }
 
 #[tokio::test]
@@ -224,8 +210,8 @@ async fn test_scanner_handles_cancellation() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: compat_location(PathBuf::from("/test")),
+        .send(ScanCommand::ScanLocation {
+            location: local_location("/test"),
             pipeline: PipelineConfig {
                 sort: Some(SortConfig {
                     ..Default::default()
@@ -263,8 +249,8 @@ async fn test_scanner_handles_multiple_scans() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: compat_location(PathBuf::from("/dir1")),
+        .send(ScanCommand::ScanLocation {
+            location: local_location("/dir1"),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -277,8 +263,8 @@ async fn test_scanner_handles_multiple_scans() {
         .unwrap();
 
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: compat_location(PathBuf::from("/dir2")),
+        .send(ScanCommand::ScanLocation {
+            location: local_location("/dir2"),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -313,8 +299,8 @@ async fn test_scanner_handles_provider_errors() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: compat_location(PathBuf::from("/nonexistent")),
+        .send(ScanCommand::ScanLocation {
+            location: local_location("/nonexistent"),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -326,13 +312,19 @@ async fn test_scanner_handles_provider_errors() {
         })
         .unwrap();
 
-    match timeout(Duration::from_secs(1), evt_rx.recv_async()).await {
-        Ok(Ok(Event::Error { message, .. })) => {
-            assert!(!message.is_empty());
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+    loop {
+        match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            Ok(Ok(Event::Error {
+                message, session, ..
+            })) if session == sess => {
+                assert!(!message.is_empty());
+                break;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) => panic!("Event channel closed unexpectedly"),
+            Err(_) => panic!("timed out waiting for scanner error"),
         }
-        Ok(Ok(_)) => {}
-        Ok(Err(_)) => panic!("Event channel closed unexpectedly"),
-        Err(_) => {} // Timeout acceptable if scanner handles errors silently
     }
 }
 
@@ -351,8 +343,8 @@ async fn test_scanner_depth_limiting() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: compat_location(PathBuf::from("/test")),
+        .send(ScanCommand::ScanLocation {
+            location: local_location("/test"),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
@@ -386,8 +378,8 @@ async fn test_scanner_emits_progress_events() {
     let _handle = tokio::spawn(async move { scanner.run().await });
 
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: compat_location(PathBuf::from("/test")),
+        .send(ScanCommand::ScanLocation {
+            location: local_location("/test"),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,

@@ -1,7 +1,7 @@
 //! Search Module Integration Tests
 //!
 //! These tests exercise the full command→event pipeline for search:
-//!   FilerCore (Command::SearchNodeCompat) → Router → SearchModule → Searcher → Event::SearchResultsCompat
+//!   FilerCore (Command::Search) → Router → SearchModule → Searcher → Event::SearchResults
 //!
 //! The module stack used in every test:
 //!   ScanModule::new(MockProvider) + SearchModule::new(MockProvider)
@@ -11,19 +11,23 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
-use flume::Receiver;
 use tokio::time::timeout;
 
-use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+mod support;
+
+use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::modules::scan::ScanModule;
 use filer_core::modules::search::SearchModule;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 
+use support::{local_location, provider_node_id, wait_for_search_entries};
+
 const TIMEOUT: Duration = Duration::from_millis(3000);
 
 /// Hierarchical in-memory filesystem for integration testing.
 /// Maps directory paths to their children, supporting recursive traversal.
+/// FileNode values stay at the FsProvider boundary; search asserts native entries.
 #[derive(Clone)]
 struct MockProvider {
     files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<FileNode>)>>>,
@@ -50,7 +54,7 @@ fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
         .and_then(|e| e.to_str())
         .map(|s| s.to_string());
     FileNode {
-        id: NodeId::from_path(&PathBuf::from(parent).join(name)),
+        id: provider_node_id(PathBuf::from(parent).join(name)),
         name: name.to_string(),
         path: PathBuf::from(parent).join(name),
         kind: NodeKind::File { extension },
@@ -69,7 +73,7 @@ fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
 
 fn make_dir(name: &str, parent: &str) -> FileNode {
     FileNode {
-        id: NodeId::from_path(&PathBuf::from(parent).join(name)),
+        id: provider_node_id(PathBuf::from(parent).join(name)),
         name: name.to_string(),
         path: PathBuf::from(parent).join(name),
         kind: NodeKind::Directory {
@@ -172,32 +176,6 @@ async fn create_session(core: &FilerCore) -> SessionId {
     }
 }
 
-async fn wait_for_search_complete(
-    evt_rx: &Receiver<Event>,
-    expected_session: SessionId,
-) -> Vec<FileNode> {
-    let mut matches = Vec::new();
-    let deadline = tokio::time::Instant::now() + TIMEOUT;
-    loop {
-        match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(Event::SearchResultsCompat {
-                matches: batch,
-                complete,
-                session,
-                ..
-            })) if session == expected_session => {
-                matches.extend(batch);
-                if complete {
-                    return matches;
-                }
-            }
-            Ok(Ok(_)) => {}
-            Ok(Err(_)) => panic!("event channel closed while waiting for SearchResultsCompat"),
-            Err(_) => panic!("timed out waiting for SearchResultsCompat (complete: true)"),
-        }
-    }
-}
-
 #[tokio::test]
 async fn test_search_command_through_filer_core() {
     let provider = MockProvider::new();
@@ -211,20 +189,19 @@ async fn test_search_command_through_filer_core() {
 
     let core = build_core_with_search(provider);
     let session = create_session(&core).await;
-    let root_id = core.registry().register(PathBuf::from("/root"));
-
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "target".to_string(),
-        root: root_id,
+        root: local_location("/root"),
         session,
         request: filer_core::RequestId::new(),
     })
     .unwrap();
 
     let rx = core.event_receiver();
-    let matches = wait_for_search_complete(&rx, session).await;
+    let matches = wait_for_search_entries(&rx, session, TIMEOUT).await;
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].name, "target.rs");
+    assert_eq!(matches[0].location, local_location("/root/target.rs"));
 }
 
 #[tokio::test]
@@ -245,11 +222,9 @@ async fn test_session_destroy_cancels_search() {
 
     let core = build_core_with_search(provider);
     let session = create_session(&core).await;
-    let root_id = core.registry().register(PathBuf::from("/root"));
-
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "f".to_string(),
-        root: root_id,
+        root: local_location("/root"),
         session,
         request: filer_core::RequestId::new(),
     })
@@ -269,11 +244,9 @@ async fn test_search_cancel_command() {
 
     let core = build_core_with_search(provider);
     let session = create_session(&core).await;
-    let root_id = core.registry().register(PathBuf::from("/root"));
-
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "file".to_string(),
-        root: root_id,
+        root: local_location("/root"),
         session,
         request: filer_core::RequestId::new(),
     })

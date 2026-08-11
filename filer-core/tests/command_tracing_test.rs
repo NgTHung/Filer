@@ -20,12 +20,15 @@ use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
 
+mod support;
+
 use filer_core::model::directory::DirectoryLoadOptions;
-use filer_core::model::node::NodeId;
 use filer_core::model::operation::OperationId;
 use filer_core::model::request::RequestId;
 use filer_core::model::session::SessionId;
 use filer_core::{Command, Event, FilerCore, PipelineConfig};
+
+use support::local_location;
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
 
@@ -140,43 +143,44 @@ async fn every_drivable_command_family_emits_a_trace_record() {
     let session = sid;
     let sid_num = sid.0;
 
-    // One command per drivable family. Compat path/node variants keep
-    // construction trivial; the record fires regardless of handler presence.
+    // One command per native drivable family. The record fires regardless of
+    // handler presence.
     let commands = vec![
-        Command::NavigatePathCompat {
-            path: std::path::PathBuf::from("/tmp/trace"),
+        Command::Navigate {
+            location: local_location("/tmp/trace"),
             session,
             request: RequestId::new(),
         },
-        Command::ScanPathCompat {
-            path: std::path::PathBuf::from("/tmp/trace"),
+        Command::Scan {
+            location: local_location("/tmp/trace"),
             session,
             pipeline: PipelineConfig::default(),
             load: DirectoryLoadOptions::default(),
             request: RequestId::new(),
         },
-        Command::SearchPathCompat {
+        Command::Search {
             query: "needle".to_string(),
-            root: std::path::PathBuf::from("/tmp/trace"),
+            root: local_location("/tmp/trace"),
             session,
             request: RequestId::new(),
         },
-        Command::LoadPreviewNodeCompat {
-            id: NodeId(0),
+        Command::LoadPreview {
+            location: local_location("/tmp/trace/file.txt"),
             options: None,
             session,
             request: RequestId::new(),
         },
-        Command::CreateFolderNodeCompat {
-            parent: NodeId(0),
+        Command::CreateFolder {
+            parent: local_location("/tmp/trace"),
             name: "folder".to_string(),
             session,
             request: RequestId::new(),
             operation: OperationId::new(),
         },
-        Command::WatchNodeCompat {
-            node: NodeId(0),
+        Command::Watch {
+            location: local_location("/tmp/trace"),
             session,
+            request: RequestId::new(),
         },
     ];
     for command in commands {
@@ -216,19 +220,11 @@ async fn every_drivable_command_family_emits_a_trace_record() {
     // Handshake and DestroySession are sessionless at the command level
     // (Command::session_id returns None); the rest carry this test's session id.
     assert!(has(&records, "session.handshake", None));
-    assert!(has(&records, "navigate.path.compat", Some(sid_num)));
-    assert!(has(&records, "scan.path.compat", Some(sid_num)));
-    assert!(has(&records, "search.path.compat", Some(sid_num)));
-    assert!(has(&records, "preview.load.node.compat", Some(sid_num)));
-    assert!(has(
-        &records,
-        "ops.create_folder.node.compat",
-        Some(sid_num)
-    ));
-    assert!(has(&records, "watch.node.compat", Some(sid_num)));
+    assert!(has(&records, "navigate", Some(sid_num)));
+    assert!(has(&records, "scan", Some(sid_num)));
+    assert!(has(&records, "search", Some(sid_num)));
+    assert!(has(&records, "preview.load", Some(sid_num)));
+    assert!(has(&records, "ops.create_folder", Some(sid_num)));
+    assert!(has(&records, "watch", Some(sid_num)));
     assert!(has(&records, "session.destroy", None));
-
-    // Not exercised here (covered structurally by the single choke point):
-    // the location-native variants, cancels, metadata.*, unwatch variants,
-    // and extension keys. Each still flows through `route` and is traced.
 }

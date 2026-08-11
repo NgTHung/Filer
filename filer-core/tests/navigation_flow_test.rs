@@ -13,13 +13,17 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::time::timeout;
 
-use filer_core::model::location::{LocationRef, LocationRoute};
-use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+mod support;
+
+use filer_core::model::location::LocationRef;
+use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::modules::navigation::NavigationModule;
 use filer_core::modules::scan::ScanModule;
 use filer_core::services::dir_cache::DirCache;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider, Location};
+
+use support::{local_location, provider_node_id, wait_for_directory_entries};
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
 
@@ -28,6 +32,7 @@ const TIMEOUT: Duration = Duration::from_millis(2000);
 /// `files_by_path` maps a directory path to the `FileNode`s it contains.
 /// By default, every path that isn't registered returns an empty listing so
 /// that navigation to an unknown path doesn't produce an error.
+/// FileNode values stay at the FsProvider boundary; navigation asserts native locations.
 #[derive(Clone)]
 struct MockProvider {
     /// directory path → children
@@ -68,7 +73,7 @@ impl MockProvider {
 
     fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
         FileNode {
-            id: NodeId(name.len() as u64 ^ size),
+            id: provider_node_id(PathBuf::from(parent).join(name)),
             name: name.to_string(),
             path: PathBuf::from(parent).join(name),
             kind: NodeKind::File {
@@ -91,7 +96,7 @@ impl MockProvider {
 
     fn make_dir(name: &str, parent: &str) -> FileNode {
         FileNode {
-            id: NodeId(name.len() as u64 + 10_000),
+            id: provider_node_id(PathBuf::from(parent).join(name)),
             name: name.to_string(),
             path: PathBuf::from(parent).join(name),
             kind: NodeKind::Directory {
@@ -203,86 +208,15 @@ async fn create_session(core: &FilerCore) -> SessionId {
 async fn wait_for_directory_loaded(
     core: &FilerCore,
     expected_session: SessionId,
-) -> (PathBuf, usize) {
-    let rx = core.event_receiver();
-    let deadline = tokio::time::Instant::now() + TIMEOUT;
-    loop {
-        if tokio::time::Instant::now() > deadline {
-            panic!("timed out waiting for directory load event");
-        }
-        match timeout(Duration::from_millis(100), rx.recv_async()).await {
-            Ok(Ok(Event::DirectoryLoadedCompat {
-                path,
-                groups,
-                session,
-                ..
-            })) => {
-                if session == expected_session {
-                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
-                    return (path, total);
-                }
-            }
-            Ok(Ok(Event::DirectoryPageLoadedCompat {
-                path,
-                groups,
-                session,
-                ..
-            })) => {
-                if session == expected_session {
-                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
-                    return (path, total);
-                }
-            }
-            Ok(Ok(Event::DirectoryLoaded {
-                parent,
-                groups,
-                session,
-                ..
-            })) => {
-                if session == expected_session {
-                    let path = path_from_location_ref(&parent)
-                        .expect("test Location directory event should use direct path");
-                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
-                    return (path, total);
-                }
-            }
-            Ok(Ok(Event::DirectoryPageLoaded {
-                parent,
-                groups,
-                session,
-                ..
-            })) => {
-                if session == expected_session {
-                    let path = path_from_location_ref(&parent)
-                        .expect("test Location directory page event should use direct path");
-                    let total = groups.groups.iter().map(|g| g.nodes.len()).sum();
-                    return (path, total);
-                }
-            }
-            Ok(Ok(Event::CurrentNavigateState { .. })) => { /* skip nav state snapshot */ }
-            Ok(Ok(Event::Error {
-                message, session, ..
-            })) if session == expected_session => {
-                panic!("got Error instead of directory load event: {}", message);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn path_from_location_ref(location: &LocationRef) -> Option<PathBuf> {
-    match location.descriptor()?.route() {
-        LocationRoute::DirectPath { path } => Some(path),
-        LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => None,
-    }
+) -> (LocationRef, usize) {
+    wait_for_directory_entries(&core.event_receiver(), expected_session, TIMEOUT).await
 }
 
 #[cfg(test)]
 mod navigation_flow_tests {
     use super::*;
 
-    /// Navigate to a known directory → `DirectoryLoadedCompat` event is emitted
-    /// with the correct session and path.
+    /// Navigate to a known directory and receive its native directory event.
     #[tokio::test]
     async fn test_navigate_emits_directory_loaded() {
         let provider = MockProvider::new();
@@ -297,18 +231,18 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/home/user/docs"),
+        core.send(Command::Navigate {
+            location: local_location("/home/user/docs"),
             session: session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
 
-        let (path, count) = wait_for_directory_loaded(&core, session).await;
+        let (location, count) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
-            path,
-            PathBuf::from("/home/user/docs"),
-            "path should match navigate target"
+            location,
+            local_location("/home/user/docs"),
+            "location should match navigate target"
         );
         assert_eq!(count, 2, "should have received 2 files");
     }
@@ -350,10 +284,7 @@ mod navigation_flow_tests {
                     session: s,
                     ..
                 })) if s == session => {
-                    assert_eq!(
-                        path_from_location_ref(&parent),
-                        Some(PathBuf::from("/location/docs"))
-                    );
+                    assert_eq!(parent, local_location("/location/docs"));
                     let count: usize = groups.groups.iter().map(|g| g.nodes.len()).sum();
                     assert_eq!(count, 1);
                     loaded = true;
@@ -381,7 +312,7 @@ mod navigation_flow_tests {
         }
     }
 
-    /// Navigate to an empty directory should still emit `DirectoryLoadedCompat`
+    /// Navigate to an empty directory should still emit a native directory event
     /// (with 0 results — not an error).
     #[tokio::test]
     async fn test_navigate_to_empty_directory() {
@@ -391,19 +322,19 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/empty"),
+        core.send(Command::Navigate {
+            location: local_location("/empty"),
             session: session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
 
-        let (path, count) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(path, PathBuf::from("/empty"));
+        let (location, count) = wait_for_directory_loaded(&core, session).await;
+        assert_eq!(location, local_location("/empty"));
         assert_eq!(count, 0);
     }
 
-    /// The `SessionId` on the `DirectoryLoadedCompat` event must match the session
+    /// The `SessionId` on the native directory event must match the session
     /// that issued the `Navigate` command.
     #[tokio::test]
     async fn test_navigate_event_carries_correct_session() {
@@ -416,8 +347,8 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/data"),
+        core.send(Command::Navigate {
+            location: local_location("/data"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -427,7 +358,8 @@ mod navigation_flow_tests {
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         loop {
             assert!(tokio::time::Instant::now() <= deadline, "timeout");
-            if let Ok(Ok(Event::DirectoryPageLoadedCompat {
+            if let Ok(Ok(Event::DirectoryPageLoaded {
+                parent,
                 session: ev_session,
                 ..
             })) = timeout(Duration::from_millis(100), rx.recv_async()).await
@@ -436,13 +368,13 @@ mod navigation_flow_tests {
                     ev_session, session,
                     "event session must match command session"
                 );
+                assert_eq!(parent, local_location("/data"));
                 return;
             }
         }
     }
 
-    /// Navigate into a subdirectory, then `NavigateUp` → we land back in the parent
-    /// and get a fresh `DirectoryLoadedCompat` for the parent path.
+    /// Navigate into a subdirectory, then `NavigateUp` and land back in the parent.
     #[tokio::test]
     async fn test_navigate_up_returns_to_parent() {
         let provider = MockProvider::new();
@@ -456,14 +388,14 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Navigate into the child
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/parent/child"),
+        core.send(Command::Navigate {
+            location: local_location("/parent/child"),
             session: session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        let (path, _) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(path, PathBuf::from("/parent/child"));
+        let (location, _) = wait_for_directory_loaded(&core, session).await;
+        assert_eq!(location, local_location("/parent/child"));
 
         // Navigate up — should land in /parent
         core.send(Command::NavigateUp {
@@ -471,10 +403,10 @@ mod navigation_flow_tests {
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        let (parent_path, _) = wait_for_directory_loaded(&core, session).await;
+        let (parent_location, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
-            parent_path,
-            PathBuf::from("/parent"),
+            parent_location,
+            local_location("/parent"),
             "should have navigated to parent"
         );
     }
@@ -491,8 +423,8 @@ mod navigation_flow_tests {
         let rx = core.event_receiver();
 
         // Navigate to /a/b, go up, navigate further — no "Unknown session" error
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/a/b"),
+        core.send(Command::Navigate {
+            location: local_location("/a/b"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -532,8 +464,8 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // First navigate to root so the navigator has a current directory
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/"),
+        core.send(Command::Navigate {
+            location: local_location("/"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -566,7 +498,7 @@ mod navigation_flow_tests {
         );
     }
 
-    /// Refresh re-scans the current directory and emits `DirectoryLoadedCompat`.
+    /// Refresh re-scans the current directory and emits a native directory event.
     #[tokio::test]
     async fn test_refresh_emits_directory_loaded() {
         let provider = MockProvider::new();
@@ -575,8 +507,8 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/docs"),
+        core.send(Command::Navigate {
+            location: local_location("/docs"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -588,10 +520,10 @@ mod navigation_flow_tests {
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        let (path, _) = wait_for_directory_loaded(&core, session).await;
+        let (location, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
-            path,
-            PathBuf::from("/docs"),
+            location,
+            local_location("/docs"),
             "Refresh should reload the same directory"
         );
     }
@@ -609,8 +541,8 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/work"),
+        core.send(Command::Navigate {
+            location: local_location("/work"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -644,8 +576,8 @@ mod navigation_flow_tests {
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/fresh"),
+        core.send(Command::Navigate {
+            location: local_location("/fresh"),
             session,
             request: filer_core::RequestId::new(),
         })
@@ -666,9 +598,9 @@ mod navigation_flow_tests {
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        let (path, refreshed_count) = wait_for_directory_loaded(&core, session).await;
+        let (location, refreshed_count) = wait_for_directory_loaded(&core, session).await;
 
-        assert_eq!(path, PathBuf::from("/fresh"));
+        assert_eq!(location, local_location("/fresh"));
         assert_eq!(
             refreshed_count, 2,
             "Refresh should emit the provider listing after cache invalidation"
@@ -707,7 +639,7 @@ mod navigation_flow_tests {
         );
     }
 
-    /// Navigate A → B, then NavigateBack → we should get DirectoryLoadedCompat for A.
+    /// Navigate A → B, then NavigateBack and return to A.
     #[tokio::test]
     async fn test_navigate_back_returns_to_previous() {
         let provider = MockProvider::new();
@@ -723,16 +655,16 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/dir_a"),
+        core.send(Command::Navigate {
+            location: local_location("/dir_a"),
             session: session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/dir_b"),
+        core.send(Command::Navigate {
+            location: local_location("/dir_b"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -744,10 +676,10 @@ mod navigation_flow_tests {
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        let (path, _) = wait_for_directory_loaded(&core, session).await;
+        let (location, _) = wait_for_directory_loaded(&core, session).await;
         assert_eq!(
-            path,
-            PathBuf::from("/dir_a"),
+            location,
+            local_location("/dir_a"),
             "Back should return to /dir_a"
         );
     }
@@ -764,8 +696,8 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         for dir in &["/a", "/b", "/c"] {
-            core.send(Command::NavigatePathCompat {
-                path: PathBuf::from(dir),
+            core.send(Command::Navigate {
+                location: local_location(*dir),
                 session: session,
                 request: filer_core::RequestId::new(),
             })
@@ -779,7 +711,7 @@ mod navigation_flow_tests {
         })
         .unwrap();
         let (p, _) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(p, PathBuf::from("/b"), "first back should yield /b");
+        assert_eq!(p, local_location("/b"), "first back should yield /b");
 
         core.send(Command::NavigateBack {
             session: session,
@@ -787,7 +719,7 @@ mod navigation_flow_tests {
         })
         .unwrap();
         let (p, _) = wait_for_directory_loaded(&core, session).await;
-        assert_eq!(p, PathBuf::from("/a"), "second back should yield /a");
+        assert_eq!(p, local_location("/a"), "second back should yield /a");
     }
 
     /// NavigateBack when there is no history should emit a recoverable `Error`.
@@ -800,8 +732,8 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
 
         // Single navigation — no history to go back to
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/only"),
+        core.send(Command::Navigate {
+            location: local_location("/only"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -836,16 +768,16 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/alpha"),
+        core.send(Command::Navigate {
+            location: local_location("/alpha"),
             session: session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/beta"),
+        core.send(Command::Navigate {
+            location: local_location("/beta"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -870,18 +802,12 @@ mod navigation_flow_tests {
                 "timeout waiting for back events"
             );
             match timeout(Duration::from_millis(100), rx.recv_async()).await {
-                Ok(Ok(Event::DirectoryPageLoadedCompat {
-                    path, session: s, ..
-                })) if s == session => {
-                    assert_eq!(path, PathBuf::from("/alpha"), "back should land on /alpha");
-                    dir_loaded = true;
-                }
                 Ok(Ok(Event::DirectoryPageLoaded {
                     parent, session: s, ..
                 })) if s == session => {
                     assert_eq!(
-                        path_from_location_ref(&parent),
-                        Some(PathBuf::from("/alpha")),
+                        parent,
+                        local_location("/alpha"),
                         "back should land on /alpha"
                     );
                     dir_loaded = true;
@@ -904,8 +830,7 @@ mod navigation_flow_tests {
         );
     }
 
-    /// Two independent sessions navigating different paths must each receive
-    /// their own `DirectoryLoadedCompat` events with the correct session tag.
+    /// Two independent sessions navigating different paths receive native events.
     #[tokio::test]
     async fn test_two_sessions_navigate_independently() {
         let provider = MockProvider::new();
@@ -934,25 +859,52 @@ mod navigation_flow_tests {
 
         assert_ne!(s1, s2);
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/s1"),
+        core.send(Command::Navigate {
+            location: local_location("/s1"),
             session: s1,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/s2"),
+        core.send(Command::Navigate {
+            location: local_location("/s2"),
             session: s2,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
 
-        let (p1, c1) = wait_for_directory_loaded(&core, s1).await;
-        let (p2, c2) = wait_for_directory_loaded(&core, s2).await;
+        let rx = core.event_receiver();
+        let mut results = Vec::new();
+        let deadline = tokio::time::Instant::now() + TIMEOUT;
+        while results.len() < 2 {
+            match tokio::time::timeout_at(deadline, rx.recv_async()).await {
+                Ok(Ok(Event::DirectoryPageLoaded {
+                    parent,
+                    groups,
+                    session,
+                    ..
+                })) if session == s1 || session == s2 => {
+                    results.push((session, parent, groups.total_count));
+                }
+                Ok(Ok(_)) => {}
+                Ok(Err(_)) => panic!("event channel closed before both sessions loaded"),
+                Err(_) => panic!("timed out waiting for both sessions to load"),
+            }
+        }
 
-        assert_eq!(p1, PathBuf::from("/s1"));
+        let (p1, c1) = results
+            .iter()
+            .find(|(session, _, _)| *session == s1)
+            .map(|(_, location, count)| (location.clone(), *count))
+            .expect("session one should produce a directory event");
+        let (p2, c2) = results
+            .iter()
+            .find(|(session, _, _)| *session == s2)
+            .map(|(_, location, count)| (location.clone(), *count))
+            .expect("session two should produce a directory event");
+
+        assert_eq!(p1, local_location("/s1"));
         assert_eq!(c1, 1);
-        assert_eq!(p2, PathBuf::from("/s2"));
+        assert_eq!(p2, local_location("/s2"));
         assert_eq!(c2, 2);
     }
 
@@ -978,14 +930,14 @@ mod navigation_flow_tests {
         };
 
         // Navigate both sessions
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/stay"),
+        core.send(Command::Navigate {
+            location: local_location("/stay"),
             session: session_stay,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/gone"),
+        core.send(Command::Navigate {
+            location: local_location("/gone"),
             session: session_gone,
             request: filer_core::RequestId::new(),
         })
@@ -1003,10 +955,10 @@ mod navigation_flow_tests {
             request: filer_core::RequestId::new(),
         })
         .unwrap();
-        let (path, _) = wait_for_directory_loaded(&core, session_stay).await;
+        let (location, _) = wait_for_directory_loaded(&core, session_stay).await;
         assert_eq!(
-            path,
-            PathBuf::from("/stay"),
+            location,
+            local_location("/stay"),
             "surviving session should still work"
         );
     }
@@ -1022,8 +974,8 @@ mod navigation_flow_tests {
         let session = create_session(&core).await;
         let rx = core.event_receiver();
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/snap"),
+        core.send(Command::Navigate {
+            location: local_location("/snap"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -1046,8 +998,8 @@ mod navigation_flow_tests {
 
         if let Some(Event::CurrentNavigateState { state, .. }) = nav_state_event {
             assert!(
-                state.current.is_some(),
-                "current should be set after Navigate"
+                state.current_location.is_some(),
+                "current_location should be set after Navigate"
             );
             assert!(
                 !state.can_back,
@@ -1066,8 +1018,8 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let session = create_session(&core).await;
 
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/x"),
+        core.send(Command::Navigate {
+            location: local_location("/x"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -1075,8 +1027,8 @@ mod navigation_flow_tests {
         wait_for_directory_loaded(&core, session).await;
 
         let rx = core.event_receiver();
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/y"),
+        core.send(Command::Navigate {
+            location: local_location("/y"),
             session: session,
             request: filer_core::RequestId::new(),
         })
@@ -1097,7 +1049,7 @@ mod navigation_flow_tests {
                         break;
                     }
                 }
-                Ok(Ok(Event::DirectoryPageLoadedCompat { session: s, .. })) if s == session => {}
+                Ok(Ok(Event::DirectoryPageLoaded { session: s, .. })) if s == session => {}
                 _ => {}
             }
         }

@@ -21,7 +21,9 @@ use async_trait::async_trait;
 use flume::Receiver;
 use tokio::time::timeout;
 
-use filer_core::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+mod support;
+
+use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session::SessionId;
 use filer_core::modules::scan::ScanModule;
@@ -31,12 +33,15 @@ use filer_core::{
     Actor, Capabilities, Command, CoreError, Event, FilerCore, FsProvider, PipelineConfig,
 };
 
+use support::{local_location, provider_node_id, wait_for_search_entries};
+
 const SHORT: Duration = Duration::from_secs(5);
 const LONG: Duration = Duration::from_secs(30);
 
 /// High-throughput in-memory provider for stress testing.
 /// Uses a HashMap for O(1) directory lookups — essential when traversing
 /// tens of thousands of directories.
+/// FileNode values stay at the FsProvider boundary; stress assertions use native entries.
 #[derive(Clone)]
 struct MockFs {
     dirs: Arc<Mutex<HashMap<PathBuf, Vec<FileNode>>>>,
@@ -259,7 +264,7 @@ fn file(name: &str, parent: &Path, size: u64) -> FileNode {
         .and_then(|e| e.to_str())
         .map(str::to_string);
     FileNode {
-        id: NodeId::from_path(&parent.join(name)),
+        id: provider_node_id(parent.join(name)),
         name: name.to_string(),
         path: parent.join(name),
         kind: NodeKind::File { extension: ext },
@@ -278,7 +283,7 @@ fn file(name: &str, parent: &Path, size: u64) -> FileNode {
 
 fn dir(name: &str, parent: &Path) -> FileNode {
     FileNode {
-        id: NodeId::from_path(&parent.join(name)),
+        id: provider_node_id(parent.join(name)),
         name: name.to_string(),
         path: parent.join(name),
         kind: NodeKind::Directory {
@@ -325,36 +330,13 @@ async fn create_session(core: &FilerCore, rx: &Receiver<Event>) -> SessionId {
     }
 }
 
-/// Drain SearchResultsCompat until `complete: true`, returning all matched files.
+/// Drain native `SearchResults` until `complete: true`, returning all entries.
 async fn drain_search(
     rx: &Receiver<Event>,
     session: SessionId,
     deadline: Duration,
-) -> Vec<FileNode> {
-    let mut all = Vec::new();
-    let limit = tokio::time::Instant::now() + deadline;
-    loop {
-        match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResultsCompat {
-                matches,
-                complete,
-                session: s,
-                ..
-            })) if s == session => {
-                all.extend(matches);
-                if complete {
-                    return all;
-                }
-            }
-            Ok(Ok(_)) => {}
-            Ok(Err(_)) => panic!("event channel closed before search completed"),
-            Err(_) => panic!(
-                "search timed out after {:.1}s — found {} matches so far",
-                deadline.as_secs_f32(),
-                all.len()
-            ),
-        }
-    }
+) -> Vec<filer_core::NodeEntry> {
+    wait_for_search_entries(rx, session, deadline).await
 }
 
 #[tokio::test]
@@ -382,11 +364,9 @@ async fn stress_search_large_flat_dir() {
 
     let core = build_core(fs);
     let (session, rx) = handshake(&core).await;
-    let root_id = core.registry().register(root);
-
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "target".to_string(),
-        root: root_id,
+        root: local_location(root),
         session,
         request: filer_core::RequestId::new(),
     })
@@ -431,11 +411,9 @@ async fn stress_search_deep_tree() {
 
     let core = build_core(fs);
     let (session, rx) = handshake(&core).await;
-    let root_id = core.registry().register(PathBuf::from("/stress/deep"));
-
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "needle".to_string(),
-        root: root_id,
+        root: local_location("/stress/deep"),
         session,
         request: filer_core::RequestId::new(),
     })
@@ -470,11 +448,9 @@ async fn stress_search_wide_deep_tree() {
     core.load(SearchModule::new(fs));
 
     let (session, rx) = handshake(&core).await;
-    let root_id = core.registry().register(root);
-
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "match".to_string(),
-        root: root_id,
+        root: local_location(root),
         session,
         request: filer_core::RequestId::new(),
     })
@@ -515,8 +491,6 @@ async fn stress_concurrent_sessions() {
     fs.add_dir(root.clone(), children);
 
     let core = build_core(fs);
-    let root_id = core.registry().register(root);
-
     // ONE receiver for the whole core — multiple receivers would race on the
     // flume MPMC channel and steal each other's events.
     let rx = core.event_receiver();
@@ -529,9 +503,9 @@ async fn stress_concurrent_sessions() {
 
     // Fire off all searches at once
     for &session in &sessions {
-        core.send(Command::SearchNodeCompat {
+        core.send(Command::Search {
             query: "hit".to_string(),
-            root: root_id,
+            root: local_location(root.clone()),
             session,
             request: filer_core::RequestId::new(),
         })
@@ -546,7 +520,7 @@ async fn stress_concurrent_sessions() {
 
     while completed < SESSIONS {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResultsCompat {
+            Ok(Ok(Event::SearchResults {
                 matches,
                 complete,
                 session,
@@ -600,13 +574,11 @@ async fn stress_rapid_cancel_restart() {
 
     let core = build_core(fs);
     let (session, rx) = handshake(&core).await;
-    let root_id = core.registry().register(PathBuf::from("/stress/cancel"));
-
     // Rapid fire: search → cancel, repeated CYCLES times
     for _ in 0..CYCLES {
-        core.send(Command::SearchNodeCompat {
+        core.send(Command::Search {
             query: "f".to_string(),
-            root: root_id,
+            root: local_location("/stress/cancel"),
             session,
             request: filer_core::RequestId::new(),
         })
@@ -619,9 +591,9 @@ async fn stress_rapid_cancel_restart() {
     while rx.try_recv().is_ok() {}
 
     // Final search must complete correctly without hangs or panics
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "f".to_string(),
-        root: root_id,
+        root: local_location("/stress/cancel"),
         session,
         request: filer_core::RequestId::new(),
     })
@@ -671,13 +643,11 @@ async fn stress_all_filters_combined() {
 
     let core = build_core(fs);
     let (session, rx) = handshake(&core).await;
-    let root_id = core.registry().register(root);
-
     // ext:rs AND size:>1000 AND after:<base_ts>
     let query = format!("ext:rs size:>1000 after:{}", base_ts);
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query,
-        root: root_id,
+        root: local_location(root),
         session,
         request: filer_core::RequestId::new(),
     })
@@ -715,11 +685,9 @@ async fn stress_streaming_batch_accuracy() {
 
     let core = build_core(fs);
     let (session, rx) = handshake(&core).await;
-    let root_id = core.registry().register(root);
-
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "item".to_string(),
-        root: root_id,
+        root: local_location(root),
         session,
         request: filer_core::RequestId::new(),
     })
@@ -732,7 +700,7 @@ async fn stress_streaming_batch_accuracy() {
 
     loop {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResultsCompat {
+            Ok(Ok(Event::SearchResults {
                 matches,
                 complete,
                 session: s,
@@ -790,31 +758,21 @@ async fn stress_scanner_large_dir() {
 
     let session = SessionId::new();
     cmd_tx
-        .send(ScanCommand::ScanCompat {
-            location: filer_core::LocationRef::from_location(&filer_core::Location::local(root)),
+        .send(ScanCommand::ScanLocation {
+            location: local_location(root.clone()),
             pipeline: PipelineConfig {
                 sort: None,
                 filter: None,
                 group: None,
             },
-            load: filer_core::DirectoryLoadOptions::default(),
+            load: filer_core::DirectoryLoadOptions::unbounded(filer_core::ListingOptions::fast()),
             session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
 
-    let event = timeout(LONG, evt_rx.recv_async())
-        .await
-        .expect("scanner timed out")
-        .expect("event channel closed");
-
-    let total = match event {
-        Event::DirectoryLoadedCompat { groups, .. } => {
-            groups.groups.iter().map(|g| g.nodes.len()).sum::<usize>()
-        }
-        Event::FilesBatch(nodes, _) => nodes.len(),
-        other => panic!("unexpected event: {:?}", other),
-    };
+    let (location, total) = support::wait_for_directory_entries(&evt_rx, session, LONG).await;
+    assert_eq!(location, local_location(root));
 
     assert_eq!(
         total, FILE_COUNT,
@@ -836,8 +794,6 @@ async fn stress_session_isolation_under_cancellation() {
     fs.add_dir(root.clone(), children);
 
     let core = build_core(fs);
-    let root_id = core.registry().register(root);
-
     // ONE receiver shared across all sessions
     let rx = core.event_receiver();
     let sa = create_session(&core, &rx).await;
@@ -846,16 +802,16 @@ async fn stress_session_isolation_under_cancellation() {
     let sd = create_session(&core, &rx).await;
 
     // Launch A and B, then immediately cancel them
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "doc".to_string(),
-        root: root_id,
+        root: local_location(root.clone()),
         session: sa,
         request: filer_core::RequestId::new(),
     })
     .unwrap();
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "doc".to_string(),
-        root: root_id,
+        root: local_location(root.clone()),
         session: sb,
         request: filer_core::RequestId::new(),
     })
@@ -864,16 +820,16 @@ async fn stress_session_isolation_under_cancellation() {
     core.send(Command::CancelSearch { session: sb }).unwrap();
 
     // Launch C and D — these must complete despite A/B cancellations
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "doc".to_string(),
-        root: root_id,
+        root: local_location(root.clone()),
         session: sc,
         request: filer_core::RequestId::new(),
     })
     .unwrap();
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "doc".to_string(),
-        root: root_id,
+        root: local_location(root),
         session: sd,
         request: filer_core::RequestId::new(),
     })
@@ -888,7 +844,7 @@ async fn stress_session_isolation_under_cancellation() {
 
     while !done_c || !done_d {
         match tokio::time::timeout_at(limit, rx.recv_async()).await {
-            Ok(Ok(Event::SearchResultsCompat {
+            Ok(Ok(Event::SearchResults {
                 matches,
                 complete,
                 session,
@@ -938,15 +894,13 @@ async fn stress_search_determinism() {
     fs.add_dir(root.clone(), children);
 
     let core = build_core(fs);
-    let root_id = core.registry().register(root);
-
     // One shared receiver; create sessions sequentially to avoid receiver races
     let rx = core.event_receiver();
 
     let s1 = create_session(&core, &rx).await;
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "stable".to_string(),
-        root: root_id,
+        root: local_location(root.clone()),
         session: s1,
         request: filer_core::RequestId::new(),
     })
@@ -958,9 +912,9 @@ async fn stress_search_determinism() {
         .collect();
 
     let s2 = create_session(&core, &rx).await;
-    core.send(Command::SearchNodeCompat {
+    core.send(Command::Search {
         query: "stable".to_string(),
-        root: root_id,
+        root: local_location(root),
         session: s2,
         request: filer_core::RequestId::new(),
     })
