@@ -50,7 +50,6 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/slow.txt");
-        let node_id = registry.clone().register(path.clone());
 
         // Provider takes 200ms — plenty of time to cancel
         let mock = MockPreviewProvider::slow(text_preview(), 200);
@@ -60,7 +59,7 @@ mod cancel_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path)),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
@@ -81,15 +80,16 @@ mod cancel_tests {
         let session_events: Vec<_> = events
             .iter()
             .filter(|e| match e {
-                Event::PreviewReadyCompat { session: s, .. }
-                | Event::PreviewFailedCompat { session: s, .. } => *s == session,
+                Event::PreviewReady { session: s, .. } | Event::PreviewFailed { session: s, .. } => {
+                    *s == session
+                }
                 _ => false,
             })
             .collect();
 
         assert!(
             session_events.is_empty(),
-            "Cancelled preview should not emit PreviewReadyCompat or PreviewFailedCompat"
+            "Cancelled preview should not emit PreviewReady or PreviewFailed"
         );
     }
 
@@ -126,15 +126,16 @@ mod cancel_tests {
         let session_events: Vec<_> = events
             .iter()
             .filter(|e| match e {
-                Event::PreviewReadyCompat { session: s, .. }
-                | Event::PreviewFailedCompat { session: s, .. } => *s == session,
+                Event::PreviewReady { session: s, .. } | Event::PreviewFailed { session: s, .. } => {
+                    *s == session
+                }
                 _ => false,
             })
             .collect();
 
         assert!(
             session_events.is_empty(),
-            "Cancelled Location preview should not emit PreviewReadyCompat or PreviewFailedCompat"
+            "Cancelled Location preview should not emit PreviewReady or PreviewFailed"
         );
     }
 
@@ -143,7 +144,6 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/rapid-preview.txt");
-        let node_id = registry.clone().register(path.clone());
         let stale_request = RequestId::new();
         let fresh_request = RequestId::new();
 
@@ -159,7 +159,7 @@ mod cancel_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path.clone())),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: stale_request,
             })
@@ -169,7 +169,7 @@ mod cancel_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path)),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: fresh_request,
             })
@@ -180,12 +180,12 @@ mod cancel_tests {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(180);
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
             match event {
-                Event::PreviewReadyCompat {
+                Event::PreviewReady {
                     session: s,
                     request,
                     ..
                 }
-                | Event::PreviewFailedCompat {
+                | Event::PreviewFailed {
                     session: s,
                     request,
                     ..
@@ -262,7 +262,6 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/context-preview.txt");
-        let node_id = registry.clone().register(path.clone());
 
         let saw_cancel = Arc::new(Mutex::new(false));
         let provider = Arc::new(RecordingProvider {
@@ -281,14 +280,14 @@ mod cancel_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path)),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
             .unwrap();
 
         let event = wait_for_preview(&evt_rx, session).await;
-        assert!(matches!(event, Event::PreviewReadyCompat { .. }));
+        assert!(matches!(event, Event::PreviewReady { .. }));
         assert!(
             *saw_cancel.lock().unwrap(),
             "preview MIME fallback must receive a cancel-aware ProviderCx"
@@ -300,7 +299,6 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/context-metadata.txt");
-        let node_id = registry.clone().register(path.clone());
 
         let provider = Arc::new(RecordingProvider {
             read_header_saw_cancel: Arc::new(Mutex::new(false)),
@@ -318,7 +316,7 @@ mod cancel_tests {
         cmd_tx
             .send(PreviewCommand::LoadExtendedMetadata {
                 location: LocationRef::from_location(&Location::local(path)),
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
@@ -329,8 +327,7 @@ mod cancel_tests {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
             match event {
-                Event::ExtendedMetadataLoadedCompat { session: s, .. }
-                | Event::ExtendedMetadataLoaded { session: s, .. }
+                Event::ExtendedMetadataLoaded { session: s, .. }
                 | Event::Error { session: s, .. }
                     if s == session =>
                 {
@@ -374,8 +371,7 @@ mod cancel_tests {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
             match event {
-                Event::ExtendedMetadataLoadedCompat { session: s, .. }
-                | Event::ExtendedMetadataLoaded { session: s, .. }
+                Event::ExtendedMetadataLoaded { session: s, .. }
                 | Event::Error { session: s, .. }
                     if s == session =>
                 {
@@ -391,7 +387,6 @@ mod cancel_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/basic-metadata.txt");
-        let node_id = registry.clone().register(path.clone());
         let metadata_saw_cancel = Arc::new(Mutex::new(false));
 
         let provider = Arc::new(RecordingProvider {
@@ -410,7 +405,7 @@ mod cancel_tests {
         cmd_tx
             .send(PreviewCommand::LoadMetadata {
                 location: LocationRef::from_location(&Location::local(path)),
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
@@ -421,7 +416,7 @@ mod cancel_tests {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
             match event {
-                Event::MetadataLoadedCompat { session: s, .. } | Event::Error { session: s, .. }
+                Event::MetadataLoaded { session: s, .. } | Event::Error { session: s, .. }
                     if s == session =>
                 {
                     panic!("cancelled metadata emitted event: {event:?}");

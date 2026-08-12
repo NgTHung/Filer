@@ -290,8 +290,6 @@ async fn wait_for_preview(evt_rx: &Receiver<Event>, session: SessionId) -> Event
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     loop {
         match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(e @ Event::PreviewReadyCompat { session: s, .. })) if s == session => return e,
-            Ok(Ok(e @ Event::PreviewFailedCompat { session: s, .. })) if s == session => return e,
             Ok(Ok(e @ Event::PreviewReady { session: s, .. })) if s == session => return e,
             Ok(Ok(e @ Event::PreviewFailed { session: s, .. })) if s == session => return e,
             Ok(Ok(e @ Event::Error { session: s, .. })) if s == session => return e,

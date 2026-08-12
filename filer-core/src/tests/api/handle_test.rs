@@ -24,6 +24,7 @@ mod handle_tests {
     use crate::api::events::Event;
     use crate::api::handle::FilerCore;
     use crate::api::module::{Module, ModuleContext};
+    use crate::model::location::{Location, LocationRef};
     use crate::model::progress::{
         ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressUnit,
     };
@@ -140,15 +141,16 @@ mod handle_tests {
         };
 
         // Now send a Navigate command using the valid session
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/tmp"),
+        core.send(Command::Navigate {
+            location: LocationRef::from_location(&Location::local("/tmp")),
             session: session_id,
             request: crate::model::request::RequestId::new(),
         })
         .unwrap();
 
         // The command should be accepted and routed (no Error event for invalid session)
-        // We may receive DirectoryLoadedCompat or another event, but NOT an "Unknown session" error
+        // The command may be dropped because no navigation module is loaded, but it must not
+        // produce an "Unknown session" error.
         // Give time for routing
         tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -170,8 +172,8 @@ mod handle_tests {
 
         // Send a command with a completely bogus session (no Handshake first)
         let bogus = SessionId::new();
-        core.send(Command::NavigatePathCompat {
-            path: PathBuf::from("/tmp"),
+        core.send(Command::Navigate {
+            location: LocationRef::from_location(&Location::local("/tmp")),
             session: bogus,
             request: crate::model::request::RequestId::new(),
         })

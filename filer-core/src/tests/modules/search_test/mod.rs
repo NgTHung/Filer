@@ -26,6 +26,8 @@ use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::errors::{CoreError, ErrorCode, ErrorTarget};
 use crate::model::location::{Location, LocationRef};
+// Provider-shaped FileNode rows still require NodeId fields; search behavior
+// assertions use Location-native entries and events.
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;

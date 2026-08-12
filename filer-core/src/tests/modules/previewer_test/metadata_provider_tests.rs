@@ -8,7 +8,6 @@ mod metadata_provider_tests {
         let session = SessionId::new();
         let file = tempfile::NamedTempFile::new().unwrap();
         let path = file.path().to_path_buf();
-        let node_id = registry.clone().register(path.clone());
 
         let metadata_calls = Arc::new(Mutex::new(0));
         let provider = Arc::new(RecordingProvider {
@@ -27,7 +26,7 @@ mod metadata_provider_tests {
         cmd_tx
             .send(PreviewCommand::LoadMetadata {
                 location: LocationRef::from_location(&Location::local(path)),
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: RequestId::new(),
             })
@@ -36,7 +35,7 @@ mod metadata_provider_tests {
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         loop {
             match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(Event::MetadataLoadedCompat { session: s, .. })) if s == session => break,
+                Ok(Ok(Event::MetadataLoaded { session: s, .. })) if s == session => break,
                 Ok(Ok(Event::Error { session: s, .. })) if s == session => {
                     panic!("metadata load failed")
                 }

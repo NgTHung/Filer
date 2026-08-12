@@ -2,7 +2,8 @@
 //!
 //! Shared builders keep location registration details in one place. Use these
 //! when a test needs a `FileNode` row but the assertion is about location or
-//! query behavior.
+//! query behavior. The `NodeId` field is provider-boundary plumbing only; tests
+//! must assert on the resulting `LocationRef` or `NodeEntry`.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;

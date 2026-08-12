@@ -3,6 +3,8 @@ use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
 use crate::model::location::{Location, LocationRef};
+// Provider-shaped FileNode rows still require NodeId fields; scanner behavior
+// assertions use Location-native entries and events.
 use crate::model::node::FileNode;
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions, ProviderPaging};
 use crate::{

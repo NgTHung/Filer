@@ -1,3 +1,6 @@
+// Compatibility pin for API-006: these harness handlers keep the legacy
+// command routes available to the isolated compatibility tests until removal.
+
     fn register_test_handlers(
         handlers: &Arc<HandlerRegistry>,
         nav_tx: Sender<NavCommand>,

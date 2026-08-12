@@ -28,6 +28,8 @@ use crate::model::capability::LocationCapabilityError;
 use crate::model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationSegment, ProviderRef,
 };
+// Provider-shaped FileNode rows still require NodeId fields; operation
+// assertions use Location-native events and targets.
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{ProgressKind, ProgressStatus};

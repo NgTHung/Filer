@@ -7,7 +7,6 @@ mod cache_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/cached.txt");
-        let node_id = registry.clone().register(path.clone());
 
         let mock = MockPreviewProvider::instant(text_preview());
         let (cmd_tx, evt_rx, cache) = spawn_previewer(mock.clone(), registry);
@@ -19,14 +18,14 @@ mod cache_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path.clone())),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
         let event = wait_for_preview(&evt_rx, session).await;
-        assert!(matches!(event, Event::PreviewReadyCompat { .. }));
+        assert!(matches!(event, Event::PreviewReady { .. }));
         assert_eq!(
             mock.calls(),
             0,
@@ -39,7 +38,6 @@ mod cache_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/uncached.txt");
-        let node_id = registry.clone().register(path.clone());
 
         let mock = MockPreviewProvider::instant(text_preview());
         let (cmd_tx, evt_rx, _cache) = spawn_previewer(mock.clone(), registry);
@@ -48,14 +46,14 @@ mod cache_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path)),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
 
         let event = wait_for_preview(&evt_rx, session).await;
-        assert!(matches!(event, Event::PreviewReadyCompat { .. }));
+        assert!(matches!(event, Event::PreviewReady { .. }));
         assert_eq!(mock.calls(), 1);
     }
 

@@ -413,6 +413,8 @@ fn test_registry_deterministic_location_refs() {
 }
 
 #[test]
+// Compatibility pin for API-008: preserve deterministic NodeId generation
+// until the identity type is removed.
 fn test_registry_deterministic_ids() {
     let registry1 = NodeRegistry::new();
     let registry2 = NodeRegistry::new();

@@ -7,7 +7,6 @@ mod clear_cache_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/cached2.txt");
-        let node_id = registry.clone().register(path.clone());
 
         let mock = MockPreviewProvider::instant(text_preview());
         let (cmd_tx, evt_rx, cache) = spawn_previewer(mock.clone(), registry);
@@ -25,7 +24,7 @@ mod clear_cache_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path)),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session: session2,
                 request: crate::model::request::RequestId::new(),
             })

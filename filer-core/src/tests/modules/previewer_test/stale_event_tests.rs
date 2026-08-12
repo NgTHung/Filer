@@ -7,7 +7,6 @@ mod stale_event_tests {
         let registry = NodeRegistry::new();
         let session = SessionId::new();
         let path = PathBuf::from("/tmp/stale-preview.txt");
-        let node_id = registry.clone().register(path.clone());
 
         let mock = MockPreviewProvider::slow(text_preview(), 50);
         let (cmd_tx, evt_rx, _cache) = spawn_previewer(mock, registry);
@@ -18,7 +17,7 @@ mod stale_event_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path.clone())),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: stale_request,
             })
@@ -28,7 +27,7 @@ mod stale_event_tests {
             .send(PreviewCommand::Generate {
                 location: LocationRef::from_location(&Location::local(path)),
                 options: None,
-                event_mode: PreviewEventMode::Compat { node: node_id },
+                event_mode: PreviewEventMode::Location,
                 session,
                 request: fresh_request,
             })
@@ -37,7 +36,7 @@ mod stale_event_tests {
         let mut ready_requests = Vec::new();
         let deadline = tokio::time::Instant::now() + TIMEOUT;
         while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            if let Event::PreviewReadyCompat {
+            if let Event::PreviewReady {
                 session: s,
                 request,
                 ..
@@ -54,7 +53,7 @@ mod stale_event_tests {
         assert_eq!(ready_requests, vec![fresh_request]);
         assert!(
             !ready_requests.contains(&stale_request),
-            "stale preview request should not emit PreviewReadyCompat"
+            "stale preview request should not emit PreviewReady"
         );
     }
 
