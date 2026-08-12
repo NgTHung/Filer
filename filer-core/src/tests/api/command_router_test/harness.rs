@@ -82,7 +82,7 @@
 
             let handlers = Arc::new(HandlerRegistry::new());
             let ctx = HandlerContext {
-                events: event_tx.clone(),
+                events: event_tx.clone().into(),
                 sessions: session_manager.clone(),
                 registry: registry.clone(),
             };

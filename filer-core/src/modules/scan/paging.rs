@@ -26,6 +26,7 @@ use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{FsProvider, ProviderPaging, validate_page_limit};
 
 const CURSOR_PREFIX: &str = "paging:v1:";
+const CANCELLATION_CHECK_INTERVAL: usize = 256;
 
 #[derive(Clone)]
 struct PagingSession {
@@ -98,7 +99,9 @@ impl PagingSessions {
                     Err(e) if e.code() == ErrorCode::Cancelled => return Ok(PageLoad::Cancelled),
                     Err(e) => return Err(e),
                 };
-                selection.extend(entries);
+                if !selection.extend(entries, cx) {
+                    return Ok(PageLoad::Cancelled);
+                }
             }
             ProviderPaging::Native => {
                 let mut provider_cursor = None;
@@ -127,7 +130,9 @@ impl PagingSessions {
                     let complete = raw_page.state.complete;
                     provider_cursor = raw_page.state.next_cursor;
                     let page_count = raw_page.entries.len();
-                    selection.extend(raw_page.entries);
+                    if !selection.extend(raw_page.entries, cx) {
+                        return Ok(PageLoad::Cancelled);
+                    }
                     if complete || provider_cursor.is_none() || page_count == 0 {
                         break;
                     }
@@ -152,7 +157,8 @@ impl PagingSessions {
         owner: SessionId,
         request: DirectoryPageRequest,
         pipeline_config: &PipelineConfig,
-    ) -> Result<DirectoryPageResult, CoreError> {
+        cx: &ProviderCx<'_>,
+    ) -> Result<PageLoad, CoreError> {
         validate_page_limit(request.limit)?;
         let effective_request = DirectoryPageRequest {
             listing: effective_listing(pipeline_config, request.listing),
@@ -167,15 +173,17 @@ impl PagingSessions {
             continuation.as_ref().map(|state| state.last.clone()),
             pipeline_config,
         );
-        selection.extend(entries);
-        Ok(self.finish_page(
+        if !selection.extend(entries, cx) {
+            return Ok(PageLoad::Cancelled);
+        }
+        Ok(PageLoad::Page(self.finish_page(
             path,
             owner,
             effective_request,
             pipeline_config,
             continuation,
             selection,
-        ))
+        )))
     }
 
     fn continuation(
@@ -298,8 +306,17 @@ impl<'a> PageSelection<'a> {
         }
     }
 
-    pub(crate) fn extend(&mut self, entries: Vec<FileNode>) {
-        for entry in entries {
+    pub(crate) fn extend<I>(&mut self, entries: I, cx: &ProviderCx<'_>) -> bool
+    where
+        I: IntoIterator<Item = FileNode>,
+    {
+        if cx.is_cancelled() {
+            return false;
+        }
+        for (index, entry) in entries.into_iter().enumerate() {
+            if index % CANCELLATION_CHECK_INTERVAL == 0 && cx.is_cancelled() {
+                return false;
+            }
             let mut filtered = self.pipeline.execute_flat(vec![entry]);
             let Some(entry) = filtered.pop() else {
                 continue;
@@ -323,6 +340,7 @@ impl<'a> PageSelection<'a> {
                 self.entries.pop();
             }
         }
+        !cx.is_cancelled()
     }
 }
 

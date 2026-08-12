@@ -24,12 +24,11 @@
 //! - **Extension commands**: use [`Command::Extension`] with a custom key
 //!   and `Arc<dyn Any>` payload for commands not in the core enum.
 
-use flume::Sender;
 use rapidhash::fast::RandomState;
 
 use crate::actors::ActorSystem;
 use crate::api::commands::Command;
-use crate::api::events::Event;
+use crate::api::event_sink::EventSink;
 use crate::api::session_manager::SessionManager;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
@@ -40,7 +39,7 @@ use crate::model::session::SessionId;
 /// to the event bus, session manager, and node registry.
 #[derive(Clone)]
 pub struct HandlerContext {
-    pub events: Sender<Event>,
+    pub events: EventSink,
     pub sessions: SessionManager,
     pub registry: NodeRegistry,
 }
@@ -151,8 +150,9 @@ impl std::fmt::Debug for HandlerRegistry {
 /// Borrows from FilerCore's internals so modules can register handlers,
 /// spawn actors, and access shared infrastructure.
 pub struct ModuleContext<'a> {
-    /// Event sender — clone this into your actors
-    pub events: Sender<Event>,
+    /// Bounded event sink. Progress updates coalesce by scope while terminal,
+    /// page, and change events remain lossless.
+    pub events: EventSink,
     /// Session manager — for session-aware modules
     pub sessions: &'a SessionManager,
     /// Node registry — for path ↔ NodeId resolution

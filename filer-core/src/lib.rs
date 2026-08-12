@@ -10,6 +10,7 @@ pub mod pipeline;
 mod vfs;
 
 // Re-exports
+pub use api::event_sink::{DEFAULT_EVENT_CHANNEL_CAPACITY, EventSendError, EventSink};
 pub use api::module::Module;
 pub use api::wire_commands::{WireCommand, WireCommandConversionError};
 pub use api::{commands::Command, events::Event, handle::FilerCore};
@@ -52,7 +53,7 @@ pub use vfs::registry::{ProviderProfile, ProviderProfileId, ProviderRegistry};
 pub use vfs::segmented::SegmentedLocationResolver;
 
 // Actor infrastructure
-pub use actors::Actor;
+pub use actors::{Actor, WorkTracker};
 
 // Pipeline types
 pub use pipeline::{GroupedEntries, PipelineConfig, SortConfig};

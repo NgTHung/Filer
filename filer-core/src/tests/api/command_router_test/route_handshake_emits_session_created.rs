@@ -438,7 +438,7 @@
 
         let handlers = Arc::new(HandlerRegistry::new());
         let ctx = HandlerContext {
-            events: event_tx,
+            events: event_tx.into(),
             sessions: session_manager,
             registry,
         };

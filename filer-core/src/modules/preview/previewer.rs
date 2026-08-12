@@ -2,11 +2,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use flume::{Receiver, Sender};
+use flume::Receiver;
 use rapidhash::fast::RandomState;
 
-use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
+use crate::actors::{Actor, WorkTracker};
+use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::node::NodeId;
@@ -64,7 +65,7 @@ pub enum PreviewEventMode {
 /// cancels the previous one.
 pub struct Previewer {
     commands: Receiver<PreviewCommand>,
-    events: Sender<Event>,
+    events: EventSink,
     preview_registry: Arc<PreviewRegistry>,
     metadata_registry: Arc<MetadataRegistry>,
     cache: Arc<Mutex<PreviewCache>>,
@@ -72,18 +73,19 @@ pub struct Previewer {
     registry: NodeRegistry,
     active: CancelMap,
     latest: Arc<scc::HashMap<SessionId, RequestId, RandomState>>,
+    work: WorkTracker,
 }
 
 impl Previewer {
-    pub fn new(
+    pub fn new<E: Into<EventSink>>(
         commands: Receiver<PreviewCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
     ) -> Self {
         Self {
             commands,
-            events,
+            events: events.into(),
             preview_registry: Arc::new(PreviewRegistry::with_defaults()),
             metadata_registry: Arc::new(MetadataRegistry::with_defaults()),
             cache: Arc::new(Mutex::new(PreviewCache::new(
@@ -94,12 +96,13 @@ impl Previewer {
             registry,
             active: CancelMap::new(),
             latest: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            work: WorkTracker::new(),
         }
     }
 
-    pub fn with_components(
+    pub fn with_components<E: Into<EventSink>>(
         commands: Receiver<PreviewCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
         preview_registry: Arc<PreviewRegistry>,
@@ -107,7 +110,7 @@ impl Previewer {
     ) -> Self {
         Self {
             commands,
-            events,
+            events: events.into(),
             provider,
             registry,
             preview_registry,
@@ -115,7 +118,13 @@ impl Previewer {
             cache,
             active: CancelMap::new(),
             latest: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            work: WorkTracker::new(),
         }
+    }
+
+    pub(crate) fn with_work_tracker(mut self, work: WorkTracker) -> Self {
+        self.work = work;
+        self
     }
 
     fn dispatch_preview(
@@ -162,8 +171,9 @@ impl Previewer {
         let active = self.active.clone();
         let latest = self.latest.clone();
         let opts = options.unwrap_or_default();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             if cancel.is_cancelled() {
                 return;
             }
@@ -281,8 +291,9 @@ impl Previewer {
         let latest = self.latest.clone();
         let cancel = self.arm_cancel(session);
         let active = self.active.clone();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
                 return;
             }
@@ -350,8 +361,9 @@ impl Previewer {
         let provider = self.provider.clone();
         let active = self.active.clone();
         let latest = self.latest.clone();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             if cancel.is_cancelled() {
                 return;
             }

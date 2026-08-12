@@ -1,4 +1,6 @@
-use crate::actors::Actor;
+use crate::actors::cancel::CancellationToken;
+use crate::actors::{Actor, WorkTracker};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Simple test actor for trait testing
@@ -105,5 +107,23 @@ mod actor_trait_tests {
 
         assert_eq!(name1, name2);
         assert_eq!(name1, "immutable-name");
+    }
+
+    #[tokio::test]
+    async fn tracked_work_is_cancelled_and_joined_before_shutdown_returns() {
+        let tracker = WorkTracker::new();
+        let token = CancellationToken::new();
+        let completed = Arc::new(AtomicBool::new(false));
+        let task_completed = completed.clone();
+        assert!(tracker.spawn(token.clone(), async move {
+            token.cancelled().await;
+            tokio::task::yield_now().await;
+            task_completed.store(true, Ordering::SeqCst);
+        }));
+
+        tracker.shutdown().await.unwrap();
+
+        assert!(completed.load(Ordering::SeqCst));
+        assert!(!tracker.spawn(CancellationToken::new(), async {}));
     }
 }

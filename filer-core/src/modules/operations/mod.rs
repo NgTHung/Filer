@@ -30,12 +30,12 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::compat;
 use crate::services::dir_cache::SharedDirCache;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::{SyncSend, send_or_warn};
 use flume::Sender;
 use operator::{OperationEventMode, Operator, OpsCommand};
 
-fn emit_compat_resolve_error(
-    events: &Sender<Event>,
+fn emit_compat_resolve_error<S: SyncSend<Event>>(
+    events: &S,
     error: CoreError,
     session: SessionId,
     request: RequestId,
@@ -494,13 +494,15 @@ impl Module for OperationsModule {
                 self.provider.clone(),
                 ctx.registry.clone(),
                 cache,
-            ),
+            )
+            .with_work_tracker(ctx.actors.work_tracker()),
             None => Operator::new(
                 ops_rx,
                 ctx.events.clone(),
                 self.provider.clone(),
                 ctx.registry.clone(),
-            ),
+            )
+            .with_work_tracker(ctx.actors.work_tracker()),
         };
         ctx.actors.spawn(operator);
     }

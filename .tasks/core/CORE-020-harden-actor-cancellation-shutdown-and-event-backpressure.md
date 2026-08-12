@@ -1,7 +1,7 @@
 ---
 id: CORE-020
 title: Harden actor cancellation, shutdown, and event backpressure
-status: To Do
+status: Done
 priority: High
 type: Bug
 parent: CORE-001
@@ -10,7 +10,7 @@ rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: Medium
 impact: "Shutdown can return while work continues, a fallback scan ignores cancel, and unbounded event streams can grow without limit. Gates MODULES-002: decoration event streams must land on the backpressure policy, not on unbounded channels."
 tags: [core, audit, remediation, async]
-last_updated: 2026-07-09
+last_updated: 2026-08-12
 ---
 
 ## Summary
@@ -21,6 +21,6 @@ Explicit 0.3.0 member because MODULES-002 depends on the backpressure policy bef
 
 ## Acceptance Criteria
 
-- [ ] A shutdown-while-busy test asserts no filesystem activity continues after FilerCore::shutdown returns, or shutdown is explicitly documented as fire-and-forget with the runtime drop as the real stop.
-- [ ] PageSelection::extend checks the cancellation token periodically so a fallback-provider scan of a very large directory stops promptly, pinned by a test.
-- [ ] High-volume event streams use bounded channels with the documented coalesce-or-block overflow policy; command channels stay unbounded.
+- [x] A shutdown-while-busy test asserts no filesystem activity continues after FilerCore::shutdown returns, or shutdown is explicitly documented as fire-and-forget with the runtime drop as the real stop.
+- [x] PageSelection::extend checks the cancellation token periodically so a fallback-provider scan of a very large directory stops promptly, pinned by a test.
+- [x] High-volume event streams use bounded channels with the documented coalesce-or-block overflow policy; command channels stay unbounded.

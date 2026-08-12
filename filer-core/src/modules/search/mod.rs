@@ -153,7 +153,8 @@ impl Module for SearchModule {
             ctx.events.clone(),
             self.provider.clone(),
             ctx.registry.clone(),
-        );
+        )
+        .with_work_tracker(ctx.actors.work_tracker());
         ctx.actors.spawn(searcher);
     }
 }

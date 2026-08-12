@@ -50,6 +50,11 @@ impl<'a> ProviderCx<'a> {
         self.with_deadline(Instant::now() + timeout)
     }
 
+    /// Return whether the caller's cancellation signal has fired.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.is_some_and(CancelSignal::is_cancelled)
+    }
+
     /// Time left before the deadline, or `None` when no deadline is set.
     pub fn remaining(&self) -> Option<Duration> {
         self.deadline
@@ -65,7 +70,7 @@ impl<'a> ProviderCx<'a> {
     where
         F: Future<Output = Result<T, CoreError>>,
     {
-        if self.cancel.is_some_and(CancelSignal::is_cancelled) {
+        if self.is_cancelled() {
             return Err(CoreError::cancelled());
         }
 

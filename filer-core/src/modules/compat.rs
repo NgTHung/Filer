@@ -9,8 +9,6 @@
 //! send_or_warn(&actor_tx, ActorCommand::Run { location }, "module.key");
 //! ```
 
-use flume::Sender;
-
 use crate::api::events::Event;
 use crate::errors::CoreError;
 use crate::model::location::LocationRef;
@@ -19,7 +17,7 @@ use crate::model::operation::OperationId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::{SyncSend, send_or_warn};
 
 pub(crate) fn resolve_node_location(
     registry: &NodeRegistry,
@@ -44,8 +42,8 @@ pub(crate) fn unresolved_node_error(node: NodeId) -> CoreError {
     CoreError::invalid_input(format!("Unable to resolve ID: {node:?}"))
 }
 
-pub(crate) fn emit_unresolved_node_request(
-    events: &Sender<Event>,
+pub(crate) fn emit_unresolved_node_request<S: SyncSend<Event>>(
+    events: &S,
     node: NodeId,
     session: SessionId,
     request: RequestId,
@@ -58,8 +56,8 @@ pub(crate) fn emit_unresolved_node_request(
     );
 }
 
-pub(crate) fn emit_unresolved_node_operation(
-    events: &Sender<Event>,
+pub(crate) fn emit_unresolved_node_operation<S: SyncSend<Event>>(
+    events: &S,
     node: NodeId,
     session: SessionId,
     request: RequestId,
@@ -73,8 +71,8 @@ pub(crate) fn emit_unresolved_node_operation(
     );
 }
 
-pub(crate) fn emit_unresolved_node_session(
-    events: &Sender<Event>,
+pub(crate) fn emit_unresolved_node_session<S: SyncSend<Event>>(
+    events: &S,
     node: NodeId,
     session: SessionId,
     context: &'static str,

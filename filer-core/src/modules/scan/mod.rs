@@ -179,13 +179,15 @@ impl Module for ScanModule {
                 self.provider.clone(),
                 ctx.registry.clone(),
                 cache,
-            ),
+            )
+            .with_work_tracker(ctx.actors.work_tracker()),
             None => Scanner::new(
                 scan_rx,
                 ctx.events.clone(),
                 self.provider.clone(),
                 ctx.registry.clone(),
-            ),
+            )
+            .with_work_tracker(ctx.actors.work_tracker()),
         };
         ctx.actors.spawn(scanner);
     }

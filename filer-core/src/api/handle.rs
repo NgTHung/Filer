@@ -5,6 +5,7 @@ use flume::{Receiver, Sender};
 use crate::actors::ActorSystem;
 use crate::actors::router::CommandRouter;
 use crate::api::commands::Command;
+use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry, Module, ModuleContext};
 use crate::api::session_manager::SessionManager;
@@ -63,8 +64,8 @@ pub struct FilerCore {
     command_tx: Sender<Command>,
     /// Event receiver — UI reads here
     event_rx: Receiver<Event>,
-    /// Event sender — shared with actors via HandlerContext
-    event_tx: Sender<Event>,
+    /// Bounded event sink shared by handlers and actors.
+    event_sink: EventSink,
     /// Manages spawned actor tasks
     actor_system: ActorSystem,
     /// Command handler registry (shared with Router)
@@ -89,14 +90,14 @@ impl FilerCore {
         let system = ActorSystem::new();
 
         let (command_tx, command_rx) = flume::unbounded();
-        let (event_tx, event_rx) = flume::unbounded();
+        let (event_sink, event_rx) = EventSink::for_runtime(system.work_tracker());
 
         let registry = NodeRegistry::new();
         let sessions = SessionManager::new(registry.clone());
         let handlers = Arc::new(HandlerRegistry::new());
 
         let ctx = HandlerContext {
-            events: event_tx.clone(),
+            events: event_sink.clone(),
             sessions: sessions.clone(),
             registry: registry.clone(),
         };
@@ -127,7 +128,7 @@ impl FilerCore {
         Self {
             command_tx,
             event_rx,
-            event_tx,
+            event_sink,
             actor_system: system,
             handlers,
             sessions,
@@ -169,7 +170,7 @@ impl FilerCore {
     /// processing commands. New handlers take effect immediately.
     pub fn load<M: Module>(&self, module: M) {
         let ctx = ModuleContext {
-            events: self.event_tx.clone(),
+            events: self.event_sink.clone(),
             sessions: &self.sessions,
             registry: &self.registry,
             actors: &self.actor_system,
@@ -227,8 +228,8 @@ impl FilerCore {
 
     /// Clone of the event sender — custom actors can use this to
     /// emit events into the system.
-    pub fn event_sender(&self) -> Sender<Event> {
-        self.event_tx.clone()
+    pub fn event_sender(&self) -> EventSink {
+        self.event_sink.clone()
     }
 
     /// Access the shared node registry.
@@ -253,14 +254,13 @@ impl FilerCore {
         OperationId::new()
     }
 
-    /// Shut down all actors.
+    /// Shut down the runtime and wait for all in-flight work to stop.
     ///
-    /// Aborts every spawned task, which drops their channel endpoints
-    /// and cascades shutdown through the system. After shutdown,
-    /// [`send()`](Self::send) will return a channel-closed [`CoreError`].
-    pub fn shutdown(&self) -> Result<(), CoreError> {
-        self.actor_system.shutdown();
-        Ok(())
+    /// Shutdown cancels tracked command work, aborts actor loops, joins every
+    /// task, and only then returns. After it returns, [`send()`](Self::send)
+    /// will return a channel-closed [`CoreError`].
+    pub async fn shutdown(&self) -> Result<(), CoreError> {
+        self.actor_system.shutdown().await
     }
 }
 

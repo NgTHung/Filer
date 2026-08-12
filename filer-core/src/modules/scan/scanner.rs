@@ -1,11 +1,12 @@
-use flume::{Receiver, Sender};
+use flume::Receiver;
 use rapidhash::fast::RandomState;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
+use crate::actors::{Actor, WorkTracker};
+use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::errors::ErrorCode;
 use crate::model::directory::DirectoryLoadState;
@@ -73,51 +74,59 @@ enum ScanEventMode {
 /// Scanner actor - handles directory traversal
 pub struct Scanner {
     commands: Receiver<ScanCommand>,
-    events_sender: Sender<Event>,
+    events_sender: EventSink,
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active_scans: CancelMap,
     latest_scans: Arc<scc::HashMap<SessionId, RequestId, RandomState>>,
     cache: Option<SharedDirCache>,
     paging: PagingSessions,
+    work: WorkTracker,
 }
 
 impl Scanner {
-    pub fn new(
+    pub fn new<E: Into<EventSink>>(
         commands: Receiver<ScanCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
     ) -> Self {
         Self {
             commands,
-            events_sender: events,
+            events_sender: events.into(),
             provider,
             registry,
             active_scans: CancelMap::new(),
             latest_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             cache: None,
             paging: PagingSessions::new(),
+            work: WorkTracker::new(),
         }
     }
 
-    pub fn with_cache(
+    pub fn with_cache<E: Into<EventSink>>(
         commands: Receiver<ScanCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
         cache: SharedDirCache,
     ) -> Self {
         Self {
             commands,
-            events_sender: events,
+            events_sender: events.into(),
             provider,
             registry,
             active_scans: CancelMap::new(),
             latest_scans: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             cache: Some(cache),
             paging: PagingSessions::new(),
+            work: WorkTracker::new(),
         }
+    }
+
+    pub(crate) fn with_work_tracker(mut self, work: WorkTracker) -> Self {
+        self.work = work;
+        self
     }
 
     fn dispatch_scan_with_location(
@@ -139,11 +148,12 @@ impl Scanner {
         let latest_scans = self.latest_scans.clone();
         let cache = self.cache.clone();
         let paging = self.paging.clone();
+        let work = self.work.clone();
 
         let _ = self.latest_scans.remove_sync(&session);
         let _ = self.latest_scans.insert_sync(session, request);
         let cancel = active_scans.arm(session);
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             Self::scan_directory(
                 &provider,
                 &registry,
@@ -243,11 +253,12 @@ impl Scanner {
         let latest_scans = self.latest_scans.clone();
         let descriptor = location.descriptor().clone();
         let parent = LocationRef::from_location(&location);
+        let work = self.work.clone();
 
         let _ = self.latest_scans.remove_sync(&session);
         let _ = self.latest_scans.insert_sync(session, request);
         let cancel = active_scans.arm(session);
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             Self::scan_segmented_location(
                 &provider,
                 &events,
@@ -268,7 +279,7 @@ impl Scanner {
     async fn scan_directory(
         provider: &Arc<dyn FsProvider>,
         registry: &NodeRegistry,
-        events: &Sender<Event>,
+        events: &EventSink,
         path: &Path,
         session: SessionId,
         pipeline_config: PipelineConfig,
@@ -332,6 +343,7 @@ impl Scanner {
         } else {
             load_options.listing
         };
+        let cx = ProviderCx::with_cancel(cancel);
         let cached_nodes = cache.and_then(|c| {
             let mut cache = c.lock().ok()?;
             if let Some(location_id) = parent_location_id
@@ -355,8 +367,9 @@ impl Scanner {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
             let parent_id = registry.clone().register(path.to_path_buf());
             if let Some(page_request) = load_options.page_request() {
-                match paging.load_cached(cached, path, session, page_request, &pipeline_config) {
-                    Ok(page) => {
+                match paging.load_cached(cached, path, session, page_request, &pipeline_config, &cx)
+                {
+                    Ok(PageLoad::Page(page)) => {
                         registry.clone().register_batch_file_node(&page.entries);
                         Self::emit_page_result(
                             events,
@@ -371,6 +384,23 @@ impl Scanner {
                             &pipeline_config,
                             event_mode,
                             "scan page result (cached)",
+                        )
+                        .await;
+                    }
+                    Ok(PageLoad::Cancelled) => {
+                        Self::emit_scan_progress(
+                            events,
+                            latest_scans,
+                            session,
+                            request,
+                            ProgressSnapshot::new(
+                                ProgressStatus::Cancelled,
+                                ProgressPhase::Loading,
+                                ProgressUnit::Entry,
+                                0,
+                                None,
+                                Self::scan_target(path, Some(&parent_location)),
+                            ),
                         )
                         .await;
                     }
@@ -493,8 +523,6 @@ impl Scanner {
             ),
         )
         .await;
-
-        let cx = ProviderCx::with_cancel(cancel);
 
         if let Some(page_request) = load_options.page_request() {
             let first_page = page_request.cursor.is_none();
@@ -836,7 +864,7 @@ impl Scanner {
 
     async fn scan_segmented_location(
         provider: &Arc<dyn FsProvider>,
-        events: &Sender<Event>,
+        events: &EventSink,
         descriptor: crate::LocationDescriptor,
         parent: LocationRef,
         session: SessionId,
@@ -955,7 +983,7 @@ impl Scanner {
     }
 
     async fn emit_page_result(
-        events: &Sender<Event>,
+        events: &EventSink,
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
         registry: &NodeRegistry,
         path: &Path,
@@ -1055,7 +1083,7 @@ impl Scanner {
     }
 
     async fn emit_scan_progress(
-        events: &Sender<Event>,
+        events: &EventSink,
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
         session: SessionId,
         request: RequestId,

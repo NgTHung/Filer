@@ -13,8 +13,7 @@ use std::sync::Arc;
 
 use rapidhash::fast::RandomState;
 
-use flume::Sender;
-
+use crate::api::event_sink::{EventSendError, EventSink};
 use crate::api::events::Event;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::{AllowAll, SessionId, SessionPolicy};
@@ -28,7 +27,7 @@ pub struct Session {
     /// Navigation state for this session
     pub navigator: NavigatorState,
     /// Channel to send events to this client
-    pub event_tx: Sender<Event>,
+    pub event_tx: EventSink,
     /// Authorization policy for this session
     pub policy: Box<dyn SessionPolicy>,
     /// Session metadata
@@ -37,7 +36,7 @@ pub struct Session {
 
 impl Session {
     /// Create a new session with the default AllowAll policy (native desktop)
-    pub fn new(id: SessionId, event_tx: Sender<Event>, reg: NodeRegistry) -> Self {
+    pub fn new(id: SessionId, event_tx: EventSink, reg: NodeRegistry) -> Self {
         Self {
             id,
             navigator: NavigatorState::new(reg),
@@ -50,7 +49,7 @@ impl Session {
     /// Create a new session with a custom policy (web/remote clients)
     pub fn with_policy(
         id: SessionId,
-        event_tx: Sender<Event>,
+        event_tx: EventSink,
         reg: NodeRegistry,
         policy: Box<dyn SessionPolicy>,
     ) -> Self {
@@ -64,7 +63,7 @@ impl Session {
     }
 
     /// Send an event to this session's client
-    pub fn send_event(&self, event: Event) -> Result<(), flume::SendError<Event>> {
+    pub fn send_event(&self, event: Event) -> Result<(), EventSendError> {
         self.event_tx.send(event)
     }
 }
@@ -92,22 +91,22 @@ impl SessionManager {
 
     /// Create a new session with default (AllowAll) policy.
     /// Used by native desktop clients and as default for Handshake.
-    pub fn create_session(&self, event_tx: Sender<Event>) -> SessionId {
+    pub fn create_session<E: Into<EventSink>>(&self, event_tx: E) -> SessionId {
         let id = SessionId::new();
-        let session = Session::new(id, event_tx, self.registry.clone());
+        let session = Session::new(id, event_tx.into(), self.registry.clone());
         let _ = self.sessions.insert_sync(id, session);
         id
     }
 
     /// Create a new session with a custom policy.
     /// Used by web/remote transport layers after authenticating the client.
-    pub fn create_session_with_policy(
+    pub fn create_session_with_policy<E: Into<EventSink>>(
         &self,
-        event_tx: Sender<Event>,
+        event_tx: E,
         policy: Box<dyn SessionPolicy>,
     ) -> SessionId {
         let id = SessionId::new();
-        let session = Session::with_policy(id, event_tx, self.registry.clone(), policy);
+        let session = Session::with_policy(id, event_tx.into(), self.registry.clone(), policy);
         let _ = self.sessions.insert_sync(id, session);
         id
     }

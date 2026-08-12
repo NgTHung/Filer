@@ -3,11 +3,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flume::{Receiver, Sender};
+use flume::Receiver;
 use rapidhash::fast::RandomState;
 
-use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
+use crate::actors::{Actor, WorkTracker};
+use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::errors::ErrorCode;
 use crate::model::location::{LocationRef, LocationRoute};
@@ -15,7 +16,7 @@ use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
@@ -44,30 +45,37 @@ pub enum SearchCommand {
 /// Searcher actor - handles recursive file search
 pub struct Searcher {
     commands: Receiver<SearchCommand>,
-    events: Sender<Event>,
+    events: EventSink,
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active_search: CancelMap,
     latest_searches: Arc<scc::HashMap<SessionId, RequestId, RandomState>>,
     search_timeout: Option<Duration>,
+    work: WorkTracker,
 }
 
 impl Searcher {
-    pub fn new(
+    pub fn new<E: Into<EventSink>>(
         commands: Receiver<SearchCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
     ) -> Self {
         Self {
             commands,
-            events,
+            events: events.into(),
             provider,
             registry,
             active_search: CancelMap::new(),
             latest_searches: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             search_timeout: None,
+            work: WorkTracker::new(),
         }
+    }
+
+    pub(crate) fn with_work_tracker(mut self, work: WorkTracker) -> Self {
+        self.work = work;
+        self
     }
 
     /// Bound each provider listing during a walk to `timeout`.
@@ -91,12 +99,13 @@ impl Searcher {
         let event = self.events.clone();
         let latest_searches = self.latest_searches.clone();
         let registry = self.registry.clone();
+        let work = self.work.clone();
         let _ = self.latest_searches.remove_sync(&session);
         let _ = self.latest_searches.insert_sync(session, request);
         let cancel = self.active_search.arm(session);
         let deadline = self.search_timeout.map(|timeout| Instant::now() + timeout);
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             Self::search(
                 query,
                 root,
@@ -126,7 +135,7 @@ impl Searcher {
         provider: &Arc<dyn FsProvider>,
         cancel: &CancellationToken,
         deadline: Option<Instant>,
-        event: &Sender<Event>,
+        event: &EventSink,
         latest_searches: &scc::HashMap<SessionId, RequestId, RandomState>,
         registry: &NodeRegistry,
         event_mode: SearchEventMode,
@@ -148,11 +157,12 @@ impl Searcher {
                 Err(e) if e.code() == ErrorCode::Cancelled => return,
                 Err(e) if e.code() == ErrorCode::TimedOut => {
                     if Self::is_latest(latest_searches, session, request) {
-                        send_or_warn(
+                        send_or_warn_async(
                             event,
                             Event::from_request_error(e, session, request),
                             "search timed out",
-                        );
+                        )
+                        .await;
                     }
                     break;
                 }
@@ -172,7 +182,7 @@ impl Searcher {
                         if !Self::is_latest(latest_searches, session, request) {
                             return;
                         }
-                        send_or_warn(
+                        send_or_warn_async(
                             event,
                             search_results_event(
                                 std::mem::take(&mut batch),
@@ -183,7 +193,8 @@ impl Searcher {
                                 event_mode,
                             ),
                             "emit partial search result",
-                        );
+                        )
+                        .await;
                     }
                 }
                 if query
@@ -196,11 +207,12 @@ impl Searcher {
             }
         }
         if Self::is_latest(latest_searches, session, request) {
-            send_or_warn(
+            send_or_warn_async(
                 event,
                 search_results_event(batch, true, session, request, registry, event_mode),
                 "emit remaining files after search",
-            );
+            )
+            .await;
         }
     }
 

@@ -15,7 +15,7 @@ use flume::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 
 use crate::actors::Actor;
-use crate::api::events;
+use crate::api::event_sink::EventSink;
 use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::{Location, LocationRef, LocationRoute};
 use crate::model::node::NodeId;
@@ -304,7 +304,7 @@ pub struct Navigator {
     /// Incoming commands
     commands: Receiver<NavCommand>,
     /// Outgoing events
-    events: Sender<events::Event>,
+    events: EventSink,
     /// Scanner channel for triggering scans
     scanner_tx: Sender<ScanCommand>,
     sessions: Arc<scc::HashMap<SessionId, NavigatorState, RandomState>>,
@@ -313,15 +313,15 @@ pub struct Navigator {
 }
 
 impl Navigator {
-    pub fn new(
+    pub fn new<E: Into<EventSink>>(
         commands: Receiver<NavCommand>,
-        events: Sender<events::Event>,
+        events: E,
         scanner_tx: Sender<ScanCommand>,
         reg: NodeRegistry,
     ) -> Self {
         Self {
             commands,
-            events,
+            events: events.into(),
             scanner_tx,
             sessions: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
             path_cache: Arc::new(scc::HashSet::with_hasher(RandomState::new())),

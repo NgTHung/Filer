@@ -8,7 +8,7 @@ use crate::model::operation::{OperationId, OperationKind};
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProgressKind {
     Scan,
     Operation(OperationKind),
@@ -17,7 +17,7 @@ pub enum ProgressKind {
     Metadata,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProgressScope {
     pub kind: ProgressKind,
     pub session: SessionId,

@@ -5,6 +5,8 @@ use rapidhash::fast::RandomState;
 use std::sync::Arc;
 
 use crate::actors::Actor;
+use crate::api::event_sink::DEFAULT_EVENT_CHANNEL_CAPACITY;
+use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::model::location::LocationRef;
 use crate::model::node::NodeId;
@@ -12,7 +14,7 @@ use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavCommand;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 
 /// Commands for watcher actor
@@ -63,7 +65,7 @@ struct WatchEntry {
 /// Watcher actor - monitors filesystem changes via a pluggable [`WatchProvider`].
 pub struct Watcher {
     commands: flume::Receiver<WatchCommand>,
-    events: Sender<Event>,
+    events: EventSink,
     registry: NodeRegistry,
     watches: scc::HashMap<LocationRef, WatchEntry, RandomState>,
     provider: Arc<dyn WatchProvider>,
@@ -74,33 +76,39 @@ pub struct Watcher {
 }
 
 impl Watcher {
-    pub fn new(
+    pub fn new<E: Into<EventSink>>(
         commands: flume::Receiver<WatchCommand>,
-        events: Sender<Event>,
+        events: E,
         registry: NodeRegistry,
         provider: Arc<dyn WatchProvider>,
     ) -> Self {
-        Self::new_inner(commands, events, registry, provider, None)
+        Self::new_inner(commands, events.into(), registry, provider, None)
     }
 
-    pub fn with_refresh(
+    pub fn with_refresh<E: Into<EventSink>>(
         commands: flume::Receiver<WatchCommand>,
-        events: Sender<Event>,
+        events: E,
         registry: NodeRegistry,
         provider: Arc<dyn WatchProvider>,
         refresh_tx: Sender<NavCommand>,
     ) -> Self {
-        Self::new_inner(commands, events, registry, provider, Some(refresh_tx))
+        Self::new_inner(
+            commands,
+            events.into(),
+            registry,
+            provider,
+            Some(refresh_tx),
+        )
     }
 
     fn new_inner(
         commands: flume::Receiver<WatchCommand>,
-        events: Sender<Event>,
+        events: EventSink,
         registry: NodeRegistry,
         provider: Arc<dyn WatchProvider>,
         refresh_tx: Option<Sender<NavCommand>>,
     ) -> Self {
-        let (change_tx, change_rx) = flume::unbounded();
+        let (change_tx, change_rx) = flume::bounded(DEFAULT_EVENT_CHANNEL_CAPACITY);
         Self {
             commands,
             events,
@@ -267,12 +275,14 @@ impl Watcher {
     }
 
     /// Route a raw [`FsChange`] from the provider to the matching sessions.
-    fn dispatch_change(&self, change: FsChange) {
+    async fn dispatch_change(&self, change: FsChange) {
         tracing::trace!(
             path = %change.path.display(),
             kind = ?change.kind,
             "Watcher received provider change"
         );
+        let mut events = Vec::new();
+        let mut invalidations = Vec::new();
         self.watches.iter_sync(|_key, entry| {
             if change.path.starts_with(&entry.path) {
                 for subscription in &entry.subscriptions {
@@ -294,19 +304,29 @@ impl Watcher {
                             session: subscription.session,
                         },
                     };
-                    send_or_warn(&self.events, evt, "emit filesystem change");
+                    events.push(evt);
                 }
 
-                if let (Some(refresh_tx), Some(node)) = (&self.refresh_tx, entry.refresh_node) {
-                    send_or_warn(
-                        refresh_tx,
-                        NavCommand::Invalidate(node),
-                        "watch refresh invalidate",
-                    );
+                if self.refresh_tx.is_some()
+                    && let Some(node) = entry.refresh_node
+                {
+                    invalidations.push(node);
                 }
             }
             true
         });
+        for event in events {
+            send_or_warn_async(&self.events, event, "emit filesystem change").await;
+        }
+        if let Some(refresh_tx) = &self.refresh_tx {
+            for node in invalidations {
+                send_or_warn(
+                    refresh_tx,
+                    NavCommand::Invalidate(node),
+                    "watch refresh invalidate",
+                );
+            }
+        }
     }
 }
 
@@ -338,7 +358,7 @@ impl Actor for Watcher {
                 }
                 change = self.change_rx.recv_async() => {
                     match change {
-                        Ok(fs_change) => self.dispatch_change(fs_change),
+                        Ok(fs_change) => self.dispatch_change(fs_change).await,
                         Err(_) => {
                             // change channel closed — shouldn't happen while we hold change_tx
                             tracing::warn!("FsChange channel closed unexpectedly");

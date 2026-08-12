@@ -13,18 +13,71 @@
 #[cfg(test)]
 mod handle_tests {
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use tokio::time::timeout;
 
+    use crate::actors::cancel::CancellationToken;
     use crate::api::commands::Command;
     use crate::api::events::Event;
     use crate::api::handle::FilerCore;
-
+    use crate::api::module::{Module, ModuleContext};
+    use crate::model::progress::{
+        ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressUnit,
+    };
+    use crate::model::request::RequestId;
     use crate::model::session::SessionId;
 
     /// Timeout for async operations in tests
     const TEST_TIMEOUT: Duration = Duration::from_millis(1000);
+
+    struct BusyFilesystemModule {
+        active: Arc<AtomicUsize>,
+        output: PathBuf,
+    }
+
+    impl Module for BusyFilesystemModule {
+        fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
+            struct ActivityGuard(Arc<AtomicUsize>);
+
+            impl Drop for ActivityGuard {
+                fn drop(&mut self) {
+                    self.0.fetch_sub(1, Ordering::SeqCst);
+                }
+            }
+
+            let token = CancellationToken::new();
+            let active = self.active;
+            let output = self.output;
+            let _ = ctx.actors.work_tracker().spawn(token, async move {
+                let _guard = ActivityGuard(active.clone());
+                active.fetch_add(1, Ordering::SeqCst);
+                tokio::task::spawn_blocking(move || {
+                    std::thread::sleep(Duration::from_millis(100));
+                    std::fs::write(output, b"complete")
+                })
+                .await
+                .expect("blocking filesystem task should join")
+                .expect("blocking filesystem write should succeed");
+            });
+        }
+    }
+
+    fn running_progress(scope: &ProgressScope, done: usize) -> Event {
+        Event::ProgressUpdated {
+            scope: scope.clone(),
+            snapshot: ProgressSnapshot::new(
+                ProgressStatus::Running,
+                ProgressPhase::Processing,
+                ProgressUnit::Entry,
+                done,
+                Some(100),
+                None,
+            ),
+        }
+    }
 
     #[tokio::test]
     async fn test_new_creates_instance() {
@@ -307,8 +360,20 @@ mod handle_tests {
     #[tokio::test]
     async fn test_shutdown_succeeds() {
         let core = FilerCore::new();
-        let result = core.shutdown();
+        let result = core.shutdown().await;
         assert!(result.is_ok(), "shutdown should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_shutdown_calls_share_completion() {
+        let core = Arc::new(FilerCore::new());
+        let first = core.clone();
+        let second = core.clone();
+
+        let (first_result, second_result) = tokio::join!(first.shutdown(), second.shutdown());
+
+        assert!(first_result.is_ok());
+        assert!(second_result.is_ok());
     }
 
     #[tokio::test]
@@ -316,7 +381,7 @@ mod handle_tests {
         let core = FilerCore::new();
         let sender = core.command_sender();
 
-        core.shutdown().unwrap();
+        core.shutdown().await.unwrap();
 
         // After shutdown, the command channel should eventually close.
         // Give actors a moment to wind down.
@@ -328,6 +393,58 @@ mod handle_tests {
             result.is_err(),
             "sending after shutdown should fail (channel closed)"
         );
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_waits_for_busy_filesystem_work() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let temp = tempfile::TempDir::new().unwrap();
+        let output = temp.path().join("shutdown-finished.txt");
+        let core = FilerCore::new();
+        core.load(BusyFilesystemModule {
+            active: active.clone(),
+            output: output.clone(),
+        });
+
+        timeout(TEST_TIMEOUT, async {
+            while active.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("busy filesystem task should start");
+
+        core.shutdown().await.unwrap();
+
+        assert_eq!(
+            active.load(Ordering::SeqCst),
+            0,
+            "filesystem activity must be quiescent when shutdown returns"
+        );
+        assert_eq!(std::fs::read(output).unwrap(), b"complete");
+    }
+
+    #[tokio::test]
+    async fn test_public_event_sender_uses_progress_coalescing() {
+        let core = FilerCore::new();
+        let events = core.event_sender();
+        let receiver = core.event_receiver();
+        let scope = ProgressScope::scan(SessionId::new(), RequestId::new());
+
+        for done in 0..100 {
+            events.send(running_progress(&scope, done)).unwrap();
+        }
+
+        tokio::task::yield_now().await;
+        let received: Vec<_> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+        assert_eq!(
+            received
+                .iter()
+                .filter(|event| matches!(event, Event::ProgressUpdated { .. }))
+                .count(),
+            1
+        );
+        core.shutdown().await.unwrap();
     }
 
     #[tokio::test]
@@ -351,7 +468,7 @@ mod handle_tests {
         assert_eq!(sessions.len(), 3);
 
         // Shutdown should clean everything
-        let result = core.shutdown();
+        let result = core.shutdown().await;
         assert!(result.is_ok());
 
         // After shutdown + some delay, send attempts should fail
@@ -366,7 +483,7 @@ mod handle_tests {
     #[tokio::test]
     async fn test_send_after_shutdown_returns_error() {
         let core = FilerCore::new();
-        core.shutdown().unwrap();
+        core.shutdown().await.unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let result = core.send(Command::Handshake);

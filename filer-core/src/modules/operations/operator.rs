@@ -2,11 +2,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flume::{Receiver, Sender};
+use flume::Receiver;
 use rapidhash::fast::RandomState;
 
-use crate::actors::Actor;
 use crate::actors::cancel::{CancelMap, CancellationToken};
+use crate::actors::{Actor, WorkTracker};
+use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::model::location::LocationRef;
 use crate::model::operation::{OperationId, OperationKind};
@@ -100,7 +101,7 @@ pub enum OperationEventMode {
 
 pub struct Operator {
     commands: Receiver<OpsCommand>,
-    events: Sender<Event>,
+    events: EventSink,
     provider: Arc<dyn FsProvider>,
     registry: NodeRegistry,
     active_ops: CancelMap,
@@ -108,18 +109,19 @@ pub struct Operator {
     trash_fn: TrashFn,
     cache: Option<SharedDirCache>,
     default_timeout: Option<Duration>,
+    work: WorkTracker,
 }
 
 impl Operator {
-    pub fn new(
+    pub fn new<E: Into<EventSink>>(
         commands: Receiver<OpsCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
     ) -> Self {
         Self::with_trash_fn(
             commands,
-            events,
+            events.into(),
             provider,
             registry,
             Arc::new(|path| {
@@ -128,16 +130,16 @@ impl Operator {
         )
     }
 
-    pub fn with_trash_fn(
+    pub fn with_trash_fn<E: Into<EventSink>>(
         commands: Receiver<OpsCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
         trash_fn: TrashFn,
     ) -> Self {
         Self {
             commands,
-            events,
+            events: events.into(),
             provider,
             registry,
             active_ops: CancelMap::new(),
@@ -145,6 +147,7 @@ impl Operator {
             trash_fn,
             cache: None,
             default_timeout: None,
+            work: WorkTracker::new(),
         }
     }
 
@@ -156,9 +159,9 @@ impl Operator {
         self.default_timeout = timeout;
     }
 
-    pub fn with_cache(
+    pub fn with_cache<E: Into<EventSink>>(
         commands: Receiver<OpsCommand>,
-        events: Sender<Event>,
+        events: E,
         provider: Arc<dyn FsProvider>,
         registry: NodeRegistry,
         cache: SharedDirCache,
@@ -166,6 +169,11 @@ impl Operator {
         let mut op = Self::new(commands, events, provider, registry);
         op.cache = Some(cache);
         op
+    }
+
+    pub(crate) fn with_work_tracker(mut self, work: WorkTracker) -> Self {
+        self.work = work;
+        self
     }
 
     #[allow(dead_code)]
@@ -246,8 +254,9 @@ impl Operator {
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
             let mut affected = Vec::new();
             let mut items_done = 0usize;
@@ -444,8 +453,9 @@ impl Operator {
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
             let mut affected = Vec::new();
 
@@ -599,8 +609,9 @@ impl Operator {
         let cache = self.cache.clone();
         let registry = self.registry.clone();
         let total = paths.len();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
             let mut affected = Vec::new();
             let mut items_done = 0usize;
@@ -764,8 +775,9 @@ impl Operator {
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
             match cx.race(fs.scheme(), fs.exists(&new_path, &cx)).await {
                 Ok(true) => {
@@ -884,8 +896,9 @@ impl Operator {
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
             let full_path = path.join(name);
             match cx.race(fs.scheme(), fs.exists(&full_path, &cx)).await {
@@ -999,8 +1012,9 @@ impl Operator {
         let registry = self.registry.clone();
         let fs = self.provider.clone();
         let cache = self.cache.clone();
+        let work = self.work.clone();
 
-        tokio::spawn(async move {
+        work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
             let full_path = path.join(name);
             match cx.race(fs.scheme(), fs.exists(&full_path, &cx)).await {
@@ -1086,7 +1100,7 @@ async fn copy_dir_recursive(
     src: &Path,
     dst: &Path,
     cx: &ProviderCx<'_>,
-    events: &Sender<Event>,
+    events: &EventSink,
     registry: &NodeRegistry,
     session: SessionId,
     operation: OperationId,
@@ -1184,7 +1198,7 @@ fn operation_complete_event(
 }
 
 async fn emit_operation_progress(
-    events: &Sender<Event>,
+    events: &EventSink,
     kind: OperationKind,
     session: SessionId,
     request: RequestId,
