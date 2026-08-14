@@ -1,9 +1,9 @@
 ---
 id: API-007
 title: Retire the FileNode compatibility row and NodeId-keyed internals
-status: To Do
+status: In Progress
 priority: High
-type: Refactor
+type: Epic
 parent: API-004
 milestone: "0.3.0"
 depends_on: [API-006]
@@ -11,15 +11,16 @@ rules: [CORE-LIBRARY, PROVIDER-ACCESS]
 risk: High
 impact: "Makes NodeEntry with LocationRef identity the only row contract and removes NodeId keying from internals."
 tags: [api, nodeid, location]
-last_updated: 2026-07-08
+last_updated: 2026-08-14
 ---
 
 ## Summary
 
-Remove the FileNode compatibility row and the internal plumbing that keys on NodeId: the modules/compat translation layer, registry and cache identity, and pipeline row types. NodeEntry drops its NodeId field and carries LocationRef as its only identity. Stage per subsystem if the diff approaches the change-size limit.
+Coordinate the staged removal of the FileNode compatibility row and NodeId-keyed internals. The child tasks migrate navigation identity, provider rows, pipeline and cache storage, then remove the remaining registry bridges without exceeding the repository's review-size guidance.
 
-## Acceptance Criteria
+## Exit Criteria
 
-- [ ] NodeEntry carries LocationRef identity only; the FileNode row and its pipeline usages are gone.
-- [ ] The compat translation module and NodeId-keyed registry and cache paths are removed.
-- [ ] The full filer-core suite passes with row assertions migrated, not deleted.
+- [ ] API-014, API-015, API-016, and API-017 are Done.
+- [ ] NodeEntry is the only row contract and carries LocationRef as its only identity.
+- [ ] No production internal depends on NodeId; only the definition and API-008 deletion pin remain.
+- [ ] The full filer-core suite and ignored stress tests pass with assertions migrated, not deleted.
