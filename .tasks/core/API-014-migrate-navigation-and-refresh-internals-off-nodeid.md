@@ -1,7 +1,7 @@
 ---
 id: "API-014"
 title: "Migrate navigation and refresh internals off NodeId"
-status: In Progress
+status: Done
 priority: "High"
 type: "Refactor"
 parent: "API-007"
@@ -20,6 +20,6 @@ Replace NodeId navigation state and refresh plumbing with normalized LocationRef
 
 ## Acceptance Criteria
 
-- [ ] Navigation state, history, selection, watcher invalidation, and progress targets contain no NodeId.
-- [ ] ScanCompat, RefreshCompat, and dead internal NodeId and path navigation variants are removed.
-- [ ] Focused navigation, watcher, operation, serialization, and full filer-core tests pass.
+- [x] Navigation state, history, selection, watcher invalidation, and progress targets contain no NodeId.
+- [x] ScanCompat, RefreshCompat, and dead internal NodeId and path navigation variants are removed.
+- [x] Focused navigation, watcher, operation, serialization, and full filer-core tests pass.
