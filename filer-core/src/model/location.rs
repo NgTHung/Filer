@@ -298,6 +298,14 @@ impl LocationRef {
         }
     }
 
+    /// Return the stable identity represented by this reference.
+    pub fn identity(&self) -> LocationId {
+        match self {
+            LocationRef::Id(id) | LocationRef::Full { id, .. } => *id,
+            LocationRef::Descriptor(descriptor) => Location::new(descriptor.clone()).id(),
+        }
+    }
+
     pub fn descriptor(&self) -> Option<&LocationDescriptor> {
         match self {
             LocationRef::Descriptor(descriptor) | LocationRef::Full { descriptor, .. } => {

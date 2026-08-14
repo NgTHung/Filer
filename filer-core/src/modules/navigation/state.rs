@@ -18,7 +18,7 @@ use std::collections::VecDeque;
 use rapidhash::RapidHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::model::location::{Location, LocationId, LocationRef, LocationRoute};
+use crate::model::location::{LocationId, LocationRef, LocationRoute};
 use crate::pipeline::{Pipeline, PipelineConfig};
 
 /// Navigation state sent to clients after a state change.
@@ -163,7 +163,7 @@ impl NavigatorState {
     /// Build the serializable state snapshot.
     pub fn snapshot(&self) -> NavState {
         let mut selected = self.selected.values().cloned().collect::<Vec<_>>();
-        selected.sort_by_key(|location| location_id(location).0);
+        selected.sort_by_key(|location| location.identity().0);
         NavState {
             current: self.current.clone(),
             can_back: self.can_back(),
@@ -187,13 +187,6 @@ impl NavigatorState {
 impl Default for NavigatorState {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn location_id(location: &LocationRef) -> LocationId {
-    match location {
-        LocationRef::Id(id) | LocationRef::Full { id, .. } => *id,
-        LocationRef::Descriptor(descriptor) => Location::new(descriptor.clone()).id(),
     }
 }
 

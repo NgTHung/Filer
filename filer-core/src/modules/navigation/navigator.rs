@@ -294,9 +294,7 @@ impl Navigator {
                 self.sessions
                     .update_async(&session, |_, state| {
                         for location in &normalized {
-                            state
-                                .selected
-                                .insert(location_id(location), location.clone());
+                            state.selected.insert(location.identity(), location.clone());
                         }
                     })
                     .await;
@@ -327,7 +325,7 @@ impl Navigator {
                 }
                 self.sessions
                     .iter_async(|session, state| {
-                        if state.current.as_ref().map(location_id_of) == Some(location_id) {
+                        if state.current.as_ref().map(LocationRef::identity) == Some(location_id) {
                             Self::trigger_current_refresh_scan(
                                 *session,
                                 state,
@@ -398,17 +396,6 @@ impl Navigator {
             "trigger location refresh",
         );
     }
-}
-
-fn location_id(location: &LocationRef) -> LocationId {
-    match location {
-        LocationRef::Id(id) | LocationRef::Full { id, .. } => *id,
-        LocationRef::Descriptor(descriptor) => Location::new(descriptor.clone()).id(),
-    }
-}
-
-fn location_id_of(location: &LocationRef) -> LocationId {
-    location_id(location)
 }
 
 impl Actor for Navigator {
