@@ -16,10 +16,7 @@
 mod command_router_tests {
     include!("harness.rs");
     include!("register_handlers.rs");
-    include!("route_compatibility.rs");
-    include!("route_compatibility_operations.rs");
     include!("route_navigation.rs");
     include!("route_unwatch_session_to_watcher.rs");
     include!("route_handshake_emits_session_created.rs");
-    include!("route_unresolved_node_boundaries.rs");
 }

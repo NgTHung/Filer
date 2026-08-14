@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -6,7 +5,6 @@ use serde_json::Value;
 use crate::api::wire_commands::{WireCommand, WireCommandConversionError};
 use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::{Location, LocationRef};
-use crate::model::node::NodeId;
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -17,29 +15,16 @@ fn location(path: &str) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
 }
 
-// Compatibility pin for API-006: these NodeId fixtures keep wire labels and
-// dispatch keys covered until compatibility commands become absence tests.
 fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
     let session = SessionId(11);
     let request = RequestId(22);
     let operation = OperationId(33);
-    let node = NodeId(44);
-    let other_node = NodeId(45);
     let root = location("/root");
     let target = location("/target");
     let pipeline = PipelineConfig::with_default_sort();
     let load = DirectoryLoadOptions::bounded(64);
 
     vec![
-        (
-            WireCommand::NavigatePathCompat {
-                path: PathBuf::from("/root"),
-                session,
-                request,
-            },
-            "navigate_path_compat",
-            "navigate.path.compat",
-        ),
         (
             WireCommand::Navigate {
                 location: root.clone(),
@@ -48,15 +33,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             },
             "navigate",
             "navigate",
-        ),
-        (
-            WireCommand::NavigateNodeCompat {
-                node,
-                session,
-                request,
-            },
-            "navigate_node_compat",
-            "navigate.node.compat",
         ),
         (
             WireCommand::NavigateUp { session, request },
@@ -79,26 +55,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "navigate.refresh",
         ),
         (
-            WireCommand::SearchNodeCompat {
-                query: "name:test".to_string(),
-                root: node,
-                session,
-                request,
-            },
-            "search_node_compat",
-            "search.node.compat",
-        ),
-        (
-            WireCommand::SearchPathCompat {
-                query: "name:test".to_string(),
-                root: PathBuf::from("/root"),
-                session,
-                request,
-            },
-            "search_path_compat",
-            "search.path.compat",
-        ),
-        (
             WireCommand::Search {
                 query: "name:test".to_string(),
                 root: root.clone(),
@@ -112,16 +68,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             WireCommand::CancelSearch { session },
             "cancel_search",
             "search.cancel",
-        ),
-        (
-            WireCommand::LoadPreviewNodeCompat {
-                id: node,
-                options: Some(PreviewOptions::default()),
-                session,
-                request,
-            },
-            "load_preview_node_compat",
-            "preview.load.node.compat",
         ),
         (
             WireCommand::LoadPreview {
@@ -139,17 +85,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "preview.cancel",
         ),
         (
-            WireCommand::CopyNodeCompat {
-                sources: vec![node],
-                destination: other_node,
-                session,
-                request,
-                operation,
-            },
-            "copy_node_compat",
-            "ops.copy.node.compat",
-        ),
-        (
             WireCommand::Copy {
                 sources: vec![root.clone()],
                 destination: target.clone(),
@@ -159,17 +94,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             },
             "copy",
             "ops.copy",
-        ),
-        (
-            WireCommand::MoveNodeCompat {
-                sources: vec![node],
-                destination: other_node,
-                session,
-                request,
-                operation,
-            },
-            "move_node_compat",
-            "ops.move.node.compat",
         ),
         (
             WireCommand::Move {
@@ -183,17 +107,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "ops.move",
         ),
         (
-            WireCommand::DeleteNodeCompat {
-                nodes: vec![node],
-                trash: true,
-                session,
-                request,
-                operation,
-            },
-            "delete_node_compat",
-            "ops.delete.node.compat",
-        ),
-        (
             WireCommand::Delete {
                 locations: vec![root.clone()],
                 trash: true,
@@ -203,17 +116,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             },
             "delete",
             "ops.delete",
-        ),
-        (
-            WireCommand::RenameNodeCompat {
-                node,
-                new_name: "renamed".to_string(),
-                session,
-                request,
-                operation,
-            },
-            "rename_node_compat",
-            "ops.rename.node.compat",
         ),
         (
             WireCommand::Rename {
@@ -227,17 +129,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "ops.rename",
         ),
         (
-            WireCommand::CreateFolderNodeCompat {
-                parent: node,
-                name: "folder".to_string(),
-                session,
-                request,
-                operation,
-            },
-            "create_folder_node_compat",
-            "ops.create_folder.node.compat",
-        ),
-        (
             WireCommand::CreateFolder {
                 parent: root.clone(),
                 name: "folder".to_string(),
@@ -247,17 +138,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             },
             "create_folder",
             "ops.create_folder",
-        ),
-        (
-            WireCommand::CreateFileNodeCompat {
-                parent: node,
-                name: "file.txt".to_string(),
-                session,
-                request,
-                operation,
-            },
-            "create_file_node_compat",
-            "ops.create_file.node.compat",
         ),
         (
             WireCommand::CreateFile {
@@ -271,15 +151,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "ops.create_file",
         ),
         (
-            WireCommand::LoadMetadataNodeCompat {
-                node,
-                session,
-                request,
-            },
-            "load_metadata_node_compat",
-            "metadata.load.node.compat",
-        ),
-        (
             WireCommand::LoadMetadata {
                 location: root.clone(),
                 session,
@@ -287,15 +158,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             },
             "load_metadata",
             "metadata.load",
-        ),
-        (
-            WireCommand::LoadExtendedMetadataNodeCompat {
-                node,
-                session,
-                request,
-            },
-            "load_extended_metadata_node_compat",
-            "metadata.extended.node.compat",
         ),
         (
             WireCommand::LoadExtendedMetadata {
@@ -307,17 +169,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "metadata.extended",
         ),
         (
-            WireCommand::ScanPathCompat {
-                path: PathBuf::from("/root"),
-                session,
-                pipeline: pipeline.clone(),
-                load: load.clone(),
-                request,
-            },
-            "scan_path_compat",
-            "scan.path.compat",
-        ),
-        (
             WireCommand::Scan {
                 location: root.clone(),
                 session,
@@ -327,17 +178,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             },
             "scan",
             "scan",
-        ),
-        (
-            WireCommand::ScanNodeCompat {
-                node,
-                session,
-                pipeline: pipeline.clone(),
-                load,
-                request,
-            },
-            "scan_node_compat",
-            "scan.node.compat",
         ),
         (
             WireCommand::SetPipeline {
@@ -358,11 +198,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "ops.cancel",
         ),
         (
-            WireCommand::WatchNodeCompat { node, session },
-            "watch_node_compat",
-            "watch.node.compat",
-        ),
-        (
             WireCommand::Watch {
                 location: root.clone(),
                 session,
@@ -370,11 +205,6 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             },
             "watch",
             "watch",
-        ),
-        (
-            WireCommand::UnwatchNodeCompat { node },
-            "unwatch_node_compat",
-            "watch.node.remove.compat",
         ),
         (
             WireCommand::Unwatch {
@@ -416,6 +246,148 @@ fn built_in_commands_have_stable_wire_labels_and_dispatch_keys() {
         assert_eq!(
             WireCommand::try_from(runtime).expect("built-in command should convert"),
             wire
+        );
+    }
+}
+
+fn removed_compatibility_commands() -> Vec<Value> {
+    let pipeline = serde_json::to_value(PipelineConfig::default()).expect("pipeline serializes");
+    let load = serde_json::to_value(DirectoryLoadOptions::default()).expect("load serializes");
+
+    vec![
+        serde_json::json!({
+            "type": "navigate_path_compat",
+            "path": "/root",
+            "session": 11,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "navigate_node_compat",
+            "node": 44,
+            "session": 11,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "search_node_compat",
+            "query": "name:test",
+            "root": 44,
+            "session": 11,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "search_path_compat",
+            "query": "name:test",
+            "root": "/root",
+            "session": 11,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "load_preview_node_compat",
+            "id": 44,
+            "options": null,
+            "session": 11,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "copy_node_compat",
+            "sources": [44],
+            "destination": 45,
+            "session": 11,
+            "request": 22,
+            "operation": 33,
+        }),
+        serde_json::json!({
+            "type": "move_node_compat",
+            "sources": [44],
+            "destination": 45,
+            "session": 11,
+            "request": 22,
+            "operation": 33,
+        }),
+        serde_json::json!({
+            "type": "delete_node_compat",
+            "nodes": [44],
+            "trash": true,
+            "session": 11,
+            "request": 22,
+            "operation": 33,
+        }),
+        serde_json::json!({
+            "type": "rename_node_compat",
+            "node": 44,
+            "new_name": "renamed",
+            "session": 11,
+            "request": 22,
+            "operation": 33,
+        }),
+        serde_json::json!({
+            "type": "create_folder_node_compat",
+            "parent": 44,
+            "name": "folder",
+            "session": 11,
+            "request": 22,
+            "operation": 33,
+        }),
+        serde_json::json!({
+            "type": "create_file_node_compat",
+            "parent": 44,
+            "name": "file.txt",
+            "session": 11,
+            "request": 22,
+            "operation": 33,
+        }),
+        serde_json::json!({
+            "type": "load_metadata_node_compat",
+            "node": 44,
+            "session": 11,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "load_extended_metadata_node_compat",
+            "node": 44,
+            "session": 11,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "scan_path_compat",
+            "path": "/root",
+            "session": 11,
+            "pipeline": pipeline,
+            "load": load,
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "scan_node_compat",
+            "node": 44,
+            "session": 11,
+            "pipeline": PipelineConfig::default(),
+            "load": DirectoryLoadOptions::default(),
+            "request": 22,
+        }),
+        serde_json::json!({
+            "type": "watch_node_compat",
+            "node": 44,
+            "session": 11,
+        }),
+        serde_json::json!({
+            "type": "unwatch_node_compat",
+            "node": 44,
+        }),
+    ]
+}
+
+#[test]
+fn removed_compatibility_wire_commands_are_unknown_variants() {
+    for payload in removed_compatibility_commands() {
+        let label = payload["type"]
+            .as_str()
+            .unwrap_or("<missing type>")
+            .to_string();
+        let error = serde_json::from_value::<WireCommand>(payload)
+            .expect_err("removed compatibility command must not deserialize");
+        assert!(
+            error.to_string().contains("unknown variant"),
+            "{label} should fail as an unknown wire variant, got {error}"
         );
     }
 }

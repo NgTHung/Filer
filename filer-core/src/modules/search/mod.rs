@@ -2,8 +2,6 @@
 //!
 //! This module owns the Searcher actor and registers handlers for:
 //! - `search` — search by Location
-//! - `search.node.compat` — compatibility search by NodeId
-//! - `search.path.compat` — compatibility search by path
 //! - `search.cancel` — cancel ongoing search
 
 pub mod searcher;
@@ -14,9 +12,7 @@ use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
 use crate::errors::CoreError;
-use crate::model::location::{Location, LocationRef};
 use crate::model::query::SearchQuery;
-use crate::modules::compat;
 use crate::utils::channel::send_or_warn;
 use crate::vfs::provider::FsProvider;
 use searcher::{SearchCommand, SearchEventMode};
@@ -35,74 +31,6 @@ impl SearchModule {
 impl Module for SearchModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
         let (search_tx, search_rx) = flume::unbounded::<SearchCommand>();
-
-        let tx = search_tx.clone();
-        ctx.handlers.on("search.node.compat", move |cmd, ctx| {
-            if let Command::SearchNodeCompat {
-                query,
-                root: node_root,
-                session,
-                request,
-            } = cmd
-            {
-                match SearchQuery::parse(&query) {
-                    Ok(query) => {
-                        let Ok(root) = compat::resolve_node_location(&ctx.registry, node_root)
-                        else {
-                            compat::emit_unresolved_node_request(
-                                &ctx.events,
-                                node_root,
-                                session,
-                                request,
-                                "search.node.compat resolve",
-                            );
-                            return;
-                        };
-                        send_or_warn(
-                            &tx,
-                            SearchCommand::Search {
-                                query,
-                                root,
-                                event_mode: SearchEventMode::Compat,
-                                session,
-                                request,
-                            },
-                            "search.node.compat",
-                        );
-                    }
-                    Err(error) => emit_query_error(ctx, session, request, error),
-                }
-            }
-        });
-
-        let tx = search_tx.clone();
-        ctx.handlers.on("search.path.compat", move |cmd, ctx| {
-            if let Command::SearchPathCompat {
-                query,
-                root,
-                session,
-                request,
-            } = cmd
-            {
-                match SearchQuery::parse(&query) {
-                    Ok(query) => {
-                        let location = Location::local(root);
-                        send_or_warn(
-                            &tx,
-                            SearchCommand::Search {
-                                query,
-                                root: LocationRef::from_location(&location),
-                                event_mode: SearchEventMode::Compat,
-                                session,
-                                request,
-                            },
-                            "search.path.compat",
-                        );
-                    }
-                    Err(error) => emit_query_error(ctx, session, request, error),
-                }
-            }
-        });
 
         let tx = search_tx.clone();
         ctx.handlers.on("search", move |cmd, ctx| {

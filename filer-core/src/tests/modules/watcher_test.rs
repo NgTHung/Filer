@@ -66,21 +66,6 @@ fn location_watch(location: LocationRef, session: SessionId) -> WatchCommand {
     }
 }
 
-// Compatibility pin for API-006: preserve the NodeId event fan-out until the
-// compatibility variant is removed.
-fn compat_watch(
-    location: LocationRef,
-    node: crate::model::node::NodeId,
-    session: SessionId,
-) -> WatchCommand {
-    WatchCommand::Watch {
-        location,
-        session,
-        request: None,
-        event_mode: WatchEventMode::Compat { node },
-    }
-}
-
 fn unwatch_location(location: LocationRef) -> WatchCommand {
     WatchCommand::Unwatch {
         location,
@@ -187,16 +172,14 @@ async fn test_watch_location_emits_location_event_and_refresh_invalidation() {
 }
 
 #[tokio::test]
-// Compatibility pin for API-006: verify native and NodeId subscriptions share one provider watch.
-async fn test_watch_location_and_compat_watch_share_provider_entry() {
+async fn test_watch_location_subscriptions_share_provider_entry() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
     let registry = NodeRegistry::new();
     let provider = Arc::new(TestWatchProvider::default());
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
-    let node = registry.clone().register(path.clone());
-    let location = registry.resolve_node_location(node).unwrap();
+    let location = LocationRef::from_location(&Location::local(path.clone()));
 
     let watcher = Watcher::new(cmd_rx, evt_tx, registry, provider.clone());
     let handle = tokio::spawn(async move {
@@ -212,14 +195,19 @@ async fn test_watch_location_and_compat_watch_share_provider_entry() {
         })
         .unwrap();
     cmd_tx
-        .send(compat_watch(location.clone(), node, SessionId(2)))
+        .send(WatchCommand::Watch {
+            location: location.clone(),
+            session: SessionId(2),
+            request: Some(RequestId::new()),
+            event_mode: WatchEventMode::Location,
+        })
         .unwrap();
     sleep(Duration::from_millis(20)).await;
 
     assert_eq!(
         provider.watched_paths.lock().unwrap().len(),
         1,
-        "Location and compat subscriptions should share one provider watch"
+        "Location subscriptions should share one provider watch"
     );
 
     provider
@@ -240,11 +228,11 @@ async fn test_watch_location_and_compat_watch_share_provider_entry() {
     assert!(events.iter().any(|event| {
         matches!(
             event,
-            Event::FsChangedCompat {
-                node: event_node,
+            Event::FsChanged {
+                location: event_location,
                 kind: FsChangeKind::Created,
                 session: SessionId(2),
-            } if *event_node == node
+            } if event_location == &location
         )
     }));
 
@@ -759,7 +747,7 @@ async fn test_watch_subdirectories() {
 }
 
 #[tokio::test]
-// Compatibility pin for API-006: the refresh sink still emits NodeId-only invalidation commands.
+// API-007 pin: the refresh sink still emits internal NodeId invalidation commands.
 async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -820,7 +808,7 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
 }
 
 #[tokio::test]
-// Compatibility pin for API-006: the refresh sink still emits NodeId-only invalidation commands.
+// API-007 pin: the refresh sink still emits internal NodeId invalidation commands.
 async fn test_watcher_refresh_sink_invalidates_for_delete_and_rename() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, _evt_rx) = flume::unbounded();

@@ -213,7 +213,7 @@ mod navigator_state_tests {
     }
 
     #[test]
-    // Compatibility pin for API-006: navigate_with_location still carries NodeId identity.
+    // API-007 pin: navigate_with_location still carries internal NodeId identity.
     fn test_compat_navigate_with_location_updates_both_identities() {
         let reg = NodeRegistry::new();
         let mut state = NavigatorState::new(reg);

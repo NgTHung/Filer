@@ -20,15 +20,12 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
 
 use crate::PreviewOptions;
 use crate::api::commands::Command;
 use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::LocationRef;
-use crate::model::node::NodeId;
 use crate::model::operation::OperationId;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -106,18 +103,8 @@ macro_rules! built_in_wire_commands {
 }
 
 built_in_wire_commands! {
-    NavigatePathCompat {
-        path: PathBuf,
-        session: SessionId,
-        request: RequestId,
-    },
     Navigate {
         location: LocationRef,
-        session: SessionId,
-        request: RequestId,
-    },
-    NavigateNodeCompat {
-        node: NodeId,
         session: SessionId,
         request: RequestId,
     },
@@ -137,18 +124,6 @@ built_in_wire_commands! {
         session: SessionId,
         request: RequestId,
     },
-    SearchNodeCompat {
-        query: String,
-        root: NodeId,
-        session: SessionId,
-        request: RequestId,
-    },
-    SearchPathCompat {
-        query: String,
-        root: PathBuf,
-        session: SessionId,
-        request: RequestId,
-    },
     Search {
         query: String,
         root: LocationRef,
@@ -157,12 +132,6 @@ built_in_wire_commands! {
     },
     CancelSearch {
         session: SessionId,
-    },
-    LoadPreviewNodeCompat {
-        id: NodeId,
-        options: Option<PreviewOptions>,
-        session: SessionId,
-        request: RequestId,
     },
     LoadPreview {
         location: LocationRef,
@@ -173,23 +142,9 @@ built_in_wire_commands! {
     CancelPreview {
         session: SessionId,
     },
-    CopyNodeCompat {
-        sources: Vec<NodeId>,
-        destination: NodeId,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
     Copy {
         sources: Vec<LocationRef>,
         destination: LocationRef,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    MoveNodeCompat {
-        sources: Vec<NodeId>,
-        destination: NodeId,
         session: SessionId,
         request: RequestId,
         operation: OperationId,
@@ -201,23 +156,9 @@ built_in_wire_commands! {
         request: RequestId,
         operation: OperationId,
     },
-    DeleteNodeCompat {
-        nodes: Vec<NodeId>,
-        trash: bool,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
     Delete {
         locations: Vec<LocationRef>,
         trash: bool,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    RenameNodeCompat {
-        node: NodeId,
-        new_name: String,
         session: SessionId,
         request: RequestId,
         operation: OperationId,
@@ -229,22 +170,8 @@ built_in_wire_commands! {
         request: RequestId,
         operation: OperationId,
     },
-    CreateFolderNodeCompat {
-        parent: NodeId,
-        name: String,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
     CreateFolder {
         parent: LocationRef,
-        name: String,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    CreateFileNodeCompat {
-        parent: NodeId,
         name: String,
         session: SessionId,
         request: RequestId,
@@ -257,18 +184,8 @@ built_in_wire_commands! {
         request: RequestId,
         operation: OperationId,
     },
-    LoadMetadataNodeCompat {
-        node: NodeId,
-        session: SessionId,
-        request: RequestId,
-    },
     LoadMetadata {
         location: LocationRef,
-        session: SessionId,
-        request: RequestId,
-    },
-    LoadExtendedMetadataNodeCompat {
-        node: NodeId,
         session: SessionId,
         request: RequestId,
     },
@@ -277,22 +194,8 @@ built_in_wire_commands! {
         session: SessionId,
         request: RequestId,
     },
-    ScanPathCompat {
-        path: PathBuf,
-        session: SessionId,
-        pipeline: PipelineConfig,
-        load: DirectoryLoadOptions,
-        request: RequestId,
-    },
     Scan {
         location: LocationRef,
-        session: SessionId,
-        pipeline: PipelineConfig,
-        load: DirectoryLoadOptions,
-        request: RequestId,
-    },
-    ScanNodeCompat {
-        node: NodeId,
         session: SessionId,
         pipeline: PipelineConfig,
         load: DirectoryLoadOptions,
@@ -309,17 +212,10 @@ built_in_wire_commands! {
         session: SessionId,
         operation: OperationId,
     },
-    WatchNodeCompat {
-        node: NodeId,
-        session: SessionId,
-    },
     Watch {
         location: LocationRef,
         session: SessionId,
         request: RequestId,
-    },
-    UnwatchNodeCompat {
-        node: NodeId,
     },
     Unwatch {
         location: LocationRef,

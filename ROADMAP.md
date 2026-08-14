@@ -10,7 +10,7 @@ Current milestone: `0.3.0`.
 
 Filer should be a fast Explorer replacement with useful programmer support. It
 should remain a file manager first: dependable navigation, file operations,
-SearchNodeCompat, previews, provider support, and extension points that help real work
+search, previews, provider support, and extension points that help real work
 without turning the project into a full IDE.
 
 The core exists to make that possible across frontends. The Iced app, future web
@@ -21,7 +21,7 @@ The extension system should improve core mechanics by adding semantic
 capabilities around the file-manager kernel. Extensions may contribute commands,
 providers, previews, metadata, file decorations, status badges, panels, and
 other structured outputs, but core remains the authority for navigation,
-scanning, SearchNodeCompat, operations, sessions, provider access, cache correctness, and
+scanning, search, operations, sessions, provider access, cache correctness, and
 event routing. Clients render extension output; extensions should not depend on
 desktop-only UI code.
 
@@ -61,10 +61,11 @@ local-path flows.
 the misleading generic public cancel command in favor of explicit
 `CancelSearch`, `CancelScan`, `CancelPreview`, and operation-id scoped
 `CancelOperation`. It also renames cancellation errors to `Cancelled` and adds a
-stable `TimedOut` code. The event/result surface now makes Location-native
-results canonical and labels NodeId/FileNode outputs as explicit `*Compat`
-variants. Remaining `0.3.0` work should finish command naming consistency and
-provider-context timeout propagation.
+stable `TimedOut` code. API-006 removes the path- and NodeId-addressed command
+and event compatibility variants, so Location-native results are now the only
+public result surface. API-007 will retire the remaining FileNode rows and
+NodeId-keyed internals. Remaining `0.3.0` work should finish provider-context
+timeout propagation.
 
 Milestone labels:
 
@@ -89,7 +90,7 @@ the other way around.
 ### All Filesystem Access Goes Through Providers
 
 Core workflows should use `FsProvider` and provider capabilities for list, read,
-write, WatchNodeCompat, SearchNodeCompat, and future remote access. Local filesystem shortcuts are
+write, watch, search, and future remote access. Local filesystem shortcuts are
 allowed only where the current API cannot yet express the required operation,
 and those shortcuts should be tracked as roadmap debt.
 
@@ -101,7 +102,7 @@ or explicitly scoped to one.
 
 ### Actors Own Long-Running Work
 
-Navigation, SearchNodeCompat, preview, operations, and WatchNodeCompat flows should stay behind
+Navigation, search, preview, operations, and watch flows should stay behind
 actors or actor-like modules with cancellation and structured events. The UI
 should not block on core work.
 
@@ -113,7 +114,7 @@ produce `GroupedNodes`. Actors should not apply ad hoc sort/group logic.
 ### Extension Contracts Stay Wire-Safe
 
 `Command::Extension` remains useful for trusted in-process modules, but the
-public extension path should MoveNodeCompat toward serializable envelopes shared with
+public extension path should move toward serializable envelopes shared with
 `filer-ecosystem`.
 
 ### Extensions Produce Semantic UI Data
@@ -126,7 +127,7 @@ translate those semantics into their own visuals.
 
 ### Core Mechanics Are Not Optional Plugins
 
-Navigation, scanning, SearchNodeCompat dispatch, watching, file operations, provider
+Navigation, scanning, search dispatch, watching, file operations, provider
 resolution, sessions, cancellation, cache invalidation, and pipeline execution
 stay in `filer-core`. They may be enhanced by extensions, but the app should not
 need an extension host to perform normal local file management.

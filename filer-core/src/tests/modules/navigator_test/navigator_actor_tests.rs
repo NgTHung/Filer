@@ -1,7 +1,7 @@
     use super::*;
     use crate::{Event, model::registry::NodeRegistry, modules::scan::scanner::ScanCommand};
 
-    // Compatibility-only fixtures for the NodeId command pins below.
+    // Internal NodeId fixtures remain until API-007 retires the navigator state.
     fn node(id: u64) -> NodeId {
         NodeId(id)
     }
@@ -84,7 +84,7 @@
     }
 
     #[tokio::test]
-    // Compatibility pin for API-006: NavCommand::Navigate is NodeId-only.
+    // API-007 pin: NavCommand::Navigate still exercises internal NodeId state.
     async fn test_compat_navigate_rejects_unresolved_node_before_scan_dispatch() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, event_rx) = flume::unbounded();
@@ -535,7 +535,7 @@
     }
 
     #[tokio::test]
-    // Compatibility pin for API-006: NavCommand::Invalidate is NodeId-only.
+    // API-007 pin: NavCommand::Invalidate still exercises internal NodeId state.
     async fn test_compat_invalidate_refreshes_current_directory() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();
@@ -583,7 +583,7 @@
     }
 
     #[tokio::test]
-    // Compatibility pin for API-006: NavCommand::Invalidate is NodeId-only.
+    // API-007 pin: NavCommand::Invalidate still exercises internal NodeId state.
     async fn test_compat_invalidate_refreshes_only_current_sessions_with_current_pipeline() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();

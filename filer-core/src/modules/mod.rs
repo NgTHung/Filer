@@ -28,5 +28,3 @@ pub mod preview;
 pub mod scan;
 pub mod search;
 pub mod watch;
-
-pub(crate) mod compat;

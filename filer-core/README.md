@@ -62,8 +62,7 @@ Completed:
   subtrees
 - Location-native direct-local watcher and write commands/events
 - capability checks for Location-native watch and write routing
-- explicit `*Compat` event variants for legacy `NodeId` and `FileNode` result
-  surfaces
+- removal of path- and `NodeId`-addressed compatibility commands and events
 
 Still open:
 
@@ -161,11 +160,13 @@ New client-originated work should allocate ids with `RequestId::new()`,
 ## Location
 
 `Location` is the additive provider-aware addressing model. It does not remove
-the current `PathBuf`, `NodeId`, `FileNode`, or path-based `FsProvider` surfaces
-yet.
+the `FileNode` row or NodeId-keyed internal state yet. API-006 removes the
+path- and `NodeId`-addressed compatibility routes from the public command,
+wire, and event surfaces.
 
 Use `Location` as the canonical transport identity for new read-side work.
-Use `NodeId` as a compatibility/cache handle for existing direct-local flows.
+Use `NodeId` only for the internal registry, navigation state, and cache
+bridges that API-007 will retire.
 
 Important types:
 
@@ -200,9 +201,8 @@ operation ids on results or structured errors.
 Location-native result events use the canonical event names:
 `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`,
 `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, and
-`ExtendedMetadataLoaded`. Legacy `NodeId` or `FileNode` result events are
-explicit compatibility variants such as `DirectoryLoadedCompat`,
-`SearchResultsCompat`, `FsChangedCompat`, and `OperationCompleteCompat`.
+`ExtendedMetadataLoaded`. These are now the only public result event variants;
+the former NodeId/FileNode compatibility events were removed by API-006.
 
 Local ZIP segmented routes execute for navigation and scan. Nested archives are
 resolved in descriptor segment order, and listed archive members carry display,
@@ -215,52 +215,45 @@ and OS mount adapters are not part of the current `filer-core` provider surface.
 
 | Label | Surfaces | Contract |
 |---|---|---|
-| Location-native preferred | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | Preferred for new provider-aware work. |
-| Compatibility | `NavigatePathCompat`, `NavigateNodeCompat`, `SearchNodeCompat`, `SearchPathCompat`, `ScanPathCompat`, `ScanNodeCompat`, `DirectoryLoadedCompat`, `DirectoryPageLoadedCompat`, `SearchResultsCompat`, `PreviewReadyCompat`, `PreviewFailedCompat`, `MetadataLoadedCompat`, `ExtendedMetadataLoadedCompat`, `FileNode` | Supported direct-local/path-era surface. Do not extend with new provider identity semantics. |
-| Internal/cache handle | `NodeRegistry`, `NavState.current`, history, selection, direct-local cache bridge ids | Runtime handles for compatibility and cache lookup. |
-| Compatibility WatchNodeCompat/write | `WatchNodeCompat`, `UnwatchNodeCompat`, NodeId write commands, `FsChangedCompat`, `OperationCompleteCompat.affected` | Supported direct-local compatibility surface. Prefer Location variants for new provider-aware callers. |
+| Public Location-native | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | The only public addressing and result contract. |
+| Internal/cache handle | `NodeRegistry`, `NavState.current`, history, selection, `FileNode`, direct-local cache bridge ids | Runtime state retained for API-007, not public command or event addressing. |
+| Removed by API-006 | Former path- and NodeId-addressed commands and events | Legacy wire tags fail deserialization as unknown variants. |
 
 ## Command API
 
 Location-native commands use the short canonical Rust names and dispatch keys.
-Path and `NodeId` entry points use explicit `*Compat` names and `.compat`
-dispatch keys.
+All built-in public commands use `LocationRef` where they address filesystem
+objects.
 
-| Family | Canonical Rust command | Canonical key | Compatibility Rust command | Compatibility key |
-|---|---|---|---|---|
-| Navigate | `Navigate` | `navigate` | `NavigatePathCompat`, `NavigateNodeCompat` | `navigate.path.compat`, `navigate.node.compat` |
-| Search | `Search` | `search` | `SearchPathCompat`, `SearchNodeCompat` | `search.path.compat`, `search.node.compat` |
-| Scan | `Scan` | `scan` | `ScanPathCompat`, `ScanNodeCompat` | `scan.path.compat`, `scan.node.compat` |
-| Preview | `LoadPreview` | `preview.load` | `LoadPreviewNodeCompat` | `preview.load.node.compat` |
-| Metadata | `LoadMetadata`, `LoadExtendedMetadata` | `metadata.load`, `metadata.extended` | `LoadMetadataNodeCompat`, `LoadExtendedMetadataNodeCompat` | `metadata.load.node.compat`, `metadata.extended.node.compat` |
-| Watch | `Watch`, `Unwatch` | `watch`, `watch.remove` | `WatchNodeCompat`, `UnwatchNodeCompat` | `watch.node.compat`, `watch.node.remove.compat` |
-| Write | `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile` | `ops.*` | Matching `*NodeCompat` commands | Matching `ops.*.node.compat` keys |
+| Family | Rust command | Dispatch key |
+|---|---|---|
+| Navigate | `Navigate`, `NavigateUp`, `NavigateBack`, `NavigateForward`, `Refresh` | `navigate*` |
+| Search | `Search`, `CancelSearch` | `search`, `search.cancel` |
+| Scan | `Scan`, `SetPipeline`, `CancelScan` | `scan`, `navigate.pipeline`, `scan.cancel` |
+| Preview | `LoadPreview`, `CancelPreview` | `preview.load`, `preview.cancel` |
+| Metadata | `LoadMetadata`, `LoadExtendedMetadata` | `metadata.load`, `metadata.extended` |
+| Watch | `Watch`, `Unwatch`, `UnwatchSession` | `watch`, `watch.remove`, `watch.session_remove` |
+| Write | `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `CancelOperation` | `ops.*` |
 
 ### Rust Migration
 
-No aliases preserve the former Rust variant names. Update callers directly:
+No aliases preserve the removed Rust variant names. Update callers to construct
+`LocationRef` values and use the canonical commands directly.
 
-| Former command | Current command |
+| Former surface | Migration |
 |---|---|
-| `Navigate` with `PathBuf` | `NavigatePathCompat` |
-| `NavigateLocation` | `Navigate` |
-| `NavigateToNode` | `NavigateNodeCompat` |
-| `Search`, `SearchPath`, `SearchLocation` | `SearchNodeCompat`, `SearchPathCompat`, `Search` |
-| `Scan`, `ScanNode`, `ScanLocation` | `ScanPathCompat`, `ScanNodeCompat`, `Scan` |
-| `LoadPreview`, `LoadPreviewLocation` | `LoadPreviewNodeCompat`, `LoadPreview` |
-| `LoadMetadata`, `LoadMetadataLocation` | `LoadMetadataNodeCompat`, `LoadMetadata` |
-| `LoadExtendedMetadata`, `LoadExtendedMetadataLocation` | `LoadExtendedMetadataNodeCompat`, `LoadExtendedMetadata` |
-| `Watch`, `WatchLocation` | `WatchNodeCompat`, `Watch` |
-| `Unwatch`, `UnwatchLocation` | `UnwatchNodeCompat`, `Unwatch` |
-| Node-based write commands | Matching `*NodeCompat` command |
+| Path- or NodeId-addressed navigation, search, scan, preview, metadata, watch, or operation commands | Resolve the object to a `LocationRef` before constructing the canonical command. |
 | `*Location` write commands | Canonical `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, or `CreateFile` |
 
 ### Wire DTO
 
 `WireCommand` is the unversioned serde DTO for every built-in command. JSON
 uses an internal `type` tag with snake_case labels such as `navigate` and
-`navigate_path_compat`. Convert with `Command::from(wire)` and
+`ops_copy`. Convert with `Command::from(wire)` and
 `WireCommand::try_from(command)`.
+
+The former path- and NodeId-addressed wire tags are absent. Deserializing one
+returns an unknown-variant error instead of routing to a compatibility handler.
 
 `Command::Extension` cannot convert because its `Arc<dyn Any>` payload is
 runtime-only. Conversion returns `WireCommandConversionError`. MODULES-001

@@ -95,7 +95,6 @@ pub enum OpsCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperationEventMode {
-    Compat,
     Location,
 }
 
@@ -1162,39 +1161,20 @@ fn operation_error(
 }
 
 fn operation_complete_event(
-    registry: &NodeRegistry,
+    _registry: &NodeRegistry,
     kind: OperationKind,
     operation: OperationId,
     affected: Vec<LocationRef>,
     session: SessionId,
-    event_mode: OperationEventMode,
+    _event_mode: OperationEventMode,
 ) -> Result<Event, CoreError> {
-    match event_mode {
-        OperationEventMode::Compat => {
-            let affected = affected
-                .into_iter()
-                .map(|location| {
-                    registry
-                        .resolve_location_ref(&location)
-                        .and_then(|location| registry.register_location_node(location))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(Event::OperationCompleteCompat {
-                operation_id: operation,
-                operation: kind,
-                success: true,
-                affected,
-                session,
-            })
-        }
-        OperationEventMode::Location => Ok(Event::OperationComplete {
-            operation_id: operation,
-            operation: kind,
-            success: true,
-            affected,
-            session,
-        }),
-    }
+    Ok(Event::OperationComplete {
+        operation_id: operation,
+        operation: kind,
+        success: true,
+        affected,
+        session,
+    })
 }
 
 async fn emit_operation_progress(

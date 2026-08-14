@@ -2,9 +2,7 @@
 //!
 //! This module owns the Watcher actor and registers handlers for:
 //! - `watch` — watch a direct-local Location for changes
-//! - `watch.node.compat` — compatibility watch by NodeId
 //! - `watch.remove` — stop watching a direct-local Location
-//! - `watch.node.remove.compat` — compatibility unwatch by NodeId
 //! - `watch.session_remove` — stop all watches for a session
 //!
 //! `WatchModule::new` emits filesystem change events only. Use
@@ -20,7 +18,6 @@ use flume::Sender;
 
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
-use crate::modules::compat;
 use crate::modules::navigation::navigator::NavCommand;
 use crate::utils::channel::send_or_warn;
 use crate::vfs::watch::WatchProvider;
@@ -56,31 +53,6 @@ impl Module for WatchModule {
         let (watch_tx, watch_rx) = flume::unbounded::<WatchCommand>();
 
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch.node.compat", move |cmd, ctx| {
-            if let Command::WatchNodeCompat { node, session } = cmd {
-                let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
-                    compat::emit_unresolved_node_session(
-                        &ctx.events,
-                        node,
-                        session,
-                        "watch.node.compat resolve",
-                    );
-                    return;
-                };
-                send_or_warn(
-                    &tx,
-                    WatchCommand::Watch {
-                        location,
-                        session,
-                        request: None,
-                        event_mode: WatchEventMode::Compat { node },
-                    },
-                    "watch.node.compat",
-                );
-            }
-        });
-
-        let tx = watch_tx.clone();
         ctx.handlers.on("watch", move |cmd, _ctx| {
             if let Command::Watch {
                 location,
@@ -100,25 +72,6 @@ impl Module for WatchModule {
                 );
             }
         });
-
-        let tx = watch_tx.clone();
-        ctx.handlers
-            .on("watch.node.remove.compat", move |cmd, ctx| {
-                if let Command::UnwatchNodeCompat { node } = cmd {
-                    let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
-                        tracing::warn!(node = ?node, "unable to resolve unwatch compatibility node");
-                        return;
-                    };
-                    send_or_warn(
-                        &tx,
-                        WatchCommand::Unwatch {
-                            location,
-                            scope: UnwatchScope::All,
-                        },
-                        "watch.node.remove.compat",
-                    );
-                }
-            });
 
         let tx = watch_tx.clone();
         ctx.handlers.on("watch.remove", move |cmd, _ctx| {

@@ -2,8 +2,6 @@
 //!
 //! This module owns the Scanner actor and registers handlers for:
 //! - `scan` — scan by Location
-//! - `scan.path.compat` — compatibility scan by path
-//! - `scan.node.compat` — compatibility scan by NodeId
 //! - `scan.cancel` — cancel active scan
 //!
 //! # Swapping the scanner
@@ -30,8 +28,6 @@ use flume::Sender;
 
 use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
-use crate::model::location::{Location, LocationRef};
-use crate::modules::compat;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn;
 use crate::vfs::provider::FsProvider;
@@ -83,31 +79,6 @@ impl Module for ScanModule {
         let scan_rx = self.scan_rx.take().expect("ScanModule already initialized");
 
         let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan.path.compat", move |cmd, _ctx| {
-            if let Command::ScanPathCompat {
-                path,
-                session,
-                pipeline,
-                load,
-                request,
-            } = cmd
-            {
-                let location = Location::local(path);
-                send_or_warn(
-                    &tx,
-                    ScanCommand::ScanCompat {
-                        location: LocationRef::from_location(&location),
-                        session,
-                        pipeline,
-                        load,
-                        request,
-                    },
-                    "scan.path.compat",
-                );
-            }
-        });
-
-        let tx = self.scan_tx.clone();
         ctx.handlers.on("scan", move |cmd, _ctx| {
             if let Command::Scan {
                 location,
@@ -127,40 +98,6 @@ impl Module for ScanModule {
                         request,
                     },
                     "scan",
-                );
-            }
-        });
-
-        let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan.node.compat", move |cmd, ctx| {
-            if let Command::ScanNodeCompat {
-                node,
-                session,
-                pipeline,
-                load,
-                request,
-            } = cmd
-            {
-                let Ok(location) = compat::resolve_node_location(&ctx.registry, node) else {
-                    compat::emit_unresolved_node_request(
-                        &ctx.events,
-                        node,
-                        session,
-                        request,
-                        "scan.node.compat resolve",
-                    );
-                    return;
-                };
-                send_or_warn(
-                    &tx,
-                    ScanCommand::ScanCompat {
-                        location,
-                        session,
-                        pipeline,
-                        load,
-                        request,
-                    },
-                    "scan.node.compat",
                 );
             }
         });

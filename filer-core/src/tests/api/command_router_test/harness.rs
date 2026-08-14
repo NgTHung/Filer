@@ -1,4 +1,3 @@
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -13,9 +12,6 @@
     use crate::api::session_manager::SessionManager;
     use crate::errors::{CoreError, ErrorCode};
     use crate::model::location::{Location, LocationRef};
-    // Compatibility pin for API-006: the harness registry remains only for
-    // routing commands that still accept NodeId.
-    use crate::model::node::NodeId;
     use crate::model::operation::OperationId;
     use crate::model::registry::NodeRegistry;
     use crate::model::request::RequestId;
@@ -26,7 +22,6 @@
     use crate::modules::scan::scanner::ScanCommand;
     use crate::modules::search::searcher::{SearchCommand, SearchEventMode};
     use crate::modules::watch::watcher::{UnwatchScope, WatchCommand, WatchEventMode};
-    use crate::modules::compat;
     use crate::pipeline::PipelineConfig;
     use crate::utils::channel::send_or_warn;
 
@@ -57,8 +52,6 @@
         preview_rx: Receiver<PreviewCommand>,
         /// Receive OpsCommands that the router dispatches
         ops_rx: Receiver<OpsCommand>,
-        /// Compatibility-only registry used for NodeId resolution.
-        registry: NodeRegistry,
         /// Session manager clone — shares state with the router
         session_manager: SessionManager,
     }
@@ -110,7 +103,6 @@
                 watch_rx,
                 preview_rx,
                 ops_rx,
-                registry,
                 session_manager,
             }
         }

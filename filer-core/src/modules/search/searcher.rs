@@ -24,7 +24,6 @@ const DEFAULT_BATCH_SIZE: usize = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchEventMode {
-    Compat,
     Location,
 }
 
@@ -291,23 +290,15 @@ fn search_results_event(
     session: SessionId,
     request: RequestId,
     registry: &NodeRegistry,
-    event_mode: SearchEventMode,
+    _event_mode: SearchEventMode,
 ) -> Event {
-    match event_mode {
-        SearchEventMode::Location => Event::SearchResults {
-            matches: matches
-                .into_iter()
-                .map(|node| crate::NodeEntry::from_file_node(node, registry))
-                .collect(),
-            complete,
-            session,
-            request,
-        },
-        SearchEventMode::Compat => Event::SearchResultsCompat {
-            matches,
-            complete,
-            session,
-            request,
-        },
+    Event::SearchResults {
+        matches: matches
+            .into_iter()
+            .map(|node| crate::NodeEntry::from_file_node(node, registry))
+            .collect(),
+        complete,
+        session,
+        request,
     }
 }

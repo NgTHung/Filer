@@ -58,7 +58,7 @@
         });
 
         let session = session(1);
-        // Compatibility pin for API-006: selection is still represented by NodeId.
+        // API-007 pin: selection is still represented by internal NodeId state.
         let nodes = vec![node(1), node(2), node(3)];
 
         // Set selection

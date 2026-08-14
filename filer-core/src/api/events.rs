@@ -1,55 +1,25 @@
-use std::path::PathBuf;
-
 use crate::errors::{CoreError, ErrorCode, ErrorContext, ErrorKind, ErrorTarget};
 use crate::model::directory::{DirectoryLoadState, DirectoryPageState};
 use crate::model::location::LocationRef;
-use crate::model::node::{NodeEntry, NodeId, NodeMeta};
+use crate::model::node::{NodeEntry, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{ProgressScope, ProgressSnapshot};
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavState;
-use crate::pipeline::{GroupedEntries, GroupedNodes};
-use crate::{ExtendedMetadata, FileNode, PreviewData, model::fs_change::FsChangeKind};
+use crate::pipeline::GroupedEntries;
+use crate::{ExtendedMetadata, PreviewData, model::fs_change::FsChangeKind};
 
 /// Events from Core to UI.
 ///
 /// Location-native read events are preferred for new provider-aware clients.
-/// `FileNode` and `NodeId` events remain supported compatibility surfaces for
-/// direct-local flows, cache handles, and future capability-specific
-/// migrations.
 #[derive(Debug, Clone)]
 pub enum Event {
-    /// Compatibility directory contents loaded by `NodeId`.
-    ///
-    /// Always carries `GroupedNodes`. When no grouping is configured,
-    /// contains a single group with an empty label (degenerate flat list).
-    /// The UI iterates `.groups` uniformly — one unnamed group renders
-    /// as a flat list, multiple named groups render section headers.
-    DirectoryLoadedCompat {
-        parent: NodeId,
-        path: PathBuf, // Keep path for display in breadcrumb
-        groups: GroupedNodes,
-        load: DirectoryLoadState,
-        session: SessionId,
-        request: RequestId,
-    },
-
     /// Location-native directory contents loaded with provider-aware locations.
     DirectoryLoaded {
         parent: LocationRef,
         groups: GroupedEntries,
         load: DirectoryLoadState,
-        session: SessionId,
-        request: RequestId,
-    },
-
-    /// Compatibility directory page loaded by `NodeId`.
-    DirectoryPageLoadedCompat {
-        parent: NodeId,
-        path: PathBuf,
-        groups: GroupedNodes,
-        page: DirectoryPageState,
         session: SessionId,
         request: RequestId,
     },
@@ -69,17 +39,6 @@ pub enum Event {
         snapshot: ProgressSnapshot,
     },
 
-    /// Compatibility batch of `FileNode` rows.
-    FilesBatch(Vec<FileNode>, SessionId),
-
-    /// Compatibility search results by `FileNode`.
-    SearchResultsCompat {
-        matches: Vec<FileNode>,
-        complete: bool,
-        session: SessionId,
-        request: RequestId,
-    },
-
     /// Location-native search results by `NodeEntry`.
     SearchResults {
         matches: Vec<NodeEntry>,
@@ -88,26 +47,10 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Future provider-capability work: filesystem change by `NodeId`.
-    FsChangedCompat {
-        node: NodeId,
-        kind: FsChangeKind,
-        session: SessionId,
-    },
-
     /// Location-native filesystem change.
     FsChanged {
         location: LocationRef,
         kind: FsChangeKind,
-        session: SessionId,
-    },
-
-    /// Compatibility operation completion by affected `NodeId`s.
-    OperationCompleteCompat {
-        operation_id: OperationId,
-        operation: OperationKind,
-        success: bool,
-        affected: Vec<NodeId>,
         session: SessionId,
     },
 
@@ -133,26 +76,10 @@ pub enum Event {
         operation: Option<OperationId>,
     },
 
-    /// Compatibility metadata result by `NodeId`.
-    MetadataLoadedCompat {
-        node: NodeId,
-        meta: NodeMeta,
-        session: SessionId,
-        request: RequestId,
-    },
-
     /// Location-native metadata result.
     MetadataLoaded {
         location: LocationRef,
         meta: NodeMeta,
-        session: SessionId,
-        request: RequestId,
-    },
-
-    /// Compatibility extended metadata result by `NodeId`.
-    ExtendedMetadataLoadedCompat {
-        node: NodeId,
-        extended: ExtendedMetadata,
         session: SessionId,
         request: RequestId,
     },
@@ -165,26 +92,10 @@ pub enum Event {
         request: RequestId,
     },
 
-    /// Compatibility preview result by `NodeId`.
-    PreviewReadyCompat {
-        node: NodeId,
-        preview: PreviewData,
-        session: SessionId,
-        request: RequestId,
-    },
-
     /// Location-native preview result.
     PreviewReady {
         location: LocationRef,
         preview: PreviewData,
-        session: SessionId,
-        request: RequestId,
-    },
-
-    /// Compatibility preview failure by `NodeId`.
-    PreviewFailedCompat {
-        node: NodeId,
-        reason: String,
         session: SessionId,
         request: RequestId,
     },

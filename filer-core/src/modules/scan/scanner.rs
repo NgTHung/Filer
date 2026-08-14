@@ -65,12 +65,6 @@ pub enum ScanCommand {
     Shutdown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ScanEventMode {
-    Location,
-    Compat,
-}
-
 /// Scanner actor - handles directory traversal
 pub struct Scanner {
     commands: Receiver<ScanCommand>,
@@ -139,7 +133,6 @@ impl Scanner {
         request: RequestId,
         parent_location: LocationRef,
         parent_location_id: Option<LocationId>,
-        event_mode: ScanEventMode,
     ) {
         let provider = self.provider.clone();
         let registry = self.registry.clone();
@@ -170,7 +163,6 @@ impl Scanner {
                 invalidate_cache,
                 parent_location,
                 parent_location_id,
-                event_mode,
             )
             .await;
             active_scans.remove_if_current(session, &cancel).await;
@@ -185,7 +177,6 @@ impl Scanner {
         load_options: DirectoryLoadOptions,
         invalidate_cache: bool,
         request: RequestId,
-        event_mode: ScanEventMode,
     ) {
         let location = match self.registry.resolve_location_ref(&location_ref) {
             Ok(location) => location,
@@ -201,7 +192,7 @@ impl Scanner {
         let route = location.route();
         let path = match &route {
             LocationRoute::DirectPath { path } => path.clone(),
-            LocationRoute::Segmented { .. } if event_mode == ScanEventMode::Location => {
+            LocationRoute::Segmented { .. } => {
                 self.dispatch_segmented_location_scan(
                     location,
                     session,
@@ -212,7 +203,7 @@ impl Scanner {
                 );
                 return;
             }
-            LocationRoute::Segmented { .. } | LocationRoute::UnsupportedProvider { .. } => {
+            LocationRoute::UnsupportedProvider { .. } => {
                 let error = match route.require_direct_path() {
                     Ok(_) => return,
                     Err(error) => error,
@@ -234,7 +225,6 @@ impl Scanner {
             request,
             LocationRef::from_location(&location),
             Some(location.id()),
-            event_mode,
         );
     }
 
@@ -292,7 +282,6 @@ impl Scanner {
         invalidate_cache: bool,
         parent_location: LocationRef,
         parent_location_id: Option<LocationId>,
-        event_mode: ScanEventMode,
     ) {
         if invalidate_cache {
             paging.clear_session(session);
@@ -365,7 +354,7 @@ impl Scanner {
         });
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
-            let parent_id = registry.clone().register(path.to_path_buf());
+            registry.clone().register(path.to_path_buf());
             if let Some(page_request) = load_options.page_request() {
                 match paging.load_cached(cached, path, session, page_request, &pipeline_config, &cx)
                 {
@@ -376,13 +365,11 @@ impl Scanner {
                             latest_scans,
                             registry,
                             path,
-                            parent_id,
                             parent_location.clone(),
                             session,
                             request,
                             page,
                             &pipeline_config,
-                            event_mode,
                             "scan page result (cached)",
                         )
                         .await;
@@ -456,39 +443,18 @@ impl Scanner {
                 ),
             )
             .await;
-            match event_mode {
-                ScanEventMode::Location => {
-                    send_or_warn_async(
-                        events,
-                        Event::DirectoryLoaded {
-                            parent: parent_location.clone(),
-                            groups: crate::pipeline::GroupedEntries::from_grouped_nodes(
-                                groups, registry,
-                            ),
-                            load,
-                            session,
-                            request,
-                        },
-                        "scan location result (cached)",
-                    )
-                    .await;
-                }
-                ScanEventMode::Compat => {
-                    send_or_warn_async(
-                        events,
-                        Event::DirectoryLoadedCompat {
-                            parent: parent_id,
-                            path: path.to_path_buf(),
-                            groups,
-                            load,
-                            session,
-                            request,
-                        },
-                        "scan result (cached)",
-                    )
-                    .await;
-                }
-            }
+            send_or_warn_async(
+                events,
+                Event::DirectoryLoaded {
+                    parent: parent_location.clone(),
+                    groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                    load,
+                    session,
+                    request,
+                },
+                "scan location result (cached)",
+            )
+            .await;
             Self::emit_scan_progress(
                 events,
                 latest_scans,
@@ -626,20 +592,18 @@ impl Scanner {
                 return;
             }
 
-            let parent_id = registry.clone().register(path.to_path_buf());
+            registry.clone().register(path.to_path_buf());
             registry.clone().register_batch_file_node(&page.entries);
             Self::emit_page_result(
                 events,
                 latest_scans,
                 registry,
                 path,
-                parent_id,
                 parent_location.clone(),
                 session,
                 request,
                 page,
                 &pipeline_config,
-                event_mode,
                 "scan page result",
             )
             .await;
@@ -752,7 +716,7 @@ impl Scanner {
             ),
         )
         .await;
-        let parent_id = registry.clone().register(path.to_path_buf());
+        registry.clone().register(path.to_path_buf());
         registry.clone().register_batch_file_node(&entries);
 
         let pipeline = Pipeline::from_config(&pipeline_config);
@@ -812,39 +776,18 @@ impl Scanner {
             ),
         )
         .await;
-        match event_mode {
-            ScanEventMode::Location => {
-                send_or_warn_async(
-                    events,
-                    Event::DirectoryLoaded {
-                        parent: parent_location.clone(),
-                        groups: crate::pipeline::GroupedEntries::from_grouped_nodes(
-                            groups, registry,
-                        ),
-                        load,
-                        session,
-                        request,
-                    },
-                    "scan location result",
-                )
-                .await;
-            }
-            ScanEventMode::Compat => {
-                send_or_warn_async(
-                    events,
-                    Event::DirectoryLoadedCompat {
-                        parent: parent_id,
-                        path: path.to_path_buf(),
-                        groups,
-                        load,
-                        session,
-                        request,
-                    },
-                    "scan result",
-                )
-                .await;
-            }
-        }
+        send_or_warn_async(
+            events,
+            Event::DirectoryLoaded {
+                parent: parent_location.clone(),
+                groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                load,
+                session,
+                request,
+            },
+            "scan location result",
+        )
+        .await;
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -987,13 +930,11 @@ impl Scanner {
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
         registry: &NodeRegistry,
         path: &Path,
-        parent_id: NodeId,
         parent_location: LocationRef,
         session: SessionId,
         request: RequestId,
         page: DirectoryPageResult,
         pipeline_config: &PipelineConfig,
-        event_mode: ScanEventMode,
         context: &'static str,
     ) {
         let page_state = page.state.clone();
@@ -1032,39 +973,18 @@ impl Scanner {
             ),
         )
         .await;
-        match event_mode {
-            ScanEventMode::Location => {
-                send_or_warn_async(
-                    events,
-                    Event::DirectoryPageLoaded {
-                        parent: parent_location.clone(),
-                        groups: crate::pipeline::GroupedEntries::from_grouped_nodes(
-                            groups, registry,
-                        ),
-                        page: page_state.clone(),
-                        session,
-                        request,
-                    },
-                    context,
-                )
-                .await;
-            }
-            ScanEventMode::Compat => {
-                send_or_warn_async(
-                    events,
-                    Event::DirectoryPageLoadedCompat {
-                        parent: parent_id,
-                        path: path.to_path_buf(),
-                        groups,
-                        page: page_state.clone(),
-                        session,
-                        request,
-                    },
-                    context,
-                )
-                .await;
-            }
-        }
+        send_or_warn_async(
+            events,
+            Event::DirectoryPageLoaded {
+                parent: parent_location.clone(),
+                groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                page: page_state.clone(),
+                session,
+                request,
+            },
+            context,
+        )
+        .await;
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -1208,15 +1128,7 @@ impl Actor for Scanner {
                     load,
                     request,
                 }) => {
-                    self.dispatch_location_scan(
-                        location,
-                        session,
-                        pipeline,
-                        load,
-                        false,
-                        request,
-                        ScanEventMode::Location,
-                    );
+                    self.dispatch_location_scan(location, session, pipeline, load, false, request);
                 }
                 Ok(ScanCommand::RefreshLocation {
                     location,
@@ -1225,15 +1137,7 @@ impl Actor for Scanner {
                     load,
                     request,
                 }) => {
-                    self.dispatch_location_scan(
-                        location,
-                        session,
-                        pipeline,
-                        load,
-                        true,
-                        request,
-                        ScanEventMode::Location,
-                    );
+                    self.dispatch_location_scan(location, session, pipeline, load, true, request);
                 }
                 Ok(ScanCommand::ScanCompat {
                     location,
@@ -1242,15 +1146,7 @@ impl Actor for Scanner {
                     load,
                     request,
                 }) => {
-                    self.dispatch_location_scan(
-                        location,
-                        session,
-                        pipeline,
-                        load,
-                        false,
-                        request,
-                        ScanEventMode::Compat,
-                    );
+                    self.dispatch_location_scan(location, session, pipeline, load, false, request);
                 }
                 Ok(ScanCommand::RefreshCompat {
                     location,
@@ -1259,15 +1155,7 @@ impl Actor for Scanner {
                     load,
                     request,
                 }) => {
-                    self.dispatch_location_scan(
-                        location,
-                        session,
-                        pipeline,
-                        load,
-                        true,
-                        request,
-                        ScanEventMode::Compat,
-                    );
+                    self.dispatch_location_scan(location, session, pipeline, load, true, request);
                 }
                 Ok(ScanCommand::Cancel(session)) => {
                     self.cancel_scan(session);

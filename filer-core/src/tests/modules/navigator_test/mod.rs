@@ -1,7 +1,7 @@
 use crate::actors::Actor;
 use crate::model::location::{Location, LocationDescriptor, LocationRef};
-// Compatibility pin for API-006: included navigator tests still exercise the
-// legacy NodeId commands and state serialization until those routes are removed.
+// API-007 pin: navigator internals still exercise NodeId state until those
+// internals are retired.
 use crate::model::node::NodeId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::{NavCommand, NavState, Navigator, NavigatorState};

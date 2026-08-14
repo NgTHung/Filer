@@ -37,7 +37,6 @@ pub enum WatchCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WatchEventMode {
     Location,
-    Compat { node: NodeId },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -292,17 +291,10 @@ impl Watcher {
                         session = ?subscription.session,
                         "Watcher dispatching filesystem change"
                     );
-                    let evt = match subscription.event_mode {
-                        WatchEventMode::Location => Event::FsChanged {
-                            location: entry.location.clone(),
-                            kind: change.kind.clone(),
-                            session: subscription.session,
-                        },
-                        WatchEventMode::Compat { node } => Event::FsChangedCompat {
-                            node,
-                            kind: change.kind.clone(),
-                            session: subscription.session,
-                        },
+                    let evt = Event::FsChanged {
+                        location: entry.location.clone(),
+                        kind: change.kind.clone(),
+                        session: subscription.session,
                     };
                     events.push(evt);
                 }

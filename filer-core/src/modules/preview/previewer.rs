@@ -10,7 +10,6 @@ use crate::actors::{Actor, WorkTracker};
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::model::location::{LocationRef, LocationRoute};
-use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -55,7 +54,6 @@ pub enum PreviewCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewEventMode {
     Location,
-    Compat { node: NodeId },
 }
 
 /// Previewer actor — generates file previews and extracts metadata.
@@ -131,7 +129,7 @@ impl Previewer {
         &self,
         location_ref: LocationRef,
         options: Option<PreviewOptions>,
-        event_mode: PreviewEventMode,
+        _event_mode: PreviewEventMode,
         session: SessionId,
         request: RequestId,
     ) {
@@ -144,19 +142,11 @@ impl Previewer {
 
         if let Ok(cache) = self.cache.lock() {
             if let Some(preview) = cache.get(&path) {
-                let event = match event_mode {
-                    PreviewEventMode::Location => Event::PreviewReady {
-                        location,
-                        preview,
-                        session,
-                        request,
-                    },
-                    PreviewEventMode::Compat { node } => Event::PreviewReadyCompat {
-                        node,
-                        preview,
-                        session,
-                        request,
-                    },
+                let event = Event::PreviewReady {
+                    location,
+                    preview,
+                    session,
+                    request,
                 };
                 send_or_warn(&self.events, event, "previewer: cache hit");
                 return;
@@ -195,37 +185,21 @@ impl Previewer {
                     if let Ok(mut c) = cache.lock() {
                         c.put(path, preview.clone());
                     }
-                    let event = match event_mode {
-                        PreviewEventMode::Location => Event::PreviewReady {
-                            location,
-                            preview,
-                            session,
-                            request,
-                        },
-                        PreviewEventMode::Compat { node } => Event::PreviewReadyCompat {
-                            node,
-                            preview,
-                            session,
-                            request,
-                        },
+                    let event = Event::PreviewReady {
+                        location,
+                        preview,
+                        session,
+                        request,
                     };
                     send_or_warn_async(&events, event, "preview ready").await;
                 }
                 Err(e) => {
                     let reason = e.to_string();
-                    let event = match event_mode {
-                        PreviewEventMode::Location => Event::PreviewFailed {
-                            location,
-                            reason,
-                            session,
-                            request,
-                        },
-                        PreviewEventMode::Compat { node } => Event::PreviewFailedCompat {
-                            node,
-                            reason,
-                            session,
-                            request,
-                        },
+                    let event = Event::PreviewFailed {
+                        location,
+                        reason,
+                        session,
+                        request,
                     };
                     send_or_warn_async(&events, event, "preview failed").await;
                 }
@@ -272,7 +246,7 @@ impl Previewer {
     fn dispatch_metadata(
         &self,
         location_ref: LocationRef,
-        event_mode: PreviewEventMode,
+        _event_mode: PreviewEventMode,
         session: SessionId,
         request: RequestId,
     ) {
@@ -306,19 +280,11 @@ impl Previewer {
                     if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
                         return;
                     }
-                    let event = match event_mode {
-                        PreviewEventMode::Location => Event::MetadataLoaded {
-                            location,
-                            meta: file_node.meta,
-                            session,
-                            request,
-                        },
-                        PreviewEventMode::Compat { node } => Event::MetadataLoadedCompat {
-                            node,
-                            meta: file_node.meta,
-                            session,
-                            request,
-                        },
+                    let event = Event::MetadataLoaded {
+                        location,
+                        meta: file_node.meta,
+                        session,
+                        request,
                     };
                     send_or_warn_async(&events, event, "metadata loaded").await;
                 }
@@ -341,7 +307,7 @@ impl Previewer {
     fn dispatch_extended_metadata(
         &self,
         location_ref: LocationRef,
-        event_mode: PreviewEventMode,
+        _event_mode: PreviewEventMode,
         session: SessionId,
         request: RequestId,
     ) {
@@ -400,19 +366,11 @@ impl Previewer {
                 .await
             {
                 Ok(extended) => {
-                    let event = match event_mode {
-                        PreviewEventMode::Location => Event::ExtendedMetadataLoaded {
-                            location,
-                            extended,
-                            session,
-                            request,
-                        },
-                        PreviewEventMode::Compat { node } => Event::ExtendedMetadataLoadedCompat {
-                            node,
-                            extended,
-                            session,
-                            request,
-                        },
+                    let event = Event::ExtendedMetadataLoaded {
+                        location,
+                        extended,
+                        session,
+                        request,
                     };
                     send_or_warn_async(&events, event, "extended metadata").await;
                 }

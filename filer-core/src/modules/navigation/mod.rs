@@ -2,8 +2,6 @@
 //!
 //! This module owns the Navigator actor and registers handlers for:
 //! - `navigate` — navigate to Location
-//! - `navigate.path.compat` — compatibility navigation by path
-//! - `navigate.node.compat` — compatibility navigation by NodeId
 //! - `navigate.up` — go to parent
 //! - `navigate.back` — go back in history
 //! - `navigate.refresh` — refresh current directory
@@ -70,26 +68,6 @@ impl Module for NavigationModule {
             .expect("NavigationModule already initialized");
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.path.compat", move |cmd, _ctx| {
-            if let Command::NavigatePathCompat {
-                path,
-                session,
-                request,
-            } = cmd
-            {
-                send_or_warn(
-                    &tx,
-                    NavCommand::NavigateToPath {
-                        session,
-                        path,
-                        request,
-                    },
-                    "navigate.path.compat",
-                );
-            }
-        });
-
-        let tx = self.nav_tx.clone();
         ctx.handlers.on("navigate", move |cmd, _ctx| {
             if let Command::Navigate {
                 location,
@@ -105,26 +83,6 @@ impl Module for NavigationModule {
                         request,
                     },
                     "navigate",
-                );
-            }
-        });
-
-        let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.node.compat", move |cmd, _ctx| {
-            if let Command::NavigateNodeCompat {
-                node,
-                session,
-                request,
-            } = cmd
-            {
-                send_or_warn(
-                    &tx,
-                    NavCommand::Navigate {
-                        session,
-                        node,
-                        request,
-                    },
-                    "navigate.node.compat",
                 );
             }
         });
