@@ -36,7 +36,7 @@ pub struct Session {
 
 impl Session {
     /// Create a new session with the default AllowAll policy (native desktop)
-    pub fn new(id: SessionId, event_tx: EventSink) -> Self {
+    pub fn new(id: SessionId, event_tx: EventSink, _registry: NodeRegistry) -> Self {
         Self {
             id,
             navigator: NavigatorState::new(),
@@ -47,7 +47,12 @@ impl Session {
     }
 
     /// Create a new session with a custom policy (web/remote clients)
-    pub fn with_policy(id: SessionId, event_tx: EventSink, policy: Box<dyn SessionPolicy>) -> Self {
+    pub fn with_policy(
+        id: SessionId,
+        event_tx: EventSink,
+        _registry: NodeRegistry,
+        policy: Box<dyn SessionPolicy>,
+    ) -> Self {
         Self {
             id,
             navigator: NavigatorState::new(),
@@ -65,18 +70,21 @@ impl Session {
 
 /// Manages multiple client sessions
 ///
-/// Clone is cheap because the session map uses an `Arc` internally.
+/// Clone is cheap because the session map and registry use `Arc` internally.
 #[derive(Debug, Clone)]
 pub struct SessionManager {
     /// Active sessions by ID
     sessions: Arc<scc::HashMap<SessionId, Session, RandomState>>,
+    /// Shared registry passed to sessions for compatibility with existing callers.
+    registry: NodeRegistry,
 }
 
 impl SessionManager {
     /// Create a new session manager
-    pub fn new(_registry: NodeRegistry) -> Self {
+    pub fn new(registry: NodeRegistry) -> Self {
         Self {
             sessions: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
+            registry,
         }
     }
 
@@ -84,7 +92,7 @@ impl SessionManager {
     /// Used by native desktop clients and as default for Handshake.
     pub fn create_session<E: Into<EventSink>>(&self, event_tx: E) -> SessionId {
         let id = SessionId::new();
-        let session = Session::new(id, event_tx.into());
+        let session = Session::new(id, event_tx.into(), self.registry.clone());
         let _ = self.sessions.insert_sync(id, session);
         id
     }
@@ -97,7 +105,7 @@ impl SessionManager {
         policy: Box<dyn SessionPolicy>,
     ) -> SessionId {
         let id = SessionId::new();
-        let session = Session::with_policy(id, event_tx.into(), policy);
+        let session = Session::with_policy(id, event_tx.into(), self.registry.clone(), policy);
         let _ = self.sessions.insert_sync(id, session);
         id
     }
