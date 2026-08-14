@@ -36,10 +36,10 @@ pub struct Session {
 
 impl Session {
     /// Create a new session with the default AllowAll policy (native desktop)
-    pub fn new(id: SessionId, event_tx: EventSink, reg: NodeRegistry) -> Self {
+    pub fn new(id: SessionId, event_tx: EventSink) -> Self {
         Self {
             id,
-            navigator: NavigatorState::new(reg),
+            navigator: NavigatorState::new(),
             event_tx,
             policy: Box::new(AllowAll),
             created_at: std::time::Instant::now(),
@@ -47,15 +47,10 @@ impl Session {
     }
 
     /// Create a new session with a custom policy (web/remote clients)
-    pub fn with_policy(
-        id: SessionId,
-        event_tx: EventSink,
-        reg: NodeRegistry,
-        policy: Box<dyn SessionPolicy>,
-    ) -> Self {
+    pub fn with_policy(id: SessionId, event_tx: EventSink, policy: Box<dyn SessionPolicy>) -> Self {
         Self {
             id,
-            navigator: NavigatorState::new(reg),
+            navigator: NavigatorState::new(),
             event_tx,
             policy,
             created_at: std::time::Instant::now(),
@@ -70,22 +65,18 @@ impl Session {
 
 /// Manages multiple client sessions
 ///
-/// Clone is cheap — both fields use Arc internally, so clones share the
-/// same underlying session map and node registry.
+/// Clone is cheap because the session map uses an `Arc` internally.
 #[derive(Debug, Clone)]
 pub struct SessionManager {
     /// Active sessions by ID
     sessions: Arc<scc::HashMap<SessionId, Session, RandomState>>,
-    /// Shared node registry
-    registry: NodeRegistry,
 }
 
 impl SessionManager {
     /// Create a new session manager
-    pub fn new(reg: NodeRegistry) -> Self {
+    pub fn new(_registry: NodeRegistry) -> Self {
         Self {
             sessions: Arc::new(scc::HashMap::with_hasher(RandomState::new())),
-            registry: reg,
         }
     }
 
@@ -93,7 +84,7 @@ impl SessionManager {
     /// Used by native desktop clients and as default for Handshake.
     pub fn create_session<E: Into<EventSink>>(&self, event_tx: E) -> SessionId {
         let id = SessionId::new();
-        let session = Session::new(id, event_tx.into(), self.registry.clone());
+        let session = Session::new(id, event_tx.into());
         let _ = self.sessions.insert_sync(id, session);
         id
     }
@@ -106,7 +97,7 @@ impl SessionManager {
         policy: Box<dyn SessionPolicy>,
     ) -> SessionId {
         let id = SessionId::new();
-        let session = Session::with_policy(id, event_tx.into(), self.registry.clone(), policy);
+        let session = Session::with_policy(id, event_tx.into(), policy);
         let _ = self.sessions.insert_sync(id, session);
         id
     }

@@ -26,6 +26,7 @@
 //! ```
 
 pub mod navigator;
+mod state;
 
 use flume::Sender;
 

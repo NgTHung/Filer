@@ -290,7 +290,7 @@ mod navigation_flow_tests {
                     loaded = true;
                 }
                 Ok(Ok(Event::CurrentNavigateState { state, session: s })) if s == session => {
-                    if state.current_location.as_ref().and_then(|r| r.descriptor())
+                    if state.current.as_ref().and_then(|r| r.descriptor())
                         == Some(location.descriptor())
                     {
                         state_location = true;
@@ -998,8 +998,8 @@ mod navigation_flow_tests {
 
         if let Some(Event::CurrentNavigateState { state, .. }) = nav_state_event {
             assert!(
-                state.current_location.is_some(),
-                "current_location should be set after Navigate"
+                state.current.is_some(),
+                "current location should be set after Navigate"
             );
             assert!(
                 !state.can_back,

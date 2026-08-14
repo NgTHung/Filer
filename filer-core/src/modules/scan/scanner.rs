@@ -47,20 +47,6 @@ pub enum ScanCommand {
         load: DirectoryLoadOptions,
         request: RequestId,
     },
-    ScanCompat {
-        location: LocationRef,
-        session: SessionId,
-        pipeline: PipelineConfig,
-        load: DirectoryLoadOptions,
-        request: RequestId,
-    },
-    RefreshCompat {
-        location: LocationRef,
-        session: SessionId,
-        pipeline: PipelineConfig,
-        load: DirectoryLoadOptions,
-        request: RequestId,
-    },
     Cancel(SessionId),
     Shutdown,
 }
@@ -1131,24 +1117,6 @@ impl Actor for Scanner {
                     self.dispatch_location_scan(location, session, pipeline, load, false, request);
                 }
                 Ok(ScanCommand::RefreshLocation {
-                    location,
-                    session,
-                    pipeline,
-                    load,
-                    request,
-                }) => {
-                    self.dispatch_location_scan(location, session, pipeline, load, true, request);
-                }
-                Ok(ScanCommand::ScanCompat {
-                    location,
-                    session,
-                    pipeline,
-                    load,
-                    request,
-                }) => {
-                    self.dispatch_location_scan(location, session, pipeline, load, false, request);
-                }
-                Ok(ScanCommand::RefreshCompat {
                     location,
                     session,
                     pipeline,

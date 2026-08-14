@@ -9,7 +9,6 @@ use crate::api::event_sink::DEFAULT_EVENT_CHANNEL_CAPACITY;
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::model::location::LocationRef;
-use crate::model::node::NodeId;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -55,7 +54,6 @@ struct WatchSubscription {
 struct WatchEntry {
     path: PathBuf,
     location: LocationRef,
-    refresh_node: Option<NodeId>,
     subscriptions: Vec<WatchSubscription>,
     #[allow(dead_code)]
     handle: Box<dyn WatchHandle>,
@@ -144,7 +142,6 @@ impl Watcher {
         };
 
         let key = LocationRef::from_location(&location);
-        let refresh_node = self.registry.register_location_node(location).ok();
         let subscription = WatchSubscription {
             session: session_id,
             event_mode,
@@ -169,7 +166,6 @@ impl Watcher {
                     WatchEntry {
                         path: path.clone(),
                         location: key,
-                        refresh_node,
                         subscriptions: vec![subscription],
                         handle,
                     },
@@ -299,10 +295,8 @@ impl Watcher {
                     events.push(evt);
                 }
 
-                if self.refresh_tx.is_some()
-                    && let Some(node) = entry.refresh_node
-                {
-                    invalidations.push(node);
+                if self.refresh_tx.is_some() {
+                    invalidations.push(entry.location.clone());
                 }
             }
             true
@@ -311,10 +305,10 @@ impl Watcher {
             send_or_warn_async(&self.events, event, "emit filesystem change").await;
         }
         if let Some(refresh_tx) = &self.refresh_tx {
-            for node in invalidations {
+            for location in invalidations {
                 send_or_warn(
                     refresh_tx,
-                    NavCommand::Invalidate(node),
+                    NavCommand::Invalidate(location),
                     "watch refresh invalidate",
                 );
             }

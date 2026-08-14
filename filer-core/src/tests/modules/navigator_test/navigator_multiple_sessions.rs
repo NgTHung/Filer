@@ -58,12 +58,15 @@
         });
 
         let session = session(1);
-        // API-007 pin: selection is still represented by internal NodeId state.
-        let nodes = vec![node(1), node(2), node(3)];
+        let locations = vec![
+            LocationRef::from_location(&Location::local("/tmp/selected-one")),
+            LocationRef::from_location(&Location::local("/tmp/selected-two")),
+            LocationRef::from_location(&Location::local("/tmp/selected-three")),
+        ];
 
         // Set selection
         cmd_tx
-            .send(NavCommand::SetSelected { session, nodes })
+            .send(NavCommand::SetSelected { session, locations })
             .unwrap();
 
         tokio::time::sleep(Duration::from_millis(10)).await;

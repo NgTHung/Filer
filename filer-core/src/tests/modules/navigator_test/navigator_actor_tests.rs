@@ -1,10 +1,9 @@
     use super::*;
-    use crate::{Event, model::registry::NodeRegistry, modules::scan::scanner::ScanCommand};
-
-    // Internal NodeId fixtures remain until API-007 retires the navigator state.
-    fn node(id: u64) -> NodeId {
-        NodeId(id)
-    }
+    use crate::{
+        Event, LocationId,
+        model::registry::NodeRegistry,
+        modules::scan::scanner::ScanCommand,
+    };
 
     /// Helper to create test session ID
     fn session(id: u64) -> SessionId {
@@ -84,8 +83,7 @@
     }
 
     #[tokio::test]
-    // API-007 pin: NavCommand::Navigate still exercises internal NodeId state.
-    async fn test_compat_navigate_rejects_unresolved_node_before_scan_dispatch() {
+    async fn test_location_navigation_rejects_unresolved_id_before_scan_dispatch() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
@@ -100,16 +98,16 @@
         let request = crate::model::request::RequestId::new();
 
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: node(999),
+                location: LocationRef::id_only(LocationId(999)),
                 request,
             })
             .unwrap();
 
         let event = timeout(Duration::from_millis(100), event_rx.recv_async())
             .await
-            .expect("unresolved compatibility node should emit an error")
+            .expect("unresolved location should emit an error")
             .expect("event channel should remain open");
 
         match event {
@@ -128,7 +126,7 @@
 
         assert!(
             scanner_rx.try_recv().is_err(),
-            "unresolved compatibility node must not dispatch a scanner command"
+            "unresolved location must not dispatch a scanner command"
         );
     }
 
@@ -174,7 +172,7 @@
             Event::CurrentNavigateState { state, session: s } => {
                 assert_eq!(s, session);
                 assert_eq!(
-                    state.current_location.as_ref().and_then(|r| r.descriptor()),
+                    state.current.as_ref().and_then(|r| r.descriptor()),
                     Some(location.descriptor())
                 );
             }
@@ -226,7 +224,7 @@
             Event::CurrentNavigateState { state, session: s } => {
                 assert_eq!(s, session);
                 assert_eq!(
-                    state.current_location.as_ref().and_then(|r| r.descriptor()),
+                    state.current.as_ref().and_then(|r| r.descriptor()),
                     Some(&descriptor)
                 );
             }
@@ -535,13 +533,13 @@
     }
 
     #[tokio::test]
-    // API-007 pin: NavCommand::Invalidate still exercises internal NodeId state.
-    async fn test_compat_invalidate_refreshes_current_directory() {
+    async fn test_invalidate_refreshes_current_directory() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let current = reg.clone().register("/tmp/invalidate-current".into());
+        let current = Location::local("/tmp/invalidate-current");
+        let current_ref = LocationRef::from_location(&current);
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
@@ -550,9 +548,9 @@
 
         let session = session(1);
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session,
-                node: current,
+                location: current_ref.clone(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -562,7 +560,9 @@
             .expect("Navigate should trigger initial scan")
             .expect("scanner channel should remain open");
 
-        cmd_tx.send(NavCommand::Invalidate(current)).unwrap();
+        cmd_tx
+            .send(NavCommand::Invalidate(current_ref.clone()))
+            .unwrap();
 
         let refresh = timeout(Duration::from_millis(100), scanner_rx.recv_async())
             .await
@@ -576,21 +576,21 @@
                     location,
                     session: s,
                     ..
-                } if location == reg.resolve_node_location(current).unwrap() && s == session
+                } if location == current_ref && s == session
             ),
             "Invalidate should refresh the session currently displaying the node"
         );
     }
 
     #[tokio::test]
-    // API-007 pin: NavCommand::Invalidate still exercises internal NodeId state.
-    async fn test_compat_invalidate_refreshes_only_current_sessions_with_current_pipeline() {
+    async fn test_invalidate_refreshes_only_current_sessions_with_current_pipeline() {
         let (cmd_tx, cmd_rx) = flume::unbounded();
         let (event_tx, _event_rx) = flume::unbounded();
         let (scanner_tx, scanner_rx) = flume::unbounded();
         let reg = NodeRegistry::new();
-        let current = reg.clone().register("/tmp/invalidate-current-pipeline".into());
-        let other = reg.clone().register("/tmp/invalidate-other-pipeline".into());
+        let current = Location::local("/tmp/invalidate-current-pipeline");
+        let current_ref = LocationRef::from_location(&current);
+        let other = Location::local("/tmp/invalidate-other-pipeline");
         let navigator = Navigator::new(cmd_rx, event_tx, scanner_tx, reg.clone());
 
         tokio::spawn(async move {
@@ -602,16 +602,16 @@
         let pipeline = PipelineConfig::new();
 
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session: current_session,
-                node: current,
+                location: current_ref.clone(),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
         cmd_tx
-            .send(NavCommand::Navigate {
+            .send(NavCommand::NavigateToLocation {
                 session: other_session,
-                node: other,
+                location: LocationRef::from_location(&other),
                 request: crate::model::request::RequestId::new(),
             })
             .unwrap();
@@ -632,7 +632,9 @@
             .expect("scanner channel should remain open");
         while scanner_rx.try_recv().is_ok() {}
 
-        cmd_tx.send(NavCommand::Invalidate(current)).unwrap();
+        cmd_tx
+            .send(NavCommand::Invalidate(current_ref.clone()))
+            .unwrap();
 
         let refresh = timeout(Duration::from_millis(100), scanner_rx.recv_async())
             .await
@@ -646,7 +648,7 @@
                 pipeline: refresh_pipeline,
                 ..
             } => {
-                assert_eq!(location, reg.resolve_node_location(current).unwrap());
+                assert_eq!(location, current_ref);
                 assert_eq!(session, current_session);
                 assert_eq!(refresh_pipeline, pipeline);
             }

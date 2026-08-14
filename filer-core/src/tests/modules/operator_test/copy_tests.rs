@@ -133,6 +133,27 @@ mod copy_tests {
             );
         }
 
+        let mut targeted_progress = 0;
+        for event in &progress {
+            if let Event::ProgressUpdated { scope, snapshot }
+                = event
+                && scope.session == session
+                && scope.operation == Some(operation_id)
+                && matches!(scope.kind, ProgressKind::Operation(OperationKind::Copy))
+                && snapshot.current.is_some()
+            {
+                targeted_progress += 1;
+                assert!(
+                    matches!(snapshot.current, Some(ProgressTarget::Location(_))),
+                    "recursive copy progress should identify the destination by Location"
+                );
+            }
+        }
+        assert!(
+            targeted_progress >= 3,
+            "each recursive file should emit a Location progress target"
+        );
+
         match final_event {
             Event::OperationComplete {
                 operation,

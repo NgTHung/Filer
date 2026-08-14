@@ -9,7 +9,7 @@ use crate::actors::cancel::{CancelMap, CancellationToken};
 use crate::actors::{Actor, WorkTracker};
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
-use crate::model::location::LocationRef;
+use crate::model::location::{Location, LocationRef};
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
@@ -304,7 +304,6 @@ impl Operator {
                         &dst_sub,
                         &cx,
                         &events,
-                        &registry,
                         session,
                         operation,
                         request,
@@ -1100,7 +1099,6 @@ async fn copy_dir_recursive(
     dst: &Path,
     cx: &ProviderCx<'_>,
     events: &EventSink,
-    registry: &NodeRegistry,
     session: SessionId,
     operation: OperationId,
     request: RequestId,
@@ -1116,15 +1114,14 @@ async fn copy_dir_recursive(
         let dst_child = dst.join(&entry.name);
         if entry.is_dir() {
             Box::pin(copy_dir_recursive(
-                fs, &src_child, &dst_child, cx, events, registry, session, operation, request,
-                items_done,
+                fs, &src_child, &dst_child, cx, events, session, operation, request, items_done,
             ))
             .await?;
         } else {
             cx.race(fs.scheme(), fs.copy(&src_child, &dst_child, cx))
                 .await?;
             *items_done += 1;
-            let id = registry.clone().register(dst_child);
+            let location = LocationRef::from_location(&Location::local(dst_child));
             send_or_warn_async(
                 events,
                 Event::ProgressUpdated {
@@ -1140,7 +1137,7 @@ async fn copy_dir_recursive(
                         ProgressUnit::Item,
                         *items_done,
                         None,
-                        Some(ProgressTarget::Node(id)),
+                        Some(ProgressTarget::Location(location)),
                     ),
                 },
                 "operator: copy dir progress",

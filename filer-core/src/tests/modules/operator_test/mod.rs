@@ -32,7 +32,7 @@ use crate::model::location::{
 // assertions use Location-native events and targets.
 use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
-use crate::model::progress::{ProgressKind, ProgressStatus};
+use crate::model::progress::{ProgressKind, ProgressStatus, ProgressTarget};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;

@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::model::location::LocationRef;
-use crate::model::node::NodeId;
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -56,7 +55,6 @@ pub enum ProgressUnit {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProgressTarget {
-    Node(NodeId),
     Location(LocationRef),
     Path(PathBuf),
 }

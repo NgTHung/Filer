@@ -1,8 +1,5 @@
 use crate::actors::Actor;
 use crate::model::location::{Location, LocationDescriptor, LocationRef};
-// API-007 pin: navigator internals still exercise NodeId state until those
-// internals are retired.
-use crate::model::node::NodeId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::{NavCommand, NavState, Navigator, NavigatorState};
 use crate::pipeline::PipelineConfig;

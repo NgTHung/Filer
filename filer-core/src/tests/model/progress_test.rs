@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::model::location::{Location, LocationRef};
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{
     ProgressKind, ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget,
@@ -49,4 +50,19 @@ fn test_progress_snapshot_supports_unknown_total_and_target() {
     assert_eq!(snapshot.done, 3);
     assert_eq!(snapshot.total, None);
     assert!(matches!(snapshot.current, Some(ProgressTarget::Path(_))));
+}
+
+#[test]
+fn test_progress_snapshot_supports_location_target() {
+    let location = LocationRef::from_location(&Location::local("/tmp/progress-location"));
+    let snapshot = ProgressSnapshot::new(
+        ProgressStatus::Running,
+        ProgressPhase::Processing,
+        ProgressUnit::Item,
+        1,
+        Some(2),
+        Some(ProgressTarget::Location(location.clone())),
+    );
+
+    assert_eq!(snapshot.current, Some(ProgressTarget::Location(location)));
 }

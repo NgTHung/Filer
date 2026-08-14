@@ -747,8 +747,7 @@ async fn test_watch_subdirectories() {
 }
 
 #[tokio::test]
-// API-007 pin: the refresh sink still emits internal NodeId invalidation commands.
-async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
+async fn test_watcher_refresh_sink_invalidates_once_per_watched_location() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
     let (nav_tx, nav_rx) = flume::unbounded();
@@ -756,23 +755,17 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
     let provider = Arc::new(TestWatchProvider::default());
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
-    let test_node = registry.clone().register(test_path.clone());
+    let test_location = LocationRef::from_location(&Location::local(test_path.clone()));
     let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry.clone(), provider.clone(), nav_tx);
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(location_watch(
-            LocationRef::from_location(&Location::local(test_path.clone())),
-            SessionId(1),
-        ))
+        .send(location_watch(test_location.clone(), SessionId(1)))
         .unwrap();
     cmd_tx
-        .send(location_watch(
-            LocationRef::from_location(&Location::local(test_path.clone())),
-            SessionId(2),
-        ))
+        .send(location_watch(test_location.clone(), SessionId(2)))
         .unwrap();
     sleep(Duration::from_millis(20)).await;
 
@@ -795,8 +788,8 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
         .expect("watch change should invalidate navigation")
         .expect("nav channel should remain open");
     assert!(
-        matches!(invalidate, NavCommand::Invalidate(node) if node == test_node),
-        "watch change should invalidate the watched root node"
+        matches!(invalidate, NavCommand::Invalidate(location) if location == test_location),
+        "watch change should invalidate the watched root location"
     );
     assert!(
         nav_rx.try_recv().is_err(),
@@ -808,7 +801,6 @@ async fn test_watcher_refresh_sink_invalidates_once_per_watched_node() {
 }
 
 #[tokio::test]
-// API-007 pin: the refresh sink still emits internal NodeId invalidation commands.
 async fn test_watcher_refresh_sink_invalidates_for_delete_and_rename() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, _evt_rx) = flume::unbounded();
@@ -817,17 +809,14 @@ async fn test_watcher_refresh_sink_invalidates_for_delete_and_rename() {
     let provider = Arc::new(TestWatchProvider::default());
     let temp_dir = TempDir::new().unwrap();
     let test_path = temp_dir.path().to_path_buf();
-    let test_node = registry.clone().register(test_path.clone());
+    let test_location = LocationRef::from_location(&Location::local(test_path.clone()));
     let watcher = Watcher::with_refresh(cmd_rx, evt_tx, registry.clone(), provider.clone(), nav_tx);
     let handle = tokio::spawn(async move {
         watcher.run().await;
     });
 
     cmd_tx
-        .send(location_watch(
-            LocationRef::from_location(&Location::local(test_path.clone())),
-            SessionId(1),
-        ))
+        .send(location_watch(test_location.clone(), SessionId(1)))
         .unwrap();
     sleep(Duration::from_millis(20)).await;
 
@@ -849,8 +838,8 @@ async fn test_watcher_refresh_sink_invalidates_for_delete_and_rename() {
             .unwrap_or_else(|_| panic!("{reason} should invalidate navigation"))
             .expect("nav channel should remain open");
         assert!(
-            matches!(invalidate, NavCommand::Invalidate(node) if node == test_node),
-            "{reason} should invalidate the watched root node"
+            matches!(invalidate, NavCommand::Invalidate(location) if location == test_location),
+            "{reason} should invalidate the watched root location"
         );
     }
 
