@@ -184,6 +184,12 @@ impl NavigatorState {
     }
 }
 
+impl Default for NavigatorState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn location_id(location: &LocationRef) -> LocationId {
     match location {
         LocationRef::Id(id) | LocationRef::Full { id, .. } => *id,
