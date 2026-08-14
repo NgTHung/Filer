@@ -1,7 +1,7 @@
 ---
 id: "API-014"
 title: "Migrate navigation and refresh internals off NodeId"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Refactor"
 parent: "API-007"
@@ -11,7 +11,7 @@ rules: ["CORE-LIBRARY", "PROVIDER-ACCESS"]
 risk: "High"
 impact: "Moves navigation, selection, refresh invalidation, and progress targets to Location identity before row and registry removal."
 tags: ["api", "nodeid", "location"]
-last_updated: "2026-08-14"
+last_updated: 2026-08-14
 ---
 
 ## Summary
