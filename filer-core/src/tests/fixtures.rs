@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::model::location::Location;
-use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+use crate::model::node::{FileNode, NodeEntry, NodeId, NodeKind, NodeMeta};
 use crate::model::registry::NodeRegistry;
 
 pub(crate) fn registered_local_node_id(path: impl AsRef<Path>) -> NodeId {
@@ -39,4 +39,9 @@ pub(crate) fn local_file_node(
         accessed: None,
         meta,
     }
+}
+
+pub(crate) fn local_node_entry(node: FileNode) -> NodeEntry {
+    let path = node.path.clone();
+    NodeEntry::from_location(Location::local(path), node)
 }

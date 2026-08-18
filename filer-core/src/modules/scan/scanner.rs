@@ -1,6 +1,5 @@
 use flume::Receiver;
 use rapidhash::fast::RandomState;
-use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -12,15 +11,14 @@ use crate::errors::ErrorCode;
 use crate::model::directory::DirectoryLoadState;
 use crate::model::directory::{DirectoryLoadOptions, DirectoryPageResult};
 use crate::model::location::{LocationId, LocationRef, LocationRoute};
-use crate::model::node::NodeEntry;
-use crate::model::node::NodeId;
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
 };
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::pipeline::{EntryGroup, GroupedEntries, GroupedNodes};
+use crate::pipeline::GroupedEntries;
+use crate::pipeline::entry_bridge;
 use crate::pipeline::{Pipeline, PipelineConfig, effective_listing};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
@@ -345,11 +343,11 @@ impl Scanner {
                 match paging.load_cached(cached, path, session, page_request, &pipeline_config, &cx)
                 {
                     Ok(PageLoad::Page(page)) => {
-                        registry.clone().register_batch_file_node(&page.entries);
+                        let nodes = entry_bridge::to_file_nodes(&page.entries);
+                        registry.clone().register_batch_file_node(&nodes);
                         Self::emit_page_result(
                             events,
                             latest_scans,
-                            registry,
                             path,
                             parent_location.clone(),
                             session,
@@ -540,6 +538,7 @@ impl Scanner {
                 && page.state.complete
                 && pipeline_config == PipelineConfig::default()
                 && let Some(cache) = cache
+                && let Some(nodes) = entry_bridge::cacheable_file_nodes(&page.entries)
             {
                 if let Ok(mut c) = cache.lock() {
                     if let Some(location_id) = parent_location_id {
@@ -547,14 +546,10 @@ impl Scanner {
                             location_id,
                             path.to_path_buf(),
                             load_options.listing,
-                            page.entries.clone(),
+                            nodes,
                         );
                     } else {
-                        c.put(
-                            path.to_path_buf(),
-                            load_options.listing,
-                            page.entries.clone(),
-                        );
+                        c.put(path.to_path_buf(), load_options.listing, nodes);
                     }
                 }
             }
@@ -579,11 +574,11 @@ impl Scanner {
             }
 
             registry.clone().register(path.to_path_buf());
-            registry.clone().register_batch_file_node(&page.entries);
+            let nodes = entry_bridge::to_file_nodes(&page.entries);
+            registry.clone().register_batch_file_node(&nodes);
             Self::emit_page_result(
                 events,
                 latest_scans,
-                registry,
                 path,
                 parent_location.clone(),
                 session,
@@ -652,17 +647,13 @@ impl Scanner {
 
         if !load_options.is_bounded()
             && let Some(cache) = cache
+            && let Some(nodes) = entry_bridge::cacheable_file_nodes(&entries)
         {
             if let Ok(mut c) = cache.lock() {
                 if let Some(location_id) = parent_location_id {
-                    c.put_location(
-                        location_id,
-                        path.to_path_buf(),
-                        load_options.listing,
-                        entries.clone(),
-                    );
+                    c.put_location(location_id, path.to_path_buf(), load_options.listing, nodes);
                 } else {
-                    c.put(path.to_path_buf(), load_options.listing, entries.clone());
+                    c.put(path.to_path_buf(), load_options.listing, nodes);
                 }
                 tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
             }
@@ -703,12 +694,11 @@ impl Scanner {
         )
         .await;
         registry.clone().register(path.to_path_buf());
-        registry.clone().register_batch_file_node(&entries);
+        let nodes = entry_bridge::to_file_nodes(&entries);
+        registry.clone().register_batch_file_node(&nodes);
 
-        let pipeline = Pipeline::from_config(&pipeline_config);
-        let (groups, load) = pipeline
-            .execute_grouped(entries)
-            .limited(load_options.snapshot_limit());
+        let groups = entry_bridge::execute_grouped_entries(entries, &pipeline_config);
+        let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -766,7 +756,7 @@ impl Scanner {
             events,
             Event::DirectoryLoaded {
                 parent: parent_location.clone(),
-                groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                groups,
                 load,
                 session,
                 request,
@@ -880,7 +870,7 @@ impl Scanner {
             return;
         }
 
-        let groups = grouped_entries(entries, &pipeline_config);
+        let groups = entry_bridge::execute_grouped_entries(entries, &pipeline_config);
         let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
         send_or_warn_async(
             events,
@@ -914,7 +904,6 @@ impl Scanner {
     async fn emit_page_result(
         events: &EventSink,
         latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
-        registry: &NodeRegistry,
         path: &Path,
         parent_location: LocationRef,
         session: SessionId,
@@ -943,7 +932,7 @@ impl Scanner {
             return;
         }
 
-        let groups = Pipeline::from_config(pipeline_config).execute_grouped(page.entries);
+        let groups = entry_bridge::execute_grouped_entries(page.entries, pipeline_config);
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -963,7 +952,7 @@ impl Scanner {
             events,
             Event::DirectoryPageLoaded {
                 parent: parent_location.clone(),
-                groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                groups,
                 page: page_state.clone(),
                 session,
                 request,
@@ -1029,43 +1018,6 @@ impl Scanner {
     fn cancel_scan(&self, session: SessionId) {
         self.active_scans.cancel(session);
         self.paging.clear_session(session);
-    }
-}
-
-fn grouped_entries(entries: Vec<NodeEntry>, pipeline_config: &PipelineConfig) -> GroupedEntries {
-    let mut by_node = HashMap::<NodeId, VecDeque<NodeEntry>>::new();
-    let nodes = entries
-        .into_iter()
-        .map(|entry| {
-            let node = entry.to_file_node();
-            by_node.entry(entry.id).or_default().push_back(entry);
-            node
-        })
-        .collect();
-    let grouped = Pipeline::from_config(pipeline_config).execute_grouped(nodes);
-    entries_from_grouped_nodes(grouped, by_node)
-}
-
-fn entries_from_grouped_nodes(
-    grouped: GroupedNodes,
-    mut by_node: HashMap<NodeId, VecDeque<NodeEntry>>,
-) -> GroupedEntries {
-    let total_count = grouped.total_count;
-    GroupedEntries {
-        groups: grouped
-            .groups
-            .into_iter()
-            .map(|group| EntryGroup {
-                label: group.label,
-                nodes: group
-                    .nodes
-                    .into_iter()
-                    .filter_map(|node| by_node.get_mut(&node.id).and_then(VecDeque::pop_front))
-                    .collect(),
-                order: group.order,
-            })
-            .collect(),
-        total_count,
     }
 }
 

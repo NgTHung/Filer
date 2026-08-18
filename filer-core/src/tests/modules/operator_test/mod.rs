@@ -38,6 +38,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::operations::operator::{OperationEventMode, Operator, OpsCommand};
 use crate::services::dir_cache::{DirCache, SharedDirCache};
+use crate::tests::fixtures::local_node_entry;
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
@@ -217,7 +218,7 @@ impl FsProvider for MockOpsProvider {
         &self,
         path: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<crate::NodeEntry>, CoreError> {
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
@@ -227,7 +228,7 @@ impl FsProvider for MockOpsProvider {
         Ok(guard
             .iter()
             .find(|(p, _)| p == path)
-            .map(|(_, files)| files.clone())
+            .map(|(_, files)| files.iter().cloned().map(local_node_entry).collect())
             .unwrap_or_default())
     }
 
@@ -258,13 +259,15 @@ impl FsProvider for MockOpsProvider {
         &self,
         path: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
-        self.metadata_results
+    ) -> Result<crate::NodeEntry, CoreError> {
+        let node = self
+            .metadata_results
             .lock()
             .unwrap()
             .get(path)
             .cloned()
-            .ok_or_else(|| CoreError::not_found(path.to_path_buf()))
+            .ok_or_else(|| CoreError::not_found(path.to_path_buf()))?;
+        Ok(local_node_entry(node))
     }
 
     async fn write(

@@ -39,7 +39,7 @@ impl FsProvider for MockFs {
         &self,
         path: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<crate::NodeEntry>, CoreError> {
         if !self.directories.contains(&path.to_path_buf()) {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
@@ -50,7 +50,11 @@ impl FsProvider for MockFs {
             if let Some(parent) = file_path.parent()
                 && parent == path
             {
-                nodes.push(FileNode::from_path(file_path.clone(), None)?);
+                let node = FileNode::from_path(file_path.clone(), None)?;
+                nodes.push(crate::NodeEntry::from_location(
+                    crate::Location::local(file_path.clone()),
+                    node,
+                ));
             }
         }
 
@@ -59,7 +63,11 @@ impl FsProvider for MockFs {
                 && parent == path
                 && dir_path != &path.to_path_buf()
             {
-                nodes.push(FileNode::from_path(dir_path.clone(), None)?);
+                let node = FileNode::from_path(dir_path.clone(), None)?;
+                nodes.push(crate::NodeEntry::from_location(
+                    crate::Location::local(dir_path.clone()),
+                    node,
+                ));
             }
         }
 
@@ -99,9 +107,13 @@ impl FsProvider for MockFs {
         &self,
         path: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
+    ) -> Result<crate::NodeEntry, CoreError> {
         if self.files.contains_key(path) || self.directories.contains(&path.to_path_buf()) {
-            FileNode::from_path(path.to_path_buf(), None)
+            let node = FileNode::from_path(path.to_path_buf(), None)?;
+            Ok(crate::NodeEntry::from_location(
+                crate::Location::local(path.to_path_buf()),
+                node,
+            ))
         } else {
             Err(CoreError::not_found(path.to_path_buf()))
         }
@@ -390,4 +402,3 @@ mod write_tests {
         assert!(result.is_ok());
     }
 }
-

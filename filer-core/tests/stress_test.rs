@@ -33,7 +33,7 @@ use filer_core::{
     Actor, Capabilities, Command, CoreError, Event, FilerCore, FsProvider, PipelineConfig,
 };
 
-use support::{local_location, provider_node_id, wait_for_search_entries};
+use support::{local_location, provider_entry, provider_node_id, wait_for_search_entries};
 
 const SHORT: Duration = Duration::from_secs(5);
 const LONG: Duration = Duration::from_secs(30);
@@ -87,11 +87,17 @@ impl FsProvider for MockFs {
         &self,
         path: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<filer_core::NodeEntry>, CoreError> {
         // Yield between listings so cancellation tokens are processed
         tokio::task::yield_now().await;
         let guard = self.dirs.lock().unwrap();
-        Ok(guard.get(path).cloned().unwrap_or_default())
+        Ok(guard
+            .get(path)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(provider_entry)
+            .collect())
     }
 
     async fn read(
@@ -124,7 +130,7 @@ impl FsProvider for MockFs {
         &self,
         path: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
+    ) -> Result<filer_core::NodeEntry, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }
@@ -225,9 +231,13 @@ impl FsProvider for LazyTreeFs {
         &self,
         path: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<filer_core::NodeEntry>, CoreError> {
         tokio::task::yield_now().await;
-        Ok(self.children_of(path))
+        Ok(self
+            .children_of(path)
+            .into_iter()
+            .map(provider_entry)
+            .collect())
     }
 
     async fn read(
@@ -253,7 +263,7 @@ impl FsProvider for LazyTreeFs {
         &self,
         p: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
+    ) -> Result<filer_core::NodeEntry, CoreError> {
         Err(CoreError::not_found(p.to_path_buf()))
     }
 }

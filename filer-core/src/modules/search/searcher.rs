@@ -12,6 +12,7 @@ use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::errors::ErrorCode;
 use crate::model::location::{LocationRef, LocationRoute};
+use crate::model::node::NodeEntry;
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -144,7 +145,7 @@ impl Searcher {
             cx = cx.with_deadline(deadline);
         }
         let mut queue = VecDeque::new();
-        let mut batch = vec![];
+        let mut batch: Vec<NodeEntry> = vec![];
         let mut total_found = 0;
         queue.push_back((path, 0));
         'outer: while let Some((dir, depth)) = queue.pop_front() {
@@ -171,10 +172,16 @@ impl Searcher {
                 if !query.options.include_hidden && entry.meta.hidden {
                     continue;
                 }
-                if entry.is_dir() && query.options.max_depth.is_none_or(|v| depth < v) {
-                    queue.push_back((entry.path.clone(), depth + 1));
+                let node = entry.to_file_node();
+                if entry.is_dir()
+                    && query.options.max_depth.is_none_or(|v| depth < v)
+                    && let Some(path) = entry.location.descriptor().and_then(|descriptor| {
+                        descriptor.route().as_direct_path().map(PathBuf::from)
+                    })
+                {
+                    queue.push_back((path, depth + 1));
                 }
-                if query.matches(&entry) {
+                if query.matches(&node) {
                     batch.push(entry);
                     total_found += 1;
                     if batch.len() >= query.options.batch_size.unwrap_or(DEFAULT_BATCH_SIZE) {
@@ -285,18 +292,15 @@ impl Actor for Searcher {
 }
 
 fn search_results_event(
-    matches: Vec<crate::FileNode>,
+    matches: Vec<NodeEntry>,
     complete: bool,
     session: SessionId,
     request: RequestId,
-    registry: &NodeRegistry,
+    _registry: &NodeRegistry,
     _event_mode: SearchEventMode,
 ) -> Event {
     Event::SearchResults {
-        matches: matches
-            .into_iter()
-            .map(|node| crate::NodeEntry::from_file_node(node, registry))
-            .collect(),
+        matches,
         complete,
         session,
         request,

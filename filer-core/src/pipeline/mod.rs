@@ -1,4 +1,5 @@
 pub mod config;
+pub(crate) mod entry_bridge;
 pub mod filter;
 pub mod group;
 mod order;

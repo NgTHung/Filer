@@ -34,6 +34,7 @@ use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::search::searcher::{SearchCommand, SearchEventMode, Searcher};
+use crate::tests::fixtures::local_node_entry;
 use crate::utils;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
@@ -158,7 +159,7 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<crate::NodeEntry>, CoreError> {
         // Check if this path should fail
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
             return Err(CoreError::not_found(path.to_path_buf()));
@@ -182,7 +183,7 @@ impl FsProvider for MockProvider {
         Ok(guard
             .iter()
             .find(|(p, _)| p == path)
-            .map(|(_, files)| files.clone())
+            .map(|(_, files)| files.iter().cloned().map(local_node_entry).collect())
             .unwrap_or_default())
     }
 
@@ -208,7 +209,7 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
+    ) -> Result<crate::NodeEntry, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }

@@ -3,6 +3,7 @@ use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
 use crate::model::location::{Location, LocationRef};
+use crate::tests::fixtures::local_node_entry;
 // Provider-shaped FileNode rows still require NodeId fields; scanner behavior
 // assertions use Location-native entries and events.
 use crate::model::node::FileNode;
@@ -174,7 +175,7 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         cx: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<crate::NodeEntry>, CoreError> {
         self.list_with_options(path, ListingOptions::default(), cx)
             .await
     }
@@ -184,7 +185,7 @@ impl FsProvider for MockProvider {
         path: &Path,
         options: ListingOptions,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<crate::NodeEntry>, CoreError> {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
@@ -196,7 +197,14 @@ impl FsProvider for MockProvider {
 
         self.list_calls.lock().unwrap().push(path.to_path_buf());
         self.list_options.lock().unwrap().push(options);
-        Ok(self.files.lock().unwrap().clone())
+        Ok(self
+            .files
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .map(local_node_entry)
+            .collect())
     }
 
     async fn list_page(
@@ -225,7 +233,11 @@ impl FsProvider for MockProvider {
             .unwrap_or(0);
         let files = self.files.lock().unwrap();
         let end = (start + request.limit).min(files.len());
-        let entries = files[start..end].to_vec();
+        let entries: Vec<crate::NodeEntry> = files[start..end]
+            .iter()
+            .cloned()
+            .map(local_node_entry)
+            .collect();
         let next_cursor = (end < files.len()).then(|| DirectoryCursor(end.to_string()));
         let state = if let Some(cursor) = next_cursor {
             DirectoryPageState::partial(entries.len(), None, cursor)
@@ -257,7 +269,7 @@ impl FsProvider for MockProvider {
         &self,
         _path: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
+    ) -> Result<crate::NodeEntry, CoreError> {
         Err(CoreError::not_found(PathBuf::from("test")))
     }
 }

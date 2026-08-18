@@ -21,7 +21,7 @@ use filer_core::modules::scan::ScanModule;
 use filer_core::modules::search::SearchModule;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 
-use support::{local_location, provider_node_id, wait_for_search_entries};
+use support::{local_location, provider_entry, provider_node_id, wait_for_search_entries};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
 
@@ -111,7 +111,7 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<filer_core::NodeEntry>, CoreError> {
         // Yield to the scheduler between directory listings so that
         // cancellation tokens are processed between BFS iterations.
         tokio::task::yield_now().await;
@@ -120,7 +120,7 @@ impl FsProvider for MockProvider {
         Ok(guard
             .iter()
             .find(|(p, _)| p == path)
-            .map(|(_, files)| files.clone())
+            .map(|(_, files)| files.iter().cloned().map(provider_entry).collect())
             .unwrap_or_default())
     }
 
@@ -154,7 +154,7 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
+    ) -> Result<filer_core::NodeEntry, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }

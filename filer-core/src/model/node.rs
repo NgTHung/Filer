@@ -432,14 +432,20 @@ impl NodeEntry {
     }
 
     pub(crate) fn to_file_node(&self) -> FileNode {
+        let path = self
+            .display_path
+            .as_ref()
+            .map(PathBuf::from)
+            .or_else(|| {
+                self.location
+                    .descriptor()
+                    .map(|descriptor| PathBuf::from(descriptor.display_path()))
+            })
+            .unwrap_or_else(|| PathBuf::from(self.name.clone()));
         FileNode {
             id: self.id,
             name: self.name.clone(),
-            path: self
-                .display_path
-                .as_ref()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(self.name.clone())),
+            path,
             kind: self.kind.clone(),
             size: self.size,
             modified: self.modified,

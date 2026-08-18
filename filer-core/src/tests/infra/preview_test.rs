@@ -78,7 +78,7 @@ impl FsProvider for HeaderRecordingProvider {
         &self,
         _: &Path,
         _: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<crate::FileNode>, CoreError> {
+    ) -> Result<Vec<crate::NodeEntry>, CoreError> {
         Ok(Vec::new())
     }
 
@@ -114,7 +114,7 @@ impl FsProvider for HeaderRecordingProvider {
         &self,
         path: &Path,
         _: &crate::ProviderCx<'_>,
-    ) -> Result<crate::FileNode, CoreError> {
+    ) -> Result<crate::NodeEntry, CoreError> {
         Err(CoreError::not_found(path.to_path_buf()))
     }
 }

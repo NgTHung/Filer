@@ -67,6 +67,31 @@ mod segmented_location_tests {
     }
 
     #[tokio::test]
+    async fn segmented_resolver_replaces_member_path_when_descending() {
+        let (fs, dir) = local_fs();
+        let archive = dir.path().join("bundle.zip");
+        write_zip(
+            &archive,
+            &[("src/main.rs", b"fn main() {}"), ("src/lib.rs", b"pub fn lib() {}")],
+        );
+        let location = LocationDescriptor::local(&archive).archive_member("src");
+
+        let entries = SegmentedLocationResolver::new(&fs)
+            .list(&location, &crate::ProviderCx::none())
+            .await
+            .unwrap();
+
+        for entry in entries {
+            assert_eq!(
+                entry.location.descriptor(),
+                Some(&LocationDescriptor::local(&archive).archive_member(
+                    format!("src/{}", entry.name),
+                ))
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn segmented_resolver_rejects_nested_zip_layers_until_member_reads_exist() {
         let (fs, dir) = local_fs();
         let archive = dir.path().join("outer.zip");
@@ -116,4 +141,3 @@ mod segmented_location_tests {
         assert_eq!(error.code(), ErrorCode::UnsupportedProvider);
     }
 }
-

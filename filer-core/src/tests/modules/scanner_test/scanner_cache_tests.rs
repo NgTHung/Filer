@@ -457,6 +457,49 @@
     }
 
     #[tokio::test]
+    async fn test_archive_provider_cache_hit_preserves_member_locations() {
+        let temp = tempfile::tempdir().unwrap();
+        let archive = temp.path().join("bundle.zip");
+        write_zip(&archive, &[("README.md", b"readme")]);
+
+        let registry = NodeRegistry::new();
+        let local = Arc::new(crate::LocalFs::new(registry.clone()));
+        let provider = Arc::new(crate::ArchiveFs::zip(&archive, local));
+        let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+        let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+        let cache = Arc::new(Mutex::new(DirCache::new(64 * 1024 * 1024)));
+
+        let scanner = Scanner::with_cache(
+            cmd_rx,
+            evt_tx,
+            provider,
+            registry,
+            cache,
+        );
+        tokio::spawn(async move { scanner.run().await });
+
+        for _ in 0..2 {
+            let session = SessionId::new();
+            cmd_tx
+                .send(ScanCommand::ScanLocation {
+                    location: location_ref(PathBuf::new()),
+                    session,
+                    pipeline: default_pipeline(),
+                    load: snapshot_load(),
+                    request: RequestId::new(),
+                })
+                .unwrap();
+
+            let groups = wait_for_dir_loaded(&evt_rx, session).await;
+            assert_eq!(groups.total_count, 1);
+            assert_eq!(
+                groups.groups[0].nodes[0].location.descriptor(),
+                Some(&crate::LocationDescriptor::local(&archive).archive_member("README.md"))
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn test_scan_failure_emits_failed_progress_before_error() {
         let provider = MockProvider::new();
         provider.set_should_fail(true);

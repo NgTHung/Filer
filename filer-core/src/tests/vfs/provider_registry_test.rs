@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 
 use crate::{
-    ArchiveFs, Capabilities, CoreError, ErrorCode, FileNode, FsProvider, ProviderCx,
+    ArchiveFs, Capabilities, CoreError, ErrorCode, FileNode, FsProvider, NodeEntry, ProviderCx,
     ProviderProfile, ProviderProfileId, ProviderRef, ProviderRegistry,
 };
 
@@ -94,7 +94,7 @@ impl FsProvider for NamedProvider {
         &self,
         _path: &std::path::Path,
         _cx: &ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<NodeEntry>, CoreError> {
         Ok(Vec::new())
     }
 
@@ -134,8 +134,12 @@ impl FsProvider for NamedProvider {
         &self,
         path: &std::path::Path,
         _cx: &ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
-        FileNode::from_path(path.to_path_buf(), None)
+    ) -> Result<NodeEntry, CoreError> {
+        let node = FileNode::from_path(path.to_path_buf(), None)?;
+        Ok(NodeEntry::from_location(
+            crate::Location::local(path.to_path_buf()),
+            node,
+        ))
     }
 }
 
@@ -246,7 +250,7 @@ mod archive_provider_tests {
             &[("src/main.rs", b"fn main() {}"), ("README.md", b"readme")],
         );
         let provider = Arc::new(LocalFs::new(NodeRegistry::new()));
-        let fs = ArchiveFs::zip(archive, provider);
+        let fs = ArchiveFs::zip(archive.clone(), provider);
 
         let entries = fs
             .list(std::path::Path::new(""), &ProviderCx::none())
@@ -256,12 +260,20 @@ mod archive_provider_tests {
         assert_eq!(entries.len(), 2);
         let src = entries.iter().find(|entry| entry.name == "src").unwrap();
         assert!(src.is_dir());
+        assert_eq!(
+            src.location.descriptor(),
+            Some(&crate::LocationDescriptor::local(&archive).archive_member("src"))
+        );
         let readme = entries
             .iter()
             .find(|entry| entry.name == "README.md")
             .unwrap();
         assert!(readme.is_file());
         assert_eq!(readme.size, 6);
+        assert_eq!(
+            readme.location.descriptor(),
+            Some(&crate::LocationDescriptor::local(&archive).archive_member("README.md"))
+        );
     }
 
     #[tokio::test]
@@ -277,7 +289,7 @@ mod archive_provider_tests {
             ],
         );
         let provider = Arc::new(LocalFs::new(NodeRegistry::new()));
-        let fs = ArchiveFs::zip(archive, provider);
+        let fs = ArchiveFs::zip(archive.clone(), provider);
 
         let entries = fs
             .list(std::path::Path::new("src"), &ProviderCx::none())
@@ -287,6 +299,15 @@ mod archive_provider_tests {
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().any(|entry| entry.name == "main.rs"));
         assert!(entries.iter().any(|entry| entry.name == "lib.rs"));
+        for entry in entries {
+            assert_eq!(
+                entry.location.descriptor(),
+                Some(
+                    &crate::LocationDescriptor::local(&archive)
+                        .archive_member(format!("src/{}", entry.name),)
+                )
+            );
+        }
     }
 
     #[tokio::test]
@@ -331,7 +352,7 @@ mod archive_provider_tests {
             &self,
             path: &std::path::Path,
             cx: &ProviderCx<'_>,
-        ) -> Result<Vec<FileNode>, CoreError> {
+        ) -> Result<Vec<NodeEntry>, CoreError> {
             self.inner.list(path, cx).await
         }
 
@@ -365,7 +386,7 @@ mod archive_provider_tests {
             &self,
             path: &std::path::Path,
             cx: &ProviderCx<'_>,
-        ) -> Result<FileNode, CoreError> {
+        ) -> Result<NodeEntry, CoreError> {
             self.inner.metadata(path, cx).await
         }
 

@@ -5,7 +5,7 @@ use crate::errors::CoreError;
 use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
-use crate::model::node::FileNode;
+use crate::model::node::NodeEntry;
 use crate::vfs::context::ProviderCx;
 use serde::{Deserialize, Serialize};
 
@@ -81,7 +81,7 @@ pub trait FsProvider: Send + Sync {
     }
 
     /// List contents of a directory
-    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError>;
+    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<NodeEntry>, CoreError>;
 
     /// List contents of a directory with explicit detail options.
     ///
@@ -93,7 +93,7 @@ pub trait FsProvider: Send + Sync {
         path: &Path,
         _options: ListingOptions,
         cx: &ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<NodeEntry>, CoreError> {
         self.list(path, cx).await
     }
 
@@ -148,7 +148,7 @@ pub trait FsProvider: Send + Sync {
     async fn exists(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<bool, CoreError>;
 
     /// Get metadata for a path
-    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<FileNode, CoreError>;
+    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError>;
 
     /// Read the first `n_bytes` of a file for MIME magic-byte detection.
     ///

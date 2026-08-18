@@ -56,6 +56,24 @@ async fn test_local_fs_list() {
 }
 
 #[tokio::test]
+async fn test_local_fs_list_emits_reconstructable_locations() {
+    let (fs, dir) = local_fs();
+    let path = dir.path().join("entry.txt");
+    std::fs::write(&path, b"entry").unwrap();
+
+    let entries = fs
+        .list(dir.path(), &crate::ProviderCx::none())
+        .await
+        .unwrap();
+    let entry = entries.iter().find(|entry| entry.name == "entry.txt").unwrap();
+
+    assert_eq!(
+        entry.location.descriptor(),
+        Some(&crate::LocationDescriptor::local(path))
+    );
+}
+
+#[tokio::test]
 async fn test_local_fs_list_empty_directory() {
     let (fs, dir) = local_fs();
 
@@ -166,6 +184,7 @@ async fn test_local_fs_list_page_returns_limit_and_cursor() {
         .unwrap();
 
     assert_eq!(page.entries.len(), 2);
+    assert!(page.entries.iter().all(|entry| entry.location.descriptor().is_some()));
     assert_eq!(page.state.page_count, 2);
     assert_eq!(page.state.total_count, None);
     assert!(page.state.next_cursor.is_some());
@@ -489,6 +508,10 @@ async fn test_local_fs_metadata() {
     assert_eq!(node.size, content.len() as u64);
     assert!(node.is_file());
     assert_eq!(node.extension(), Some("txt"));
+    assert_eq!(
+        node.location.descriptor(),
+        Some(&crate::LocationDescriptor::local(temp_file))
+    );
 }
 
 #[tokio::test]

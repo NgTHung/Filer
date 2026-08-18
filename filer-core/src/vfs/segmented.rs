@@ -92,7 +92,7 @@ impl<'a> SegmentedLocationResolver<'a> {
 
         Ok(children
             .into_iter()
-            .map(|child| entry_for_child(descriptor, child))
+            .map(|child| entry_for_segmented_child(descriptor, child))
             .collect())
     }
 }
@@ -129,7 +129,7 @@ fn target_archive_member(segments: &[PathBuf]) -> Result<&Path, CoreError> {
         .unwrap_or_else(|| Path::new("")))
 }
 
-fn entry_for_child(parent: &LocationDescriptor, child: ArchiveChild) -> NodeEntry {
+fn entry_for_segmented_child(parent: &LocationDescriptor, child: ArchiveChild) -> NodeEntry {
     let descriptor = descriptor_for_child(parent, &child.path);
     let location = Location::new(descriptor);
     let display_path = location.descriptor().display_path();
@@ -164,19 +164,19 @@ fn entry_for_child(parent: &LocationDescriptor, child: ArchiveChild) -> NodeEntr
 }
 
 fn descriptor_for_child(parent: &LocationDescriptor, child_path: &Path) -> LocationDescriptor {
-    let mut descriptor = LocationDescriptor::local(parent.root().to_path_buf());
-    let parent_segments: Vec<_> = parent
-        .segments()
-        .iter()
-        .filter_map(|segment| match segment {
-            LocationSegment::ArchiveMember { path } if !path.as_os_str().is_empty() => {
-                Some(LocationSegment::ArchiveMember { path: path.clone() })
-            }
-            LocationSegment::ArchiveMember { .. } | LocationSegment::Virtual { .. } => None,
-        })
-        .collect();
-    descriptor = descriptor.with_segments(parent_segments);
-    descriptor.archive_member(child_path.to_path_buf())
+    let descriptor = LocationDescriptor::local(parent.root().to_path_buf());
+    let mut parent_segments = parent.segments().to_vec();
+    match parent_segments.last_mut() {
+        Some(LocationSegment::ArchiveMember { path }) => {
+            *path = child_path.to_path_buf();
+        }
+        Some(LocationSegment::Virtual { .. }) | None => {
+            parent_segments.push(LocationSegment::ArchiveMember {
+                path: child_path.to_path_buf(),
+            });
+        }
+    }
+    descriptor.with_segments(parent_segments)
 }
 
 fn is_zip_path(path: &Path) -> bool {

@@ -7,7 +7,8 @@ use crate::errors::CoreError;
 use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
-use crate::model::node::FileNode;
+use crate::model::location::Location;
+use crate::model::node::{FileNode, NodeEntry};
 use crate::model::registry::NodeRegistry;
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{
@@ -56,7 +57,7 @@ impl FsProvider for LocalFs {
     ///
     /// `FileNode` fields that require stat (`size`, timestamps, permissions) are
     /// left at zero/default. Use `list_with_meta` when those fields are needed.
-    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<NodeEntry>, CoreError> {
         Self::check_cancel(cx)?;
         let mut dir = tokio::fs::read_dir(path)
             .await
@@ -69,11 +70,12 @@ impl FsProvider for LocalFs {
         {
             Self::check_cancel(cx)?;
             match entry.file_type().await {
-                Ok(ft) => res.push(FileNode::from_dir_entry(
-                    entry.path(),
-                    ft,
-                    Some(self.reg.clone()),
-                )),
+                Ok(ft) => {
+                    let entry_path = entry.path();
+                    let node =
+                        FileNode::from_dir_entry(entry_path.clone(), ft, Some(self.reg.clone()));
+                    res.push(NodeEntry::from_location(Location::local(entry_path), node));
+                }
                 Err(e) => {
                     tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in listing");
                 }
@@ -87,7 +89,7 @@ impl FsProvider for LocalFs {
         path: &Path,
         options: ListingOptions,
         cx: &ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<NodeEntry>, CoreError> {
         match options.detail {
             ListingDetail::Fast => self.list(path, cx).await,
             ListingDetail::Metadata => self.list_with_meta(path, cx).await,
@@ -128,11 +130,15 @@ impl FsProvider for LocalFs {
 
             match request.listing.detail {
                 ListingDetail::Fast => match entry.file_type().await {
-                    Ok(ft) => entries.push(FileNode::from_dir_entry(
-                        entry.path(),
-                        ft,
-                        Some(self.reg.clone()),
-                    )),
+                    Ok(ft) => {
+                        let entry_path = entry.path();
+                        let node = FileNode::from_dir_entry(
+                            entry_path.clone(),
+                            ft,
+                            Some(self.reg.clone()),
+                        );
+                        entries.push(NodeEntry::from_location(Location::local(entry_path), node));
+                    }
                     Err(e) => {
                         tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in paged listing");
                     }
@@ -145,7 +151,8 @@ impl FsProvider for LocalFs {
                             entry_path.clone(),
                             Some(self.reg.clone()),
                         ) {
-                            Ok(node) => entries.push(node),
+                            Ok(node) => entries
+                                .push(NodeEntry::from_location(Location::local(entry_path), node)),
                             Err(e) => {
                                 tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in paged listing");
                             }
@@ -217,9 +224,13 @@ impl FsProvider for LocalFs {
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
     }
 
-    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError> {
         Self::check_cancel(cx)?;
-        FileNode::from_path(path.to_path_buf(), Some(self.reg.clone()))
+        let node = FileNode::from_path(path.to_path_buf(), Some(self.reg.clone()))?;
+        Ok(NodeEntry::from_location(
+            Location::local(node.path.clone()),
+            node,
+        ))
     }
 
     /// Open a buffered, seekable reader over a local file.
@@ -321,7 +332,7 @@ impl LocalFs {
         &self,
         path: &Path,
         cx: &ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<NodeEntry>, CoreError> {
         Self::check_cancel(cx)?;
         let mut dir = tokio::fs::read_dir(path)
             .await
@@ -338,7 +349,9 @@ impl LocalFs {
                 Ok(meta) => {
                     match FileNode::from_metadata(meta, entry_path.clone(), Some(self.reg.clone()))
                     {
-                        Ok(node) => res.push(node),
+                        Ok(node) => {
+                            res.push(NodeEntry::from_location(Location::local(entry_path), node))
+                        }
                         Err(e) => {
                             tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in listing");
                         }

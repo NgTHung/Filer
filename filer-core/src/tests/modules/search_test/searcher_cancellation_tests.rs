@@ -25,15 +25,19 @@ mod searcher_cancellation_tests {
             &self,
             path: &Path,
             _cx: &crate::ProviderCx<'_>,
-        ) -> Result<Vec<FileNode>, CoreError> {
+        ) -> Result<Vec<crate::NodeEntry>, CoreError> {
             match path.to_str() {
                 Some("/stale") => {
                     tokio::time::sleep(Duration::from_millis(10)).await;
-                    Ok(vec![MockProvider::make_file("stale.txt", "/stale", 1)])
+                    Ok(vec![crate::tests::fixtures::local_node_entry(
+                        MockProvider::make_file("stale.txt", "/stale", 1),
+                    )])
                 }
                 Some("/fresh") => {
                     tokio::time::sleep(Duration::from_millis(120)).await;
-                    Ok(vec![MockProvider::make_file("fresh.txt", "/fresh", 1)])
+                    Ok(vec![crate::tests::fixtures::local_node_entry(
+                        MockProvider::make_file("fresh.txt", "/fresh", 1),
+                    )])
                 }
                 _ => Ok(vec![]),
             }
@@ -65,7 +69,7 @@ mod searcher_cancellation_tests {
             &self,
             path: &Path,
             _cx: &crate::ProviderCx<'_>,
-        ) -> Result<FileNode, CoreError> {
+        ) -> Result<crate::NodeEntry, CoreError> {
             Err(CoreError::not_found(path.to_path_buf()))
         }
     }

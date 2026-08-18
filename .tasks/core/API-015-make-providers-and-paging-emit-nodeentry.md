@@ -1,7 +1,7 @@
 ---
 id: "API-015"
 title: "Make providers and paging emit NodeEntry"
-status: "To Do"
+status: Done
 priority: "High"
 type: "Refactor"
 parent: "API-007"
@@ -11,7 +11,7 @@ rules: ["CORE-LIBRARY", "PROVIDER-ACCESS"]
 risk: "High"
 impact: "Moves provider and paging output to reconstructable Location-native rows before the pipeline cutover."
 tags: ["api", "nodeid", "location"]
-last_updated: "2026-08-14"
+last_updated: 2026-08-18
 ---
 
 ## Summary
@@ -20,6 +20,6 @@ Change provider listing, metadata, and paging contracts to emit NodeEntry with f
 
 ## Acceptance Criteria
 
-- [ ] FsProvider listing and metadata methods plus DirectoryPageResult emit NodeEntry.
-- [ ] Local, archive, segmented, mock, and integration providers preserve reconstructable Location identity and existing listing behavior.
-- [ ] Fast and metadata listings, native and fallback paging, cancellation, provider tests, and the full filer-core suite pass without a new public compatibility row.
+- [x] FsProvider listing and metadata methods plus DirectoryPageResult emit NodeEntry.
+- [x] Local, archive, segmented, mock, and integration providers preserve reconstructable Location identity and existing listing behavior.
+- [x] Fast and metadata listings, native and fallback paging, cancellation, provider tests, and the full filer-core suite pass without a new public compatibility row.

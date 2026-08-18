@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use flume::Receiver;
 
+use filer_core::FileNode;
 use filer_core::model::node::{NodeEntry, NodeId};
 use filer_core::model::session::SessionId;
 use filer_core::{Event, Location, LocationRef};
@@ -31,6 +32,11 @@ pub(crate) fn local_location(path: impl Into<PathBuf>) -> LocationRef {
 /// `LocationRef`, not this provider-boundary handle.
 pub(crate) fn provider_node_id(path: impl AsRef<Path>) -> NodeId {
     NodeId::from_path(path.as_ref())
+}
+
+pub(crate) fn provider_entry(node: FileNode) -> NodeEntry {
+    let path = node.path.clone();
+    NodeEntry::from_location(Location::local(path), node)
 }
 
 pub(crate) async fn wait_for_directory_entries(

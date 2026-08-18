@@ -18,7 +18,7 @@ use filer_core::model::session;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
 use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
 
-use support::{local_location, provider_node_id, wait_for_directory_entries};
+use support::{local_location, provider_entry, provider_node_id, wait_for_directory_entries};
 
 fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
     let extension = PathBuf::from(name)
@@ -91,12 +91,19 @@ impl FsProvider for MockProvider {
         &self,
         path: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<FileNode>, CoreError> {
+    ) -> Result<Vec<filer_core::NodeEntry>, CoreError> {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
         self.list_calls.lock().unwrap().push(path.to_path_buf());
-        Ok(self.files.lock().unwrap().clone())
+        Ok(self
+            .files
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .map(provider_entry)
+            .collect())
     }
 
     async fn read(
@@ -129,7 +136,7 @@ impl FsProvider for MockProvider {
         &self,
         _path: &Path,
         _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<FileNode, CoreError> {
+    ) -> Result<filer_core::NodeEntry, CoreError> {
         Err(CoreError::not_found(PathBuf::from("test")))
     }
 }

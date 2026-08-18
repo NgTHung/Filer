@@ -19,7 +19,8 @@ use crate::model::directory::{
     DEFAULT_DIRECTORY_PAGE_SIZE, DirectoryCursor, DirectoryPageRequest, DirectoryPageResult,
     DirectoryPageState,
 };
-use crate::model::node::FileNode;
+use crate::model::location::Location;
+use crate::model::node::{FileNode, NodeEntry};
 use crate::model::session::SessionId;
 use crate::pipeline::{Pipeline, PipelineConfig, compare_nodes, effective_listing};
 use crate::vfs::context::ProviderCx;
@@ -99,7 +100,7 @@ impl PagingSessions {
                     Err(e) if e.code() == ErrorCode::Cancelled => return Ok(PageLoad::Cancelled),
                     Err(e) => return Err(e),
                 };
-                if !selection.extend(entries, cx) {
+                if !selection.extend_entries(entries, cx) {
                     return Ok(PageLoad::Cancelled);
                 }
             }
@@ -130,7 +131,7 @@ impl PagingSessions {
                     let complete = raw_page.state.complete;
                     provider_cursor = raw_page.state.next_cursor;
                     let page_count = raw_page.entries.len();
-                    if !selection.extend(raw_page.entries, cx) {
+                    if !selection.extend_entries(raw_page.entries, cx) {
                         return Ok(PageLoad::Cancelled);
                     }
                     if complete || provider_cursor.is_none() || page_count == 0 {
@@ -260,7 +261,7 @@ impl PagingSessions {
                                 ..request.clone()
                             },
                             pipeline: pipeline.clone(),
-                            last,
+                            last: last.node,
                             start_index: start_index + selection.entries.len(),
                             total_count: stable_total_count,
                         },
@@ -275,14 +276,18 @@ impl PagingSessions {
         }
         .with_window(start_index);
         DirectoryPageResult {
-            entries: selection.entries,
+            entries: selection
+                .entries
+                .into_iter()
+                .map(|candidate| candidate.entry)
+                .collect(),
             state,
         }
     }
 }
 
 pub(crate) struct PageSelection<'a> {
-    pub(crate) entries: Vec<FileNode>,
+    pub(crate) entries: Vec<EntryCandidate>,
     pub(crate) total_matches: usize,
     limit: usize,
     after: Option<FileNode>,
@@ -310,6 +315,19 @@ impl<'a> PageSelection<'a> {
     where
         I: IntoIterator<Item = FileNode>,
     {
+        self.extend_entries(
+            entries.into_iter().map(|node| {
+                let path = node.path.clone();
+                NodeEntry::from_location(Location::local(path), node)
+            }),
+            cx,
+        )
+    }
+
+    pub(crate) fn extend_entries<I>(&mut self, entries: I, cx: &ProviderCx<'_>) -> bool
+    where
+        I: IntoIterator<Item = NodeEntry>,
+    {
         if cx.is_cancelled() {
             return false;
         }
@@ -317,31 +335,38 @@ impl<'a> PageSelection<'a> {
             if index % CANCELLATION_CHECK_INTERVAL == 0 && cx.is_cancelled() {
                 return false;
             }
-            let mut filtered = self.pipeline.execute_flat(vec![entry]);
-            let Some(entry) = filtered.pop() else {
+            let node = entry.to_file_node();
+            let mut filtered = self.pipeline.execute_flat(vec![node]);
+            let Some(node) = filtered.pop() else {
                 continue;
             };
+            let candidate = EntryCandidate { entry, node };
             self.total_matches += 1;
-            if self
-                .after
-                .as_ref()
-                .is_some_and(|after| compare_nodes(self.pipeline_config, &entry, after).is_le())
-            {
+            if self.after.as_ref().is_some_and(|after| {
+                compare_nodes(self.pipeline_config, &candidate.node, after).is_le()
+            }) {
                 continue;
             }
+            let target = &candidate.node;
             let index = self
                 .entries
-                .binary_search_by(|candidate| {
-                    compare_nodes(self.pipeline_config, candidate, &entry)
+                .binary_search_by(|existing| {
+                    compare_nodes(self.pipeline_config, &existing.node, target)
                 })
                 .unwrap_or_else(|index| index);
-            self.entries.insert(index, entry);
+            self.entries.insert(index, candidate);
             if self.entries.len() > self.limit.saturating_add(1) {
                 self.entries.pop();
             }
         }
         !cx.is_cancelled()
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct EntryCandidate {
+    pub(crate) entry: NodeEntry,
+    pub(crate) node: FileNode,
 }
 
 fn next_cursor() -> DirectoryCursor {

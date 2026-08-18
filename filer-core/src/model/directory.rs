@@ -155,7 +155,7 @@ pub struct DirectoryPageRequest {
 
 #[derive(Debug, Clone)]
 pub struct DirectoryPageResult {
-    pub entries: Vec<crate::model::node::FileNode>,
+    pub entries: Vec<crate::model::node::NodeEntry>,
     pub state: DirectoryPageState,
 }
 

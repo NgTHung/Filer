@@ -23,7 +23,8 @@ use std::sync::Arc;
 use zip::ZipArchive;
 
 use crate::errors::{CoreError, ErrorCode};
-use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+use crate::model::location::{Location, LocationDescriptor};
+use crate::model::node::{FileNode, NodeEntry, NodeId, NodeKind, NodeMeta};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
@@ -104,9 +105,12 @@ impl FsProvider for ArchiveFs {
         }
     }
 
-    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<FileNode>, CoreError> {
+    async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<NodeEntry>, CoreError> {
         let children = self.list_children(path, cx).await?;
-        Ok(children.into_iter().map(file_node_for_child).collect())
+        Ok(children
+            .into_iter()
+            .map(|child| entry_for_child(&self.archive_path, child))
+            .collect())
     }
 
     async fn read(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
@@ -137,7 +141,7 @@ impl FsProvider for ArchiveFs {
         }
     }
 
-    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<FileNode, CoreError> {
+    async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError> {
         let parent = path.parent().unwrap_or_else(|| Path::new(""));
         let name = path
             .file_name()
@@ -148,7 +152,7 @@ impl FsProvider for ArchiveFs {
             .into_iter()
             .find(|child| child.name == name)
             .ok_or_else(|| CoreError::not_found(path.to_path_buf()))?;
-        Ok(file_node_for_child(child))
+        Ok(entry_for_child(&self.archive_path, child))
     }
 }
 
@@ -221,7 +225,7 @@ fn list_zip_directory<R: Read + Seek>(
     Ok(children.into_values().collect())
 }
 
-fn file_node_for_child(child: ArchiveChild) -> FileNode {
+fn file_node_for_child(child: &ArchiveChild) -> FileNode {
     let extension = child
         .path
         .extension()
@@ -236,8 +240,8 @@ fn file_node_for_child(child: ArchiveChild) -> FileNode {
     };
     FileNode {
         id: NodeId::from_path(&child.path),
-        name: child.name,
-        path: child.path,
+        name: child.name.clone(),
+        path: child.path.clone(),
         kind,
         size: child.size,
         modified: None,
@@ -245,6 +249,25 @@ fn file_node_for_child(child: ArchiveChild) -> FileNode {
         accessed: None,
         meta: NodeMeta::default(),
     }
+}
+
+pub(crate) fn entry_for_child(archive_path: &Path, child: ArchiveChild) -> NodeEntry {
+    let member = child.path.clone();
+    let descriptor = LocationDescriptor::local(archive_path.to_path_buf()).archive_member(member);
+    let display_path = descriptor.display_path();
+    let node = file_node_for_child(&child);
+    let navigable = child.is_dir || is_zip_path(&child.path);
+    NodeEntry::from_location(Location::new(descriptor), node)
+        .with_display_path(display_path)
+        .with_readable(true)
+        .with_navigable(navigable)
+}
+
+fn is_zip_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.eq_ignore_ascii_case("zip"))
+        .unwrap_or(false)
 }
 
 fn zip_directory_prefix(path: &Path) -> String {

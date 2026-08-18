@@ -41,7 +41,7 @@ impl FsProvider for NullProvider {
         &self,
         _: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<crate::model::node::FileNode>, CoreError> {
+    ) -> Result<Vec<crate::model::node::NodeEntry>, CoreError> {
         Ok(vec![])
     }
     async fn read(&self, p: &Path, _cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
@@ -63,7 +63,7 @@ impl FsProvider for NullProvider {
         &self,
         p: &Path,
         _cx: &crate::ProviderCx<'_>,
-    ) -> Result<crate::model::node::FileNode, CoreError> {
+    ) -> Result<crate::model::node::NodeEntry, CoreError> {
         Err(CoreError::not_found(p.to_path_buf()))
     }
 }
@@ -95,7 +95,7 @@ impl FsProvider for RecordingProvider {
         &self,
         _: &Path,
         _: &crate::ProviderCx<'_>,
-    ) -> Result<Vec<crate::model::node::FileNode>, CoreError> {
+    ) -> Result<Vec<crate::model::node::NodeEntry>, CoreError> {
         Ok(vec![])
     }
 
@@ -147,21 +147,22 @@ impl FsProvider for RecordingProvider {
         &self,
         path: &Path,
         cx: &crate::ProviderCx<'_>,
-    ) -> Result<crate::model::node::FileNode, CoreError> {
+    ) -> Result<crate::model::node::NodeEntry, CoreError> {
         *self.metadata_saw_cancel.lock().unwrap() = cx.cancel.is_some();
         *self.metadata_calls.lock().unwrap() += 1;
         if self.block_metadata {
             return cx
                 .race(
                     self.scheme(),
-                    std::future::pending::<Result<crate::model::node::FileNode, CoreError>>(),
+                    std::future::pending::<Result<crate::model::node::NodeEntry, CoreError>>(),
                 )
                 .await;
         }
-        Ok(crate::model::node::FileNode::from_path(
-            path.to_path_buf(),
-            None,
-        )?)
+        let node = crate::model::node::FileNode::from_path(path.to_path_buf(), None)?;
+        Ok(crate::NodeEntry::from_location(
+            crate::Location::local(path.to_path_buf()),
+            node,
+        ))
     }
 }
 
