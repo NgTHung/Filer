@@ -22,6 +22,7 @@ This is a TDD project, you shouldn't write the implement blindly without the tes
 Follow existing code style. ALWAYS read and copy the style of similar tests when adding new cases.
 All changes must be tested.
 You can modify main branch.
+Remember to commit every step of a plan.
 Avoid large module:
 - Prefer adding new modules instead growing existing ones.
 - Target Rust modules under 700 LoCs.
