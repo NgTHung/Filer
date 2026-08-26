@@ -2,7 +2,7 @@
 //!
 //! The navigator owns per-session history and coordinates location scans. It
 //! normalizes incoming references through the registry before storing them so
-//! navigation and refresh never depend on compatibility node handles.
+//! navigation and refresh never depend on legacy node handles.
 
 use std::sync::Arc;
 

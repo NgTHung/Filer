@@ -72,7 +72,7 @@ pub struct FilerCore {
     handlers: Arc<HandlerRegistry>,
     /// Session manager (shared with Router via HandlerContext)
     sessions: SessionManager,
-    /// Node registry (shared everywhere)
+    /// Location registry shared across core workflows.
     registry: NodeRegistry,
 }
 
@@ -232,9 +232,9 @@ impl FilerCore {
         self.event_sink.clone()
     }
 
-    /// Access the shared node registry.
+    /// Access the shared Location registry.
     ///
-    /// Modules and external code use this for path ↔ NodeId resolution.
+    /// Modules and external code use this for LocationRef resolution.
     pub fn registry(&self) -> NodeRegistry {
         self.registry.clone()
     }

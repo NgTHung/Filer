@@ -118,7 +118,6 @@ impl Scanner {
         parent_location_id: Option<LocationId>,
     ) {
         let provider = self.provider.clone();
-        let registry = self.registry.clone();
         let events = self.events_sender.clone();
         let active_scans = self.active_scans.clone();
         let latest_scans = self.latest_scans.clone();
@@ -132,7 +131,6 @@ impl Scanner {
         work.spawn(cancel.clone(), async move {
             Self::scan_directory(
                 &provider,
-                &registry,
                 &events,
                 &path,
                 session,
@@ -251,7 +249,6 @@ impl Scanner {
 
     async fn scan_directory(
         provider: &Arc<dyn FsProvider>,
-        registry: &NodeRegistry,
         events: &EventSink,
         path: &Path,
         session: SessionId,
@@ -324,7 +321,6 @@ impl Scanner {
         });
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
-            registry.clone().register(path.to_path_buf());
             if let Some(page_request) = load_options.page_request() {
                 match paging.load_cached(cached, path, session, page_request, &pipeline_config, &cx)
                 {
@@ -550,7 +546,6 @@ impl Scanner {
                 return;
             }
 
-            registry.clone().register(path.to_path_buf());
             Self::emit_page_result(
                 events,
                 latest_scans,
@@ -667,7 +662,6 @@ impl Scanner {
             ),
         )
         .await;
-        registry.clone().register(path.to_path_buf());
         let groups = Pipeline::from_config(&pipeline_config).execute_grouped(entries);
         let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
         Self::emit_scan_progress(

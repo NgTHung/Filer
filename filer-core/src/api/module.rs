@@ -155,7 +155,7 @@ pub struct ModuleContext<'a> {
     pub events: EventSink,
     /// Session manager — for session-aware modules
     pub sessions: &'a SessionManager,
-    /// Node registry — for path ↔ NodeId resolution
+    /// Location registry for descriptor and route resolution.
     pub registry: &'a NodeRegistry,
     /// Actor system — spawn your actors here
     pub actors: &'a ActorSystem,

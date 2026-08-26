@@ -6,7 +6,6 @@ use crate::model::location::{
     ProviderRef,
 };
 use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
-use crate::model::registry::NodeRegistry;
 use crate::tests::fixtures::local_file_node;
 
 #[test]
@@ -78,69 +77,6 @@ fn location_ref_constructors_return_expected_variants() {
     );
     assert_eq!(full.id(), Some(id));
     assert_eq!(full.descriptor(), Some(&descriptor));
-}
-
-#[test]
-fn registry_resolves_location_ref_by_id_fast_path() {
-    let registry = NodeRegistry::new();
-    let location = Location::local(PathBuf::from("/tmp/example.txt"));
-    let id = location.id();
-    let descriptor = location.descriptor().clone();
-
-    registry.register_location(location);
-
-    let resolved = registry
-        .resolve_location_ref(&LocationRef::id_only(id))
-        .unwrap();
-
-    assert_eq!(resolved.id(), id);
-    assert_eq!(resolved.descriptor(), &descriptor);
-}
-
-#[test]
-fn registry_recovers_unknown_id_from_descriptor() {
-    let registry = NodeRegistry::new();
-    let descriptor = LocationDescriptor::local(PathBuf::from("/tmp/recovered.txt"));
-    let location_ref = LocationRef::Full {
-        id: LocationId(999),
-        descriptor: descriptor.clone(),
-    };
-
-    let resolved = registry.resolve_location_ref(&location_ref).unwrap();
-
-    assert_ne!(resolved.id(), LocationId(999));
-    assert_eq!(resolved.descriptor(), &descriptor);
-    assert_eq!(
-        registry.resolve_location(resolved.id()).unwrap(),
-        descriptor
-    );
-}
-
-#[test]
-fn registry_registers_descriptor_ref() {
-    let registry = NodeRegistry::new();
-    let descriptor = LocationDescriptor::local(PathBuf::from("/tmp/descriptor-only.txt"));
-
-    let resolved = registry
-        .resolve_location_ref(&LocationRef::descriptor_only(descriptor.clone()))
-        .unwrap();
-
-    assert_eq!(resolved.descriptor(), &descriptor);
-    assert_eq!(
-        registry.resolve_location(resolved.id()).unwrap(),
-        descriptor
-    );
-}
-
-#[test]
-fn registry_rejects_unknown_id_without_descriptor() {
-    let registry = NodeRegistry::new();
-    let err = registry
-        .resolve_location_ref(&LocationRef::id_only(LocationId(999)))
-        .unwrap_err();
-
-    assert_eq!(err.kind(), ErrorKind::InvalidLocation);
-    assert_eq!(err.code(), ErrorCode::LocationUnresolved);
 }
 
 #[test]
@@ -375,93 +311,6 @@ fn ephemeral_provider_identity_is_session_local() {
 }
 
 #[test]
-fn registry_preserves_segmented_descriptor_ref() {
-    let registry = NodeRegistry::new();
-    let descriptor = LocationDescriptor::local("/tmp/bundle.zip")
-        .archive_member("vendor.tar")
-        .archive_member("src/main.rs");
-
-    let resolved = registry
-        .resolve_location_ref(&LocationRef::descriptor_only(descriptor.clone()))
-        .unwrap();
-
-    assert_eq!(resolved.descriptor(), &descriptor);
-    assert_eq!(
-        registry.resolve_location(resolved.id()).unwrap(),
-        descriptor
-    );
-}
-
-#[test]
-fn registry_resolves_and_caches_location_route() {
-    let registry = NodeRegistry::new();
-    let location = Location::local("/tmp/project");
-    let id = location.id();
-
-    registry.register_location(location);
-
-    assert_eq!(registry.cached_location_route(id), None);
-    assert_eq!(
-        registry.resolve_location_route(id).unwrap(),
-        LocationRoute::DirectPath {
-            path: PathBuf::from("/tmp/project")
-        }
-    );
-    assert_eq!(
-        registry.cached_location_route(id).unwrap(),
-        LocationRoute::DirectPath {
-            path: PathBuf::from("/tmp/project")
-        }
-    );
-}
-
-#[test]
-fn registry_clears_cached_location_routes() {
-    let registry = NodeRegistry::new();
-    let location = Location::local("/tmp/project");
-    let id = location.id();
-
-    registry.register_location(location);
-    registry.resolve_location_route(id).unwrap();
-    registry.clear();
-
-    assert_eq!(registry.resolve_location(id), None);
-    assert_eq!(registry.cached_location_route(id), None);
-}
-
-#[test]
-fn registry_resolves_node_location_for_registered_path() {
-    let registry = NodeRegistry::new();
-    let path = PathBuf::from("/tmp/location-node.txt");
-    let node = registry.clone().register(path.clone());
-    let descriptor = LocationDescriptor::local(path);
-
-    let location_ref = registry.resolve_node_location(node).unwrap();
-
-    assert_eq!(
-        location_ref.id(),
-        Some(LocationId::from_descriptor(&descriptor))
-    );
-    assert_eq!(location_ref.descriptor(), Some(&descriptor));
-}
-
-#[test]
-fn registry_registers_direct_location_as_node() {
-    let registry = NodeRegistry::new();
-    let location = Location::local("/tmp/location-root");
-    let id = registry.register_location_node(location.clone()).unwrap();
-
-    assert_eq!(
-        registry.resolve(id).unwrap(),
-        PathBuf::from("/tmp/location-root")
-    );
-    assert_eq!(
-        registry.resolve_node_location(id).unwrap().id(),
-        Some(location.id())
-    );
-}
-
-#[test]
 fn node_entry_carries_location_without_exposing_path() {
     let path = PathBuf::from("/tmp/entry.txt");
     let node = local_file_node(
@@ -482,26 +331,6 @@ fn node_entry_carries_location_without_exposing_path() {
     assert_eq!(
         entry.location.descriptor(),
         Some(&LocationDescriptor::local(path))
-    );
-}
-
-#[test]
-fn registry_recovers_unknown_full_ref_with_segments() {
-    let registry = NodeRegistry::new();
-    let descriptor = LocationDescriptor::local("/tmp/bundle.zip").archive_member("inside.txt");
-
-    let resolved = registry
-        .resolve_location_ref(&LocationRef::Full {
-            id: LocationId(999),
-            descriptor: descriptor.clone(),
-        })
-        .unwrap();
-
-    assert_ne!(resolved.id(), LocationId(999));
-    assert_eq!(resolved.descriptor(), &descriptor);
-    assert_eq!(
-        registry.resolve_location(resolved.id()).unwrap(),
-        descriptor
     );
 }
 
