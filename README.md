@@ -44,10 +44,12 @@ completion, and error events. App-facing errors now carry `ErrorKind`, stable
 `ErrorCode`, optional `ErrorTarget`, and a recoverability flag derived from the
 code. Core also emits structured `tracing` events when `CoreError` becomes
 `Event::Error`, leaving subscriber setup to the application. In `0.3.0`,
-Location-native result events use canonical names while legacy NodeId/FileNode
-result events are explicit `*Compat` variants. The project should next finish
-command naming consistency, then add provider context and timeout propagation
-before widening non-local provider or extension work.
+Location-native result events use canonical names. API-006 removed the legacy
+NodeId/FileNode result variants, and API-007/API-017 retired the remaining
+FileNode row and NodeId-keyed registry state. Within `filer-core`, only the
+NodeId definition and API-008 hashing pin remain. The project should next
+finish command naming consistency, then add provider context and timeout
+propagation before widening non-local provider or extension work.
 
 `0.2.3` hardened the additive `Location` contract for provider-aware addressing.
 `LocationRef` now has explicit id-only, descriptor-only, and full modes instead
@@ -69,11 +71,11 @@ Filter-only page requests for hidden-file and extension include/exclude filters
 now stay incremental instead of forcing full directory materialization. The
 default core composition now routes watcher events for watched roots into
 navigation invalidation, so current directory refreshes bypass stale scanner
-cache after external file changes. Location-native read, watch, write, preview,
-and metadata result events now occupy the canonical event names; legacy
-`PathBuf`, `NodeId`, and `FileNode` result events remain as explicit
-compatibility variants. Command names have not fully caught up yet. The intent
-is for `Location` to become the bridge across local files, archives, virtual
+cache after external file changes. At this stage, Location-native read, watch,
+write, preview, and metadata result events occupied the canonical event names;
+the legacy `PathBuf`, `NodeId`, and `FileNode` result events still remained as
+explicit compatibility variants. Command names had not fully caught up yet. The
+intent is for `Location` to become the bridge across local files, archives, virtual
 providers, and future extension-backed providers. Nested archive addresses can
 now be modeled as a provider root plus archive/member segments instead of
 forcing every layer into one path string. Concrete remote providers, mount

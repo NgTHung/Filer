@@ -63,9 +63,9 @@ the misleading generic public cancel command in favor of explicit
 `CancelOperation`. It also renames cancellation errors to `Cancelled` and adds a
 stable `TimedOut` code. API-006 removes the path- and NodeId-addressed command
 and event compatibility variants, so Location-native results are now the only
-public result surface. API-007 will retire the remaining FileNode rows and
-NodeId-keyed internals. Remaining `0.3.0` work should finish provider-context
-timeout propagation.
+public result surface. API-007 and API-017 have retired the remaining FileNode
+rows and NodeId-keyed internals. Remaining `0.3.0` work should finish
+provider-context timeout propagation.
 
 Milestone labels:
 
