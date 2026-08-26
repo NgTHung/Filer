@@ -5,7 +5,7 @@ status: In Progress
 priority: High
 type: Feature
 milestone: "0.3.1"
-depends_on: [PIPELINE-001]
+depends_on: [PIPELINE-001, PIPELINE-002, MODULES-002]
 risk: Medium
 impact: "Turns 0.3.1 first-paint and paging performance criteria into measured numbers instead of vibes."
 tags: [core, performance, benchmark]
@@ -18,8 +18,8 @@ Add a reproducible benchmark harness for large-directory listing and paging so m
 
 ## Acceptance Criteria
 
-- [ ] A benchmark harness lists a generated 10,000-entry directory through public core contracts and reports first-page and next-page latency.
-- [ ] Baseline numbers are recorded in the repository with the machine profile used to produce them.
+- [x] A benchmark harness lists a generated 10,000-entry directory through public core contracts and reports first-page and next-page latency.
+- [x] Baseline numbers are recorded in the repository with the machine profile used to produce them.
 - [ ] Provisional gate: first page of a 10,000-entry local directory is delivered without waiting for the full directory walk, and the harness proves it.
 - [ ] Provisional gate: decoration emission never delays listing delivery; the harness measures listing latency with decorations on and off.
-- [ ] The harness runs from a single cargo command documented in the crate README.
+- [x] The harness runs from a single cargo command documented in the crate README.

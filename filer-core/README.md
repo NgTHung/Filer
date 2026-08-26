@@ -109,6 +109,37 @@ Current cursors are best-effort under mutation. If files change between page
 requests, offset-backed providers may skip or duplicate rows. Explicit refresh
 and watcher-driven refresh are the current recovery paths.
 
+## Large Directory Benchmark
+
+Run the public command-path benchmark with:
+
+```bash
+cargo bench -p filer-core --bench large_directory
+```
+
+The runner generates 10,000 local entries, excludes fixture creation from the
+timed samples, and reports minimum, median, p95, maximum, and mean latency. It
+measures a fast first page, fast next page, metadata first page, sorted first
+page, and fast full snapshot. Use the same machine, filesystem, Rust toolchain,
+entry count, and page size when you compare revisions.
+
+By default, the fixture uses your temporary directory. Set
+`FILER_BENCH_FIXTURE_ROOT` to measure a specific filesystem. You can also set
+`FILER_BENCH_ENTRIES`, `FILER_BENCH_PAGE_SIZE`, `FILER_BENCH_SAMPLES`, and
+`FILER_BENCH_WARMUP` to run a different profile. Keep the defaults for the
+recorded 10,000-entry baseline.
+
+The provisional bounded-work gate is a separate structural test:
+
+```bash
+cargo test -p filer-core --test large_directory_paging_test -- --ignored
+```
+
+This test is ignored in the normal suite while the gate fails. It counts rows
+returned by a native provider through the public scan command, so a fast machine
+cannot hide a full directory walk. Recorded results and machine details live in
+[`benches/baselines/`](benches/baselines/).
+
 ## Cache And Refresh
 
 Directory cache entries are keyed by path and listing detail, so fast and
