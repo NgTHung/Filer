@@ -1,7 +1,7 @@
 ---
 id: CORE-028
 title: Add large-directory benchmark harness with performance gates
-status: To Do
+status: In Progress
 priority: High
 type: Feature
 milestone: "0.3.1"
@@ -9,7 +9,7 @@ depends_on: [PIPELINE-001]
 risk: Medium
 impact: "Turns 0.3.1 first-paint and paging performance criteria into measured numbers instead of vibes."
 tags: [core, performance, benchmark]
-last_updated: 2026-07-09
+last_updated: 2026-08-26
 ---
 
 ## Summary
