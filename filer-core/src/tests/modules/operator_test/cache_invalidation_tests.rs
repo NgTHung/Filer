@@ -7,8 +7,9 @@ mod cache_invalidation_tests {
     }
 
     fn seed_cache(cache: &SharedDirCache, path: impl Into<PathBuf>) {
+        let path = path.into();
         cache.lock().unwrap().put(
-            path.into(),
+            Location::local(path),
             ListingOptions::fast(),
             vec![MockOpsProvider::make_file("cached.txt", "/cache", 1)],
         );
@@ -20,7 +21,7 @@ mod cache_invalidation_tests {
             cache
                 .lock()
                 .unwrap()
-                .get(&path, ListingOptions::fast())
+                .get(Location::local(path.clone()).id(), ListingOptions::fast())
                 .is_some(),
             "expected {} to remain cached",
             path.display()
@@ -33,7 +34,7 @@ mod cache_invalidation_tests {
             cache
                 .lock()
                 .unwrap()
-                .get(&path, ListingOptions::fast())
+                .get(Location::local(path.clone()).id(), ListingOptions::fast())
                 .is_none(),
             "expected {} to be invalidated",
             path.display()

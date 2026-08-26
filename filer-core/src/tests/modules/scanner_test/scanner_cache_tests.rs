@@ -364,7 +364,7 @@
         );
 
         let registry = NodeRegistry::new();
-        let provider = crate::LocalFs::new(registry.clone());
+        let provider = crate::LocalFs::new();
         let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
         let (evt_tx, evt_rx) = flume::unbounded::<Event>();
 
@@ -416,7 +416,7 @@
         );
 
         let registry = NodeRegistry::new();
-        let provider = crate::LocalFs::new(registry.clone());
+        let provider = crate::LocalFs::new();
         let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
         let (evt_tx, evt_rx) = flume::unbounded::<Event>();
 
@@ -463,7 +463,7 @@
         write_zip(&archive, &[("README.md", b"readme")]);
 
         let registry = NodeRegistry::new();
-        let local = Arc::new(crate::LocalFs::new(registry.clone()));
+        let local = Arc::new(crate::LocalFs::new());
         let provider = Arc::new(crate::ArchiveFs::zip(&archive, local));
         let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
         let (evt_tx, evt_rx) = flume::unbounded::<Event>();

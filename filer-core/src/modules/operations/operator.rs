@@ -1201,18 +1201,18 @@ fn is_cross_device(err: &CoreError) -> bool {
 }
 
 fn invalidate_parent_cache(cache: &Option<SharedDirCache>, path: &Path) {
-    if let (Some(parent), Some(c)) = (path.parent(), cache) {
-        if let Ok(mut guard) = c.lock() {
-            guard.invalidate(parent);
-        }
+    if let (Some(parent), Some(c)) = (path.parent(), cache)
+        && let Ok(mut guard) = c.lock()
+    {
+        guard.invalidate(crate::Location::local(parent.to_path_buf()).id());
     }
 }
 
 fn invalidate_subtree_cache(cache: &Option<SharedDirCache>, path: &Path) {
-    if let Some(c) = cache {
-        if let Ok(mut guard) = c.lock() {
-            guard.invalidate_subtree(path);
-        }
+    if let Some(c) = cache
+        && let Ok(mut guard) = c.lock()
+    {
+        guard.invalidate_local_subtree(path);
     }
 }
 

@@ -28,7 +28,7 @@ pub use model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationRoute, LocationSegment,
     ProviderRef,
 };
-pub use model::node::{FileNode, NodeEntry, NodeEntryCapabilities, NodeMeta};
+pub use model::node::{NodeEntry, NodeEntryCapabilities, NodeMeta};
 pub use model::operation::{
     OperationConflictPolicy, OperationConflictResolution, OperationId, OperationKind,
     OperationProviderGuarantee, OperationUndoMode, OperationUndoRecord,

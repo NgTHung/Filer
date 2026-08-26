@@ -28,9 +28,7 @@ use crate::model::capability::LocationCapabilityError;
 use crate::model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationSegment, ProviderRef,
 };
-// Provider-shaped FileNode rows still require NodeId fields; operation
-// assertions use Location-native events and targets.
-use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{ProgressKind, ProgressStatus, ProgressTarget};
 use crate::model::registry::NodeRegistry;
@@ -38,22 +36,22 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::operations::operator::{OperationEventMode, Operator, OpsCommand};
 use crate::services::dir_cache::{DirCache, SharedDirCache};
-use crate::tests::fixtures::local_node_entry;
+use crate::tests::fixtures::{local_file_node, local_node_entry};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
 
 /// Mock filesystem provider for testing Operator behavior.
 /// Tracks all write-method calls and supports configurable results.
-/// FileNode values stay at the FsProvider boundary; assertions use native operation events.
+/// Operation assertions use native entries, events, and targets.
 #[derive(Clone)]
 struct MockOpsProvider {
     /// Directory listings, keyed by path (for recursive copy)
-    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<FileNode>)>>>,
+    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<NodeEntry>)>>>,
     /// Paths that exist (for collision checks)
     existing_paths: Arc<Mutex<Vec<PathBuf>>>,
     /// Metadata results, keyed by path (for is-dir checks)
-    metadata_results: Arc<Mutex<HashMap<PathBuf, FileNode>>>,
+    metadata_results: Arc<Mutex<HashMap<PathBuf, NodeEntry>>>,
     /// Paths that should fail any operation
     fail_paths: Arc<Mutex<Vec<PathBuf>>>,
     /// If true, rename returns a cross-device error
@@ -97,14 +95,14 @@ impl MockOpsProvider {
         self.existing_paths.lock().unwrap().push(path.into());
     }
 
-    fn add_metadata(&self, path: impl Into<PathBuf>, node: FileNode) {
+    fn add_metadata(&self, path: impl Into<PathBuf>, node: NodeEntry) {
         self.metadata_results
             .lock()
             .unwrap()
             .insert(path.into(), node);
     }
 
-    fn add_dir_listing(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
+    fn add_dir_listing(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
         self.files_by_path
             .lock()
             .unwrap()
@@ -155,47 +153,41 @@ impl MockOpsProvider {
         self.write_calls.lock().unwrap().clone()
     }
 
-    fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
+    fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
         let path = PathBuf::from(parent).join(name);
         let extension = path.extension().map(|e| e.to_string_lossy().to_string());
-        FileNode {
-            id: NodeId::from_path(&path),
-            name: name.to_string(),
+        local_file_node(
             path,
-            kind: NodeKind::File { extension },
+            name,
+            NodeKind::File { extension },
             size,
-            modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-            created: None,
-            accessed: None,
-            meta: NodeMeta {
+            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
+            NodeMeta {
                 hidden: false,
                 readonly: false,
                 permissions: None,
                 ..Default::default()
             },
-        }
+        )
     }
 
-    fn make_dir(name: &str, parent: &str) -> FileNode {
+    fn make_dir(name: &str, parent: &str) -> NodeEntry {
         let path = PathBuf::from(parent).join(name);
-        FileNode {
-            id: NodeId::from_path(&path),
-            name: name.to_string(),
+        local_file_node(
             path,
-            kind: NodeKind::Directory {
+            name,
+            NodeKind::Directory {
                 children_count: None,
             },
-            size: 0,
-            modified: Some(SystemTime::UNIX_EPOCH),
-            created: None,
-            accessed: None,
-            meta: NodeMeta {
+            0,
+            Some(SystemTime::UNIX_EPOCH),
+            NodeMeta {
                 hidden: false,
                 readonly: false,
                 permissions: None,
                 ..Default::default()
             },
-        }
+        )
     }
 }
 

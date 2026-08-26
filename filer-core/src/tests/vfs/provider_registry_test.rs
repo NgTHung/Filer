@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 
 use crate::{
-    ArchiveFs, Capabilities, CoreError, ErrorCode, FileNode, FsProvider, NodeEntry, ProviderCx,
+    ArchiveFs, Capabilities, CoreError, ErrorCode, FsProvider, NodeEntry, ProviderCx,
     ProviderProfile, ProviderProfileId, ProviderRef, ProviderRegistry,
 };
 
@@ -135,11 +135,7 @@ impl FsProvider for NamedProvider {
         path: &std::path::Path,
         _cx: &ProviderCx<'_>,
     ) -> Result<NodeEntry, CoreError> {
-        let node = FileNode::from_path(path.to_path_buf(), None)?;
-        Ok(NodeEntry::from_location(
-            crate::Location::local(path.to_path_buf()),
-            node,
-        ))
+        Ok(NodeEntry::from_path(path.to_path_buf())?)
     }
 }
 
@@ -218,7 +214,6 @@ fn provider_registry_reports_unknown_refs_as_unsupported_provider() {
 mod archive_provider_tests {
     use super::*;
     use crate::LocalFs;
-    use crate::model::registry::NodeRegistry;
     use crate::vfs::provider::ReadSeek;
     use crate::{LocationDescriptor, SegmentedLocationResolver};
     use std::io::Write;
@@ -237,7 +232,7 @@ mod archive_provider_tests {
 
     fn archive_fs(path: PathBuf) -> (ArchiveFs, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
-        let provider = Arc::new(LocalFs::new(NodeRegistry::new()));
+        let provider = Arc::new(LocalFs::new());
         (ArchiveFs::zip(path, provider), dir)
     }
 
@@ -249,7 +244,7 @@ mod archive_provider_tests {
             &archive,
             &[("src/main.rs", b"fn main() {}"), ("README.md", b"readme")],
         );
-        let provider = Arc::new(LocalFs::new(NodeRegistry::new()));
+        let provider = Arc::new(LocalFs::new());
         let fs = ArchiveFs::zip(archive.clone(), provider);
 
         let entries = fs
@@ -288,7 +283,7 @@ mod archive_provider_tests {
                 ("README.md", b"readme"),
             ],
         );
-        let provider = Arc::new(LocalFs::new(NodeRegistry::new()));
+        let provider = Arc::new(LocalFs::new());
         let fs = ArchiveFs::zip(archive.clone(), provider);
 
         let entries = fs
@@ -407,7 +402,7 @@ mod archive_provider_tests {
         write_zip(&archive, &[("src/main.rs", b"fn main() {}")]);
         let calls = Arc::new(AtomicUsize::new(0));
         let provider = OpenReaderCountingProvider {
-            inner: LocalFs::new(NodeRegistry::new()),
+            inner: LocalFs::new(),
             calls: calls.clone(),
         };
         let location = LocationDescriptor::local(&archive).archive_member("");

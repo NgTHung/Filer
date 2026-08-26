@@ -16,27 +16,27 @@ use tokio::time::timeout;
 mod support;
 
 use filer_core::model::location::LocationRef;
-use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
+use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::modules::navigation::NavigationModule;
 use filer_core::modules::scan::ScanModule;
 use filer_core::services::dir_cache::DirCache;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider, Location};
 
-use support::{local_location, provider_entry, provider_node_id, wait_for_directory_entries};
+use support::{local_location, make_entry, provider_entry, wait_for_directory_entries};
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
 
 /// A simple in-memory filesystem provider for integration testing.
 ///
-/// `files_by_path` maps a directory path to the `FileNode`s it contains.
+/// `files_by_path` maps a directory path to the entries it contains.
 /// By default, every path that isn't registered returns an empty listing so
 /// that navigation to an unknown path doesn't produce an error.
-/// FileNode values stay at the FsProvider boundary; navigation asserts native locations.
+/// Navigation assertions use native locations and entries.
 #[derive(Clone)]
 struct MockProvider {
     /// directory path → children
-    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<FileNode>)>>>,
+    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<NodeEntry>)>>>,
     /// Records every path that `list()` was called with
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
 }
@@ -50,14 +50,14 @@ impl MockProvider {
     }
 
     /// Register the children for a given directory path.
-    fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
+    fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
         self.files_by_path
             .lock()
             .unwrap()
             .push((dir.into(), children));
     }
 
-    fn set_dir(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
+    fn set_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
         let dir = dir.into();
         let mut files = self.files_by_path.lock().unwrap();
         if let Some((_, existing)) = files.iter_mut().find(|(path, _)| *path == dir) {
@@ -71,48 +71,42 @@ impl MockProvider {
         self.list_calls.lock().unwrap().clone()
     }
 
-    fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
-        FileNode {
-            id: provider_node_id(PathBuf::from(parent).join(name)),
-            name: name.to_string(),
-            path: PathBuf::from(parent).join(name),
-            kind: NodeKind::File {
+    fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
+        make_entry(
+            PathBuf::from(parent).join(name),
+            name,
+            NodeKind::File {
                 extension: Path::new(name)
                     .extension()
                     .map(|e| e.to_string_lossy().into_owned()),
             },
             size,
-            modified: None,
-            created: None,
-            accessed: None,
-            meta: NodeMeta {
+            None,
+            NodeMeta {
                 hidden: false,
                 readonly: false,
                 permissions: None,
                 ..Default::default()
             },
-        }
+        )
     }
 
-    fn make_dir(name: &str, parent: &str) -> FileNode {
-        FileNode {
-            id: provider_node_id(PathBuf::from(parent).join(name)),
-            name: name.to_string(),
-            path: PathBuf::from(parent).join(name),
-            kind: NodeKind::Directory {
+    fn make_dir(name: &str, parent: &str) -> NodeEntry {
+        make_entry(
+            PathBuf::from(parent).join(name),
+            name,
+            NodeKind::Directory {
                 children_count: None,
             },
-            size: 0,
-            modified: None,
-            created: None,
-            meta: NodeMeta {
+            0,
+            None,
+            NodeMeta {
                 hidden: false,
                 readonly: false,
                 permissions: None,
                 ..Default::default()
             },
-            accessed: None,
-        }
+        )
     }
 }
 

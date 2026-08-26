@@ -172,7 +172,6 @@ impl Searcher {
                 if !query.options.include_hidden && entry.meta.hidden {
                     continue;
                 }
-                let node = entry.to_file_node();
                 if entry.is_dir()
                     && query.options.max_depth.is_none_or(|v| depth < v)
                     && let Some(path) = entry.location.descriptor().and_then(|descriptor| {
@@ -181,7 +180,7 @@ impl Searcher {
                 {
                     queue.push_back((path, depth + 1));
                 }
-                if query.matches(&node) {
+                if query.matches(&entry) {
                     batch.push(entry);
                     total_found += 1;
                     if batch.len() >= query.options.batch_size.unwrap_or(DEFAULT_BATCH_SIZE) {

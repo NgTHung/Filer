@@ -533,7 +533,10 @@
         wait_for_dir_loaded(&evt_rx, s1).await;
 
         // Invalidate the cache entry
-        cache.lock().unwrap().invalidate(&path);
+        cache
+            .lock()
+            .unwrap()
+            .invalidate(crate::Location::local(path.clone()).id());
 
         let s2 = SessionId::new();
         cmd_tx

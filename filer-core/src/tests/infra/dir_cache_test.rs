@@ -1,13 +1,13 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::model::location::{Location, LocationId};
-use crate::model::node::{FileNode, NodeKind, NodeMeta};
+use crate::model::location::{Location, LocationDescriptor, LocationId};
+use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
 use crate::services::dir_cache::DirCache;
 use crate::tests::fixtures::local_file_node;
 use crate::vfs::provider::ListingOptions;
 
-fn make_node(name: &str) -> FileNode {
+fn make_node(name: &str) -> NodeEntry {
     let path = PathBuf::from(format!("/tmp/{name}"));
     local_file_node(
         path,
@@ -19,8 +19,16 @@ fn make_node(name: &str) -> FileNode {
     )
 }
 
-fn one_node() -> Vec<FileNode> {
+fn one_node() -> Vec<NodeEntry> {
     vec![make_node("a.txt")]
+}
+
+fn location(path: &Path) -> Location {
+    Location::local(path.to_path_buf())
+}
+
+fn location_id(path: &Path) -> LocationId {
+    location(path).id()
 }
 
 #[cfg(test)]
@@ -35,37 +43,40 @@ mod dir_cache_tests {
         ListingOptions::metadata()
     }
 
-    fn location_id(path: &str) -> LocationId {
-        Location::local(path).id()
+    fn entry_size(path: &Path) -> usize {
+        let mut probe = DirCache::new(usize::MAX);
+        probe.put(location(path), fast(), one_node());
+        probe.current_size_bytes()
     }
 
     #[test]
     fn test_get_returns_none_on_first_access() {
         let mut cache = DirCache::new(1024 * 1024);
-        assert!(cache.get(&PathBuf::from("/some/dir"), fast()).is_none());
+        let path = PathBuf::from("/some/dir");
+        assert!(cache.get(location_id(&path), fast()).is_none());
     }
 
     #[test]
     fn test_get_returns_cached_on_second_access() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), fast(), one_node());
-        let result = cache.get(&path, fast());
+        cache.put(location(&path), fast(), one_node());
+        let result = cache.get(location_id(&path), fast());
         assert!(result.is_some());
-        assert_eq!(result.unwrap().len(), 1);
+        assert_eq!(result.map(|entries| entries.len()), Some(1));
     }
 
     #[test]
     fn test_put_overwrites_existing_entry() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), fast(), vec![make_node("old.txt")]);
+        cache.put(location(&path), fast(), vec![make_node("old.txt")]);
         cache.put(
-            path.clone(),
+            location(&path),
             fast(),
             vec![make_node("new1.txt"), make_node("new2.txt")],
         );
-        let result = cache.get(&path, fast()).unwrap();
+        let result = cache.get(location_id(&path), fast()).expect("cache hit");
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].name, "new1.txt");
     }
@@ -74,15 +85,15 @@ mod dir_cache_tests {
     fn test_invalidate_removes_entry() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), fast(), one_node());
-        cache.invalidate(&path);
-        assert!(cache.get(&path, fast()).is_none());
+        cache.put(location(&path), fast(), one_node());
+        cache.invalidate(location_id(&path));
+        assert!(cache.get(location_id(&path), fast()).is_none());
     }
 
     #[test]
     fn test_invalidate_nonexistent_does_not_panic() {
         let mut cache = DirCache::new(1024 * 1024);
-        cache.invalidate(&PathBuf::from("/nonexistent/dir"));
+        cache.invalidate(location_id(Path::new("/nonexistent/dir")));
         assert_eq!(cache.len(), 0);
     }
 
@@ -91,85 +102,68 @@ mod dir_cache_tests {
         let mut cache = DirCache::new(1024 * 1024);
         let p1 = PathBuf::from("/tmp/a");
         let p2 = PathBuf::from("/tmp/b");
-        cache.put(p1.clone(), fast(), one_node());
-        cache.put(p2.clone(), fast(), one_node());
+        cache.put(location(&p1), fast(), one_node());
+        cache.put(location(&p2), fast(), one_node());
         cache.clear();
         assert_eq!(cache.len(), 0);
-        assert!(cache.get(&p1, fast()).is_none());
-        assert!(cache.get(&p2, fast()).is_none());
+        assert!(cache.get(location_id(&p1), fast()).is_none());
+        assert!(cache.get(location_id(&p2), fast()).is_none());
     }
 
     #[test]
     fn test_lru_evicts_oldest_entry() {
-        // Each node is ~sizeof(FileNode) + name.capacity() + path bytes ≈ 128+ bytes
-        // We use very small capacity to force eviction.
-        // Put A first (oldest), then B, then put C which should evict A.
-        let node_size = std::mem::size_of::<FileNode>() + "a.txt".len() + "/tmp/a.txt".len();
-        // capacity for exactly 2 entries, so 3rd evicts the first
-        let capacity = node_size * 2 + 64 * 2; // two entries fit
-
+        let sample_size = entry_size(Path::new("/tmp/a"));
+        let capacity = sample_size * 2 + sample_size / 2;
         let mut cache = DirCache::new(capacity);
         let pa = PathBuf::from("/tmp/a");
         let pb = PathBuf::from("/tmp/b");
         let pc = PathBuf::from("/tmp/c");
 
-        cache.put(pa.clone(), fast(), one_node()); // oldest
-        // Small sleep to ensure distinct Instant values
+        cache.put(location(&pa), fast(), one_node());
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pb.clone(), fast(), one_node());
+        cache.put(location(&pb), fast(), one_node());
+        assert!(cache.get(location_id(&pa), fast()).is_some());
+        assert!(cache.get(location_id(&pb), fast()).is_some());
 
-        // Verify both present
-        assert!(cache.get(&pa, fast()).is_some());
-        assert!(cache.get(&pb, fast()).is_some());
-
-        // Force capacity overflow — evicts LRU (pa, since we called get on pb after pa)
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pc.clone(), fast(), one_node());
+        cache.put(location(&pc), fast(), one_node());
 
-        // pa should have been evicted (it's the oldest accessed), pc should be present
-        assert!(cache.get(&pc, fast()).is_some());
-        // The cache size is bounded
-        assert!(
-            cache.current_size_bytes()
-                <= capacity + cache.current_size_bytes().saturating_sub(capacity)
-        );
+        assert!(cache.get(location_id(&pa), fast()).is_none());
+        assert!(cache.get(location_id(&pc), fast()).is_some());
+        assert!(cache.current_size_bytes() <= capacity + sample_size);
     }
 
     #[test]
     fn test_lru_respects_access_order() {
-        // Put A then B with capacity for only one entry.
-        // Access A (making B the LRU), then put C → B is evicted, A survives.
-        let node_size = std::mem::size_of::<FileNode>() + "a.txt".len() + "/tmp/a.txt".len() + 64;
-        let capacity = node_size; // only one entry fits
-
+        let sample_size = entry_size(Path::new("/tmp/a"));
+        let capacity = sample_size * 2 + sample_size / 2;
         let mut cache = DirCache::new(capacity);
         let pa = PathBuf::from("/tmp/a");
         let pb = PathBuf::from("/tmp/b");
         let pc = PathBuf::from("/tmp/c");
 
-        cache.put(pa.clone(), fast(), one_node());
+        cache.put(location(&pa), fast(), one_node());
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pb.clone(), fast(), one_node()); // may evict pa immediately
-
-        // After inserting pc, whatever was LRU should go
+        cache.put(location(&pb), fast(), one_node());
+        assert!(cache.get(location_id(&pa), fast()).is_some());
         std::thread::sleep(Duration::from_millis(2));
-        cache.put(pc.clone(), fast(), one_node());
+        cache.put(location(&pc), fast(), one_node());
 
-        // Cache has room for exactly 1 entry, so only the newest survives
-        assert!(cache.get(&pc, fast()).is_some());
-        assert_eq!(cache.len(), 1);
+        assert!(cache.get(location_id(&pa), fast()).is_some());
+        assert!(cache.get(location_id(&pb), fast()).is_none());
+        assert!(cache.get(location_id(&pc), fast()).is_some());
     }
 
     #[test]
     fn test_size_ceiling_respected() {
-        let max = 500;
+        let sample_size = entry_size(Path::new("/tmp/dir0"));
+        let max = sample_size * 2;
         let mut cache = DirCache::new(max);
         for i in 0..20u32 {
             let path = PathBuf::from(format!("/tmp/dir{i}"));
-            cache.put(path, fast(), one_node());
-            // After every put the invariant must hold
+            cache.put(location(&path), fast(), one_node());
             assert!(
-                cache.current_size_bytes() <= max + 512,
+                cache.current_size_bytes() <= max + sample_size,
                 "size {} exceeded ceiling {}",
                 cache.current_size_bytes(),
                 max
@@ -182,166 +176,116 @@ mod dir_cache_tests {
         let mut cache = DirCache::new(1024 * 1024);
         let pa = PathBuf::from("/home/user");
         let pb = PathBuf::from("/home/other");
-        cache.put(pa.clone(), fast(), one_node());
-        cache.put(pb.clone(), fast(), one_node());
-        cache.invalidate(&pa);
-        assert!(cache.get(&pa, fast()).is_none());
-        assert!(cache.get(&pb, fast()).is_some());
+        cache.put(location(&pa), fast(), one_node());
+        cache.put(location(&pb), fast(), one_node());
+        cache.invalidate(location_id(&pa));
+        assert!(cache.get(location_id(&pa), fast()).is_none());
+        assert!(cache.get(location_id(&pb), fast()).is_some());
     }
 
     #[test]
     fn test_write_operation_invalidates_parent() {
         let mut cache = DirCache::new(1024 * 1024);
         let parent = PathBuf::from("/home/user");
-        cache.put(parent.clone(), fast(), one_node());
-        cache.invalidate(&parent);
-        assert!(cache.get(&parent, fast()).is_none());
+        cache.put(location(&parent), fast(), one_node());
+        cache.invalidate(location_id(&parent));
+        assert!(cache.get(location_id(&parent), fast()).is_none());
     }
 
     #[test]
     fn test_listing_detail_has_separate_cache_entries() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), fast(), vec![make_node("fast.txt")]);
-        cache.put(path.clone(), metadata(), vec![make_node("metadata.txt")]);
+        cache.put(location(&path), fast(), vec![make_node("fast.txt")]);
+        cache.put(location(&path), metadata(), vec![make_node("metadata.txt")]);
 
-        assert_eq!(cache.get(&path, fast()).unwrap()[0].name, "fast.txt");
         assert_eq!(
-            cache.get(&path, metadata()).unwrap()[0].name,
+            cache.get(location_id(&path), fast()).expect("fast hit")[0].name,
+            "fast.txt"
+        );
+        assert_eq!(
+            cache
+                .get(location_id(&path), metadata())
+                .expect("metadata hit")[0]
+                .name,
             "metadata.txt"
         );
     }
 
     #[test]
-    fn test_invalidate_removes_all_listing_detail_entries_for_path() {
+    fn test_invalidate_removes_all_listing_detail_entries_for_location() {
         let mut cache = DirCache::new(1024 * 1024);
         let path = PathBuf::from("/tmp/dir");
-        cache.put(path.clone(), fast(), one_node());
-        cache.put(path.clone(), metadata(), one_node());
+        cache.put(location(&path), fast(), one_node());
+        cache.put(location(&path), metadata(), one_node());
 
-        cache.invalidate(&path);
+        cache.invalidate(location_id(&path));
 
-        assert!(cache.get(&path, fast()).is_none());
-        assert!(cache.get(&path, metadata()).is_none());
+        assert!(cache.get(location_id(&path), fast()).is_none());
+        assert!(cache.get(location_id(&path), metadata()).is_none());
     }
 
     #[test]
-    fn test_invalidate_subtree_removes_exact_path_and_descendants() {
+    fn test_invalidate_local_subtree_removes_exact_path_and_descendants() {
         let mut cache = DirCache::new(1024 * 1024);
         let root = PathBuf::from("/tmp/project");
         let child = PathBuf::from("/tmp/project/src");
         let grandchild = PathBuf::from("/tmp/project/src/bin");
         let sibling = PathBuf::from("/tmp/project-other");
 
-        cache.put(root.clone(), fast(), one_node());
-        cache.put(child.clone(), fast(), one_node());
-        cache.put(grandchild.clone(), fast(), one_node());
-        cache.put(sibling.clone(), fast(), one_node());
+        cache.put(location(&root), fast(), one_node());
+        cache.put(location(&child), fast(), one_node());
+        cache.put(location(&grandchild), fast(), one_node());
+        cache.put(location(&sibling), fast(), one_node());
 
-        cache.invalidate_subtree(&root);
+        cache.invalidate_local_subtree(&root);
 
-        assert!(cache.get(&root, fast()).is_none());
-        assert!(cache.get(&child, fast()).is_none());
-        assert!(cache.get(&grandchild, fast()).is_none());
-        assert!(cache.get(&sibling, fast()).is_some());
+        assert!(cache.get(location_id(&root), fast()).is_none());
+        assert!(cache.get(location_id(&child), fast()).is_none());
+        assert!(cache.get(location_id(&grandchild), fast()).is_none());
+        assert!(cache.get(location_id(&sibling), fast()).is_some());
     }
 
     #[test]
-    fn test_invalidate_subtree_removes_listing_details_and_location_aliases() {
+    fn test_provider_locations_with_same_path_remain_distinct() {
         let mut cache = DirCache::new(1024 * 1024);
-        let root = PathBuf::from("/tmp/project");
-        let child = PathBuf::from("/tmp/project/src");
-        let root_id = location_id("/tmp/project");
-        let child_id = location_id("/tmp/project/src");
+        let local = Location::local("/tmp/shared");
+        let remote = Location::new(LocationDescriptor::provider_profile(
+            "s3",
+            "default",
+            "/tmp/shared",
+        ));
 
-        cache.put_location(root_id, root.clone(), fast(), one_node());
-        cache.put_location(root_id, root.clone(), metadata(), one_node());
-        cache.put_location(child_id, child.clone(), fast(), one_node());
+        cache.put(local.clone(), fast(), vec![make_node("local.txt")]);
+        cache.put(remote.clone(), fast(), vec![make_node("remote.txt")]);
 
-        cache.invalidate_subtree(&root);
-
-        assert!(cache.get(&root, fast()).is_none());
-        assert!(cache.get(&root, metadata()).is_none());
-        assert!(cache.get(&child, fast()).is_none());
-        assert!(cache.get_location(root_id, fast()).is_none());
-        assert!(cache.get_location(root_id, metadata()).is_none());
-        assert!(cache.get_location(child_id, fast()).is_none());
-        assert_eq!(cache.len(), 0);
-        assert_eq!(cache.alias_len(), 0);
-    }
-
-    #[test]
-    fn test_location_alias_lookup_returns_cached_listing() {
-        let mut cache = DirCache::new(1024 * 1024);
-        let path = PathBuf::from("/tmp/location-dir");
-        let id = location_id("/tmp/location-dir");
-
-        cache.put_location(id, path.clone(), fast(), one_node());
-
-        assert!(cache.get(&path, fast()).is_some());
-        assert!(cache.get_location(id, fast()).is_some());
-        assert_eq!(cache.len(), 1);
-        assert_eq!(cache.alias_len(), 1);
-    }
-
-    #[test]
-    fn test_invalidate_path_removes_location_alias() {
-        let mut cache = DirCache::new(1024 * 1024);
-        let path = PathBuf::from("/tmp/location-dir");
-        let id = location_id("/tmp/location-dir");
-
-        cache.put_location(id, path.clone(), fast(), one_node());
-        cache.invalidate(&path);
-
-        assert!(cache.get(&path, fast()).is_none());
-        assert!(cache.get_location(id, fast()).is_none());
-        assert_eq!(cache.alias_len(), 0);
-    }
-
-    #[test]
-    fn test_invalidate_location_removes_backing_entry() {
-        let mut cache = DirCache::new(1024 * 1024);
-        let path = PathBuf::from("/tmp/location-dir");
-        let id = location_id("/tmp/location-dir");
-
-        cache.put_location(id, path.clone(), fast(), one_node());
-        cache.invalidate_location(id);
-
-        assert!(cache.get(&path, fast()).is_none());
-        assert!(cache.get_location(id, fast()).is_none());
-        assert_eq!(cache.len(), 0);
-    }
-
-    #[test]
-    fn test_location_aliases_keep_listing_detail_separate() {
-        let mut cache = DirCache::new(1024 * 1024);
-        let path = PathBuf::from("/tmp/location-dir");
-        let id = location_id("/tmp/location-dir");
-
-        cache.put_location(id, path.clone(), fast(), vec![make_node("fast.txt")]);
-        cache.put_location(id, path, metadata(), vec![make_node("metadata.txt")]);
-
-        assert_eq!(cache.get_location(id, fast()).unwrap()[0].name, "fast.txt");
-        assert_eq!(
-            cache.get_location(id, metadata()).unwrap()[0].name,
-            "metadata.txt"
-        );
         assert_eq!(cache.len(), 2);
-        assert_eq!(cache.alias_len(), 2);
+        assert_eq!(
+            cache.get(local.id(), fast()).expect("local hit")[0].name,
+            "local.txt"
+        );
+        assert_eq!(
+            cache.get(remote.id(), fast()).expect("remote hit")[0].name,
+            "remote.txt"
+        );
+
+        cache.invalidate(local.id());
+        assert!(cache.get(local.id(), fast()).is_none());
+        assert!(cache.get(remote.id(), fast()).is_some());
     }
 
     #[test]
-    fn test_location_alias_does_not_double_count_cache_size() {
+    fn test_local_subtree_invalidation_does_not_remove_nonlocal_locations() {
         let mut cache = DirCache::new(1024 * 1024);
-        let path = PathBuf::from("/tmp/location-dir");
-        let id = location_id("/tmp/location-dir");
+        let remote = Location::new(LocationDescriptor::provider_profile(
+            "s3",
+            "default",
+            "/tmp/project/src",
+        ));
+        cache.put(remote.clone(), fast(), one_node());
 
-        cache.put(path.clone(), fast(), one_node());
-        let size_after_path_put = cache.current_size_bytes();
-        cache.put_location(id, path, fast(), one_node());
+        cache.invalidate_local_subtree(Path::new("/tmp/project"));
 
-        assert_eq!(cache.len(), 1);
-        assert_eq!(cache.alias_len(), 1);
-        assert_eq!(cache.current_size_bytes(), size_after_path_put);
+        assert!(cache.get(remote.id(), fast()).is_some());
     }
 }

@@ -1,13 +1,11 @@
 pub mod config;
-pub(crate) mod entry_bridge;
 pub mod filter;
 pub mod group;
 mod order;
 pub mod sort;
 
 use crate::model::directory::DirectoryLoadState;
-use crate::model::node::{FileNode, NodeEntry};
-use crate::model::registry::NodeRegistry;
+use crate::model::node::NodeEntry;
 
 #[allow(unused_imports)]
 pub use config::{
@@ -16,29 +14,13 @@ pub use config::{
 pub use order::compare_nodes;
 pub(crate) use order::effective_listing;
 
-/// Grouped file nodes with metadata
-#[derive(Debug, Clone)]
-pub struct GroupedNodes {
-    /// Groups in display order
-    pub groups: Vec<FileGroup>,
-    /// Total count across all groups
-    pub total_count: usize,
-}
-
+/// Grouped node entries with metadata.
 #[derive(Debug, Clone)]
 pub struct GroupedEntries {
+    /// Groups in display order
     pub groups: Vec<EntryGroup>,
+    /// Total count across all groups
     pub total_count: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct FileGroup {
-    /// Group label (e.g., "rs", "Today", "1-10 MB")
-    pub label: String,
-    /// Files in this group
-    pub nodes: Vec<FileNode>,
-    /// Sort order for display
-    pub order: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -49,29 +31,6 @@ pub struct EntryGroup {
 }
 
 impl GroupedEntries {
-    pub fn from_grouped_nodes(grouped: GroupedNodes, registry: &NodeRegistry) -> Self {
-        let total_count = grouped.total_count;
-        let groups = grouped
-            .groups
-            .into_iter()
-            .map(|group| EntryGroup {
-                label: group.label,
-                nodes: group
-                    .nodes
-                    .into_iter()
-                    .map(|node| NodeEntry::from_file_node(node, registry))
-                    .collect(),
-                order: group.order,
-            })
-            .collect();
-        Self {
-            groups,
-            total_count,
-        }
-    }
-}
-
-impl GroupedNodes {
     pub fn limited(self, limit: Option<usize>) -> (Self, DirectoryLoadState) {
         let total_count = self.total_count;
         let Some(limit) = limit else {
@@ -112,8 +71,8 @@ impl GroupedNodes {
 /// Pipeline data can be either flat or grouped
 #[derive(Debug, Clone)]
 pub enum PipelineData {
-    Flat(Vec<FileNode>),
-    Grouped(GroupedNodes),
+    Flat(Vec<NodeEntry>),
+    Grouped(GroupedEntries),
 }
 
 /// A stage in the processing pipeline
@@ -198,7 +157,7 @@ impl Pipeline {
         self
     }
 
-    pub fn execute(&self, data: Vec<FileNode>) -> PipelineData {
+    pub fn execute(&self, data: Vec<NodeEntry>) -> PipelineData {
         let mut pipeline_data = PipelineData::Flat(data);
 
         for stage in &self.stages {
@@ -208,18 +167,18 @@ impl Pipeline {
         pipeline_data
     }
 
-    /// Execute the pipeline and always return `GroupedNodes`.
+    /// Execute the pipeline and always return `GroupedEntries`.
     ///
     /// When no grouping stage is configured the result is a single
-    /// `FileGroup` with an empty label — a degenerate flat list that
+    /// `EntryGroup` with an empty label, a degenerate flat list that
     /// the UI can render without section headers.
-    pub fn execute_grouped(&self, data: Vec<FileNode>) -> GroupedNodes {
+    pub fn execute_grouped(&self, data: Vec<NodeEntry>) -> GroupedEntries {
         match self.execute(data) {
             PipelineData::Grouped(grouped) => grouped,
             PipelineData::Flat(nodes) => {
                 let total_count = nodes.len();
-                GroupedNodes {
-                    groups: vec![FileGroup {
+                GroupedEntries {
+                    groups: vec![EntryGroup {
                         label: String::new(),
                         nodes,
                         order: 0,
@@ -231,7 +190,7 @@ impl Pipeline {
     }
 
     /// Convenience method for flat output
-    pub fn execute_flat(&self, data: Vec<FileNode>) -> Vec<FileNode> {
+    pub fn execute_flat(&self, data: Vec<NodeEntry>) -> Vec<NodeEntry> {
         match self.execute(data) {
             PipelineData::Flat(nodes) => nodes,
             PipelineData::Grouped(grouped) => {

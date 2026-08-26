@@ -15,22 +15,22 @@ use tokio::time::timeout;
 
 mod support;
 
-use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
+use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::modules::scan::ScanModule;
 use filer_core::modules::search::SearchModule;
 use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider};
 
-use support::{local_location, provider_entry, provider_node_id, wait_for_search_entries};
+use support::{local_location, make_entry, provider_entry, wait_for_search_entries};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
 
 /// Hierarchical in-memory filesystem for integration testing.
 /// Maps directory paths to their children, supporting recursive traversal.
-/// FileNode values stay at the FsProvider boundary; search asserts native entries.
+/// Search assertions use native entries throughout the provider boundary.
 #[derive(Clone)]
 struct MockProvider {
-    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<FileNode>)>>>,
+    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<NodeEntry>)>>>,
 }
 
 impl MockProvider {
@@ -40,7 +40,7 @@ impl MockProvider {
         }
     }
 
-    fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
+    fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
         self.files_by_path
             .lock()
             .unwrap()
@@ -48,48 +48,42 @@ impl MockProvider {
     }
 }
 
-fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
+fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
     let extension = Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
         .map(|s| s.to_string());
-    FileNode {
-        id: provider_node_id(PathBuf::from(parent).join(name)),
-        name: name.to_string(),
-        path: PathBuf::from(parent).join(name),
-        kind: NodeKind::File { extension },
+    make_entry(
+        PathBuf::from(parent).join(name),
+        name,
+        NodeKind::File { extension },
         size,
-        modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        created: None,
-        meta: NodeMeta {
+        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
+        NodeMeta {
             hidden: false,
             readonly: false,
             permissions: None,
             ..Default::default()
         },
-        accessed: None,
-    }
+    )
 }
 
-fn make_dir(name: &str, parent: &str) -> FileNode {
-    FileNode {
-        id: provider_node_id(PathBuf::from(parent).join(name)),
-        name: name.to_string(),
-        path: PathBuf::from(parent).join(name),
-        kind: NodeKind::Directory {
+fn make_dir(name: &str, parent: &str) -> NodeEntry {
+    make_entry(
+        PathBuf::from(parent).join(name),
+        name,
+        NodeKind::Directory {
             children_count: None,
         },
-        size: 0,
-        modified: Some(SystemTime::UNIX_EPOCH),
-        created: None,
-        meta: NodeMeta {
+        0,
+        Some(SystemTime::UNIX_EPOCH),
+        NodeMeta {
             hidden: false,
             readonly: false,
             permissions: None,
             ..Default::default()
         },
-        accessed: None,
-    }
+    )
 }
 
 #[async_trait]

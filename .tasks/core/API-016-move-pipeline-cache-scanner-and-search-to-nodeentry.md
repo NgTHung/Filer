@@ -1,7 +1,7 @@
 ---
 id: "API-016"
 title: "Move pipeline cache scanner and search to NodeEntry"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Refactor"
 parent: "API-007"
@@ -11,7 +11,7 @@ rules: ["CORE-LIBRARY", "PROVIDER-ACCESS"]
 risk: "High"
 impact: "Removes the duplicate row and conversion hot path across directory transformation, caching, scanning, and search."
 tags: ["api", "nodeid", "location"]
-last_updated: "2026-08-14"
+last_updated: 2026-08-26
 ---
 
 ## Summary

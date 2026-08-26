@@ -8,8 +8,7 @@
 //! ```
 //! # use std::sync::Arc;
 //! # use filer_core::{ArchiveFs, FsProvider, LocalFs};
-//! # use filer_core::model::registry::NodeRegistry;
-//! let local = Arc::new(LocalFs::new(NodeRegistry::new()));
+//! let local = Arc::new(LocalFs::new());
 //! let archive = ArchiveFs::zip("bundle.zip", local);
 //! assert_eq!(archive.scheme(), "archive");
 //! ```
@@ -23,8 +22,8 @@ use std::sync::Arc;
 use zip::ZipArchive;
 
 use crate::errors::{CoreError, ErrorCode};
-use crate::model::location::{Location, LocationDescriptor};
-use crate::model::node::{FileNode, NodeEntry, NodeId, NodeKind, NodeMeta};
+use crate::model::location::{Location, LocationDescriptor, LocationRef};
+use crate::model::node::{NodeEntry, NodeKind};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
@@ -225,39 +224,36 @@ fn list_zip_directory<R: Read + Seek>(
     Ok(children.into_values().collect())
 }
 
-fn file_node_for_child(child: &ArchiveChild) -> FileNode {
+fn kind_for_child(child: &ArchiveChild) -> NodeKind {
     let extension = child
         .path
         .extension()
         .and_then(|extension| extension.to_str())
         .map(str::to_string);
-    let kind = if child.is_dir {
+    if child.is_dir {
         NodeKind::Directory {
             children_count: None,
         }
     } else {
         NodeKind::File { extension }
-    };
-    FileNode {
-        id: NodeId::from_path(&child.path),
-        name: child.name.clone(),
-        path: child.path.clone(),
-        kind,
-        size: child.size,
-        modified: None,
-        created: None,
-        accessed: None,
-        meta: NodeMeta::default(),
     }
 }
 
 pub(crate) fn entry_for_child(archive_path: &Path, child: ArchiveChild) -> NodeEntry {
     let member = child.path.clone();
     let descriptor = LocationDescriptor::local(archive_path.to_path_buf()).archive_member(member);
-    let display_path = descriptor.display_path();
-    let node = file_node_for_child(&child);
+    entry_for_location(Location::new(descriptor), child)
+}
+
+pub(crate) fn entry_for_location(location: Location, child: ArchiveChild) -> NodeEntry {
+    let display_path = location.descriptor().display_path();
+    let kind = kind_for_child(&child);
+    let size = child.size;
+    let entry =
+        NodeEntry::from_location_ref(LocationRef::from_location(&location), child.name, kind)
+            .with_size(size);
     let navigable = child.is_dir || is_zip_path(&child.path);
-    NodeEntry::from_location(Location::new(descriptor), node)
+    entry
         .with_display_path(display_path)
         .with_readable(true)
         .with_navigable(navigable)

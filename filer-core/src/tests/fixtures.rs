@@ -1,23 +1,14 @@
 //! # Test Fixtures
 //!
 //! Shared builders keep location registration details in one place. Use these
-//! when a test needs a `FileNode` row but the assertion is about location or
-//! query behavior. The `NodeId` field is provider-boundary plumbing only; tests
-//! must assert on the resulting `LocationRef` or `NodeEntry`.
+//! when a test needs a location-native row. Assertions should use the resulting
+//! `LocationRef` or `NodeEntry` identity.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 use crate::model::location::Location;
-use crate::model::node::{FileNode, NodeEntry, NodeId, NodeKind, NodeMeta};
-use crate::model::registry::NodeRegistry;
-
-pub(crate) fn registered_local_node_id(path: impl AsRef<Path>) -> NodeId {
-    let registry = NodeRegistry::new();
-    registry
-        .register_location_node(Location::local(path.as_ref().to_path_buf()))
-        .unwrap()
-}
+use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
 
 pub(crate) fn local_file_node(
     path: impl Into<PathBuf>,
@@ -26,12 +17,17 @@ pub(crate) fn local_file_node(
     size: u64,
     modified: Option<SystemTime>,
     meta: NodeMeta,
-) -> FileNode {
+) -> NodeEntry {
     let path = path.into();
-    FileNode {
-        id: registered_local_node_id(&path),
+    let location = Location::local(path);
+    NodeEntry {
+        location: crate::model::location::LocationRef::from_location(&location),
+        display_path: None,
+        capabilities: crate::model::node::NodeEntryCapabilities {
+            read: true,
+            navigate: matches!(kind, NodeKind::Directory { .. }),
+        },
         name: name.into(),
-        path,
         kind,
         size,
         modified,
@@ -41,7 +37,6 @@ pub(crate) fn local_file_node(
     }
 }
 
-pub(crate) fn local_node_entry(node: FileNode) -> NodeEntry {
-    let path = node.path.clone();
-    NodeEntry::from_location(Location::local(path), node)
+pub(crate) fn local_node_entry(node: NodeEntry) -> NodeEntry {
+    node
 }

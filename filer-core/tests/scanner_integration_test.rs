@@ -12,40 +12,37 @@ use tokio::time::timeout;
 
 mod support;
 
-use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
+use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
 use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
 
-use support::{local_location, provider_entry, provider_node_id, wait_for_directory_entries};
+use support::{local_location, make_entry, provider_entry, wait_for_directory_entries};
 
-fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
+fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> NodeEntry {
     let extension = PathBuf::from(name)
         .extension()
         .map(|e| e.to_string_lossy().into_owned());
-    FileNode {
-        id: provider_node_id(PathBuf::from(path).join(name)),
-        name: name.to_string(),
-        path: PathBuf::from(format!("{path}/{name}")),
-        kind: NodeKind::File { extension },
+    make_entry(
+        PathBuf::from(format!("{path}/{name}")),
+        name,
+        NodeKind::File { extension },
         size,
-        modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        created: None,
-        meta: NodeMeta {
+        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
+        NodeMeta {
             hidden,
             readonly: false,
             permissions: None,
             ..Default::default()
         },
-        accessed: None,
-    }
+    )
 }
 
-/// FileNode values stay at the FsProvider boundary; scanner asserts native entries.
+/// Scanner assertions use native entries throughout the provider boundary.
 #[derive(Clone)]
 struct MockProvider {
-    files: Arc<Mutex<Vec<FileNode>>>,
+    files: Arc<Mutex<Vec<NodeEntry>>>,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
     should_fail: Arc<Mutex<bool>>,
 }
@@ -59,7 +56,7 @@ impl MockProvider {
         }
     }
 
-    fn add_file(&self, node: FileNode) {
+    fn add_file(&self, node: NodeEntry) {
         self.files.lock().unwrap().push(node);
     }
 

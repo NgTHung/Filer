@@ -1,7 +1,7 @@
 //! Tests for model layer
 
 use crate::model::location::{Location, LocationDescriptor};
-use crate::model::node::{FileNode, NodeEntry};
+use crate::model::node::NodeEntry;
 use crate::model::registry::NodeRegistry;
 use std::path::PathBuf;
 
@@ -49,9 +49,7 @@ fn test_file_node_from_metadata_accepts_non_utf8_path() {
     let metadata = std::fs::metadata(source).unwrap();
     let path = non_utf8_path();
 
-    let node = FileNode::from_metadata(metadata, path.clone(), None).unwrap();
-    let registry = NodeRegistry::new();
-    let entry = NodeEntry::from_file_node(node, &registry);
+    let entry = NodeEntry::from_metadata(metadata, path.clone()).unwrap();
 
     assert_eq!(
         entry.location.descriptor(),
@@ -65,9 +63,7 @@ fn test_file_node_from_dir_entry_accepts_non_utf8_path() {
     let file_type = std::fs::metadata(source).unwrap().file_type();
     let path = non_utf8_path();
 
-    let node = FileNode::from_dir_entry(path.clone(), file_type, None);
-    let registry = NodeRegistry::new();
-    let entry = NodeEntry::from_file_node(node, &registry);
+    let entry = NodeEntry::from_dir_entry(path.clone(), file_type);
 
     assert_eq!(
         entry.location.descriptor(),
@@ -87,13 +83,13 @@ fn test_location_id_different_paths() {
 }
 
 #[test]
-fn test_file_node_is_dir() {
+fn test_node_entry_is_dir() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     let nonexistent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("no.md");
-    let f1 = FileNode::from_path(dir, None);
-    let f2 = FileNode::from_path(file, None);
-    let f3 = FileNode::from_path(nonexistent, None);
+    let f1 = NodeEntry::from_path(dir);
+    let f2 = NodeEntry::from_path(file);
+    let f3 = NodeEntry::from_path(nonexistent);
     assert_eq!(f1.is_ok(), true);
     assert_eq!(f2.is_ok(), true);
     assert_eq!(f3.is_ok(), false);
@@ -104,11 +100,11 @@ fn test_file_node_is_dir() {
 }
 
 #[test]
-fn test_file_node_extension() {
+fn test_node_entry_extension() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
-    let f1 = FileNode::from_path(dir, None).unwrap();
-    let f2 = FileNode::from_path(file, None).unwrap();
+    let f1 = NodeEntry::from_path(dir).unwrap();
+    let f2 = NodeEntry::from_path(file).unwrap();
     assert_eq!(f1.extension(), None);
     assert_eq!(f2.extension(), Some("toml"));
 }

@@ -1,6 +1,5 @@
 use crate::modules::scan::PageSelection;
 use crate::pipeline::PipelineConfig;
-use crate::tests::fixtures::local_file_node;
 use crate::ProviderCx;
 
 #[test]

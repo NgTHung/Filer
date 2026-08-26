@@ -23,7 +23,7 @@ mod mock_provider_tests {
     async fn test_mock_provider_list_success() {
         let provider = MockProvider::new();
 
-        // provider.add_file(FileNode {
+        // Provider rows retain their location identity across listing calls.
         //     id: 1.into(),
         //     name: "test.txt".to_string(),
         //     path: PathBuf::from("/test.txt"),

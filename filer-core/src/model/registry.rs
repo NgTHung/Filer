@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use rapidhash::fast::RandomState;
 
-use crate::FileNode;
 use crate::errors::CoreError;
 
 use super::location::{Location, LocationDescriptor, LocationId, LocationRef, LocationRoute};
@@ -53,22 +52,6 @@ impl NodeRegistry {
                 let hash = NodeId::from_path(v);
                 let location = Location::local(v.clone());
                 let _ = self.id_to_path.insert_sync(hash, v.clone());
-                self.register_location(location.clone());
-                let _ = self
-                    .id_to_node_location
-                    .insert_sync(hash, location.into_descriptor());
-                hash
-            })
-            .collect()
-    }
-
-    pub fn register_batch_file_node(self, paths: &[FileNode]) -> Vec<NodeId> {
-        paths
-            .iter()
-            .map(|v| {
-                let hash = NodeId::from_path(&v.path);
-                let location = Location::local(v.path.clone());
-                let _ = self.id_to_path.insert_sync(hash, v.path.clone());
                 self.register_location(location.clone());
                 let _ = self
                     .id_to_node_location

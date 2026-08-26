@@ -108,16 +108,21 @@ fn test_sort_by_size_equal_sizes() {
 fn test_sort_by_size_ties_by_path_after_name() {
     let sort = SortBy::new(SortField::Size, SortOrder::Ascending, false);
     let mut later = make_file("same.txt", 100, false);
-    later.path = PathBuf::from("/test/b/same.txt");
+    later.location = LocationRef::from_location(&Location::local("/test/b/same.txt"));
     let mut earlier = make_file("same.txt", 100, false);
-    earlier.path = PathBuf::from("/test/a/same.txt");
+    earlier.location = LocationRef::from_location(&Location::local("/test/a/same.txt"));
 
     let output = sort.process(PipelineData::Flat(vec![later, earlier]));
     if let PipelineData::Flat(nodes) = output {
         assert_eq!(
             nodes
                 .iter()
-                .map(|node| node.path.to_string_lossy().into_owned())
+                .map(|node| {
+                    node.location
+                        .descriptor()
+                        .expect("test entries carry descriptors")
+                        .display_path()
+                })
                 .collect::<Vec<_>>(),
             vec!["/test/a/same.txt", "/test/b/same.txt"]
         );
@@ -315,4 +320,3 @@ fn test_sort_name() {
     let sort = SortBy::new(SortField::Name, SortOrder::Ascending, false);
     assert_eq!(sort.name(), "sort_by");
 }
-

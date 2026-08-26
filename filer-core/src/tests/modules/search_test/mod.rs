@@ -26,15 +26,13 @@ use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::errors::{CoreError, ErrorCode, ErrorTarget};
 use crate::model::location::{Location, LocationRef};
-// Provider-shaped FileNode rows still require NodeId fields; search behavior
-// assertions use Location-native entries and events.
-use crate::model::node::{FileNode, NodeId, NodeKind, NodeMeta};
+use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::search::searcher::{SearchCommand, SearchEventMode, Searcher};
-use crate::tests::fixtures::local_node_entry;
+use crate::tests::fixtures::{local_file_node, local_node_entry};
 use crate::utils;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
@@ -42,10 +40,10 @@ const TIMEOUT: Duration = Duration::from_millis(3000);
 
 /// Hierarchical mock filesystem for search testing.
 /// Maps directory paths to their children, supporting recursive traversal.
-/// FileNode values stay at the FsProvider boundary; assertions use native locations and entries.
+/// Search tests use native entries throughout the provider boundary.
 #[derive(Clone)]
 struct MockProvider {
-    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<FileNode>)>>>,
+    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<NodeEntry>)>>>,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
     fail_paths: Arc<Mutex<Vec<PathBuf>>>,
     delay_ms: Arc<Mutex<u64>>,
@@ -61,7 +59,7 @@ impl MockProvider {
         }
     }
 
-    fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<FileNode>) {
+    fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
         self.files_by_path
             .lock()
             .unwrap()
@@ -80,60 +78,54 @@ impl MockProvider {
         *self.delay_ms.lock().unwrap() = delay_ms;
     }
 
-    fn make_file(name: &str, parent: &str, size: u64) -> FileNode {
+    fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
         let extension = utils::get_extension(Path::new(name)).map(str::to_string);
-        FileNode {
-            id: NodeId::from_path(&PathBuf::from(parent).join(name)),
-            name: name.to_string(),
-            path: PathBuf::from(parent).join(name),
-            kind: NodeKind::File { extension },
+        local_file_node(
+            PathBuf::from(parent).join(name),
+            name,
+            NodeKind::File { extension },
             size,
-            modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-            created: None,
-            meta: NodeMeta {
+            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
+            NodeMeta {
                 hidden: false,
                 readonly: false,
                 permissions: None,
                 ..Default::default()
             },
-            accessed: None,
-        }
+        )
     }
 
-    fn make_hidden_file(name: &str, parent: &str, size: u64) -> FileNode {
+    fn make_hidden_file(name: &str, parent: &str, size: u64) -> NodeEntry {
         let mut f = Self::make_file(name, parent, size);
         f.meta.hidden = true;
         f
     }
 
-    fn make_dir(name: &str, parent: &str) -> FileNode {
-        FileNode {
-            id: NodeId::from_path(&PathBuf::from(parent).join(name)),
-            name: name.to_string(),
-            path: PathBuf::from(parent).join(name),
-            kind: NodeKind::Directory {
+    fn make_dir(name: &str, parent: &str) -> NodeEntry {
+        local_file_node(
+            PathBuf::from(parent).join(name),
+            name,
+            NodeKind::Directory {
                 children_count: None,
             },
-            size: 0,
-            modified: Some(SystemTime::UNIX_EPOCH),
-            created: None,
-            meta: NodeMeta {
+            0,
+            Some(SystemTime::UNIX_EPOCH),
+            NodeMeta {
                 hidden: false,
                 readonly: false,
                 permissions: None,
                 ..Default::default()
             },
-            accessed: None,
-        }
+        )
     }
 
-    fn make_hidden_dir(name: &str, parent: &str) -> FileNode {
+    fn make_hidden_dir(name: &str, parent: &str) -> NodeEntry {
         let mut d = Self::make_dir(name, parent);
         d.meta.hidden = true;
         d
     }
 
-    fn make_file_with_time(name: &str, parent: &str, size: u64, modified_secs: u64) -> FileNode {
+    fn make_file_with_time(name: &str, parent: &str, size: u64, modified_secs: u64) -> NodeEntry {
         let mut f = Self::make_file(name, parent, size);
         f.modified = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(modified_secs));
         f

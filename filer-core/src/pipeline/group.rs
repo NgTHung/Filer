@@ -1,9 +1,9 @@
 use rapidhash::RapidHashMap;
 
-use crate::model::node::FileNode;
+use crate::model::node::NodeEntry;
 use crate::pipeline::config::{GroupBy as ConfigGroupBy, GroupConfig, PipelineConfig};
 use crate::pipeline::order::{GroupSortKey, group_label, group_sort_key};
-use crate::pipeline::{FileGroup, GroupedNodes, PipelineData, Stage};
+use crate::pipeline::{EntryGroup, GroupedEntries, PipelineData, Stage};
 
 #[derive(Debug, Clone, Copy)]
 pub enum GroupField {
@@ -33,7 +33,7 @@ impl Stage for GroupBy {
             }
         };
 
-        let mut groups_map: RapidHashMap<String, (GroupSortKey, Vec<FileNode>)> =
+        let mut groups_map: RapidHashMap<String, (GroupSortKey, Vec<NodeEntry>)> =
             RapidHashMap::default();
 
         for node in nodes {
@@ -64,13 +64,13 @@ impl Stage for GroupBy {
                 .push(node);
         }
 
-        let mut groups: Vec<(GroupSortKey, FileGroup)> = groups_map
+        let mut groups: Vec<(GroupSortKey, EntryGroup)> = groups_map
             .into_iter()
             .enumerate()
             .map(|(idx, (label, (sort_key, nodes)))| {
                 (
                     sort_key,
-                    FileGroup {
+                    EntryGroup {
                         label,
                         nodes,
                         order: idx,
@@ -85,14 +85,14 @@ impl Stage for GroupBy {
                 .then_with(|| left.label.cmp(&right.label))
         });
 
-        let mut groups: Vec<FileGroup> = groups.into_iter().map(|(_, group)| group).collect();
+        let mut groups: Vec<EntryGroup> = groups.into_iter().map(|(_, group)| group).collect();
         for (idx, group) in groups.iter_mut().enumerate() {
             group.order = idx;
         }
 
         let total_count = groups.iter().map(|g| g.nodes.len()).sum();
 
-        PipelineData::Grouped(GroupedNodes {
+        PipelineData::Grouped(GroupedEntries {
             groups,
             total_count,
         })

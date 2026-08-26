@@ -7,7 +7,7 @@
 //! let core = FilerCore::new();
 //!
 //! // Standard file manager setup
-//! let scan = ScanModule::new(Arc::new(LocalFs::new(core.registry())));
+//! let scan = ScanModule::new(Arc::new(LocalFs::new()));
 //! let nav = NavigationModule::new(scan.sender());
 //! core.load(scan);
 //! core.load(nav);

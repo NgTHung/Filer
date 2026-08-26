@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::model::node::FileNode;
+use crate::model::node::NodeEntry;
 use crate::pipeline::{PipelineConfig, PipelineData, SortConfig, Stage, compare_nodes};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,7 +44,7 @@ impl SortBy {
         Self { config }
     }
 
-    fn sort_nodes(&self, mut nodes: Vec<FileNode>) -> Vec<FileNode> {
+    fn sort_nodes(&self, mut nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
         nodes.sort_by(|a, b| compare_nodes(&self.config, a, b));
         nodes
     }

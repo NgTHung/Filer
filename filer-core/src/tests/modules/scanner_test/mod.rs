@@ -3,15 +3,9 @@ use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
 use crate::model::location::{Location, LocationRef};
-use crate::tests::fixtures::local_node_entry;
-// Provider-shaped FileNode rows still require NodeId fields; scanner behavior
-// assertions use Location-native entries and events.
-use crate::model::node::FileNode;
+use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
+use crate::tests::fixtures::{local_file_node, local_node_entry};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions, ProviderPaging};
-use crate::{
-    model::node::{NodeId, NodeKind, NodeMeta},
-    utils,
-};
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -20,77 +14,63 @@ use std::{
     time::SystemTime,
 };
 
-fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> FileNode {
-    let extension = utils::get_extension(PathBuf::from(name).as_path()).map(str::to_string);
-    FileNode {
-        id: NodeId(name.len() as u64),
-        name: name.to_string(),
-        path: PathBuf::from(format!("{path}/{name}")),
-        kind: NodeKind::File { extension },
+fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> NodeEntry {
+    let path = PathBuf::from(format!("{path}/{name}"));
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_string);
+    local_file_node(
+        path,
+        name,
+        NodeKind::File { extension },
         size,
-        modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        created: None,
-        accessed: None,
-        meta: NodeMeta {
+        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
+        NodeMeta {
             hidden,
-            readonly: false,
-            permissions: None,
-            ..Default::default()
+            ..NodeMeta::default()
         },
-    }
+    )
 }
 
 fn location_ref(path: impl Into<PathBuf>) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
 }
 
-fn _make_file_with_ext(name: &str, path: &str, ext: Option<&str>, size: u64) -> FileNode {
-    FileNode {
-        id: NodeId(name.len() as u64),
-        name: name.to_string(),
-        path: PathBuf::from(format!("{path}/{name}")),
-        kind: NodeKind::File {
+fn _make_file_with_ext(name: &str, path: &str, ext: Option<&str>, size: u64) -> NodeEntry {
+    local_file_node(
+        PathBuf::from(format!("{path}/{name}")),
+        name,
+        NodeKind::File {
             extension: ext.map(|s| s.to_string()),
         },
         size,
-        modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        created: None,
-        accessed: None,
-        meta: NodeMeta {
-            hidden: false,
-            readonly: false,
-            permissions: None,
-            ..Default::default()
-        },
-    }
+        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
+        NodeMeta::default(),
+    )
 }
 
-fn _make_dir(name: &str, full_path: &str, hidden: bool) -> FileNode {
-    FileNode {
-        id: NodeId(name.len() as u64 + 1000),
-        name: name.to_string(),
-        path: PathBuf::from(format!("{full_path}/{name}")),
-        kind: NodeKind::Directory {
+fn _make_dir(name: &str, full_path: &str, hidden: bool) -> NodeEntry {
+    local_file_node(
+        PathBuf::from(format!("{full_path}/{name}")),
+        name,
+        NodeKind::Directory {
             children_count: None,
         },
-        size: 0,
-        modified: Some(SystemTime::UNIX_EPOCH),
-        created: None,
-        accessed: None,
-        meta: NodeMeta {
+        0,
+        Some(SystemTime::UNIX_EPOCH),
+        NodeMeta {
             hidden,
-            readonly: false,
-            permissions: None,
-            ..Default::default()
+            ..NodeMeta::default()
         },
-    }
+    )
 }
 
 /// Mock filesystem provider for testing Scanner behavior.
-/// FileNode values stay at the FsProvider boundary; assertions use native locations and entries.
+/// Scanner tests use native entries throughout the provider boundary.
 #[derive(Clone)]
 struct MockProvider {
-    files: Arc<Mutex<Vec<FileNode>>>,
+    files: Arc<Mutex<Vec<NodeEntry>>>,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
     page_calls: Arc<Mutex<Vec<(PathBuf, DirectoryPageRequest)>>>,
     list_options: Arc<Mutex<Vec<ListingOptions>>>,
@@ -119,11 +99,11 @@ impl MockProvider {
         }
     }
 
-    fn add_file(&self, node: FileNode) {
+    fn add_file(&self, node: NodeEntry) {
         self.files.lock().unwrap().push(node);
     }
 
-    fn insert_file(&self, index: usize, node: FileNode) {
+    fn insert_file(&self, index: usize, node: NodeEntry) {
         self.files.lock().unwrap().insert(index, node);
     }
 

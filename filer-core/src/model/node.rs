@@ -1,3 +1,22 @@
+//! # Location-native node entries
+//!
+//! This module defines the rows returned by providers and consumed by core
+//! workflows. Each row keeps its reconstructable [`LocationRef`], so callers
+//! do not need a second path or numeric identity table.
+//!
+//! ```
+//! use filer_core::{Location, LocationRef, NodeEntry};
+//! use filer_core::model::node::NodeKind;
+//!
+//! let location = Location::local("/tmp/report.txt");
+//! let entry = NodeEntry::from_location_ref(
+//!     LocationRef::from_location(&location),
+//!     "report.txt",
+//!     NodeKind::File { extension: Some("txt".to_string()) },
+//! );
+//! assert_eq!(entry.location.identity(), location.id());
+//! ```
+
 use std::fs::Metadata;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -6,47 +25,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
 use crate::model::location::{Location, LocationRef};
-use crate::model::registry::NodeRegistry;
 
-/// Direct-local runtime handle for a file node.
+/// Direct-local runtime handle retained for compatibility APIs.
 ///
-/// `NodeId` is a lightweight compatibility/cache handle derived from a path.
-/// It is valid for direct-local compatibility APIs, selection state, cache
-/// lookup, and registry bridging. New provider-aware transport should prefer
-/// [`LocationRef`], because id-only `NodeId` values cannot reconstruct
-/// segmented, remote, profile, or archive locations.
-///
-/// Use [`NodeRegistry`] to resolve `NodeId` to `PathBuf` when needed.
+/// New provider, pipeline, cache, scanner, and search code must use
+/// [`LocationRef`] through [`NodeEntry`]. API-008 owns deleting this type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub u64);
 
-/// Direct-local/provider compatibility row.
+/// Location-native node row for provider, directory, and search results.
 ///
-/// `FileNode` remains the path-era row shape used by legacy listing and search
-/// events and by providers that still execute against `PathBuf`. Do not extend
-/// it with canonical provider identity semantics; Location-native public
-/// result APIs should convert to [`NodeEntry`].
-#[derive(Debug, Clone)]
-pub struct FileNode {
-    pub id: NodeId,
-    pub name: String,
-    pub path: PathBuf,
-    pub kind: NodeKind,
-    pub size: u64,
-    pub modified: Option<SystemTime>,
-    pub created: Option<SystemTime>,
-    pub accessed: Option<SystemTime>,
-    pub meta: NodeMeta,
-}
-
-/// Location-native node row for public directory/search result APIs.
-///
-/// `NodeEntry` is the preferred public row shape for Location-native listing
-/// and search events. The `id` field is a compatibility handle for direct-local
-/// caches and selection, while `location` is the transport identity.
+/// The location is the only row identity. `display_path` is optional
+/// presentation data used when a provider needs a human-readable route that
+/// differs from the descriptor's default display.
 #[derive(Debug, Clone)]
 pub struct NodeEntry {
-    pub id: NodeId,
     pub location: LocationRef,
     pub display_path: Option<String>,
     pub capabilities: NodeEntryCapabilities,
@@ -81,324 +74,106 @@ pub struct NodeMeta {
     pub group: Option<String>,
 }
 
-impl FileNode {
-    /// Create a new file node from path
-    pub fn from_path(path: PathBuf, reg: Option<NodeRegistry>) -> Result<Self, CoreError> {
+impl NodeEntry {
+    /// Create a fully populated local entry from a path.
+    pub fn from_path(path: PathBuf) -> Result<Self, CoreError> {
         use std::fs;
 
-        let expanded_path = if path.starts_with("~") {
-            if let Ok(home) = std::env::var("HOME") {
-                PathBuf::from(home).join(path.strip_prefix("~").unwrap())
-            } else {
-                path.clone()
-                    .canonicalize()
-                    .map_err(|e| CoreError::from_io_error(e, path))?
-            }
-        } else {
-            path.clone()
-                .canonicalize()
-                .map_err(|e| CoreError::from_io_error(e, path))?
-        };
-
-        // Get metadata
+        let expanded_path = expand_path(path)?;
         let metadata = fs::metadata(&expanded_path)
             .map_err(|e| CoreError::from_io_error(e, expanded_path.clone()))?;
-
-        // Extract file name
-        let name = expanded_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        // Generate ID
-        let id = match reg {
-            Some(r) => r.register(expanded_path.clone()),
-            None => NodeId::from_path(&expanded_path),
-        };
-
-        // Determine kind
-        let kind = if metadata.is_dir() {
-            NodeKind::Directory {
-                children_count: None,
-            }
-        } else if metadata.is_symlink() {
-            let target = fs::read_link(&expanded_path).unwrap_or_else(|_| PathBuf::new());
-            NodeKind::Symlink { target }
-        } else {
-            let extension = expanded_path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|s| s.to_string());
-            NodeKind::File { extension }
-        };
-
-        // Get times
-        let modified = metadata.modified().ok();
-        let created = metadata.created().ok();
-        let accessed = metadata.accessed().ok();
-
-        // Get size
-        let size = metadata.len();
-
-        // Determine if hidden (Unix: starts with dot)
-        #[cfg(unix)]
-        let hidden = name.starts_with('.');
-        #[cfg(windows)]
-        let hidden = {
-            use std::os::windows::fs::MetadataExt;
-            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x00000002;
-            metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
-        };
-
-        // Get permissions
-        #[cfg(unix)]
-        let permissions = {
-            use std::os::unix::fs::PermissionsExt;
-            Some(metadata.permissions().mode())
-        };
-
-        #[cfg(windows)]
-        let permissions = None;
-
-        let readonly = metadata.permissions().readonly();
-
-        Ok(FileNode {
-            id,
-            name,
-            path: expanded_path,
-            kind,
-            size,
-            modified,
-            created,
-            accessed,
-            meta: NodeMeta {
-                hidden,
-                readonly,
-                permissions,
-                owner: None,
-                group: None,
-            },
-        })
+        Self::from_metadata(metadata, expanded_path)
     }
 
-    pub fn from_metadata(
-        meta: Metadata,
-        path: PathBuf,
-        reg: Option<NodeRegistry>,
-    ) -> Result<Self, CoreError> {
-        use std::fs;
-        // Extract file name
+    /// Create a local entry from already-fetched metadata.
+    pub fn from_metadata(meta: Metadata, path: PathBuf) -> Result<Self, CoreError> {
         let name = path
             .file_name()
-            .and_then(|n| n.to_str())
+            .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_string();
-
-        // Generate ID
-        let id = match reg {
-            Some(r) => r.register(path.clone()),
-            None => NodeId::from_path(&path),
-        };
-
-        // Determine kind
-        let kind = if meta.is_dir() {
-            NodeKind::Directory {
-                children_count: None,
-            }
-        } else if meta.is_symlink() {
-            let target = fs::read_link(&path).unwrap_or_else(|_| PathBuf::new());
-            NodeKind::Symlink { target }
-        } else {
-            let extension = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|s| s.to_string());
-            NodeKind::File { extension }
-        };
-
-        // Get times
-        let modified = meta.modified().ok();
-        let created = meta.created().ok();
-        let accessed = meta.accessed().ok();
-
-        // Get size
-        let size = meta.len();
-
-        // Determine if hidden (Unix: starts with dot)
-        #[cfg(unix)]
-        let hidden = name.starts_with('.');
-        #[cfg(windows)]
-        let hidden = {
-            use std::os::windows::fs::MetadataExt;
-            const FILE_ATTRIBUTE_HIDDEN: u32 = 0x00000002;
-            meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
-        };
-
-        // Get permissions
-        #[cfg(unix)]
-        let permissions = {
-            use std::os::unix::fs::PermissionsExt;
-            Some(meta.permissions().mode())
-        };
-
-        #[cfg(windows)]
-        let permissions = None;
-
-        let readonly = meta.permissions().readonly();
-
-        Ok(FileNode {
-            id,
-            name,
-            path,
-            kind,
-            size,
-            modified,
-            created,
-            accessed,
-            meta: NodeMeta {
-                hidden,
-                readonly,
-                permissions,
-                owner: None,
-                group: None,
-            },
-        })
+        Ok(Self::from_parts(
+            LocationRef::from_location(&Location::local(path.clone())),
+            name.as_str(),
+            kind_from_metadata(&meta, &path),
+            meta.len(),
+            meta.modified().ok(),
+            meta.created().ok(),
+            meta.accessed().ok(),
+            meta_for_path(&meta, &name),
+        ))
     }
 
-    /// Create a FileNode from a directory entry's file type — no stat syscall.
-    ///
-    /// `size`, timestamps, and `NodeMeta` fields are left at their zero/default
-    /// values. Call `metadata()` on the provider when full stat info is needed.
-    pub fn from_dir_entry(
-        path: PathBuf,
-        file_type: std::fs::FileType,
-        reg: Option<NodeRegistry>,
-    ) -> Self {
+    /// Create a local entry from directory-entry type data without a stat.
+    pub fn from_dir_entry(path: PathBuf, file_type: std::fs::FileType) -> Self {
         let name = path
             .file_name()
-            .and_then(|n| n.to_str())
+            .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_string();
-
-        let id = match reg {
-            Some(r) => r.register(path.clone()),
-            None => NodeId::from_path(&path),
-        };
-
-        let kind = if file_type.is_dir() {
-            NodeKind::Directory {
-                children_count: None,
-            }
-        } else if file_type.is_symlink() {
-            let target = std::fs::read_link(&path).unwrap_or_default();
-            NodeKind::Symlink { target }
-        } else {
-            let extension = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(str::to_string);
-            NodeKind::File { extension }
-        };
-
-        #[cfg(unix)]
-        let hidden = name.starts_with('.');
-        #[cfg(not(unix))]
-        let hidden = false;
-
-        FileNode {
-            id,
-            name,
-            path,
-            kind,
-            size: 0,
-            modified: None,
-            created: None,
-            accessed: None,
-            meta: NodeMeta {
-                hidden,
+        Self::from_parts(
+            LocationRef::from_location(&Location::local(path.clone())),
+            name.as_str(),
+            kind_from_file_type(&file_type, &path),
+            0,
+            None,
+            None,
+            None,
+            NodeMeta {
+                hidden: is_hidden_name(&name),
                 ..NodeMeta::default()
             },
-        }
+        )
     }
 
-    /// Check if this is a directory
-    pub fn is_dir(&self) -> bool {
-        matches!(self.kind, NodeKind::Directory { .. })
+    /// Create a provider-owned entry with default metadata.
+    pub fn from_location_ref(
+        location: LocationRef,
+        name: impl Into<String>,
+        kind: NodeKind,
+    ) -> Self {
+        let name = name.into();
+        let navigate = matches!(kind, NodeKind::Directory { .. });
+        Self::from_parts(
+            location,
+            &name,
+            kind,
+            0,
+            None,
+            None,
+            None,
+            NodeMeta::default(),
+        )
+        .with_readable(true)
+        .with_navigable(navigate)
     }
 
-    /// Check if this is a file
-    pub fn is_file(&self) -> bool {
-        matches!(self.kind, NodeKind::File { .. })
-    }
-
-    /// Get file extension if any
-    pub fn extension(&self) -> Option<&str> {
-        match &self.kind {
-            NodeKind::File { extension } => extension.as_deref(),
-            _ => None,
-        }
-    }
-
-    /// Human-readable size string (e.g. "1.5 MB")
-    pub fn size_formatted(&self) -> String {
-        crate::utils::size::format_size(self.size)
-    }
-
-    /// Resolve owner and group names via NSS and store them in `meta`.
-    ///
-    /// Uses `getpwuid_r` / `getgrgid_r` under the hood, so it works with
-    /// LDAP, NIS, sssd, and any other NSS-backed directory — not just local
-    /// `/etc/passwd` entries. On non-Unix platforms this is a no-op.
-    #[cfg(unix)]
-    pub fn load_owner_info(&mut self) -> Result<(), CoreError> {
-        use std::os::unix::fs::MetadataExt;
-        use users::{get_group_by_gid, get_user_by_uid};
-
-        let metadata = std::fs::metadata(&self.path)
-            .map_err(|e| CoreError::from_io_error(e, self.path.clone()))?;
-
-        self.meta.owner =
-            get_user_by_uid(metadata.uid()).map(|u| u.name().to_string_lossy().into_owned());
-        self.meta.group =
-            get_group_by_gid(metadata.gid()).map(|g| g.name().to_string_lossy().into_owned());
-
-        Ok(())
-    }
-
-    #[cfg(not(unix))]
-    pub fn load_owner_info(&mut self) -> Result<(), CoreError> {
-        Ok(())
-    }
-}
-
-impl NodeEntry {
-    pub fn from_file_node(node: FileNode, reg: &NodeRegistry) -> Self {
-        let location = reg.location_for_path(node.path.clone());
-        Self::from_file_node_with_location(node, LocationRef::from_location(&location))
-    }
-
-    pub fn from_file_node_with_location(node: FileNode, location: LocationRef) -> Self {
+    fn from_parts(
+        location: LocationRef,
+        name: &str,
+        kind: NodeKind,
+        size: u64,
+        modified: Option<SystemTime>,
+        created: Option<SystemTime>,
+        accessed: Option<SystemTime>,
+        meta: NodeMeta,
+    ) -> Self {
+        let navigate = matches!(kind, NodeKind::Directory { .. });
         Self {
-            id: node.id,
             location,
             display_path: None,
             capabilities: NodeEntryCapabilities {
                 read: true,
-                navigate: node.is_dir(),
+                navigate,
             },
-            name: node.name,
-            kind: node.kind,
-            size: node.size,
-            modified: node.modified,
-            created: node.created,
-            accessed: node.accessed,
-            meta: node.meta,
+            name: name.to_string(),
+            kind,
+            size,
+            modified,
+            created,
+            accessed,
+            meta,
         }
-    }
-
-    pub fn from_location(location: Location, node: FileNode) -> Self {
-        Self::from_file_node_with_location(node, LocationRef::from_location(&location))
     }
 
     pub fn with_display_path(mut self, display_path: impl Into<String>) -> Self {
@@ -416,6 +191,11 @@ impl NodeEntry {
         self
     }
 
+    pub(crate) fn with_size(mut self, size: u64) -> Self {
+        self.size = size;
+        self
+    }
+
     pub fn is_dir(&self) -> bool {
         matches!(self.kind, NodeKind::Directory { .. })
     }
@@ -431,29 +211,119 @@ impl NodeEntry {
         }
     }
 
-    pub(crate) fn to_file_node(&self) -> FileNode {
+    /// Human-readable size string, for example `1.5 MB`.
+    pub fn size_formatted(&self) -> String {
+        crate::utils::size::format_size(self.size)
+    }
+
+    /// Resolve owner and group names through the platform's NSS database.
+    #[cfg(unix)]
+    pub fn load_owner_info(&mut self) -> Result<(), CoreError> {
+        use std::os::unix::fs::MetadataExt;
+        use users::{get_group_by_gid, get_user_by_uid};
+
         let path = self
-            .display_path
-            .as_ref()
-            .map(PathBuf::from)
-            .or_else(|| {
-                self.location
-                    .descriptor()
-                    .map(|descriptor| PathBuf::from(descriptor.display_path()))
-            })
-            .unwrap_or_else(|| PathBuf::from(self.name.clone()));
-        FileNode {
-            id: self.id,
-            name: self.name.clone(),
-            path,
-            kind: self.kind.clone(),
-            size: self.size,
-            modified: self.modified,
-            created: self.created,
-            accessed: self.accessed,
-            meta: self.meta.clone(),
+            .location
+            .descriptor()
+            .and_then(|descriptor| descriptor.as_local_path())
+            .ok_or_else(|| CoreError::invalid_input("owner information requires a local path"))?;
+        let metadata =
+            std::fs::metadata(path).map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        self.meta.owner =
+            get_user_by_uid(metadata.uid()).map(|user| user.name().to_string_lossy().into_owned());
+        self.meta.group = get_group_by_gid(metadata.gid())
+            .map(|group| group.name().to_string_lossy().into_owned());
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    pub fn load_owner_info(&mut self) -> Result<(), CoreError> {
+        Ok(())
+    }
+}
+
+fn expand_path(path: PathBuf) -> Result<PathBuf, CoreError> {
+    if path.starts_with("~")
+        && let Ok(home) = std::env::var("HOME")
+    {
+        return Ok(PathBuf::from(home).join(
+            path.strip_prefix("~")
+                .map_err(|_| CoreError::invalid_input("invalid home-relative path"))?,
+        ));
+    }
+    path.canonicalize()
+        .map_err(|e| CoreError::from_io_error(e, path))
+}
+
+fn kind_from_metadata(meta: &Metadata, path: &Path) -> NodeKind {
+    if meta.is_dir() {
+        NodeKind::Directory {
+            children_count: None,
+        }
+    } else if meta.is_symlink() {
+        NodeKind::Symlink {
+            target: std::fs::read_link(path).unwrap_or_default(),
+        }
+    } else {
+        NodeKind::File {
+            extension: path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(str::to_string),
         }
     }
+}
+
+fn kind_from_file_type(file_type: &std::fs::FileType, path: &Path) -> NodeKind {
+    if file_type.is_dir() {
+        NodeKind::Directory {
+            children_count: None,
+        }
+    } else if file_type.is_symlink() {
+        NodeKind::Symlink {
+            target: std::fs::read_link(path).unwrap_or_default(),
+        }
+    } else {
+        NodeKind::File {
+            extension: path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(str::to_string),
+        }
+    }
+}
+
+fn meta_for_path(meta: &Metadata, name: &str) -> NodeMeta {
+    #[cfg(unix)]
+    let permissions = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(meta.permissions().mode())
+    };
+
+    #[cfg(windows)]
+    let permissions = None;
+
+    #[cfg(unix)]
+    let hidden = name.starts_with('.');
+
+    #[cfg(windows)]
+    let hidden = {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0000_0002;
+        meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
+    };
+
+    NodeMeta {
+        hidden,
+        readonly: meta.permissions().readonly(),
+        permissions,
+        owner: None,
+        group: None,
+    }
+}
+
+fn is_hidden_name(name: &str) -> bool {
+    name.starts_with('.')
 }
 
 impl NodeId {

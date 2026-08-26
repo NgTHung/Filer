@@ -1,6 +1,5 @@
-use crate::model::node::FileNode;
+use crate::model::node::NodeEntry;
 use crate::pipeline::{PipelineData, Stage};
-use crate::utils::{self, is_hidden};
 
 pub struct FilterHidden {
     show_hidden: bool,
@@ -11,10 +10,10 @@ impl FilterHidden {
         Self { show_hidden }
     }
 
-    fn filter_nodes(&self, nodes: Vec<FileNode>) -> Vec<FileNode> {
+    fn filter_nodes(&self, nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
         nodes
             .into_iter()
-            .filter(|f| self.show_hidden || !is_hidden(f.path.as_path()))
+            .filter(|entry| self.show_hidden || !entry.meta.hidden)
             .collect()
     }
 }
@@ -26,7 +25,7 @@ impl Stage for FilterHidden {
             PipelineData::Grouped(mut grouped) => {
                 // Filter within each group
                 for group in &mut grouped.groups {
-                    group.nodes = self.filter_nodes(group.nodes.clone());
+                    group.nodes = self.filter_nodes(std::mem::take(&mut group.nodes));
                 }
                 // Remove empty groups and recalculate total
                 grouped.groups.retain(|g| !g.nodes.is_empty());
@@ -54,15 +53,14 @@ impl FilterByExtension {
         }
     }
 
-    fn filter_nodes(&self, nodes: Vec<FileNode>) -> Vec<FileNode> {
+    fn filter_nodes(&self, nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
         nodes
             .into_iter()
             .filter(|f| {
-                let has_ext = self.extensions.contains(
-                    &utils::get_extension(f.path.as_path())
-                        .map(str::to_string)
-                        .unwrap_or_default(),
-                );
+                let has_ext = self
+                    .extensions
+                    .iter()
+                    .any(|extension| f.extension().is_some_and(|actual| actual == extension));
                 if self.exclusion { !has_ext } else { has_ext }
             })
             .collect()
@@ -76,7 +74,7 @@ impl Stage for FilterByExtension {
             PipelineData::Grouped(mut grouped) => {
                 // Filter within each group
                 for group in &mut grouped.groups {
-                    group.nodes = self.filter_nodes(group.nodes.clone());
+                    group.nodes = self.filter_nodes(std::mem::take(&mut group.nodes));
                 }
                 // Remove empty groups and recalculate total
                 grouped.groups.retain(|g| !g.nodes.is_empty());

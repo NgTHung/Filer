@@ -7,11 +7,11 @@
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use crate::model::node::{FileNode, NodeKind, NodeMeta};
+use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
 use crate::model::query::{QueryFilter, SearchQuery};
 use crate::tests::fixtures::local_file_node;
 
-fn make_file(name: &str, size: u64) -> FileNode {
+fn make_file(name: &str, size: u64) -> NodeEntry {
     let path = PathBuf::from("/test").join(name);
     let ext = path
         .extension()
@@ -32,7 +32,7 @@ fn make_file(name: &str, size: u64) -> FileNode {
     )
 }
 
-fn make_dir(name: &str) -> FileNode {
+fn make_dir(name: &str) -> NodeEntry {
     let path = PathBuf::from("/test").join(name);
     local_file_node(
         path,
@@ -51,13 +51,13 @@ fn make_dir(name: &str) -> FileNode {
     )
 }
 
-fn make_hidden(name: &str) -> FileNode {
+fn make_hidden(name: &str) -> NodeEntry {
     let mut f = make_file(name, 100);
     f.meta.hidden = true;
     f
 }
 
-fn make_file_at(name: &str, size: u64, modified_secs: u64) -> FileNode {
+fn make_file_at(name: &str, size: u64, modified_secs: u64) -> NodeEntry {
     let mut f = make_file(name, size);
     f.modified = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(modified_secs));
     f

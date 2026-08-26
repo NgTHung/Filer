@@ -23,7 +23,7 @@ use tokio::time::timeout;
 
 mod support;
 
-use filer_core::model::node::{FileNode, NodeKind, NodeMeta};
+use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session::SessionId;
 use filer_core::modules::scan::ScanModule;
@@ -33,7 +33,7 @@ use filer_core::{
     Actor, Capabilities, Command, CoreError, Event, FilerCore, FsProvider, PipelineConfig,
 };
 
-use support::{local_location, provider_entry, provider_node_id, wait_for_search_entries};
+use support::{local_location, make_entry, provider_entry, wait_for_search_entries};
 
 const SHORT: Duration = Duration::from_secs(5);
 const LONG: Duration = Duration::from_secs(30);
@@ -41,10 +41,10 @@ const LONG: Duration = Duration::from_secs(30);
 /// High-throughput in-memory provider for stress testing.
 /// Uses a HashMap for O(1) directory lookups — essential when traversing
 /// tens of thousands of directories.
-/// FileNode values stay at the FsProvider boundary; stress assertions use native entries.
+/// Stress assertions use native entries throughout the provider boundary.
 #[derive(Clone)]
 struct MockFs {
-    dirs: Arc<Mutex<HashMap<PathBuf, Vec<FileNode>>>>,
+    dirs: Arc<Mutex<HashMap<PathBuf, Vec<NodeEntry>>>>,
 }
 
 impl MockFs {
@@ -54,7 +54,7 @@ impl MockFs {
         }
     }
 
-    fn add_dir(&self, path: impl Into<PathBuf>, children: Vec<FileNode>) {
+    fn add_dir(&self, path: impl Into<PathBuf>, children: Vec<NodeEntry>) {
         self.dirs.lock().unwrap().insert(path.into(), children);
     }
 
@@ -136,7 +136,7 @@ impl FsProvider for MockFs {
 }
 
 //
-// Instead of pre-generating and storing every FileNode, this provider
+// Instead of pre-generating and storing every entry, this provider
 // computes directory children on-the-fly from the path depth alone.
 // Memory cost: O(width) per `list()` call — the result Vec — nothing stored.
 // This makes arbitrarily large trees testable without OOM.
@@ -189,7 +189,7 @@ impl LazyTreeFs {
             .map(|r| r.components().count())
     }
 
-    fn children_of(&self, path: &Path) -> Vec<FileNode> {
+    fn children_of(&self, path: &Path) -> Vec<NodeEntry> {
         let d = match self.depth_of(path) {
             Some(d) => d,
             None => return vec![],
@@ -268,48 +268,42 @@ impl FsProvider for LazyTreeFs {
     }
 }
 
-fn file(name: &str, parent: &Path, size: u64) -> FileNode {
+fn file(name: &str, parent: &Path, size: u64) -> NodeEntry {
     let ext = Path::new(name)
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_string);
-    FileNode {
-        id: provider_node_id(parent.join(name)),
-        name: name.to_string(),
-        path: parent.join(name),
-        kind: NodeKind::File { extension: ext },
+    make_entry(
+        parent.join(name),
+        name,
+        NodeKind::File { extension: ext },
         size,
-        modified: Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size % 1_000_000)),
-        created: None,
-        meta: NodeMeta {
+        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size % 1_000_000)),
+        NodeMeta {
             hidden: false,
             readonly: false,
             permissions: None,
             ..Default::default()
         },
-        accessed: None,
-    }
+    )
 }
 
-fn dir(name: &str, parent: &Path) -> FileNode {
-    FileNode {
-        id: provider_node_id(parent.join(name)),
-        name: name.to_string(),
-        path: parent.join(name),
-        kind: NodeKind::Directory {
+fn dir(name: &str, parent: &Path) -> NodeEntry {
+    make_entry(
+        parent.join(name),
+        name,
+        NodeKind::Directory {
             children_count: None,
         },
-        size: 0,
-        modified: Some(SystemTime::UNIX_EPOCH),
-        created: None,
-        meta: NodeMeta {
+        0,
+        Some(SystemTime::UNIX_EPOCH),
+        NodeMeta {
             hidden: false,
             readonly: false,
             permissions: None,
             ..Default::default()
         },
-        accessed: None,
-    }
+    )
 }
 
 fn build_core(fs: MockFs) -> FilerCore {
@@ -358,7 +352,7 @@ async fn stress_search_large_flat_dir() {
     let fs = MockFs::new();
     let root = PathBuf::from("/stress/flat");
 
-    let children: Vec<FileNode> = (0..TOTAL)
+    let children: Vec<NodeEntry> = (0..TOTAL)
         .map(|i| {
             let name = if i % 2 == 0 {
                 format!("target_{:04}.rs", i) // even → matches "target"
@@ -439,9 +433,9 @@ async fn stress_search_deep_tree() {
 }
 
 //
-// Uses LazyTreeFs so no FileNodes are stored up front.
+// Uses LazyTreeFs so no entries are stored up front.
 // Memory during traversal: O(width^depth) PathBufs in the BFS queue at peak
-//   = 10^4 = 10 000 PathBufs ≈ 640 KB. Results ≈ 66 666 FileNodes ≈ 20 MB.
+//   = 10^4 = 10 000 PathBufs ≈ 640 KB. Results ≈ 66 666 entries ≈ 20 MB.
 
 #[tokio::test]
 #[ignore = "stress test — run with: cargo test --test stress_test -- --include-ignored"]
@@ -488,7 +482,7 @@ async fn stress_concurrent_sessions() {
 
     let fs = MockFs::new();
     let root = PathBuf::from("/stress/concurrent");
-    let children: Vec<FileNode> = (0..FILES_PER_DIR)
+    let children: Vec<NodeEntry> = (0..FILES_PER_DIR)
         .map(|i| {
             let name = if i % 2 == 0 {
                 format!("hit_{:03}.txt", i)
@@ -628,7 +622,7 @@ async fn stress_all_filters_combined() {
     let base_ts = 1_000_000_000u64; // Sep 2001 in Unix seconds
 
     let mut expected = 0usize;
-    let children: Vec<FileNode> = (0..TOTAL)
+    let children: Vec<NodeEntry> = (0..TOTAL)
         .map(|i| {
             let is_rs = i % 3 == 0;
             let is_big = i % 4 == 0; // size > 1000
@@ -688,7 +682,7 @@ async fn stress_streaming_batch_accuracy() {
 
     let fs = MockFs::new();
     let root = PathBuf::from("/stress/batches");
-    let children: Vec<FileNode> = (0..TOTAL)
+    let children: Vec<NodeEntry> = (0..TOTAL)
         .map(|i| file(&format!("item_{:04}.txt", i), &root, (i as u64 + 1) * 10))
         .collect();
     fs.add_dir(root.clone(), children);
@@ -754,7 +748,7 @@ async fn stress_scanner_large_dir() {
 
     let fs = MockFs::new();
     let root = PathBuf::from("/stress/scan");
-    let children: Vec<FileNode> = (0..FILE_COUNT)
+    let children: Vec<NodeEntry> = (0..FILE_COUNT)
         .map(|i| file(&format!("entry_{:05}.dat", i), &root, (i as u64 + 1) * 64))
         .collect();
     fs.add_dir(root.clone(), children);
@@ -798,7 +792,7 @@ async fn stress_session_isolation_under_cancellation() {
 
     let fs = MockFs::new();
     let root = PathBuf::from("/stress/isolation");
-    let children: Vec<FileNode> = (0..FILES)
+    let children: Vec<NodeEntry> = (0..FILES)
         .map(|i| file(&format!("doc_{:04}.rs", i), &root, 1024))
         .collect();
     fs.add_dir(root.clone(), children);
@@ -898,7 +892,7 @@ async fn stress_search_determinism() {
 
     let fs = MockFs::new();
     let root = PathBuf::from("/stress/determinism");
-    let children: Vec<FileNode> = (0..FILES)
+    let children: Vec<NodeEntry> = (0..FILES)
         .map(|i| file(&format!("stable_{:04}.rs", i), &root, (i as u64 + 1) * 100))
         .collect();
     fs.add_dir(root.clone(), children);

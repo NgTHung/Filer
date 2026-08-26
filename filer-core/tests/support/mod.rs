@@ -12,13 +12,12 @@
 
 #![allow(dead_code)]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use flume::Receiver;
 
-use filer_core::FileNode;
-use filer_core::model::node::{NodeEntry, NodeId};
+use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
 use filer_core::model::session::SessionId;
 use filer_core::{Event, Location, LocationRef};
 
@@ -26,17 +25,34 @@ pub(crate) fn local_location(path: impl Into<PathBuf>) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
 }
 
-/// Create the compatibility field required by a mock `FsProvider` row.
-///
-/// The returned ID is fixture plumbing only. Tests must assert the row's
-/// `LocationRef`, not this provider-boundary handle.
-pub(crate) fn provider_node_id(path: impl AsRef<Path>) -> NodeId {
-    NodeId::from_path(path.as_ref())
+pub(crate) fn make_entry(
+    path: impl Into<PathBuf>,
+    name: impl Into<String>,
+    kind: NodeKind,
+    size: u64,
+    modified: Option<std::time::SystemTime>,
+    meta: NodeMeta,
+) -> NodeEntry {
+    let location = Location::local(path);
+    NodeEntry {
+        location: LocationRef::from_location(&location),
+        display_path: None,
+        capabilities: filer_core::NodeEntryCapabilities {
+            read: true,
+            navigate: matches!(kind, NodeKind::Directory { .. }),
+        },
+        name: name.into(),
+        kind,
+        size,
+        modified,
+        created: None,
+        accessed: None,
+        meta,
+    }
 }
 
-pub(crate) fn provider_entry(node: FileNode) -> NodeEntry {
-    let path = node.path.clone();
-    NodeEntry::from_location(Location::local(path), node)
+pub(crate) fn provider_entry(node: NodeEntry) -> NodeEntry {
+    node
 }
 
 pub(crate) async fn wait_for_directory_entries(

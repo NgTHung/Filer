@@ -158,11 +158,7 @@ impl FsProvider for RecordingProvider {
                 )
                 .await;
         }
-        let node = crate::model::node::FileNode::from_path(path.to_path_buf(), None)?;
-        Ok(crate::NodeEntry::from_location(
-            crate::Location::local(path.to_path_buf()),
-            node,
-        ))
+        crate::NodeEntry::from_path(path.to_path_buf())
     }
 }
 

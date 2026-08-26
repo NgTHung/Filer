@@ -1,21 +1,21 @@
 //! # Pipeline Ordering
 //!
 //! This module defines the total row order used by incremental paging. A stable
-//! path tie-breaker keeps cursor continuation deterministic when visible sort
-//! fields are equal.
+//! location tie-breaker keeps cursor continuation deterministic when visible
+//! sort fields are equal.
 //!
 //! ```
-//! use filer_core::{FileNode, PipelineConfig};
+//! use filer_core::{NodeEntry, PipelineConfig};
 //! use std::cmp::Ordering;
 //!
-//! fn is_ordered(config: &PipelineConfig, left: &FileNode, right: &FileNode) -> bool {
+//! fn is_ordered(config: &PipelineConfig, left: &NodeEntry, right: &NodeEntry) -> bool {
 //!     filer_core::pipeline::compare_nodes(config, left, right) != Ordering::Greater
 //! }
 //! ```
 
 use std::cmp::Ordering;
 
-use crate::model::node::FileNode;
+use crate::model::node::NodeEntry;
 use crate::pipeline::config::{GroupBy, PipelineConfig};
 use crate::pipeline::sort::{SortField, SortOrder};
 use crate::utils;
@@ -27,7 +27,7 @@ pub(crate) enum GroupSortKey {
     Label(String),
 }
 
-pub fn compare_nodes(config: &PipelineConfig, left: &FileNode, right: &FileNode) -> Ordering {
+pub fn compare_nodes(config: &PipelineConfig, left: &NodeEntry, right: &NodeEntry) -> Ordering {
     let group_order = group_sort_key(config, left).cmp(&group_sort_key(config, right));
     if group_order != Ordering::Equal {
         return group_order;
@@ -60,10 +60,11 @@ pub fn compare_nodes(config: &PipelineConfig, left: &FileNode, right: &FileNode)
 
     field_order
         .then_with(|| left.name.cmp(&right.name))
-        .then_with(|| left.path.cmp(&right.path))
+        .then_with(|| left.location.descriptor().cmp(&right.location.descriptor()))
+        .then_with(|| left.location.identity().0.cmp(&right.location.identity().0))
 }
 
-pub fn group_label(config: &PipelineConfig, node: &FileNode) -> String {
+pub fn group_label(config: &PipelineConfig, node: &NodeEntry) -> String {
     match config.group.map(|group| group.by).unwrap_or(GroupBy::None) {
         GroupBy::None => String::new(),
         GroupBy::Extension | GroupBy::Type => {
@@ -83,7 +84,7 @@ pub fn group_label(config: &PipelineConfig, node: &FileNode) -> String {
     }
 }
 
-pub(crate) fn group_sort_key(config: &PipelineConfig, node: &FileNode) -> GroupSortKey {
+pub(crate) fn group_sort_key(config: &PipelineConfig, node: &NodeEntry) -> GroupSortKey {
     match config.group.map(|group| group.by).unwrap_or(GroupBy::None) {
         GroupBy::None => GroupSortKey::Label(String::new()),
         GroupBy::Extension | GroupBy::Type | GroupBy::FirstLetter => {

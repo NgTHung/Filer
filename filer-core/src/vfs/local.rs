@@ -7,9 +7,7 @@ use crate::errors::CoreError;
 use crate::model::directory::{
     DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
 };
-use crate::model::location::Location;
-use crate::model::node::{FileNode, NodeEntry};
-use crate::model::registry::NodeRegistry;
+use crate::model::node::NodeEntry;
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{
     Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging, ReadSeek,
@@ -17,13 +15,11 @@ use crate::vfs::provider::{
 };
 
 /// Local filesystem provider
-pub struct LocalFs {
-    reg: NodeRegistry,
-}
+pub struct LocalFs {}
 
 impl LocalFs {
-    pub fn new(register: NodeRegistry) -> Self {
-        Self { reg: register }
+    pub fn new() -> Self {
+        Self {}
     }
 
     fn check_cancel(cx: &ProviderCx<'_>) -> Result<(), CoreError> {
@@ -31,6 +27,12 @@ impl LocalFs {
             return Err(CoreError::cancelled());
         }
         Ok(())
+    }
+}
+
+impl Default for LocalFs {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -55,7 +57,7 @@ impl FsProvider for LocalFs {
 
     /// List directory contents using only `d_type` from the dirent — no stat per entry.
     ///
-    /// `FileNode` fields that require stat (`size`, timestamps, permissions) are
+    /// Fields that require stat (`size`, timestamps, permissions) are
     /// left at zero/default. Use `list_with_meta` when those fields are needed.
     async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<NodeEntry>, CoreError> {
         Self::check_cancel(cx)?;
@@ -72,9 +74,7 @@ impl FsProvider for LocalFs {
             match entry.file_type().await {
                 Ok(ft) => {
                     let entry_path = entry.path();
-                    let node =
-                        FileNode::from_dir_entry(entry_path.clone(), ft, Some(self.reg.clone()));
-                    res.push(NodeEntry::from_location(Location::local(entry_path), node));
+                    res.push(NodeEntry::from_dir_entry(entry_path, ft));
                 }
                 Err(e) => {
                     tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in listing");
@@ -132,12 +132,7 @@ impl FsProvider for LocalFs {
                 ListingDetail::Fast => match entry.file_type().await {
                     Ok(ft) => {
                         let entry_path = entry.path();
-                        let node = FileNode::from_dir_entry(
-                            entry_path.clone(),
-                            ft,
-                            Some(self.reg.clone()),
-                        );
-                        entries.push(NodeEntry::from_location(Location::local(entry_path), node));
+                        entries.push(NodeEntry::from_dir_entry(entry_path, ft));
                     }
                     Err(e) => {
                         tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in paged listing");
@@ -146,13 +141,8 @@ impl FsProvider for LocalFs {
                 ListingDetail::Metadata => {
                     let entry_path = entry.path();
                     match entry.metadata().await {
-                        Ok(meta) => match FileNode::from_metadata(
-                            meta,
-                            entry_path.clone(),
-                            Some(self.reg.clone()),
-                        ) {
-                            Ok(node) => entries
-                                .push(NodeEntry::from_location(Location::local(entry_path), node)),
+                        Ok(meta) => match NodeEntry::from_metadata(meta, entry_path.clone()) {
+                            Ok(entry) => entries.push(entry),
                             Err(e) => {
                                 tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in paged listing");
                             }
@@ -226,11 +216,7 @@ impl FsProvider for LocalFs {
 
     async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError> {
         Self::check_cancel(cx)?;
-        let node = FileNode::from_path(path.to_path_buf(), Some(self.reg.clone()))?;
-        Ok(NodeEntry::from_location(
-            Location::local(node.path.clone()),
-            node,
-        ))
+        NodeEntry::from_path(path.to_path_buf())
     }
 
     /// Open a buffered, seekable reader over a local file.
@@ -346,17 +332,12 @@ impl LocalFs {
             Self::check_cancel(cx)?;
             let entry_path = entry.path();
             match entry.metadata().await {
-                Ok(meta) => {
-                    match FileNode::from_metadata(meta, entry_path.clone(), Some(self.reg.clone()))
-                    {
-                        Ok(node) => {
-                            res.push(NodeEntry::from_location(Location::local(entry_path), node))
-                        }
-                        Err(e) => {
-                            tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in listing");
-                        }
+                Ok(meta) => match NodeEntry::from_metadata(meta, entry_path.clone()) {
+                    Ok(entry) => res.push(entry),
+                    Err(e) => {
+                        tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in listing");
                     }
-                }
+                },
                 Err(e) => {
                     tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry metadata");
                 }

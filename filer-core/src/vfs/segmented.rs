@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use crate::errors::{CoreError, ErrorCode};
 use crate::model::location::{Location, LocationDescriptor, LocationSegment, ProviderRef};
-use crate::model::node::{FileNode, NodeEntry, NodeId, NodeKind, NodeMeta};
+use crate::model::node::NodeEntry;
 use crate::vfs::archive::{ArchiveChild, ArchiveFs, BorrowedArchiveFs};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
@@ -131,36 +131,7 @@ fn target_archive_member(segments: &[PathBuf]) -> Result<&Path, CoreError> {
 
 fn entry_for_segmented_child(parent: &LocationDescriptor, child: ArchiveChild) -> NodeEntry {
     let descriptor = descriptor_for_child(parent, &child.path);
-    let location = Location::new(descriptor);
-    let display_path = location.descriptor().display_path();
-    let extension = child
-        .path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_string);
-    let kind = if child.is_dir {
-        NodeKind::Directory {
-            children_count: None,
-        }
-    } else {
-        NodeKind::File { extension }
-    };
-    let node = FileNode {
-        id: NodeId::from_path(Path::new(&display_path)),
-        name: child.name,
-        path: PathBuf::from(&display_path),
-        kind,
-        size: child.size,
-        modified: None,
-        created: None,
-        accessed: None,
-        meta: NodeMeta::default(),
-    };
-    let navigable = child.is_dir || is_zip_path(&child.path);
-    NodeEntry::from_location(location, node)
-        .with_display_path(display_path)
-        .with_readable(true)
-        .with_navigable(navigable)
+    crate::vfs::archive::entry_for_location(Location::new(descriptor), child)
 }
 
 fn descriptor_for_child(parent: &LocationDescriptor, child_path: &Path) -> LocationDescriptor {
@@ -177,11 +148,4 @@ fn descriptor_for_child(parent: &LocationDescriptor, child_path: &Path) -> Locat
         }
     }
     descriptor.with_segments(parent_segments)
-}
-
-fn is_zip_path(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .map(|extension| extension.eq_ignore_ascii_case("zip"))
-        .unwrap_or(false)
 }

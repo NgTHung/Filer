@@ -40,7 +40,7 @@ use crate::vfs::local_watch::LocalWatchProvider;
 /// let core = FilerCore::new();
 ///
 /// // Compose your system from modules
-/// let scan = ScanModule::new(Arc::new(LocalFs::new(core.registry())));
+/// let scan = ScanModule::new(Arc::new(LocalFs::new()));
 /// let nav = NavigationModule::new(scan.sender());
 /// core.load(scan);
 /// core.load(nav);
@@ -142,7 +142,7 @@ impl FilerCore {
     /// backed by the local filesystem and a shared 128 MB directory cache.
     pub fn with_defaults() -> Self {
         let core = Self::new();
-        let provider = Arc::new(LocalFs::new(core.registry()));
+        let provider = Arc::new(LocalFs::new());
         let cache = Arc::new(Mutex::new(DirCache::new(128 * 1024 * 1024)));
 
         let scan = ScanModule::with_cache(provider.clone(), cache.clone());

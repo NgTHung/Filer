@@ -349,15 +349,13 @@ impl SearchQuery {
     }
 }
 
-/// Internal parsed token — either a filter or an option setter.
-
 impl SearchQuery {
     /// Returns `true` if `node` satisfies all conditions in this query.
     ///
     /// AND semantics: every filter must pass, and the text pattern (if any)
     /// must match the file name. Case sensitivity is controlled by
     /// `options.case_sensitive`.
-    pub fn matches(&self, node: &crate::model::node::FileNode) -> bool {
+    pub fn matches(&self, node: &crate::model::node::NodeEntry) -> bool {
         if !self.text.is_empty() {
             let matched = if self.options.case_sensitive {
                 node.name.contains(&self.text)
@@ -381,7 +379,7 @@ impl SearchQuery {
 
 impl QueryFilter {
     /// Returns `true` if `node` satisfies this individual filter.
-    pub fn matches(&self, node: &crate::model::node::FileNode) -> bool {
+    pub fn matches(&self, node: &crate::model::node::NodeEntry) -> bool {
         match self {
             QueryFilter::Extension(exts) => {
                 let ext = node.extension().unwrap_or("").to_lowercase();

@@ -1,11 +1,12 @@
 // Tests for pipeline stages
 
-use crate::model::node::{FileNode, NodeKind, NodeMeta};
+use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
+use crate::model::location::{Location, LocationRef};
 use crate::pipeline::filter::{FilterByExtension, FilterHidden};
 use crate::pipeline::group::{GroupBy, GroupField};
 use crate::pipeline::sort::{SortBy, SortField, SortOrder};
 use crate::pipeline::{
-    FileGroup, FilterConfig, GroupBy as ConfigGroupBy, GroupedNodes, Pipeline, PipelineConfig,
+    EntryGroup, FilterConfig, GroupBy as ConfigGroupBy, GroupedEntries, Pipeline, PipelineConfig,
     PipelineData, PipelinePagingMode, SortConfig, Stage,
 };
 use crate::tests::fixtures::local_file_node;
@@ -13,7 +14,7 @@ use crate::utils;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-fn make_file(name: &str, size: u64, hidden: bool) -> FileNode {
+fn make_file(name: &str, size: u64, hidden: bool) -> NodeEntry {
     let path = PathBuf::from(format!("/test/{name}"));
     let extension = utils::get_extension(PathBuf::from(name).as_path()).map(str::to_string);
     local_file_node(
@@ -31,7 +32,7 @@ fn make_file(name: &str, size: u64, hidden: bool) -> FileNode {
     )
 }
 
-fn make_file_with_ext(name: &str, ext: Option<&str>, size: u64) -> FileNode {
+fn make_file_with_ext(name: &str, ext: Option<&str>, size: u64) -> NodeEntry {
     let path = PathBuf::from(format!("/test/{name}"));
     local_file_node(
         path,
@@ -50,7 +51,7 @@ fn make_file_with_ext(name: &str, ext: Option<&str>, size: u64) -> FileNode {
     )
 }
 
-fn make_dir(name: &str, hidden: bool) -> FileNode {
+fn make_dir(name: &str, hidden: bool) -> NodeEntry {
     let path = PathBuf::from(format!("/test/{name}"));
     local_file_node(
         path,
@@ -69,14 +70,14 @@ fn make_dir(name: &str, hidden: bool) -> FileNode {
     )
 }
 
-fn grouped_nodes(groups: Vec<(&str, Vec<FileNode>)>) -> GroupedNodes {
+fn grouped_nodes(groups: Vec<(&str, Vec<NodeEntry>)>) -> GroupedEntries {
     let mut total_count = 0;
     let groups = groups
         .into_iter()
         .enumerate()
         .map(|(order, (label, nodes))| {
             total_count += nodes.len();
-            FileGroup {
+            EntryGroup {
                 label: label.to_string(),
                 nodes,
                 order,
@@ -84,9 +85,8 @@ fn grouped_nodes(groups: Vec<(&str, Vec<FileNode>)>) -> GroupedNodes {
         })
         .collect();
 
-    GroupedNodes {
+    GroupedEntries {
         groups,
         total_count,
     }
 }
-

@@ -2,8 +2,6 @@
 
 use crate::errors::{CoreError, ErrorCode};
 use crate::model::directory::{DirectoryCursor, DirectoryPageRequest};
-use crate::model::node::FileNode;
-use crate::model::registry::NodeRegistry;
 use crate::services::mime::{DetectionConfidence, MAGIC_BYTE_WINDOW, MimeCategory, MimeDetector};
 use crate::vfs::local::LocalFs;
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
@@ -15,21 +13,19 @@ use tempfile::TempDir;
 
 fn local_fs() -> (LocalFs, TempDir) {
     let dir = tempfile::tempdir().unwrap();
-    let fs = LocalFs::new(NodeRegistry::new());
+    let fs = LocalFs::new();
     (fs, dir)
 }
 
 #[tokio::test]
 async fn test_local_fs_scheme() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let fs = LocalFs::new();
     assert_eq!(fs.scheme(), "file");
 }
 
 #[tokio::test]
 async fn test_local_fs_capabilities() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let fs = LocalFs::new();
     let caps = fs.capabilities();
 
     assert!(caps.read);
@@ -40,8 +36,7 @@ async fn test_local_fs_capabilities() {
 
 #[tokio::test]
 async fn test_local_fs_list() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let fs = LocalFs::new();
 
     // Test listing the filer-core/src directory
     let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -290,8 +285,7 @@ async fn test_local_fs_list_page_rejects_zero_limit() {
 
 #[tokio::test]
 async fn test_local_fs_list_not_found() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let fs = LocalFs::new();
     let result = fs
         .list(
             Path::new("/nonexistent/directory/path"),
@@ -321,8 +315,7 @@ async fn test_local_fs_read() {
 
 #[tokio::test]
 async fn test_local_fs_read_not_found() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let fs = LocalFs::new();
     let result = fs
         .read(
             Path::new("/nonexistent/file.txt"),
@@ -531,8 +524,7 @@ async fn test_local_fs_metadata_directory() {
 
 #[tokio::test]
 async fn test_local_fs_metadata_not_found() {
-    let reg = NodeRegistry::new();
-    let fs = LocalFs::new(reg);
+    let fs = LocalFs::new();
     let result = fs
         .metadata(
             Path::new("/nonexistent/file.txt"),

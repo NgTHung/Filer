@@ -10,7 +10,7 @@ use crate::api::events::Event;
 use crate::errors::ErrorCode;
 use crate::model::directory::DirectoryLoadState;
 use crate::model::directory::{DirectoryLoadOptions, DirectoryPageResult};
-use crate::model::location::{LocationId, LocationRef, LocationRoute};
+use crate::model::location::{Location, LocationId, LocationRef, LocationRoute};
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
 };
@@ -18,7 +18,6 @@ use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::GroupedEntries;
-use crate::pipeline::entry_bridge;
 use crate::pipeline::{Pipeline, PipelineConfig, effective_listing};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
@@ -269,13 +268,14 @@ impl Scanner {
     ) {
         if invalidate_cache {
             paging.clear_session(session);
-            if let Some(cache) = cache {
-                if let Ok(mut cache) = cache.lock() {
-                    tracing::debug!(path = %path.display(), "Invalidating directory cache before scan");
-                    if let Some(location_id) = parent_location_id {
-                        cache.invalidate_location(location_id);
-                    }
-                    cache.invalidate(path);
+            if let Some(cache) = cache
+                && let Ok(mut cache) = cache.lock()
+            {
+                tracing::debug!(path = %path.display(), "Invalidating directory cache before scan");
+                if let Some(location_id) = parent_location_id {
+                    cache.invalidate(location_id);
+                } else {
+                    cache.invalidate_local_subtree(path);
                 }
             }
         }
@@ -319,22 +319,8 @@ impl Scanner {
         let cx = ProviderCx::with_cancel(cancel);
         let cached_nodes = cache.and_then(|c| {
             let mut cache = c.lock().ok()?;
-            if let Some(location_id) = parent_location_id
-                && let Some(nodes) = cache.get_location(location_id, cache_listing)
-            {
-                return Some(nodes);
-            }
-
-            let nodes = cache.get(path, cache_listing)?;
-            if let Some(location_id) = parent_location_id {
-                cache.put_location(
-                    location_id,
-                    path.to_path_buf(),
-                    cache_listing,
-                    nodes.clone(),
-                );
-            }
-            Some(nodes)
+            let location_id = parent_location_id?;
+            cache.get(location_id, cache_listing)
         });
         if let Some(cached) = cached_nodes {
             tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
@@ -343,8 +329,6 @@ impl Scanner {
                 match paging.load_cached(cached, path, session, page_request, &pipeline_config, &cx)
                 {
                     Ok(PageLoad::Page(page)) => {
-                        let nodes = entry_bridge::to_file_nodes(&page.entries);
-                        registry.clone().register_batch_file_node(&nodes);
                         Self::emit_page_result(
                             events,
                             latest_scans,
@@ -389,7 +373,6 @@ impl Scanner {
                 return;
             }
 
-            registry.clone().register_batch_file_node(&cached);
             let pipeline = Pipeline::from_config(&pipeline_config);
             let (groups, load) = pipeline
                 .execute_grouped(cached)
@@ -431,7 +414,7 @@ impl Scanner {
                 events,
                 Event::DirectoryLoaded {
                     parent: parent_location.clone(),
-                    groups: crate::pipeline::GroupedEntries::from_grouped_nodes(groups, registry),
+                    groups,
                     load,
                     session,
                     request,
@@ -538,20 +521,14 @@ impl Scanner {
                 && page.state.complete
                 && pipeline_config == PipelineConfig::default()
                 && let Some(cache) = cache
-                && let Some(nodes) = entry_bridge::cacheable_file_nodes(&page.entries)
+                && let Ok(mut c) = cache.lock()
+                && parent_location_id.is_some()
             {
-                if let Ok(mut c) = cache.lock() {
-                    if let Some(location_id) = parent_location_id {
-                        c.put_location(
-                            location_id,
-                            path.to_path_buf(),
-                            load_options.listing,
-                            nodes,
-                        );
-                    } else {
-                        c.put(path.to_path_buf(), load_options.listing, nodes);
-                    }
-                }
+                c.put(
+                    cache_location(&parent_location, path),
+                    load_options.listing,
+                    page.entries.clone(),
+                );
             }
 
             if cancel.is_cancelled() {
@@ -574,8 +551,6 @@ impl Scanner {
             }
 
             registry.clone().register(path.to_path_buf());
-            let nodes = entry_bridge::to_file_nodes(&page.entries);
-            registry.clone().register_batch_file_node(&nodes);
             Self::emit_page_result(
                 events,
                 latest_scans,
@@ -647,16 +622,15 @@ impl Scanner {
 
         if !load_options.is_bounded()
             && let Some(cache) = cache
-            && let Some(nodes) = entry_bridge::cacheable_file_nodes(&entries)
+            && let Ok(mut c) = cache.lock()
+            && parent_location_id.is_some()
         {
-            if let Ok(mut c) = cache.lock() {
-                if let Some(location_id) = parent_location_id {
-                    c.put_location(location_id, path.to_path_buf(), load_options.listing, nodes);
-                } else {
-                    c.put(path.to_path_buf(), load_options.listing, nodes);
-                }
-                tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
-            }
+            c.put(
+                cache_location(&parent_location, path),
+                load_options.listing,
+                entries.clone(),
+            );
+            tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
         }
 
         if cancel.is_cancelled() {
@@ -694,10 +668,7 @@ impl Scanner {
         )
         .await;
         registry.clone().register(path.to_path_buf());
-        let nodes = entry_bridge::to_file_nodes(&entries);
-        registry.clone().register_batch_file_node(&nodes);
-
-        let groups = entry_bridge::execute_grouped_entries(entries, &pipeline_config);
+        let groups = Pipeline::from_config(&pipeline_config).execute_grouped(entries);
         let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
         Self::emit_scan_progress(
             events,
@@ -870,7 +841,7 @@ impl Scanner {
             return;
         }
 
-        let groups = entry_bridge::execute_grouped_entries(entries, &pipeline_config);
+        let groups = Pipeline::from_config(&pipeline_config).execute_grouped(entries);
         let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
         send_or_warn_async(
             events,
@@ -932,7 +903,7 @@ impl Scanner {
             return;
         }
 
-        let groups = entry_bridge::execute_grouped_entries(page.entries, pipeline_config);
+        let groups = Pipeline::from_config(pipeline_config).execute_grouped(page.entries);
         Self::emit_scan_progress(
             events,
             latest_scans,
@@ -1019,6 +990,14 @@ impl Scanner {
         self.active_scans.cancel(session);
         self.paging.clear_session(session);
     }
+}
+
+fn cache_location(parent: &LocationRef, path: &Path) -> Location {
+    parent
+        .descriptor()
+        .cloned()
+        .map(Location::new)
+        .unwrap_or_else(|| Location::local(path.to_path_buf()))
 }
 
 fn limited_entries(

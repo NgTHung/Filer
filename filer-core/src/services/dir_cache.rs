@@ -1,226 +1,169 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::model::location::LocationId;
-use crate::model::node::FileNode;
+use crate::model::location::{Location, LocationId};
+use crate::model::node::NodeEntry;
 use crate::vfs::provider::ListingOptions;
 
 pub type SharedDirCache = Arc<Mutex<DirCache>>;
 
 struct CacheEntry {
-    nodes: Vec<FileNode>,
+    location: Location,
+    entries: Vec<NodeEntry>,
     size_bytes: usize,
     accessed: Instant,
 }
 
-/// LRU directory listing cache shared between Scanner and Operator.
-///
-/// - `get` returns a clone of the cached nodes, updating `accessed` for LRU.
-/// - `put` inserts (or replaces) an entry, evicting LRU entries until the
-///   total size fits within `max_size_bytes`.
-/// - `invalidate` removes a single path entry.
-/// - `invalidate_subtree` removes a path and cached descendants.
-/// - `clear` empties the cache entirely.
-///
-/// Size is estimated as `sizeof(FileNode) + name.capacity() + path bytes` per
-/// node, with a minimum of 64 bytes per entry.
-pub struct DirCache {
-    entries: HashMap<CacheKey, CacheEntry>,
-    location_aliases: HashMap<LocationCacheKey, CacheKey>,
-    current_size_bytes: usize,
-    max_size_bytes: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct CacheKey {
-    path: PathBuf,
-    listing: ListingOptions,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct LocationCacheKey {
+struct CacheKey {
     location: LocationId,
     listing: ListingOptions,
+}
+
+/// LRU directory listing cache keyed by the directory's canonical location.
+///
+/// Rows retain their provider-owned locations, so a cache hit does not need a
+/// path conversion or a registry lookup. Local subtree invalidation remains a
+/// path operation because current write providers expose local paths, but it
+/// only removes entries whose stored locations are local descendants.
+pub struct DirCache {
+    entries: HashMap<CacheKey, CacheEntry>,
+    current_size_bytes: usize,
+    max_size_bytes: usize,
 }
 
 impl DirCache {
     pub fn new(max_size_bytes: usize) -> Self {
         Self {
             entries: HashMap::new(),
-            location_aliases: HashMap::new(),
             current_size_bytes: 0,
             max_size_bytes,
         }
     }
 
-    /// Look up a directory listing. Updates `accessed` on hit.
-    pub fn get(&mut self, path: &Path, listing: ListingOptions) -> Option<Vec<FileNode>> {
+    /// Look up a directory listing by stable location identity.
+    pub fn get(&mut self, location: LocationId, listing: ListingOptions) -> Option<Vec<NodeEntry>> {
+        let entry = self.entries.get_mut(&CacheKey { location, listing })?;
+        entry.accessed = Instant::now();
+        Some(entry.entries.clone())
+    }
+
+    /// Insert or replace a listing, evicting least-recently-used entries.
+    pub fn put(&mut self, location: Location, listing: ListingOptions, entries: Vec<NodeEntry>) {
         let key = CacheKey {
-            path: path.to_path_buf(),
+            location: location.id(),
             listing,
         };
-        let entry = self.entries.get_mut(&key)?;
-        entry.accessed = Instant::now();
-        Some(entry.nodes.clone())
-    }
+        let size_bytes = estimate_size(&location, &entries);
 
-    /// Look up a directory listing by Location alias. Updates `accessed` on hit.
-    pub fn get_location(
-        &mut self,
-        location: LocationId,
-        listing: ListingOptions,
-    ) -> Option<Vec<FileNode>> {
-        let alias = LocationCacheKey { location, listing };
-        let key = self.location_aliases.get(&alias)?.clone();
-        let entry = self.entries.get_mut(&key)?;
-        entry.accessed = Instant::now();
-        Some(entry.nodes.clone())
-    }
-
-    /// Insert or replace a directory listing, evicting LRU entries as needed.
-    pub fn put(&mut self, path: PathBuf, listing: ListingOptions, nodes: Vec<FileNode>) {
-        let new_size = estimate_size(&nodes);
-        let key = CacheKey { path, listing };
-
-        // Remove existing entry for this path first (adjust size).
         if let Some(old) = self.entries.remove(&key) {
             self.current_size_bytes -= old.size_bytes;
         }
 
-        // Evict LRU entries until the new entry fits.
-        while !self.entries.is_empty() && self.current_size_bytes + new_size > self.max_size_bytes {
+        while !self.entries.is_empty()
+            && self.current_size_bytes.saturating_add(size_bytes) > self.max_size_bytes
+        {
             self.evict_lru();
         }
 
-        self.current_size_bytes += new_size;
+        self.current_size_bytes += size_bytes;
         self.entries.insert(
             key,
             CacheEntry {
-                nodes,
-                size_bytes: new_size,
+                location,
+                entries,
+                size_bytes,
                 accessed: Instant::now(),
             },
         );
     }
 
-    /// Insert a direct-path Location alias without duplicating listing storage.
-    pub fn put_location(
-        &mut self,
-        location: LocationId,
-        path: PathBuf,
-        listing: ListingOptions,
-        nodes: Vec<FileNode>,
-    ) {
-        let key = CacheKey {
-            path: path.clone(),
-            listing,
-        };
-        self.put(path, listing, nodes);
-        self.location_aliases
-            .insert(LocationCacheKey { location, listing }, key);
-    }
-
-    /// Remove the entry for `path` (no-op if not present).
-    pub fn invalidate(&mut self, path: &Path) {
+    /// Remove the listing for one location across all detail modes.
+    pub fn invalidate(&mut self, location: LocationId) {
         let keys: Vec<_> = self
             .entries
-            .keys()
-            .filter(|key| key.path == path)
-            .cloned()
-            .collect();
-        for key in keys {
-            if let Some(old) = self.entries.remove(&key) {
-                self.current_size_bytes -= old.size_bytes;
-            }
-            self.remove_aliases_for_key(&key);
-        }
-    }
-
-    /// Remove entries for `path` and any cached descendant directories.
-    pub fn invalidate_subtree(&mut self, path: &Path) {
-        let keys: Vec<_> = self
-            .entries
-            .keys()
-            .filter(|key| key.path == path || key.path.starts_with(path))
-            .cloned()
-            .collect();
-        for key in keys {
-            if let Some(old) = self.entries.remove(&key) {
-                self.current_size_bytes -= old.size_bytes;
-            }
-            self.remove_aliases_for_key(&key);
-        }
-    }
-
-    /// Remove the entry associated with `location` (no-op if not present).
-    pub fn invalidate_location(&mut self, location: LocationId) {
-        let aliases: Vec<_> = self
-            .location_aliases
             .keys()
             .filter(|key| key.location == location)
             .copied()
             .collect();
-
-        for alias in aliases {
-            if let Some(key) = self.location_aliases.remove(&alias) {
-                if let Some(old) = self.entries.remove(&key) {
-                    self.current_size_bytes -= old.size_bytes;
-                }
-                self.remove_aliases_for_key(&key);
-            }
+        for key in keys {
+            self.remove_key(&key);
         }
     }
 
-    /// Remove all entries.
+    /// Remove local listings for `path` and all local descendant directories.
+    pub fn invalidate_local_subtree(&mut self, path: &Path) {
+        let keys: Vec<_> = self
+            .entries
+            .iter()
+            .filter_map(|(key, entry)| {
+                entry
+                    .location
+                    .as_local_path()
+                    .filter(|cached| *cached == path || cached.starts_with(path))
+                    .map(|_| *key)
+            })
+            .collect();
+        for key in keys {
+            self.remove_key(&key);
+        }
+    }
+
+    /// Remove every cached listing.
     pub fn clear(&mut self) {
         self.entries.clear();
-        self.location_aliases.clear();
         self.current_size_bytes = 0;
     }
 
-    /// Number of cached directories.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// Number of Location aliases.
-    pub fn alias_len(&self) -> usize {
-        self.location_aliases.len()
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
-    /// Aggregate size of all cached entries in bytes.
     pub fn current_size_bytes(&self) -> usize {
         self.current_size_bytes
     }
 
-    /// Remove the least-recently-accessed entry.
+    fn remove_key(&mut self, key: &CacheKey) {
+        if let Some(old) = self.entries.remove(key) {
+            self.current_size_bytes -= old.size_bytes;
+        }
+    }
+
     fn evict_lru(&mut self) {
         let oldest_key = self
             .entries
             .iter()
-            .min_by_key(|(_, e)| e.accessed)
-            .map(|(k, _)| k.clone());
-
+            .min_by_key(|(_, entry)| entry.accessed)
+            .map(|(key, _)| *key);
         if let Some(key) = oldest_key {
-            if let Some(evicted) = self.entries.remove(&key) {
-                self.current_size_bytes -= evicted.size_bytes;
-                self.remove_aliases_for_key(&key);
-            }
+            self.remove_key(&key);
         }
-    }
-
-    fn remove_aliases_for_key(&mut self, key: &CacheKey) {
-        self.location_aliases
-            .retain(|_, aliased_key| aliased_key != key);
     }
 }
 
-fn estimate_size(nodes: &[FileNode]) -> usize {
-    nodes
+fn estimate_size(location: &Location, entries: &[NodeEntry]) -> usize {
+    let location_size = std::mem::size_of::<Location>()
+        + location.descriptor().root().as_os_str().len()
+        + location.descriptor().scheme().len()
+        + location.descriptor().display().len();
+    entries
         .iter()
-        .map(|n| std::mem::size_of::<FileNode>() + n.name.capacity() + n.path.as_os_str().len())
+        .map(|entry| {
+            std::mem::size_of::<NodeEntry>()
+                + entry.name.capacity()
+                + entry.display_path.as_ref().map_or(0, String::capacity)
+                + entry
+                    .location
+                    .descriptor()
+                    .map_or(0, |descriptor| descriptor.display().len())
+        })
         .sum::<usize>()
+        .saturating_add(location_size)
         .max(64)
 }

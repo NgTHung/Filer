@@ -16,7 +16,6 @@
 
 use std::io::Write;
 
-use crate::model::registry::NodeRegistry;
 use crate::services::metadata::extractor::MetadataExtractor; // trait must be in scope
 use crate::services::metadata::extractors::{
     ArchiveExtractor, AudioExtractor, CodeExtractor, DocumentExtractor, ImageExtractor,
@@ -35,7 +34,7 @@ fn mime(mime_type: &str, category: MimeCategory) -> MimeInfo {
     }
 }
 fn local_provider() -> LocalFs {
-    LocalFs::new(NodeRegistry::new())
+    LocalFs::new()
 }
 
 /// Write `bytes` to a NamedTempFile with `suffix` and return it.
@@ -141,4 +140,3 @@ fn zip_empty() -> Vec<u8> {
         0x00, 0x00, // comment length
     ]
 }
-
