@@ -1,7 +1,7 @@
 ---
 id: "API-017"
 title: "Remove NodeId registry plumbing and close the row migration"
-status: In Progress
+status: Done
 priority: "High"
 type: "Refactor"
 parent: "API-007"
@@ -20,6 +20,6 @@ Remove the remaining NodeId registry maps and compatibility helpers, update curr
 
 ## Acceptance Criteria
 
-- [ ] NodeRegistry retains only Location registration, descriptor lookup, route caching, LocationRef resolution, and local path to Location construction.
-- [ ] No production field, enum variant, registry, cache, provider, pipeline, scanner, searcher, navigator, watcher, or operation references NodeId or FileNode.
-- [ ] Documentation, absence checks, the full filer-core suite, and ignored stress tests pass while the NodeId definition and API-008 deletion pin remain.
+- [x] NodeRegistry retains only Location registration, descriptor lookup, route caching, LocationRef resolution, and local path to Location construction.
+- [x] No production field, enum variant, registry, cache, provider, pipeline, scanner, searcher, navigator, watcher, or operation references NodeId or FileNode.
+- [x] Documentation, absence checks, the full filer-core suite, and ignored stress tests pass while the NodeId definition and API-008 deletion pin remain.

@@ -1,7 +1,7 @@
 ---
 id: API-007
 title: Retire the FileNode compatibility row and NodeId-keyed internals
-status: In Progress
+status: Done
 priority: High
 type: Epic
 parent: API-004
@@ -11,7 +11,7 @@ rules: [CORE-LIBRARY, PROVIDER-ACCESS]
 risk: High
 impact: "Makes NodeEntry with LocationRef identity the only row contract and removes NodeId keying from internals."
 tags: [api, nodeid, location]
-last_updated: 2026-08-14
+last_updated: 2026-08-26
 ---
 
 ## Summary
@@ -20,7 +20,7 @@ Coordinate the staged removal of the FileNode compatibility row and NodeId-keyed
 
 ## Exit Criteria
 
-- [ ] API-014, API-015, API-016, and API-017 are Done.
-- [ ] NodeEntry is the only row contract and carries LocationRef as its only identity.
-- [ ] No production internal depends on NodeId; only the definition and API-008 deletion pin remain.
-- [ ] The full filer-core suite and ignored stress tests pass with assertions migrated, not deleted.
+- [x] API-014, API-015, API-016, and API-017 are Done.
+- [x] NodeEntry is the only row contract and carries LocationRef as its only identity.
+- [x] No production internal depends on NodeId; only the definition and API-008 deletion pin remain.
+- [x] The full filer-core suite and ignored stress tests pass with assertions migrated, not deleted.
