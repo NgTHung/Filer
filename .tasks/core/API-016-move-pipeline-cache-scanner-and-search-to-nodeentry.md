@@ -1,7 +1,7 @@
 ---
 id: "API-016"
 title: "Move pipeline cache scanner and search to NodeEntry"
-status: In Progress
+status: Done
 priority: "High"
 type: "Refactor"
 parent: "API-007"
@@ -20,6 +20,6 @@ Run pipeline, query, paging selection, cache, scanner, and search directly on No
 
 ## Acceptance Criteria
 
-- [ ] NodeEntry carries LocationRef as its only identity; FileNode and every row conversion bridge are removed.
-- [ ] Pipeline, query, cache, scanner, search, and paging operate directly on NodeEntry with Location-keyed cache identity.
-- [ ] Behavioral, integration, full filer-core, and ignored stress tests pass with row assertions migrated rather than deleted.
+- [x] NodeEntry carries LocationRef as its only identity; FileNode and every row conversion bridge are removed.
+- [x] Pipeline, query, cache, scanner, search, and paging operate directly on NodeEntry with Location-keyed cache identity.
+- [x] Behavioral, integration, full filer-core, and ignored stress tests pass with row assertions migrated rather than deleted.
