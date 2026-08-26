@@ -132,6 +132,36 @@ fn test_sort_by_size_ties_by_path_after_name() {
 }
 
 #[test]
+fn test_sort_ties_ignore_location_representation_and_display() {
+    let plain = make_file("same.txt", 100, false);
+    let descriptor = crate::LocationDescriptor::local("/test/same.txt").with_display_path("Pretty");
+    let displayed = NodeEntry::from_location_ref(
+        LocationRef::from_location(&Location::new(descriptor)),
+        "same.txt",
+        NodeKind::File {
+            extension: Some("txt".to_string()),
+        },
+    );
+    let id_only = NodeEntry::from_location_ref(
+        LocationRef::id_only(plain.location.identity()),
+        "same.txt",
+        NodeKind::File {
+            extension: Some("txt".to_string()),
+        },
+    );
+    let config = PipelineConfig::default();
+
+    assert_eq!(
+        crate::pipeline::compare_nodes(&config, &plain, &displayed),
+        std::cmp::Ordering::Equal
+    );
+    assert_eq!(
+        crate::pipeline::compare_nodes(&config, &plain, &id_only),
+        std::cmp::Ordering::Equal
+    );
+}
+
+#[test]
 fn test_sort_by_modified() {
     let sort = SortBy::new(SortField::Modified, SortOrder::Ascending, false);
 

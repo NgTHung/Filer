@@ -60,8 +60,31 @@ pub fn compare_nodes(config: &PipelineConfig, left: &NodeEntry, right: &NodeEntr
 
     field_order
         .then_with(|| left.name.cmp(&right.name))
-        .then_with(|| left.location.descriptor().cmp(&right.location.descriptor()))
-        .then_with(|| left.location.identity().0.cmp(&right.location.identity().0))
+        .then_with(|| compare_locations(&left.location, &right.location))
+}
+
+fn compare_locations(
+    left: &crate::model::location::LocationRef,
+    right: &crate::model::location::LocationRef,
+) -> Ordering {
+    // Compare canonical descriptor identity first so ties remain path-stable,
+    // but ignore display-only data and transport representation shape.
+    let descriptor_order = match (left.descriptor(), right.descriptor()) {
+        (Some(left), Some(right)) => left
+            .scheme()
+            .cmp(right.scheme())
+            .then_with(|| left.provider().cmp(right.provider()))
+            .then_with(|| left.root().cmp(right.root()))
+            .then_with(|| left.segments().cmp(right.segments())),
+        _ => Ordering::Equal,
+    };
+    if descriptor_order != Ordering::Equal {
+        return descriptor_order;
+    }
+
+    // Keep id-only references and hash collisions deterministic after the
+    // descriptor identity comparison.
+    left.identity().0.cmp(&right.identity().0)
 }
 
 pub fn group_label(config: &PipelineConfig, node: &NodeEntry) -> String {

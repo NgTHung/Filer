@@ -159,14 +159,14 @@ New client-originated work should allocate ids with `RequestId::new()`,
 
 ## Location
 
-`Location` is the additive provider-aware addressing model. It does not remove
-the `FileNode` row or NodeId-keyed internal state yet. API-006 removes the
-path- and `NodeId`-addressed compatibility routes from the public command,
-wire, and event surfaces.
+`Location` is the provider-aware addressing model. API-016 removes the
+`FileNode` row, row-conversion bridges, and path-keyed directory cache from
+the read-side pipeline. API-006 removes the path- and `NodeId`-addressed
+compatibility routes from the public command, wire, and event surfaces.
 
 Use `Location` as the canonical transport identity for new read-side work.
-Use `NodeId` only for the internal registry, navigation state, and cache
-bridges that API-007 will retire.
+Use `NodeId` only for the remaining internal registry and navigation state
+that API-017 and API-008 will retire.
 
 Important types:
 
@@ -216,7 +216,7 @@ and OS mount adapters are not part of the current `filer-core` provider surface.
 | Label | Surfaces | Contract |
 |---|---|---|
 | Public Location-native | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | The only public addressing and result contract. |
-| Internal/cache handle | `NodeRegistry`, `NavState.current`, history, selection, `FileNode`, direct-local cache bridge ids | Runtime state retained for API-007, not public command or event addressing. |
+| Internal transition state | `NodeRegistry`, `NavState.current`, history, selection | Remaining `NodeId` runtime state retained for API-007, not public command or event addressing. |
 | Removed by API-006 | Former path- and NodeId-addressed commands and events | Legacy wire tags fail deserialization as unknown variants. |
 
 ## Command API
