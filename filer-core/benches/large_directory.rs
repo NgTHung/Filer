@@ -10,8 +10,9 @@
 //! ```
 
 use std::error::Error;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use filer_core::modules::scan::ScanModule;
@@ -63,6 +64,7 @@ struct Settings {
     page_size: usize,
     samples: usize,
     warmup: usize,
+    fixture_root: Option<PathBuf>,
 }
 
 impl Settings {
@@ -72,6 +74,7 @@ impl Settings {
             page_size: read_positive_usize("FILER_BENCH_PAGE_SIZE", DEFAULT_PAGE_SIZE)?,
             samples: read_positive_usize("FILER_BENCH_SAMPLES", DEFAULT_SAMPLES)?,
             warmup: read_positive_usize("FILER_BENCH_WARMUP", DEFAULT_WARMUP)?,
+            fixture_root: std::env::var_os("FILER_BENCH_FIXTURE_ROOT").map(PathBuf::from),
         })
     }
 }
@@ -82,8 +85,14 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn generate(entry_count: usize) -> BenchResult<Self> {
-        let directory = tempfile::tempdir()?;
+    fn generate(entry_count: usize, fixture_root: Option<&Path>) -> BenchResult<Self> {
+        let directory = match fixture_root {
+            Some(root) => {
+                fs::create_dir_all(root)?;
+                tempfile::tempdir_in(root)?
+            }
+            None => tempfile::tempdir()?,
+        };
         for index in 0..entry_count {
             File::create(directory.path().join(format!("entry_{index:05}.dat")))?;
         }
@@ -92,6 +101,10 @@ impl Fixture {
             _directory: directory,
             location,
         })
+    }
+
+    fn path(&self) -> &Path {
+        self._directory.path()
     }
 }
 
@@ -287,11 +300,11 @@ impl Summary {
 async fn main() -> BenchResult<()> {
     let settings = Settings::from_environment()?;
     let fixture_start = Instant::now();
-    let fixture = Fixture::generate(settings.entry_count)?;
+    let fixture = Fixture::generate(settings.entry_count, settings.fixture_root.as_deref())?;
     let fixture_duration = fixture_start.elapsed();
     let harness = Harness::new(fixture.location.clone(), settings.page_size).await?;
 
-    print_profile(&settings, fixture_duration);
+    print_profile(&settings, fixture.path(), fixture_duration);
     println!(
         "{:<24} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
         "scenario", "rows", "min_ms", "median_ms", "p95_ms", "max_ms", "mean_ms"
@@ -349,13 +362,13 @@ fn read_positive_usize(name: &str, default: usize) -> BenchResult<usize> {
     Ok(parsed)
 }
 
-fn print_profile(settings: &Settings, fixture_duration: Duration) {
+fn print_profile(settings: &Settings, fixture_path: &Path, fixture_duration: Duration) {
     let logical_cpus = std::thread::available_parallelism()
         .map(|value| value.get().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
     println!("filer-core large-directory benchmark");
     println!(
-        "profile: os={} arch={} logical_cpus={} entries={} page_size={} samples={} warmup={} fixture_ms={:.3}",
+        "profile: os={} arch={} logical_cpus={} entries={} page_size={} samples={} warmup={} fixture_root={} fixture_ms={:.3}",
         std::env::consts::OS,
         std::env::consts::ARCH,
         logical_cpus,
@@ -363,6 +376,7 @@ fn print_profile(settings: &Settings, fixture_duration: Duration) {
         settings.page_size,
         settings.samples,
         settings.warmup,
+        fixture_path.parent().unwrap_or(fixture_path).display(),
         millis(fixture_duration),
     );
 }

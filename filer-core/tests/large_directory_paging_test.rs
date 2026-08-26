@@ -199,9 +199,10 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
     assert!(!page.complete);
     assert!(page.next_cursor.is_some());
     assert_eq!(provider.full_list_calls.load(Ordering::Relaxed), 0);
+    let paged_rows = provider.paged_rows_returned.load(Ordering::Relaxed);
     assert!(
-        provider.paged_rows_returned.load(Ordering::Relaxed) <= PAGE_SIZE * 2,
-        "the first public page should require at most one page plus lookahead"
+        paged_rows <= PAGE_SIZE * 2,
+        "the first public page should require at most one page plus lookahead, observed {paged_rows} of {ENTRY_COUNT} provider rows"
     );
 
     core.shutdown()
