@@ -194,10 +194,11 @@ New client-originated work should allocate ids with `RequestId::new()`,
 `FileNode` row, row-conversion bridges, and path-keyed directory cache from
 the read-side pipeline. API-006 removes the path- and `NodeId`-addressed
 compatibility routes from the public command, wire, and event surfaces.
+API-017 removes the `NodeId`-keyed registry maps and compatibility helpers.
 
 Use `Location` as the canonical transport identity for new read-side work.
-Use `NodeId` only for the remaining internal registry and navigation state
-that API-017 and API-008 will retire.
+The `NodeId` type and deterministic hashing pin remain only until API-008
+deletes them. No runtime registry, navigation, or workflow depends on them.
 
 Important types:
 
@@ -242,12 +243,13 @@ and unsupported providers return structured provider errors. Concrete remote
 providers, encrypted providers, Kubernetes, sync, cloud-placeholder providers,
 and OS mount adapters are not part of the current `filer-core` provider surface.
 
-### NodeId Surfaces
+### Identity Surfaces
 
 | Label | Surfaces | Contract |
 |---|---|---|
 | Public Location-native | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | The only public addressing and result contract. |
-| Internal transition state | `NodeRegistry`, `NavState.current`, history, selection | Remaining `NodeId` runtime state retained for API-007, not public command or event addressing. |
+| Internal Location registry | `NodeRegistry`, `LocationId`, `LocationRef::Id` resolution | Stores descriptors and route cache entries; it has no NodeId-keyed state. |
+| API-008 cleanup pin | `NodeId` definition and deterministic hashing test | Temporary compatibility surface with no runtime callers; API-008 owns its deletion. |
 | Removed by API-006 | Former path- and NodeId-addressed commands and events | Legacy wire tags fail deserialization as unknown variants. |
 
 ## Command API

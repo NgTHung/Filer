@@ -36,7 +36,7 @@ use crate::model::session::SessionId;
 /// Context available to command handlers during dispatch.
 ///
 /// Passed by reference to every handler invocation. Provides access
-/// to the event bus, session manager, and node registry.
+/// to the event bus, session manager, and Location registry.
 #[derive(Clone)]
 pub struct HandlerContext {
     pub events: EventSink,

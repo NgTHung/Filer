@@ -255,10 +255,14 @@ Parsing a URI should prove that the identity is well-formed. It should not prove
 
 1. Add canonical URI tests around the current `LocationDescriptor` fields.
 2. Add `identity_uri()` and `from_identity_uri()` without replacing existing APIs.
-3. Replace segmented `NodeId` placeholder hashing with `identity_uri()` instead of `display_path`.
+3. When `identity_uri()` is implemented, use it for segmented identity instead of
+   display-path placeholder hashing. API-017 already removes the registry's
+   segmented `NodeId` placeholder.
 4. Add `LocationDescriptor::parent()` and move navigator `Up` behavior toward Location-native state.
 5. Add first-class segment args before supporting drivers that need parameters.
-6. Keep path and `NodeId` commands as explicit compatibility APIs until all internal authority has moved to `LocationRef`.
+6. Public command and event addressing is already Location-native. API-017
+   removes the remaining internal `NodeId` authority, and API-008 removes the
+   temporary type and hashing pin.
 
 ## Open Decisions
 
