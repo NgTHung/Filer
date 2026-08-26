@@ -67,5 +67,10 @@ all-features = ["metadata-archive-rar", "metadata", "preview"]
 [dev-dependencies]
 tempfile = "3.27.0"  # also listed as optional dep for runtime archive chaining
 tracing-subscriber = "0.3"  # capturing layer for command-path tracing tests
+
+[[bench]]
+name = "large_directory"
+harness = false
+
 [target.'cfg(unix)'.dependencies]
 users = "0.11"

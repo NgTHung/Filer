@@ -1,0 +1,372 @@
+//! # Large Directory Benchmark
+//!
+//! Measures directory first paint and continuation through Filer-core's public
+//! command and event contracts against a generated local filesystem fixture.
+//!
+//! ```
+//! use filer_core::DirectoryLoadOptions;
+//!
+//! assert!(DirectoryLoadOptions::page(256).is_paged());
+//! ```
+
+use std::error::Error;
+use std::fs::File;
+use std::io;
+use std::time::{Duration, Instant};
+
+use filer_core::modules::scan::ScanModule;
+use filer_core::{
+    Command, DirectoryCursor, DirectoryLoadMode, DirectoryLoadOptions, Event, FilerCore, LocalFs,
+    Location, LocationRef, PipelineConfig, RequestId,
+};
+use tempfile::TempDir;
+
+const DEFAULT_ENTRY_COUNT: usize = 10_000;
+const DEFAULT_PAGE_SIZE: usize = 256;
+const DEFAULT_SAMPLES: usize = 20;
+const DEFAULT_WARMUP: usize = 3;
+const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
+
+type BenchResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
+#[derive(Clone, Copy)]
+enum Scenario {
+    FirstPageFast,
+    NextPageFast,
+    FirstPageMetadata,
+    FirstPageSorted,
+    FullSnapshotFast,
+}
+
+impl Scenario {
+    const ALL: [Self; 5] = [
+        Self::FirstPageFast,
+        Self::NextPageFast,
+        Self::FirstPageMetadata,
+        Self::FirstPageSorted,
+        Self::FullSnapshotFast,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::FirstPageFast => "first_page_fast",
+            Self::NextPageFast => "next_page_fast",
+            Self::FirstPageMetadata => "first_page_metadata",
+            Self::FirstPageSorted => "first_page_sorted",
+            Self::FullSnapshotFast => "full_snapshot_fast",
+        }
+    }
+}
+
+struct Settings {
+    entry_count: usize,
+    page_size: usize,
+    samples: usize,
+    warmup: usize,
+}
+
+impl Settings {
+    fn from_environment() -> BenchResult<Self> {
+        Ok(Self {
+            entry_count: read_positive_usize("FILER_BENCH_ENTRIES", DEFAULT_ENTRY_COUNT)?,
+            page_size: read_positive_usize("FILER_BENCH_PAGE_SIZE", DEFAULT_PAGE_SIZE)?,
+            samples: read_positive_usize("FILER_BENCH_SAMPLES", DEFAULT_SAMPLES)?,
+            warmup: read_positive_usize("FILER_BENCH_WARMUP", DEFAULT_WARMUP)?,
+        })
+    }
+}
+
+struct Fixture {
+    _directory: TempDir,
+    location: LocationRef,
+}
+
+impl Fixture {
+    fn generate(entry_count: usize) -> BenchResult<Self> {
+        let directory = tempfile::tempdir()?;
+        for index in 0..entry_count {
+            File::create(directory.path().join(format!("entry_{index:05}.dat")))?;
+        }
+        let location = LocationRef::from_location(&Location::local(directory.path()));
+        Ok(Self {
+            _directory: directory,
+            location,
+        })
+    }
+}
+
+struct Harness {
+    core: FilerCore,
+    events: flume::Receiver<Event>,
+    session: filer_core::model::session::SessionId,
+    location: LocationRef,
+    page_size: usize,
+}
+
+impl Harness {
+    async fn new(location: LocationRef, page_size: usize) -> BenchResult<Self> {
+        let core = FilerCore::new();
+        core.load(ScanModule::new(std::sync::Arc::new(LocalFs::new())));
+        let events = core.event_receiver();
+        core.send(Command::Handshake)?;
+        let session = loop {
+            match recv_event(&events).await? {
+                Event::SessionCreated(session) => break session,
+                _ => {}
+            }
+        };
+        Ok(Self {
+            core,
+            events,
+            session,
+            location,
+            page_size,
+        })
+    }
+
+    async fn prepare(&self, scenario: Scenario) -> BenchResult<Option<DirectoryCursor>> {
+        if !matches!(scenario, Scenario::NextPageFast) {
+            return Ok(None);
+        }
+        let first = self
+            .scan_page(PipelineConfig::default(), fast_page(self.page_size))
+            .await?;
+        first.cursor.map(Some).ok_or_else(|| {
+            io::Error::other("first page completed without a continuation cursor").into()
+        })
+    }
+
+    async fn run(
+        &self,
+        scenario: Scenario,
+        prepared_cursor: Option<DirectoryCursor>,
+    ) -> BenchResult<usize> {
+        match scenario {
+            Scenario::FirstPageFast => self
+                .scan_page(PipelineConfig::default(), fast_page(self.page_size))
+                .await
+                .map(|result| result.rows),
+            Scenario::NextPageFast => {
+                let cursor = prepared_cursor
+                    .ok_or_else(|| io::Error::other("next-page benchmark was not prepared"))?;
+                self.scan_page(
+                    PipelineConfig::default(),
+                    DirectoryLoadOptions::page_after(self.page_size, cursor),
+                )
+                .await
+                .map(|result| result.rows)
+            }
+            Scenario::FirstPageMetadata => self
+                .scan_page(
+                    PipelineConfig::default(),
+                    DirectoryLoadOptions {
+                        listing: filer_core::ListingOptions::metadata(),
+                        mode: DirectoryLoadMode::Page {
+                            limit: self.page_size,
+                            cursor: None,
+                        },
+                    },
+                )
+                .await
+                .map(|result| result.rows),
+            Scenario::FirstPageSorted => self
+                .scan_page(
+                    PipelineConfig::with_default_sort(),
+                    fast_page(self.page_size),
+                )
+                .await
+                .map(|result| result.rows),
+            Scenario::FullSnapshotFast => self.scan_snapshot().await,
+        }
+    }
+
+    async fn scan_page(
+        &self,
+        pipeline: PipelineConfig,
+        load: DirectoryLoadOptions,
+    ) -> BenchResult<PageObservation> {
+        let request = RequestId::new();
+        self.core.send(Command::Scan {
+            location: self.location.clone(),
+            session: self.session,
+            pipeline,
+            load,
+            request,
+        })?;
+
+        loop {
+            match recv_event(&self.events).await? {
+                Event::DirectoryPageLoaded {
+                    groups,
+                    page,
+                    request: event_request,
+                    ..
+                } if event_request == request => {
+                    return Ok(PageObservation {
+                        rows: groups.total_count,
+                        cursor: page.next_cursor,
+                    });
+                }
+                Event::Error {
+                    message,
+                    request: Some(event_request),
+                    ..
+                } if event_request == request => return Err(io::Error::other(message).into()),
+                _ => {}
+            }
+        }
+    }
+
+    async fn scan_snapshot(&self) -> BenchResult<usize> {
+        let request = RequestId::new();
+        self.core.send(Command::Scan {
+            location: self.location.clone(),
+            session: self.session,
+            pipeline: PipelineConfig::default(),
+            load: DirectoryLoadOptions::unbounded(filer_core::ListingOptions::fast()),
+            request,
+        })?;
+
+        loop {
+            match recv_event(&self.events).await? {
+                Event::DirectoryLoaded {
+                    groups,
+                    request: event_request,
+                    ..
+                } if event_request == request => return Ok(groups.total_count),
+                Event::Error {
+                    message,
+                    request: Some(event_request),
+                    ..
+                } if event_request == request => return Err(io::Error::other(message).into()),
+                _ => {}
+            }
+        }
+    }
+}
+
+struct PageObservation {
+    rows: usize,
+    cursor: Option<DirectoryCursor>,
+}
+
+struct Summary {
+    min: Duration,
+    median: Duration,
+    p95: Duration,
+    max: Duration,
+    mean: Duration,
+}
+
+impl Summary {
+    fn from_samples(samples: &mut [Duration]) -> BenchResult<Self> {
+        if samples.is_empty() {
+            return Err(io::Error::other("benchmark produced no samples").into());
+        }
+        samples.sort_unstable();
+        let median = samples[samples.len() / 2];
+        let p95_index = ((samples.len() * 95).div_ceil(100)).saturating_sub(1);
+        let total_nanos = samples
+            .iter()
+            .map(Duration::as_nanos)
+            .fold(0u128, u128::saturating_add);
+        let mean_nanos = total_nanos / samples.len() as u128;
+        let mean_nanos = u64::try_from(mean_nanos)
+            .map_err(|_| io::Error::other("mean duration exceeded u64 nanoseconds"))?;
+        Ok(Self {
+            min: samples[0],
+            median,
+            p95: samples[p95_index],
+            max: samples[samples.len() - 1],
+            mean: Duration::from_nanos(mean_nanos),
+        })
+    }
+}
+
+#[tokio::main]
+async fn main() -> BenchResult<()> {
+    let settings = Settings::from_environment()?;
+    let fixture_start = Instant::now();
+    let fixture = Fixture::generate(settings.entry_count)?;
+    let fixture_duration = fixture_start.elapsed();
+    let harness = Harness::new(fixture.location.clone(), settings.page_size).await?;
+
+    print_profile(&settings, fixture_duration);
+    println!(
+        "{:<24} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
+        "scenario", "rows", "min_ms", "median_ms", "p95_ms", "max_ms", "mean_ms"
+    );
+
+    for scenario in Scenario::ALL {
+        for _ in 0..settings.warmup {
+            let cursor = harness.prepare(scenario).await?;
+            let _ = harness.run(scenario, cursor).await?;
+        }
+        let mut samples = Vec::with_capacity(settings.samples);
+        let mut rows = 0;
+        for _ in 0..settings.samples {
+            let cursor = harness.prepare(scenario).await?;
+            let start = Instant::now();
+            rows = harness.run(scenario, cursor).await?;
+            samples.push(start.elapsed());
+        }
+        let summary = Summary::from_samples(&mut samples)?;
+        println!(
+            "{:<24} {:>8} {:>10.3} {:>10.3} {:>10.3} {:>10.3} {:>10.3}",
+            scenario.name(),
+            rows,
+            millis(summary.min),
+            millis(summary.median),
+            millis(summary.p95),
+            millis(summary.max),
+            millis(summary.mean),
+        );
+    }
+
+    harness.core.shutdown().await?;
+    Ok(())
+}
+
+async fn recv_event(events: &flume::Receiver<Event>) -> BenchResult<Event> {
+    tokio::time::timeout(EVENT_TIMEOUT, events.recv_async())
+        .await
+        .map_err(|_| io::Error::other("timed out waiting for benchmark event"))?
+        .map_err(|_| io::Error::other("benchmark event channel closed").into())
+}
+
+fn fast_page(page_size: usize) -> DirectoryLoadOptions {
+    DirectoryLoadOptions::page(page_size)
+}
+
+fn read_positive_usize(name: &str, default: usize) -> BenchResult<usize> {
+    let Ok(value) = std::env::var(name) else {
+        return Ok(default);
+    };
+    let parsed = value.parse::<usize>()?;
+    if parsed == 0 {
+        return Err(io::Error::other(format!("{name} must be greater than zero")).into());
+    }
+    Ok(parsed)
+}
+
+fn print_profile(settings: &Settings, fixture_duration: Duration) {
+    let logical_cpus = std::thread::available_parallelism()
+        .map(|value| value.get().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+    println!("filer-core large-directory benchmark");
+    println!(
+        "profile: os={} arch={} logical_cpus={} entries={} page_size={} samples={} warmup={} fixture_ms={:.3}",
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        logical_cpus,
+        settings.entry_count,
+        settings.page_size,
+        settings.samples,
+        settings.warmup,
+        millis(fixture_duration),
+    );
+}
+
+fn millis(duration: Duration) -> f64 {
+    duration.as_secs_f64() * 1_000.0
+}
