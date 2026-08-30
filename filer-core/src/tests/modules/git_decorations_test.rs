@@ -1,0 +1,506 @@
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::{fs, process::Command as ProcessCommand};
+
+use async_trait::async_trait;
+use tempfile::TempDir;
+use tokio::sync::Notify;
+
+use crate::model::fs_change::FsChangeKind;
+use crate::model::session::SessionId;
+use crate::modules::git_decorations::GitCliBackend;
+use crate::modules::git_decorations::{
+    FileDecoration, FileDecorationInvalidation, FileDecorationState, GitDecorationRequest,
+    GitDecorationTarget, GitDecorationsModule, GitRepository, GitStatusBackend, GitStatusResult,
+    MAX_VISIBLE_DECORATIONS,
+};
+use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
+use crate::{Command, Event, FilerCore, Location, LocationRef, RequestId};
+
+struct TestWatchHandle;
+
+impl WatchHandle for TestWatchHandle {}
+
+#[derive(Default)]
+struct TestWatchProvider {
+    sender: Mutex<Option<flume::Sender<FsChange>>>,
+    watched: Mutex<Vec<PathBuf>>,
+}
+
+impl TestWatchProvider {
+    async fn emit(&self, path: PathBuf, kind: FsChangeKind) {
+        let sender = self
+            .sender
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        if let Some(sender) = sender {
+            let _ = sender.send_async(FsChange { path, kind }).await;
+        }
+    }
+}
+
+#[async_trait]
+impl WatchProvider for TestWatchProvider {
+    async fn watch(
+        &self,
+        path: &Path,
+        sender: flume::Sender<FsChange>,
+    ) -> Result<Box<dyn WatchHandle>, crate::CoreError> {
+        *self
+            .sender
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(sender);
+        self.watched
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(path.to_path_buf());
+        Ok(Box::new(TestWatchHandle))
+    }
+
+    async fn unwatch(&self, path: &Path) -> Result<(), crate::CoreError> {
+        self.watched
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|watched| watched != path);
+        Ok(())
+    }
+}
+
+struct StaticBackend {
+    states: Vec<FileDecorationState>,
+    gate: Option<Arc<Notify>>,
+    calls: Arc<Mutex<Vec<Vec<LocationRef>>>>,
+}
+
+#[async_trait]
+impl GitStatusBackend for StaticBackend {
+    async fn status(
+        &self,
+        parent: &Path,
+        visible: &[GitDecorationTarget],
+        cancel: &crate::CancelSignal,
+    ) -> Result<GitStatusResult, crate::CoreError> {
+        self.calls
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(
+                visible
+                    .iter()
+                    .map(|target| target.location.clone())
+                    .collect(),
+            );
+        if let Some(gate) = &self.gate {
+            tokio::select! {
+                _ = gate.notified() => {}
+                _ = cancel.cancelled() => return Err(crate::CoreError::cancelled()),
+            }
+        }
+        let decorations = visible
+            .iter()
+            .enumerate()
+            .map(|(index, target)| FileDecoration {
+                location: target.location.clone(),
+                state: self
+                    .states
+                    .get(index)
+                    .copied()
+                    .unwrap_or(FileDecorationState::Clean),
+            })
+            .collect();
+        Ok(GitStatusResult {
+            repository: Some(GitRepository {
+                worktree: parent.to_path_buf(),
+                git_dir: parent.join(".git"),
+            }),
+            decorations,
+        })
+    }
+}
+
+fn request(parent: &Location, visible: &[LocationRef]) -> GitDecorationRequest {
+    GitDecorationRequest {
+        parent: LocationRef::from_location(parent),
+        visible: visible.to_vec(),
+        request: RequestId::new(),
+    }
+}
+
+async fn wait_for_event(events: &flume::Receiver<Event>) -> Event {
+    tokio::time::timeout(Duration::from_secs(2), events.recv_async())
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting for decoration event"))
+        .unwrap_or_else(|_| panic!("event channel closed"))
+}
+
+async fn create_session(core: &FilerCore, events: &flume::Receiver<Event>) -> SessionId {
+    core.send(Command::Handshake).unwrap();
+    loop {
+        match wait_for_event(events).await {
+            Event::SessionCreated(session) => return session,
+            _ => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn semantic_states_are_emitted_by_location_identity() {
+    let temp = TempDir::new().unwrap();
+    let parent = Location::local(temp.path());
+    let paths = [
+        "modified",
+        "added",
+        "deleted",
+        "untracked",
+        "ignored",
+        "conflicted",
+        "clean",
+    ];
+    let visible: Vec<_> = paths
+        .iter()
+        .map(|name| LocationRef::from_location(&Location::local(temp.path().join(name))))
+        .collect();
+    let states = vec![
+        FileDecorationState::Modified,
+        FileDecorationState::Added,
+        FileDecorationState::Deleted,
+        FileDecorationState::Untracked,
+        FileDecorationState::Ignored,
+        FileDecorationState::Conflicted,
+        FileDecorationState::Clean,
+    ];
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let backend = Arc::new(StaticBackend {
+        states: states.clone(),
+        gate: None,
+        calls: calls.clone(),
+    });
+    let watcher = Arc::new(TestWatchProvider::default());
+    let core = FilerCore::new();
+    core.load(GitDecorationsModule::with_components(backend, watcher));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let request = request(&parent, &visible);
+    let request_id = request.request;
+
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(request),
+        session,
+    })
+    .unwrap();
+
+    let event = wait_for_event(&events).await;
+    assert!(matches!(
+        event,
+        Event::FileDecorationsUpdated {
+            decorations,
+            session: event_session,
+            request,
+        } if event_session == session
+            && request == request_id
+            && decorations
+                .iter()
+                .map(|decoration| decoration.state)
+                .eq(states.iter().copied())
+            && decorations
+                .iter()
+                .zip(visible.iter())
+                .all(|(decoration, location)| &decoration.location == location)
+    ));
+    assert_eq!(calls.lock().unwrap().len(), 1);
+    core.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn malformed_and_oversized_requests_are_recoverable_errors() {
+    let temp = TempDir::new().unwrap();
+    let watcher = Arc::new(TestWatchProvider::default());
+    let backend = Arc::new(StaticBackend {
+        states: Vec::new(),
+        gate: None,
+        calls: Arc::new(Mutex::new(Vec::new())),
+    });
+    let core = FilerCore::new();
+    core.load(GitDecorationsModule::with_components(backend, watcher));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new("wrong payload".to_string()),
+        session,
+    })
+    .unwrap();
+    let malformed = wait_for_event(&events).await;
+    assert!(
+        matches!(malformed, Event::Error { session: event_session, .. } if event_session == session)
+    );
+
+    let parent = Location::local(temp.path());
+    let visible: Vec<_> = (0..=MAX_VISIBLE_DECORATIONS)
+        .map(|index| {
+            LocationRef::from_location(&Location::local(temp.path().join(index.to_string())))
+        })
+        .collect();
+    let request = request(&parent, &visible);
+    let request_id = request.request;
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(request),
+        session,
+    })
+    .unwrap();
+    let oversized = wait_for_event(&events).await;
+    assert!(matches!(
+        oversized,
+        Event::Error { request: Some(event_request), code: crate::ErrorCode::InputInvalid, .. } if event_request == request_id
+    ));
+    core.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn repository_changes_invalidate_matching_visible_rows() {
+    let temp = TempDir::new().unwrap();
+    let parent = Location::local(temp.path());
+    let changed = Location::local(temp.path().join("changed.txt"));
+    let untouched = Location::local(temp.path().join("untouched.txt"));
+    let visible = vec![
+        LocationRef::from_location(&changed),
+        LocationRef::from_location(&untouched),
+    ];
+    let watcher = Arc::new(TestWatchProvider::default());
+    let backend = Arc::new(StaticBackend {
+        states: vec![FileDecorationState::Modified, FileDecorationState::Clean],
+        gate: None,
+        calls: Arc::new(Mutex::new(Vec::new())),
+    });
+    let core = FilerCore::new();
+    core.load(GitDecorationsModule::with_components(
+        backend,
+        watcher.clone(),
+    ));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let request = request(&parent, &visible);
+    let request_id = request.request;
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(request),
+        session,
+    })
+    .unwrap();
+    let _ = wait_for_event(&events).await;
+
+    watcher
+        .emit(
+            changed.as_local_path().unwrap().to_path_buf(),
+            FsChangeKind::Modified,
+        )
+        .await;
+    let event = wait_for_event(&events).await;
+    assert!(matches!(
+        event,
+        Event::FileDecorationsInvalidated {
+            invalidation: FileDecorationInvalidation { locations },
+            session: event_session,
+            request: event_request,
+        } if event_session == session
+            && event_request == request_id
+            && locations == vec![LocationRef::from_location(&changed)]
+    ));
+
+    core.send(Command::DestroySession(session)).unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert!(watcher.watched.lock().unwrap().is_empty());
+    core.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_new_request_cancels_the_previous_request() {
+    let temp = TempDir::new().unwrap();
+    let parent = Location::local(temp.path());
+    let first = LocationRef::from_location(&Location::local(temp.path().join("first")));
+    let second = LocationRef::from_location(&Location::local(temp.path().join("second")));
+    let gate = Arc::new(Notify::new());
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let backend = Arc::new(StaticBackend {
+        states: vec![FileDecorationState::Clean],
+        gate: Some(gate.clone()),
+        calls: calls.clone(),
+    });
+    let watcher = Arc::new(TestWatchProvider::default());
+    let core = FilerCore::new();
+    core.load(GitDecorationsModule::with_components(backend, watcher));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let first_request = request(&parent, &[first]);
+    let second_request = request(&parent, &[second]);
+    let second_id = second_request.request;
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(first_request),
+        session,
+    })
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if !calls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .is_empty()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(second_request),
+        session,
+    })
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if calls
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .len()
+                >= 2
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    gate.notify_waiters();
+    let event = wait_for_event(&events).await;
+    assert!(matches!(event, Event::FileDecorationsUpdated { request, .. } if request == second_id));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), events.recv_async())
+            .await
+            .is_err()
+    );
+    core.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn git_cli_maps_all_supported_states() {
+    let temp = TempDir::new().unwrap();
+    run_git(temp.path(), ["init", "-q"]);
+    run_git(temp.path(), ["branch", "-M", "main"]);
+    run_git(temp.path(), ["config", "user.email", "filer@example.test"]);
+    run_git(temp.path(), ["config", "user.name", "Filer Test"]);
+    fs::write(temp.path().join(".gitignore"), "ignored.txt\n").unwrap();
+    for name in ["clean.txt", "modified.txt", "deleted.txt", "conflicted.txt"] {
+        fs::write(temp.path().join(name), "base\n").unwrap();
+    }
+    run_git(temp.path(), ["add", "."]);
+    run_git(temp.path(), ["commit", "-qm", "base"]);
+
+    run_git(temp.path(), ["checkout", "-qb", "feature"]);
+    fs::write(temp.path().join("conflicted.txt"), "feature\n").unwrap();
+    run_git(temp.path(), ["commit", "-qam", "feature"]);
+    run_git(temp.path(), ["checkout", "-q", "main"]);
+    fs::write(temp.path().join("conflicted.txt"), "main\n").unwrap();
+    run_git(temp.path(), ["commit", "-qam", "main change"]);
+    let merge = ProcessCommand::new("git")
+        .args(["-C", temp.path().to_str().unwrap(), "merge", "feature"])
+        .output()
+        .unwrap();
+    assert!(
+        !merge.status.success(),
+        "the merge should create a conflict"
+    );
+
+    fs::write(temp.path().join("modified.txt"), "changed\n").unwrap();
+    fs::remove_file(temp.path().join("deleted.txt")).unwrap();
+    fs::write(temp.path().join("added.txt"), "added\n").unwrap();
+    run_git(temp.path(), ["add", "added.txt"]);
+    fs::write(temp.path().join("untracked.txt"), "untracked\n").unwrap();
+    fs::write(temp.path().join("ignored.txt"), "ignored\n").unwrap();
+
+    let names = [
+        "modified.txt",
+        "added.txt",
+        "deleted.txt",
+        "untracked.txt",
+        "ignored.txt",
+        "conflicted.txt",
+        "clean.txt",
+    ];
+    let locations: Vec<_> = names
+        .iter()
+        .map(|name| LocationRef::from_location(&Location::local(temp.path().join(name))))
+        .collect();
+    let targets: Vec<_> = locations
+        .iter()
+        .map(|location| GitDecorationTarget {
+            location: location.clone(),
+            path: location.descriptor().unwrap().root().to_path_buf(),
+        })
+        .collect();
+    let result = GitCliBackend::new()
+        .status(temp.path(), &targets, &crate::CancelSignal::new())
+        .await
+        .unwrap();
+    let states: Vec<_> = result
+        .decorations
+        .iter()
+        .map(|decoration| decoration.state)
+        .collect();
+    assert_eq!(
+        states,
+        vec![
+            FileDecorationState::Modified,
+            FileDecorationState::Added,
+            FileDecorationState::Deleted,
+            FileDecorationState::Untracked,
+            FileDecorationState::Ignored,
+            FileDecorationState::Conflicted,
+            FileDecorationState::Clean,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn git_cli_reports_non_repository_as_empty_and_missing_program_as_error() {
+    let temp = TempDir::new().unwrap();
+    let location = Location::local(temp.path().join("file.txt"));
+    let target = GitDecorationTarget {
+        location: LocationRef::from_location(&location),
+        path: location.as_local_path().unwrap().to_path_buf(),
+    };
+    let cancel = crate::CancelSignal::new();
+
+    let outside = GitCliBackend::new()
+        .status(temp.path(), std::slice::from_ref(&target), &cancel)
+        .await
+        .unwrap();
+    assert!(outside.repository.is_none());
+    assert!(outside.decorations.is_empty());
+
+    let missing = GitCliBackend::with_program(temp.path().join("missing-git"))
+        .status(temp.path(), &[target], &cancel)
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code(), crate::ErrorCode::UnsupportedOperation);
+}
+
+fn run_git<const N: usize>(directory: &Path, args: [&str; N]) {
+    let output = ProcessCommand::new("git")
+        .args(["-C", directory.to_str().unwrap()])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

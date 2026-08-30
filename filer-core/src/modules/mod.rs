@@ -22,6 +22,7 @@
 //! core.load(MySearchOnlyModule::new());
 //! ```
 
+pub mod git_decorations;
 pub mod navigation;
 pub mod operations;
 pub mod preview;

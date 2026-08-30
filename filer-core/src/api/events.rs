@@ -6,6 +6,7 @@ use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{ProgressScope, ProgressSnapshot};
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
+use crate::modules::git_decorations::{FileDecoration, FileDecorationInvalidation};
 use crate::modules::navigation::navigator::NavState;
 use crate::pipeline::GroupedEntries;
 use crate::{ExtendedMetadata, PreviewData, model::fs_change::FsChangeKind};
@@ -88,6 +89,20 @@ pub enum Event {
     ExtendedMetadataLoaded {
         location: LocationRef,
         extended: ExtendedMetadata,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Semantic file decorations produced by an in-process extension.
+    FileDecorationsUpdated {
+        decorations: Vec<FileDecoration>,
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Locations whose previously emitted decorations are no longer current.
+    FileDecorationsInvalidated {
+        invalidation: FileDecorationInvalidation,
         session: SessionId,
         request: RequestId,
     },

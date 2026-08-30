@@ -1,3 +1,4 @@
+mod git_decorations_test;
 mod navigator_test;
 mod operator_test;
 mod previewer_test;
