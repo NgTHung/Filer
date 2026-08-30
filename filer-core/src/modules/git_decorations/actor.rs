@@ -80,7 +80,7 @@ impl GitDecorationsActor {
         watch_provider: Arc<dyn WatchProvider>,
     ) -> Self {
         let (change_tx, change_rx) = flume::bounded(crate::DEFAULT_EVENT_CHANNEL_CAPACITY);
-        let (result_tx, results) = flume::unbounded();
+        let (result_tx, results) = flume::bounded(crate::DEFAULT_EVENT_CHANNEL_CAPACITY);
         Self {
             commands,
             events,
@@ -171,19 +171,18 @@ impl GitDecorationsActor {
             let result = backend
                 .status(&parent_path, &worker_targets, &worker_cancel)
                 .await;
-            if !matches!(&result, Err(error) if error.code() == crate::ErrorCode::Cancelled) {
-                if result_tx
-                    .send_async(WorkerResult {
+            if !matches!(&result, Err(error) if error.code() == crate::ErrorCode::Cancelled)
+                && tokio::select! {
+                    sent = result_tx.send_async(WorkerResult {
                         session,
                         request,
                         targets: worker_targets,
                         result,
-                    })
-                    .await
-                    .is_err()
-                {
-                    tracing::debug!("Git decoration result receiver closed");
+                    }) => sent.is_err(),
+                    _ = worker_cancel.cancelled() => false,
                 }
+            {
+                tracing::debug!("Git decoration result receiver closed");
             }
             active.remove_if_current(session, &worker_cancel).await;
         });

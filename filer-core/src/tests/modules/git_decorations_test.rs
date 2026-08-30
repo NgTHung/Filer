@@ -16,7 +16,10 @@ use crate::modules::git_decorations::{
     MAX_VISIBLE_DECORATIONS,
 };
 use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
-use crate::{Command, Event, FilerCore, Location, LocationRef, RequestId};
+use crate::{
+    Command, DirectoryLoadOptions, Event, FilerCore, LocalFs, Location, LocationRef,
+    PipelineConfig, RequestId,
+};
 
 struct TestWatchHandle;
 
@@ -137,9 +140,8 @@ async fn wait_for_event(events: &flume::Receiver<Event>) -> Event {
 async fn create_session(core: &FilerCore, events: &flume::Receiver<Event>) -> SessionId {
     core.send(Command::Handshake).unwrap();
     loop {
-        match wait_for_event(events).await {
-            Event::SessionCreated(session) => return session,
-            _ => {}
+        if let Event::SessionCreated(session) = wait_for_event(events).await {
+            return session;
         }
     }
 }
@@ -490,6 +492,76 @@ async fn git_cli_reports_non_repository_as_empty_and_missing_program_as_error() 
         .await
         .unwrap_err();
     assert_eq!(missing.code(), crate::ErrorCode::UnsupportedOperation);
+}
+
+#[tokio::test]
+async fn first_directory_page_arrives_before_gated_decoration_work() {
+    const ENTRY_COUNT: usize = 10_000;
+    const PAGE_SIZE: usize = 256;
+    let temp = TempDir::new().unwrap();
+    run_git(temp.path(), ["init", "-q"]);
+    for index in 0..ENTRY_COUNT {
+        fs::File::create(temp.path().join(format!("entry_{index:05}.txt"))).unwrap();
+    }
+    let parent = Location::local(temp.path());
+    let visible: Vec<_> = (0..PAGE_SIZE)
+        .map(|index| {
+            LocationRef::from_location(&Location::local(
+                temp.path().join(format!("entry_{index:05}.txt")),
+            ))
+        })
+        .collect();
+    let gate = Arc::new(Notify::new());
+    let backend = Arc::new(StaticBackend {
+        states: vec![FileDecorationState::Clean; PAGE_SIZE],
+        gate: Some(gate.clone()),
+        calls: Arc::new(Mutex::new(Vec::new())),
+    });
+    let core = FilerCore::new();
+    core.load(crate::modules::scan::ScanModule::new(Arc::new(
+        LocalFs::new(),
+    )));
+    core.load(GitDecorationsModule::with_backend(backend));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let scan_request = RequestId::new();
+    let decoration_request = request(&parent, &visible);
+    let decoration_request_id = decoration_request.request;
+
+    core.send(Command::Scan {
+        location: LocationRef::from_location(&parent),
+        session,
+        pipeline: PipelineConfig::default(),
+        load: DirectoryLoadOptions::page(PAGE_SIZE),
+        request: scan_request,
+    })
+    .unwrap();
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(decoration_request),
+        session,
+    })
+    .unwrap();
+
+    loop {
+        let event = wait_for_event(&events).await;
+        match event {
+            Event::DirectoryPageLoaded { request, .. } if request == scan_request => break,
+            Event::FileDecorationsUpdated { request, .. } if request == decoration_request_id => {
+                panic!("decoration work blocked the first directory page")
+            }
+            _ => {}
+        }
+    }
+    gate.notify_waiters();
+    loop {
+        if let Event::FileDecorationsUpdated { request, .. } = wait_for_event(&events).await
+            && request == decoration_request_id
+        {
+            break;
+        }
+    }
+    core.shutdown().await.unwrap();
 }
 
 fn run_git<const N: usize>(directory: &Path, args: [&str; N]) {
