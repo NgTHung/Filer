@@ -1,7 +1,7 @@
 ---
 id: API-004
 title: Remove NodeId completely
-status: To Do
+status: Done
 priority: High
 type: Epic
 parent: CORE-001
@@ -11,7 +11,7 @@ rules: [CORE-LIBRARY, PROVIDER-ACCESS]
 risk: High
 impact: "Removes NodeId from public and internal core contracts instead of preserving compatibility surfaces."
 tags: [api, nodeid, location, compatibility]
-last_updated: 2026-07-08
+last_updated: 2026-08-30
 ---
 
 ## Summary
@@ -24,7 +24,7 @@ This epic supersedes the API-002 compatibility intent and the obsolete API-003 r
 
 ## Exit Criteria
 
-- [ ] API-005, API-006, API-007, and API-008 are Done.
-- [ ] Public core commands, events, DTOs, and rustdoc no longer expose NodeId or NodeId compatibility variants.
-- [ ] NodeId type definitions, constructors, hashing helpers, and compatibility translators are removed.
-- [ ] The full filer-core test suite passes at every stage with no net loss of coverage.
+- [x] API-005, API-006, API-007, and API-008 are Done.
+- [x] Public core commands, events, DTOs, and rustdoc no longer expose NodeId or NodeId compatibility variants.
+- [x] NodeId type definitions, constructors, hashing helpers, and compatibility translators are removed.
+- [x] The full filer-core test suite passes at every stage with no net loss of coverage.
