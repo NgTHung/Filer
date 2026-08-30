@@ -1,7 +1,7 @@
 ---
 id: MODULES-002
 title: Prove git file decorations
-status: In Progress
+status: Done
 priority: High
 type: Feature
 parent: CORE-001
@@ -22,10 +22,10 @@ Depends on CORE-025 so decoration identity is built on LocationRef rather than t
 
 ## Acceptance Criteria
 
-- [ ] Decoration payloads use a minimal in-process semantic contract, kept small enough for MODULES-001 to later generalize into wire-safe envelopes.
-- [ ] Decorations address nodes by Location identity, not NodeId.
-- [ ] Visible nodes are the bounded input to git status work.
-- [ ] Modified, added, deleted, untracked, ignored, conflicted, and clean states use semantic decoration payloads.
-- [ ] Directory pages render before decoration work completes.
-- [ ] Repository changes invalidate affected decorations.
-- [ ] A large-repository test proves decoration work does not block directory loading.
+- [x] Decoration payloads use a minimal in-process semantic contract, kept small enough for MODULES-001 to later generalize into wire-safe envelopes.
+- [x] Decorations address nodes by Location identity, not NodeId.
+- [x] Visible nodes are the bounded input to git status work.
+- [x] Modified, added, deleted, untracked, ignored, conflicted, and clean states use semantic decoration payloads.
+- [x] Directory pages render before decoration work completes.
+- [x] Repository changes invalidate affected decorations.
+- [x] A large-repository test proves decoration work does not block directory loading.
