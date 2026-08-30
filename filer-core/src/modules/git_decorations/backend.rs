@@ -166,7 +166,6 @@ impl GitStatusBackend for GitCliBackend {
         }
 
         let mut pathspecs = Vec::with_capacity(normalized_visible.len());
-        let mut target_by_path = HashMap::with_capacity(normalized_visible.len());
         for target in &normalized_visible {
             let relative = target
                 .path
@@ -182,7 +181,6 @@ impl GitStatusBackend for GitCliBackend {
             } else {
                 relative.as_os_str().to_os_string()
             });
-            target_by_path.insert(target.path.clone(), target.location.clone());
         }
 
         let mut args = vec![
@@ -213,12 +211,10 @@ impl GitStatusBackend for GitCliBackend {
         let mut decorations = Vec::with_capacity(normalized_visible.len());
         for target in &normalized_visible {
             let state = state_for_target(&target.path, &statuses);
-            if target_by_path.contains_key(&target.path) {
-                decorations.push(FileDecoration {
-                    location: target.location.clone(),
-                    state,
-                });
-            }
+            decorations.push(FileDecoration {
+                location: target.location.clone(),
+                state,
+            });
         }
         Ok(GitStatusResult {
             repository: Some(repository),
