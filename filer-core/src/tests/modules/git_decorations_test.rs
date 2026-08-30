@@ -3,6 +3,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{fs, process::Command as ProcessCommand};
 
+#[cfg(unix)]
+use std::ffi::OsString;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
+
 use async_trait::async_trait;
 use tempfile::TempDir;
 use tokio::sync::Notify;
@@ -75,6 +82,7 @@ struct StaticBackend {
     states: Vec<FileDecorationState>,
     gate: Option<Arc<Notify>>,
     calls: Arc<Mutex<Vec<Vec<LocationRef>>>>,
+    common_dir: PathBuf,
 }
 
 #[async_trait]
@@ -116,6 +124,7 @@ impl GitStatusBackend for StaticBackend {
             repository: Some(GitRepository {
                 worktree: parent.to_path_buf(),
                 git_dir: parent.join(".git"),
+                common_dir: self.common_dir.clone(),
             }),
             decorations,
         })
@@ -177,6 +186,7 @@ async fn semantic_states_are_emitted_by_location_identity() {
         states: states.clone(),
         gate: None,
         calls: calls.clone(),
+        common_dir: temp.path().join(".git"),
     });
     let watcher = Arc::new(TestWatchProvider::default());
     let core = FilerCore::new();
@@ -223,6 +233,7 @@ async fn malformed_and_oversized_requests_are_recoverable_errors() {
         states: Vec::new(),
         gate: None,
         calls: Arc::new(Mutex::new(Vec::new())),
+        common_dir: temp.path().join(".git"),
     });
     let core = FilerCore::new();
     core.load(GitDecorationsModule::with_components(backend, watcher));
@@ -276,6 +287,7 @@ async fn repository_changes_invalidate_matching_visible_rows() {
         states: vec![FileDecorationState::Modified, FileDecorationState::Clean],
         gate: None,
         calls: Arc::new(Mutex::new(Vec::new())),
+        common_dir: temp.path().join(".git"),
     });
     let core = FilerCore::new();
     core.load(GitDecorationsModule::with_components(
@@ -330,6 +342,7 @@ async fn a_new_request_cancels_the_previous_request() {
         states: vec![FileDecorationState::Clean],
         gate: Some(gate.clone()),
         calls: calls.clone(),
+        common_dir: temp.path().join(".git"),
     });
     let watcher = Arc::new(TestWatchProvider::default());
     let core = FilerCore::new();
@@ -511,6 +524,170 @@ async fn git_cli_reports_non_repository_as_empty_and_missing_program_as_error() 
     assert_eq!(missing.code(), crate::ErrorCode::UnsupportedOperation);
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn git_cli_accepts_a_repository_opened_through_a_symlink() {
+    let temp = TempDir::new().unwrap();
+    let real = temp.path().join("real");
+    fs::create_dir(&real).unwrap();
+    run_git(&real, ["init", "-q"]);
+    let link = temp.path().join("link");
+    symlink(&real, &link).unwrap();
+    let target_path = link.join("visible.txt");
+    fs::write(&target_path, b"untracked").unwrap();
+    let target = GitDecorationTarget {
+        location: LocationRef::from_location(&Location::local(&target_path)),
+        path: target_path,
+    };
+
+    let result = GitCliBackend::new()
+        .status(&link, &[target], &crate::CancelSignal::new())
+        .await
+        .unwrap();
+
+    assert_eq!(result.decorations[0].state, FileDecorationState::Untracked);
+}
+
+#[tokio::test]
+async fn git_cli_preserves_repository_path_whitespace() {
+    let temp = TempDir::new().unwrap();
+    let repository = temp.path().join("repository ");
+    fs::create_dir(&repository).unwrap();
+    run_git(&repository, ["init", "-q"]);
+    let path = repository.join("visible.txt");
+    fs::write(&path, b"untracked").unwrap();
+    let target = GitDecorationTarget {
+        location: LocationRef::from_location(&Location::local(&path)),
+        path,
+    };
+
+    let result = GitCliBackend::new()
+        .status(&repository, &[target], &crate::CancelSignal::new())
+        .await
+        .unwrap();
+
+    assert_eq!(result.decorations[0].state, FileDecorationState::Untracked);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn git_cli_preserves_non_utf8_filenames() {
+    let temp = TempDir::new().unwrap();
+    run_git(temp.path(), ["init", "-q"]);
+    let name = OsString::from_vec(b"non_utf8_\xff.txt".to_vec());
+    let path = temp.path().join(&name);
+    fs::write(&path, b"untracked").unwrap();
+    let target = GitDecorationTarget {
+        location: LocationRef::from_location(&Location::local(&path)),
+        path,
+    };
+
+    let result = GitCliBackend::new()
+        .status(temp.path(), &[target], &crate::CancelSignal::new())
+        .await
+        .unwrap();
+
+    assert_eq!(result.decorations[0].state, FileDecorationState::Untracked);
+}
+
+#[tokio::test]
+async fn linked_worktree_status_watches_the_shared_git_directory() {
+    let temp = TempDir::new().unwrap();
+    let parent = Location::local(temp.path());
+    let shared_git = temp.path().join("shared-git");
+    let location = Location::local(temp.path().join("visible"));
+    let target = LocationRef::from_location(&location);
+    let watcher = Arc::new(TestWatchProvider::default());
+    let backend = Arc::new(StaticBackend {
+        states: vec![FileDecorationState::Clean],
+        gate: None,
+        calls: Arc::new(Mutex::new(Vec::new())),
+        common_dir: shared_git.clone(),
+    });
+    let core = FilerCore::new();
+    core.load(GitDecorationsModule::with_components(
+        backend,
+        watcher.clone(),
+    ));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let request = request(&parent, &[target]);
+    let request_id = request.request;
+
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(request),
+        session,
+    })
+    .unwrap();
+    let _ = wait_for_event(&events).await;
+
+    let watched = watcher
+        .watched
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    assert!(watched.contains(&shared_git));
+
+    watcher
+        .emit(
+            shared_git.join("refs").join("heads").join("linked"),
+            FsChangeKind::Modified,
+        )
+        .await;
+    assert!(matches!(
+        wait_for_event(&events).await,
+        Event::FileDecorationsInvalidated {
+            invalidation: FileDecorationInvalidation { locations },
+            session: event_session,
+            request: event_request,
+        } if event_session == session
+            && event_request == request_id
+            && locations.len() == 1
+    ));
+    core.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn git_cli_reports_the_shared_directory_for_a_linked_worktree() {
+    let temp = TempDir::new().unwrap();
+    let primary = temp.path().join("primary");
+    let linked = temp.path().join("linked");
+    fs::create_dir(&primary).unwrap();
+    run_git(&primary, ["init", "-q"]);
+    run_git(&primary, ["config", "user.email", "filer@example.test"]);
+    run_git(&primary, ["config", "user.name", "Filer Test"]);
+    fs::write(primary.join("base.txt"), b"base").unwrap();
+    run_git(&primary, ["add", "."]);
+    run_git(&primary, ["commit", "-qm", "base"]);
+    let output = ProcessCommand::new("git")
+        .args([
+            "-C",
+            primary.to_str().unwrap(),
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "linked",
+        ])
+        .arg(&linked)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+
+    let result = GitCliBackend::new()
+        .status(&linked, &[], &crate::CancelSignal::new())
+        .await
+        .unwrap();
+
+    let repository = result.repository.unwrap();
+    assert_eq!(repository.worktree, linked.canonicalize().unwrap());
+    assert_eq!(
+        repository.common_dir,
+        primary.join(".git").canonicalize().unwrap()
+    );
+}
+
 #[tokio::test]
 async fn first_directory_page_arrives_before_gated_decoration_work() {
     const ENTRY_COUNT: usize = 10_000;
@@ -533,6 +710,7 @@ async fn first_directory_page_arrives_before_gated_decoration_work() {
         states: vec![FileDecorationState::Clean; PAGE_SIZE],
         gate: Some(gate.clone()),
         calls: Arc::new(Mutex::new(Vec::new())),
+        common_dir: temp.path().join(".git"),
     });
     let core = FilerCore::new();
     core.load(crate::modules::scan::ScanModule::new(Arc::new(

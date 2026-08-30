@@ -248,7 +248,11 @@ impl GitDecorationsActor {
         repository: &GitRepository,
     ) -> Vec<PathBuf> {
         let mut paths = Vec::new();
-        for path in [&repository.worktree, &repository.git_dir] {
+        for path in [
+            &repository.worktree,
+            &repository.git_dir,
+            &repository.common_dir,
+        ] {
             if paths.iter().any(|registered| registered == path) {
                 continue;
             }
@@ -305,7 +309,8 @@ impl GitDecorationsActor {
     async fn dispatch_change(&self, change: FsChange) {
         let mut invalidations = Vec::new();
         for (session, subscription) in &self.subscriptions {
-            let in_git_dir = change.path.starts_with(&subscription.repository.git_dir);
+            let in_git_dir = change.path.starts_with(&subscription.repository.git_dir)
+                || change.path.starts_with(&subscription.repository.common_dir);
             let affected = if in_git_dir {
                 subscription
                     .targets
