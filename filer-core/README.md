@@ -142,17 +142,14 @@ cannot hide a full directory walk. Recorded results and machine details live in
 
 ## Cache And Refresh
 
-Directory cache entries are keyed by path and listing detail, so fast and
-metadata listings do not mix. Direct local `Location` scans share that storage
-through `LocationId` aliases.
+Directory cache entries are keyed by `LocationId` and listing detail, so fast
+and metadata listings do not mix. Each entry retains its stored `Location`
+and provider-owned `NodeEntry` rows.
 
 Invalidation rules:
 
-- path invalidation removes all listing-detail variants for that path and any
-  Location aliases pointing at it
-- Location invalidation removes the aliased backing entry
-- subtree invalidation removes the exact path, cached descendants, and their
-  Location aliases
+- Location invalidation removes all listing-detail variants for that location
+- local subtree invalidation removes the exact path and cached local descendants
 - create file/folder invalidates the parent
 - copy invalidates the destination parent
 - move invalidates source and destination parents

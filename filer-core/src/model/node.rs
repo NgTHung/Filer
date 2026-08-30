@@ -322,8 +322,14 @@ fn meta_for_path(meta: &Metadata, name: &str) -> NodeMeta {
     }
 }
 
+#[cfg(unix)]
 fn is_hidden_name(name: &str) -> bool {
     name.starts_with('.')
+}
+
+#[cfg(not(unix))]
+fn is_hidden_name(_name: &str) -> bool {
+    false
 }
 
 impl NodeId {
