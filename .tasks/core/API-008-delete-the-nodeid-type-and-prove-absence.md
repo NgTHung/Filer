@@ -1,7 +1,7 @@
 ---
 id: API-008
 title: Delete the NodeId type and prove absence
-status: In Progress
+status: Done
 priority: High
 type: Refactor
 parent: API-004
@@ -20,6 +20,6 @@ Delete the NodeId type, constructors, hashing helpers, and remaining exports onc
 
 ## Acceptance Criteria
 
-- [ ] No NodeId type, constructor, hashing helper, or export remains in filer-core source or tests.
-- [ ] An absence test or snapshot pins that NodeId identifiers do not reappear in the public API.
-- [ ] The full filer-core suite passes.
+- [x] No NodeId type, constructor, hashing helper, or export remains in filer-core source or tests.
+- [x] An absence test or snapshot pins that NodeId identifiers do not reappear in the public API.
+- [x] The full filer-core suite passes.
