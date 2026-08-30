@@ -1,7 +1,7 @@
 ---
 id: MODULES-002
 title: Prove git file decorations
-status: To Do
+status: In Progress
 priority: High
 type: Feature
 parent: CORE-001
@@ -11,7 +11,7 @@ rules: [SEMANTIC-EXTENSION-OUTPUT, ACTOR-LONG-WORK]
 risk: Medium
 impact: "Exercises asynchronous extension output on large directory listings."
 tags: [extensions, git, decorations]
-last_updated: 2026-07-07
+last_updated: 2026-08-30
 ---
 
 ## Summary
