@@ -468,6 +468,23 @@ async fn git_cli_maps_all_supported_states() {
             FileDecorationState::Clean,
         ]
     );
+
+    let root_location = LocationRef::from_location(&Location::local(temp.path()));
+    let root_result = GitCliBackend::new()
+        .status(
+            temp.path(),
+            &[GitDecorationTarget {
+                location: root_location,
+                path: temp.path().to_path_buf(),
+            }],
+            &crate::CancelSignal::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        root_result.decorations[0].state,
+        FileDecorationState::Conflicted
+    );
 }
 
 #[tokio::test]

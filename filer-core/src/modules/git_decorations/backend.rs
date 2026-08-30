@@ -141,23 +141,33 @@ impl GitStatusBackend for GitCliBackend {
         visible: &[GitDecorationTarget],
         cancel: &CancelSignal,
     ) -> Result<GitStatusResult, CoreError> {
-        let Some(repository) = self.repository(parent, cancel).await? else {
+        let parent = absolute_path(parent)?;
+        let normalized_visible: Vec<_> = visible
+            .iter()
+            .map(|target| {
+                Ok(GitDecorationTarget {
+                    location: target.location.clone(),
+                    path: absolute_path(&target.path)?,
+                })
+            })
+            .collect::<Result<_, CoreError>>()?;
+        let Some(repository) = self.repository(&parent, cancel).await? else {
             return Ok(GitStatusResult {
                 repository: None,
                 decorations: Vec::new(),
             });
         };
 
-        if visible.is_empty() {
+        if normalized_visible.is_empty() {
             return Ok(GitStatusResult {
                 repository: Some(repository),
                 decorations: Vec::new(),
             });
         }
 
-        let mut pathspecs = Vec::with_capacity(visible.len());
-        let mut target_by_path = HashMap::with_capacity(visible.len());
-        for target in visible {
+        let mut pathspecs = Vec::with_capacity(normalized_visible.len());
+        let mut target_by_path = HashMap::with_capacity(normalized_visible.len());
+        for target in &normalized_visible {
             let relative = target
                 .path
                 .strip_prefix(&repository.worktree)
@@ -167,7 +177,11 @@ impl GitStatusBackend for GitCliBackend {
                         target.path.display()
                     ))
                 })?;
-            pathspecs.push(relative.as_os_str().to_os_string());
+            pathspecs.push(if relative.as_os_str().is_empty() {
+                std::ffi::OsString::from(".")
+            } else {
+                relative.as_os_str().to_os_string()
+            });
             target_by_path.insert(target.path.clone(), target.location.clone());
         }
 
@@ -196,12 +210,9 @@ impl GitStatusBackend for GitCliBackend {
         }
 
         let statuses = parse_status_records(&output.stdout, &repository.worktree)?;
-        let mut decorations = Vec::with_capacity(visible.len());
-        for target in visible {
-            let state = statuses
-                .get(&target.path)
-                .copied()
-                .unwrap_or(FileDecorationState::Clean);
+        let mut decorations = Vec::with_capacity(normalized_visible.len());
+        for target in &normalized_visible {
+            let state = state_for_target(&target.path, &statuses);
             if target_by_path.contains_key(&target.path) {
                 decorations.push(FileDecoration {
                     location: target.location.clone(),
@@ -214,6 +225,15 @@ impl GitStatusBackend for GitCliBackend {
             decorations,
         })
     }
+}
+
+fn absolute_path(path: &Path) -> Result<PathBuf, CoreError> {
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+    std::env::current_dir()
+        .map(|directory| directory.join(path))
+        .map_err(|error| CoreError::io(path.to_path_buf(), format!("cannot resolve path: {error}")))
 }
 
 fn parse_status_records(
@@ -268,5 +288,29 @@ fn state_from_xy(xy: &str, unmerged: bool) -> FileDecorationState {
         FileDecorationState::Modified
     } else {
         FileDecorationState::Clean
+    }
+}
+
+fn state_for_target(
+    target: &Path,
+    statuses: &HashMap<PathBuf, FileDecorationState>,
+) -> FileDecorationState {
+    statuses
+        .iter()
+        .filter(|(path, _)| path.as_path() == target || path.starts_with(target))
+        .map(|(_, state)| *state)
+        .max_by_key(decoration_priority)
+        .unwrap_or(FileDecorationState::Clean)
+}
+
+fn decoration_priority(state: &FileDecorationState) -> u8 {
+    match state {
+        FileDecorationState::Clean => 0,
+        FileDecorationState::Ignored => 1,
+        FileDecorationState::Untracked => 2,
+        FileDecorationState::Modified => 3,
+        FileDecorationState::Added => 4,
+        FileDecorationState::Deleted => 5,
+        FileDecorationState::Conflicted => 6,
     }
 }
