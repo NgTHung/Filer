@@ -12,31 +12,26 @@ fn collect_rust_sources(directory: &Path, sources: &mut Vec<PathBuf>) {
     }
 }
 
-fn allowed_node_id_definition(path: &Path, line: &str) -> bool {
-    path == Path::new("model/node.rs")
-        && matches!(
-            line.trim(),
-            "pub struct NodeId(pub u64);" | "impl NodeId {" | "NodeId({"
-        )
+fn legacy_identity_names() -> [String; 2] {
+    [["Node", "Id"].concat(), ["File", "Node"].concat()]
 }
 
 #[test]
-fn production_has_no_legacy_identity_plumbing() {
-    let source_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+fn rust_sources_have_no_legacy_identity_names() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let source_roots = [manifest_dir.join("src"), manifest_dir.join("tests")];
     let mut sources = Vec::new();
-    collect_rust_sources(&source_root, &mut sources);
+    for source_root in source_roots {
+        collect_rust_sources(&source_root, &mut sources);
+    }
 
     let mut violations = Vec::new();
+    let forbidden_names = legacy_identity_names();
     for source_path in sources {
-        let relative_path = source_path.strip_prefix(&source_root).unwrap();
-        if relative_path.starts_with("tests") {
-            continue;
-        }
+        let relative_path = source_path.strip_prefix(&manifest_dir).unwrap();
         let source = fs::read_to_string(&source_path).unwrap();
         for (line_number, line) in source.lines().enumerate() {
-            if (line.contains("NodeId") || line.contains("FileNode"))
-                && !allowed_node_id_definition(relative_path, line)
-            {
+            if forbidden_names.iter().any(|name| line.contains(name)) {
                 violations.push(format!(
                     "{}:{}: {}",
                     relative_path.display(),
@@ -49,7 +44,7 @@ fn production_has_no_legacy_identity_plumbing() {
 
     assert!(
         violations.is_empty(),
-        "legacy identity references remain in production:\n{}",
+        "legacy identity references remain in Rust sources:\n{}",
         violations.join("\n")
     );
 }

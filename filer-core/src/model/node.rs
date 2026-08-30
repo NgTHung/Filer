@@ -21,17 +21,8 @@ use std::fs::Metadata;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use serde::{Deserialize, Serialize};
-
 use crate::CoreError;
 use crate::model::location::{Location, LocationRef};
-
-/// Direct-local runtime handle retained for compatibility APIs.
-///
-/// New provider, pipeline, cache, scanner, and search code must use
-/// [`LocationRef`] through [`NodeEntry`]. API-008 owns deleting this type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeId(pub u64);
 
 /// Location-native node row for provider, directory, and search results.
 ///
@@ -330,17 +321,4 @@ fn is_hidden_name(name: &str) -> bool {
 #[cfg(not(unix))]
 fn is_hidden_name(_name: &str) -> bool {
     false
-}
-
-impl NodeId {
-    /// Generate ID from path
-    pub fn from_path(path: &Path) -> Self {
-        NodeId({
-            use rapidhash::fast::RapidHasher;
-            use std::hash::Hasher;
-            let mut h = RapidHasher::default();
-            h.write(path.as_os_str().as_encoded_bytes());
-            h.finish()
-        })
-    }
 }

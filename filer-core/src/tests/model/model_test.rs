@@ -1,7 +1,7 @@
 //! Tests for model layer
 
 use crate::model::location::{Location, LocationDescriptor};
-use crate::model::node::{NodeEntry, NodeId};
+use crate::model::node::NodeEntry;
 use std::path::PathBuf;
 
 #[cfg(unix)]
@@ -106,13 +106,4 @@ fn test_node_entry_extension() {
     let f2 = NodeEntry::from_path(file).unwrap();
     assert_eq!(f1.extension(), None);
     assert_eq!(f2.extension(), Some("toml"));
-}
-
-// Compatibility pin for API-008: preserve deterministic NodeId generation
-// until the identity type is removed.
-#[test]
-fn node_id_hashing_is_deterministic_until_api_008() {
-    let path = PathBuf::from("/home/user/test.txt");
-
-    assert_eq!(NodeId::from_path(&path), NodeId::from_path(&path));
 }

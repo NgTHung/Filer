@@ -194,8 +194,8 @@ compatibility routes from the public command, wire, and event surfaces.
 API-017 removes the `NodeId`-keyed registry maps and compatibility helpers.
 
 Use `Location` as the canonical transport identity for new read-side work.
-The `NodeId` type and deterministic hashing pin remain only until API-008
-deletes them. No runtime registry, navigation, or workflow depends on them.
+API-008 deletes the former `NodeId` type and deterministic hashing pin. No
+runtime registry, navigation, or workflow depends on transient numeric identity.
 
 Important types:
 
@@ -246,7 +246,7 @@ and OS mount adapters are not part of the current `filer-core` provider surface.
 |---|---|---|
 | Public Location-native | `Navigate`, `Scan`, `Search`, `LoadPreview`, `LoadMetadata`, `LoadExtendedMetadata`, `Watch`, `Unwatch`, `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, `ExtendedMetadataLoaded`, `NodeEntry` | The only public addressing and result contract. |
 | Internal Location registry | `NodeRegistry`, `LocationId`, `LocationRef::Id` resolution | Stores descriptors and route cache entries; it has no NodeId-keyed state. |
-| API-008 cleanup pin | `NodeId` definition and deterministic hashing test | Temporary compatibility surface with no runtime callers; API-008 owns its deletion. |
+| Removed by API-008 | Former `NodeId` definition and deterministic hashing test | No transient numeric identity remains in the Rust API. |
 | Removed by API-006 | Former path- and NodeId-addressed commands and events | Legacy wire tags fail deserialization as unknown variants. |
 
 ## Command API
