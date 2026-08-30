@@ -352,7 +352,7 @@ fn normalize_external_target(path: &Path) -> Result<PathBuf, CoreError> {
 }
 
 fn path_from_git_output(output: &[u8]) -> Result<PathBuf, CoreError> {
-    let path = output.strip_suffix(&[b'\n']).ok_or_else(|| {
+    let path = output.strip_suffix(b"\n").ok_or_else(|| {
         CoreError::invalid_input("Git repository path discovery returned an invalid result")
     })?;
     if path.is_empty() {
