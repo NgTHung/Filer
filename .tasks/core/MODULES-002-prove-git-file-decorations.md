@@ -1,7 +1,7 @@
 ---
 id: MODULES-002
 title: Prove git file decorations
-status: In Progress
+status: Done
 priority: High
 type: Feature
 parent: CORE-001
