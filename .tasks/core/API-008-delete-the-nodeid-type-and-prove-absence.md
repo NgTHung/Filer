@@ -1,7 +1,7 @@
 ---
 id: API-008
 title: Delete the NodeId type and prove absence
-status: To Do
+status: In Progress
 priority: High
 type: Refactor
 parent: API-004
@@ -11,7 +11,7 @@ rules: [CORE-LIBRARY]
 risk: Medium
 impact: "Removes the last NodeId definitions and pins the removal so it cannot regress."
 tags: [api, nodeid, location]
-last_updated: 2026-07-08
+last_updated: 2026-08-30
 ---
 
 ## Summary
