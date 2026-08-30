@@ -260,9 +260,9 @@ Parsing a URI should prove that the identity is well-formed. It should not prove
    segmented `NodeId` placeholder.
 4. Add `LocationDescriptor::parent()` and move navigator `Up` behavior toward Location-native state.
 5. Add first-class segment args before supporting drivers that need parameters.
-6. Public command and event addressing is already Location-native. API-017
-   removes the remaining internal `NodeId` authority, and API-008 removes the
-   temporary type and hashing pin.
+6. Public command and event addressing is Location-native. API-017 removed the
+   remaining internal `NodeId` authority, and API-008 removed the temporary
+   type and hashing pin.
 
 ## Open Decisions
 

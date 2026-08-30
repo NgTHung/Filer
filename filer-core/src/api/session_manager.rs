@@ -75,7 +75,7 @@ impl Session {
 pub struct SessionManager {
     /// Active sessions by ID
     sessions: Arc<scc::HashMap<SessionId, Session, RandomState>>,
-    /// Shared registry passed to sessions for compatibility with existing callers.
+    /// Shared registry used to resolve compact location references across sessions.
     registry: NodeRegistry,
 }
 

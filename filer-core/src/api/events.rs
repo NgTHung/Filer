@@ -12,7 +12,7 @@ use crate::{ExtendedMetadata, PreviewData, model::fs_change::FsChangeKind};
 
 /// Events from Core to UI.
 ///
-/// Location-native read events are preferred for new provider-aware clients.
+/// Read events use provider-aware locations as their sole addressing contract.
 #[derive(Debug, Clone)]
 pub enum Event {
     /// Location-native directory contents loaded with provider-aware locations.

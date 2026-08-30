@@ -44,7 +44,7 @@ pub enum Command {
         request: RequestId,
     },
 
-    /// Location-native search. Preferred for new provider-aware read clients.
+    /// Search from a provider-aware location.
     Search {
         query: String,
         root: LocationRef,
@@ -138,7 +138,7 @@ pub enum Command {
         request: RequestId,
     },
 
-    /// Location-native directory scan. Preferred for new provider-aware listing.
+    /// Scan a provider-aware location.
     Scan {
         location: LocationRef,
         session: SessionId,

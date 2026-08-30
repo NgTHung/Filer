@@ -46,10 +46,11 @@ code. Core also emits structured `tracing` events when `CoreError` becomes
 `Event::Error`, leaving subscriber setup to the application. In `0.3.0`,
 Location-native result events use canonical names. API-006 removed the legacy
 NodeId/FileNode result variants, and API-007/API-017 retired the remaining
-FileNode row and NodeId-keyed registry state. Within `filer-core`, only the
-NodeId definition and API-008 hashing pin remain. The project should next
-finish command naming consistency, then add provider context and timeout
-propagation before widening non-local provider or extension work.
+FileNode row and NodeId-keyed registry state. API-008 removed the final NodeId
+definition and hashing pin, so `LocationRef` is now the sole addressing
+contract within `filer-core`. The project should next finish command naming
+consistency, then add provider context and timeout propagation before widening
+non-local provider or extension work.
 
 `0.2.3` hardened the additive `Location` contract for provider-aware addressing.
 `LocationRef` now has explicit id-only, descriptor-only, and full modes instead

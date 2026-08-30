@@ -2,7 +2,7 @@
 //!
 //! This module stores the per-session navigation snapshot, history, pipeline,
 //! and selection. It keeps only reconstructable `LocationRef` values so state
-//! remains valid as registry-backed compatibility state is removed.
+//! does not depend on registry-backed transient identity.
 //!
 //! ```
 //! use filer_core::{Location, LocationRef};

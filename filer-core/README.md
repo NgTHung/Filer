@@ -187,14 +187,14 @@ New client-originated work should allocate ids with `RequestId::new()`,
 
 ## Location
 
-`Location` is the provider-aware addressing model. API-016 removes the
+`Location` is the provider-aware addressing model. API-016 removed the
 `FileNode` row, row-conversion bridges, and path-keyed directory cache from
-the read-side pipeline. API-006 removes the path- and `NodeId`-addressed
+the read-side pipeline. API-006 removed the path- and `NodeId`-addressed
 compatibility routes from the public command, wire, and event surfaces.
-API-017 removes the `NodeId`-keyed registry maps and compatibility helpers.
+API-017 removed the `NodeId`-keyed registry maps and compatibility helpers.
 
-Use `Location` as the canonical transport identity for new read-side work.
-API-008 deletes the former `NodeId` type and deterministic hashing pin. No
+Use `Location` as the canonical transport identity for read-side work.
+API-008 deleted the former `NodeId` type and deterministic hashing pin. No
 runtime registry, navigation, or workflow depends on transient numeric identity.
 
 Important types:
