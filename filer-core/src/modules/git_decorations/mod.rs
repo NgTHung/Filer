@@ -6,8 +6,9 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use filer_core::{Command, FilerCore, Location, LocationRef, RequestId, SessionId};
+//! use filer_core::{Command, FilerCore, Location, LocationRef, RequestId};
 //! use filer_core::modules::git_decorations::{GitDecorationRequest, GitDecorationsModule};
+//! use filer_core::model::session::SessionId;
 //!
 //! let core = FilerCore::new();
 //! core.load(GitDecorationsModule::new());
