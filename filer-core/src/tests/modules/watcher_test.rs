@@ -910,3 +910,5 @@ async fn test_watcher_refresh_sink_ignores_unrelated_sibling_paths() {
     drop(cmd_tx);
     let _ = timeout(Duration::from_secs(1), handle).await;
 }
+
+mod burst_tests;
