@@ -71,6 +71,20 @@ fn paging_sessions_evict_oldest_cursor_at_capacity() {
     assert_eq!(expired.code(), ErrorCode::InputInvalid);
     assert!(expired.to_string().contains("Expired directory paging cursor"));
 
+    let PageLoad::Page(recovered) = load_page(
+        &sessions,
+        old_owner,
+        path,
+        page_request(None),
+        &pipeline,
+    )
+    .expect("an evicted cursor should recover with a fresh chain")
+    else {
+        panic!("page load was cancelled");
+    };
+    assert_eq!(recovered.state.start_index, 0);
+    assert_eq!(recovered.entries[0].name, "a.txt");
+
     let (new_owner, new_cursor) = cursors[2].clone();
     let PageLoad::Page(page) = load_page(
         &sessions,
@@ -84,6 +98,47 @@ fn paging_sessions_evict_oldest_cursor_at_capacity() {
         panic!("page load was cancelled");
     };
     assert!(page.state.complete);
+}
+
+#[test]
+fn default_paging_sessions_evict_after_256_cursors() {
+    let sessions = PagingSessions::new();
+    let pipeline = PagingPipelineConfig::default();
+    let path = Path::new("/tmp/paging-session-default-capacity");
+    let mut oldest = None;
+
+    for index in 0..=256 {
+        let owner = SessionId::new();
+        let PageLoad::Page(page) = load_page(
+            &sessions,
+            owner,
+            path,
+            page_request(None),
+            &pipeline,
+        )
+        .expect("first page should load")
+        else {
+            panic!("page load was cancelled");
+        };
+        if index == 0 {
+            oldest = Some((owner, page.state.next_cursor.expect("page should continue")));
+        }
+    }
+
+    assert_eq!(sessions.len(), 256);
+    let (owner, cursor) = oldest.expect("the first cursor should be recorded");
+    let expired = match load_page(
+        &sessions,
+        owner,
+        path,
+        page_request(Some(cursor)),
+        &pipeline,
+    ) {
+        Ok(_) => panic!("the oldest default-capacity cursor should be evicted"),
+        Err(error) => error,
+    };
+    assert_eq!(expired.code(), ErrorCode::InputInvalid);
+    assert!(expired.to_string().contains("Expired directory paging cursor"));
 }
 
 #[test]
