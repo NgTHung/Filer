@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-005"
 title: "Dispatch directory paging on pipeline paging mode"
-status: In Progress
+status: Done
 priority: "High"
 type: "Bug"
 parent: "PIPELINE-003"
