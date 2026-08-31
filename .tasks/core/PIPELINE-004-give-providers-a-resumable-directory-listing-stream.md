@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-004"
 title: "Give providers a resumable directory listing stream"
-status: In Progress
+status: Done
 priority: "High"
 type: "Feature"
 parent: "PIPELINE-003"
