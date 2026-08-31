@@ -10,14 +10,14 @@ rules: [ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: Medium
 impact: "Validates that rapid filesystem change bursts stay ordered and keep the cache fresh."
 tags: [reliability, testing, watcher]
-last_updated: 2026-06-17
+last_updated: 2026-08-31
 ---
 
 ## Summary
 
-Add deterministic burst tests via the existing TestWatchProvider: multi-file create, delete, and rename bursts asserting event ordering and post-burst cache invalidation. Avoid real-filesystem timing by injecting synthetic FsChange events. Pure test, no production change.
+Add a deterministic burst test through the existing TestWatchProvider. Register three distinct local LocationRef watches, inject one synthetic create, delete, and rename change for those locations without filesystem timing, and assert the ordered FsChanged events and refresh invalidations. This is pure test coverage; no production change is expected.
 
 ## Acceptance Criteria
 
-- [ ] A test injects a mixed create/delete/rename burst and asserts events are emitted in the order injected.
-- [ ] A test asserts each watched node in a burst triggers cache invalidation exactly once per node.
+- [ ] A test injects a mixed create/delete/rename burst for distinct watched locations and asserts the LocationRef-scoped FsChanged events are emitted in the order injected.
+- [ ] The burst test asserts each watched location produces exactly one NavCommand::Invalidate refresh signal, with no duplicate signals.
