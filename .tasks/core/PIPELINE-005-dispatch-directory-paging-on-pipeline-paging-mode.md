@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-005"
 title: "Dispatch directory paging on pipeline paging mode"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Bug"
 parent: "PIPELINE-003"
@@ -11,7 +11,7 @@ rules: ["PROVIDER-ACCESS", "PIPELINE-TRANSFORMS", "ACTOR-LONG-WORK"]
 risk: "High"
 impact: "Changes first-page delivery and continuation cost on the large-directory hot path."
 tags: ["core", "paging", "pipeline", "performance", "remediation"]
-last_updated: "2026-08-31"
+last_updated: 2026-08-31
 ---
 
 ## Summary
