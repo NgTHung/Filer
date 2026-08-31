@@ -18,10 +18,12 @@ last_updated: 2026-08-31
 
 Stage 2 of PIPELINE-003. Consume PipelineConfig::paging_mode in the scanner paging session instead of walking the whole directory for every page. Provider-page and filtered-page modes pull only enough provider rows to fill the requested page and store the continuation handle from PIPELINE-004 in the paging session. Ordered modes keep their current full walk here; PIPELINE-006 makes their continuation proportional.
 
+A streaming page cannot impose a global order, so configurations without an explicit sort now present rows in provider order. Those configurations add no ordering stage to the pipeline either, so this aligns paging with what the pipeline already does; the implicit name order came only from the keyset selection built for ordered chains.
+
 ## Acceptance Criteria
 
-- [ ] A 10,000-entry default local listing emits its first page through public core contracts before the provider reaches end of directory, proven with a controllable provider test.
-- [ ] A continuation request in a streaming mode resumes the stored provider walk instead of replaying prior entries, with provider work proportional to the requested page.
-- [ ] Sorting, filtering, and grouping configurations keep their current ordering and cursor results unchanged.
-- [ ] Paging state composes with the CORE-018 lifetime bound and releases provider continuation resources when the cursor expires, is replaced, or reaches the terminal page.
-- [ ] Paging page assembly is split out of the existing paging module so no module exceeds the crate size guidance.
+- [x] A 10,000-entry default local listing emits its first page through public core contracts before the provider reaches end of directory, proven with a controllable provider test.
+- [x] A continuation request in a streaming mode resumes the stored provider walk instead of replaying prior entries, with provider work proportional to the requested page.
+- [x] Explicit sort and group configurations keep their current ordering, cursor results, and full-walk behavior unchanged, while configurations without an explicit sort present rows in provider order.
+- [x] Paging state composes with the CORE-018 lifetime bound and releases provider continuation resources when the cursor expires, is replaced, or reaches the terminal page.
+- [x] Paging page assembly is split out of the existing paging module so no module exceeds the crate size guidance.

@@ -306,3 +306,84 @@ async fn test_terminal_page_releases_the_provider_walk() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_streaming_pages_keep_provider_order_while_an_explicit_sort_reorders() {
+    let path = "/tmp/streaming-order";
+    let names = ["z.rs", "a.rs", "m.rs"];
+    let provider = MockProvider::streaming();
+    for (index, name) in names.iter().enumerate() {
+        provider.add_file(make_file(name, path, index as u64, false));
+    }
+    let sorted_provider = provider.clone();
+    let (cmd_tx, evt_rx) = spawn_scanner(provider);
+
+    // Without an explicit sort the pipeline adds no ordering stage, so a
+    // streaming page must present rows the way the provider walked them.
+    let filtered =
+        PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["rs".into()]));
+    let session = SessionId::new();
+    request_page(
+        &cmd_tx,
+        path,
+        session,
+        filtered,
+        crate::DirectoryLoadOptions::page(3),
+    );
+    let (groups, page) = wait_for_page(&evt_rx, session).await;
+
+    assert_eq!(page_names(&groups), vec!["z.rs", "a.rs", "m.rs"]);
+    assert!(page.complete);
+
+    let (sorted_tx, sorted_rx) = spawn_scanner(sorted_provider);
+    let sorted_session = SessionId::new();
+    request_page(
+        &sorted_tx,
+        path,
+        sorted_session,
+        PipelineConfig::with_default_sort(),
+        crate::DirectoryLoadOptions::page(3),
+    );
+    let (sorted_groups, _) = wait_for_page(&sorted_rx, sorted_session).await;
+
+    assert_eq!(page_names(&sorted_groups), vec!["a.rs", "m.rs", "z.rs"]);
+}
+
+#[tokio::test]
+async fn test_local_provider_pages_a_large_directory_without_walking_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_path_buf();
+    for index in 0..600 {
+        std::fs::write(path.join(indexed_name(index)), b"entry").unwrap();
+    }
+
+    let registry = NodeRegistry::new();
+    let (cmd_tx, cmd_rx) = flume::unbounded::<ScanCommand>();
+    let (evt_tx, evt_rx) = flume::unbounded::<Event>();
+    let scanner = Scanner::new(
+        cmd_rx,
+        evt_tx,
+        Arc::new(crate::vfs::local::LocalFs::new()),
+        registry,
+    );
+    tokio::spawn(async move { scanner.run().await });
+
+    let session = SessionId::new();
+    cmd_tx
+        .send(ScanCommand::ScanLocation {
+            location: location_ref(path.clone()),
+            session,
+            pipeline: streaming_pipeline(),
+            load: crate::DirectoryLoadOptions::page(PAGE_SIZE),
+            request: RequestId::new(),
+        })
+        .unwrap();
+    let (groups, page) = wait_for_page(&evt_rx, session).await;
+
+    assert_eq!(page.page_count, PAGE_SIZE);
+    assert_eq!(page_names(&groups).len(), PAGE_SIZE);
+    assert!(!page.complete);
+    // Only a walk that reached the end could count the directory, so an unknown
+    // total is what proves the real provider streamed this page.
+    assert_eq!(page.total_count, None);
+}
