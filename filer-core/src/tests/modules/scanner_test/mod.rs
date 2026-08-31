@@ -270,3 +270,5 @@ include!("scanner_command_tests.rs");
 include!("mock_provider_tests.rs");
 
 include!("paging_model_tests.rs");
+
+include!("paging_session_tests.rs");

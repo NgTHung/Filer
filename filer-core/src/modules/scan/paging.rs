@@ -9,7 +9,7 @@
 //! let page = sessions.load_provider(provider, path, session, request, pipeline, &cx).await?;
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
@@ -27,6 +27,7 @@ use crate::vfs::provider::{FsProvider, ProviderPaging, validate_page_limit};
 
 const CURSOR_PREFIX: &str = "paging:v1:";
 const CANCELLATION_CHECK_INTERVAL: usize = 256;
+const DEFAULT_PAGING_SESSION_CAPACITY: usize = 256;
 
 #[derive(Clone)]
 struct PagingSession {
@@ -39,9 +40,68 @@ struct PagingSession {
     total_count: usize,
 }
 
-#[derive(Clone, Default)]
+struct PagingSessionStore {
+    sessions: HashMap<String, PagingSession>,
+    eviction_order: VecDeque<String>,
+    capacity: usize,
+}
+
+impl PagingSessionStore {
+    fn new(capacity: usize) -> Self {
+        Self {
+            sessions: HashMap::new(),
+            eviction_order: VecDeque::new(),
+            capacity: capacity.max(1),
+        }
+    }
+
+    fn clear_owner(&mut self, owner: SessionId) {
+        self.sessions.retain(|_, state| state.owner != owner);
+        self.eviction_order
+            .retain(|cursor| self.sessions.contains_key(cursor));
+    }
+
+    fn insert(&mut self, cursor: String, state: PagingSession) {
+        if self.sessions.contains_key(&cursor) {
+            self.remove(&cursor);
+        }
+        while self.sessions.len() >= self.capacity {
+            let Some(oldest) = self.eviction_order.pop_front() else {
+                break;
+            };
+            self.sessions.remove(&oldest);
+        }
+        self.eviction_order.push_back(cursor.clone());
+        self.sessions.insert(cursor, state);
+    }
+
+    fn remove(&mut self, cursor: &str) -> Option<PagingSession> {
+        let state = self.sessions.remove(cursor)?;
+        if let Some(index) = self
+            .eviction_order
+            .iter()
+            .position(|candidate| candidate == cursor)
+        {
+            self.eviction_order.remove(index);
+        }
+        Some(state)
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.sessions.len()
+    }
+}
+
+#[derive(Clone)]
 pub struct PagingSessions {
-    sessions: Arc<Mutex<HashMap<String, PagingSession>>>,
+    sessions: Arc<Mutex<PagingSessionStore>>,
+}
+
+impl Default for PagingSessions {
+    fn default() -> Self {
+        Self::with_capacity(DEFAULT_PAGING_SESSION_CAPACITY)
+    }
 }
 
 pub enum PageLoad {
@@ -54,11 +114,25 @@ impl PagingSessions {
         Self::default()
     }
 
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
+        Self {
+            sessions: Arc::new(Mutex::new(PagingSessionStore::new(capacity))),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
+    }
+
     pub fn clear_session(&self, session: SessionId) {
         self.sessions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .retain(|_, state| state.owner != session);
+            .clear_owner(session);
     }
 
     pub async fn load_provider(
@@ -199,12 +273,13 @@ impl PagingSessions {
         if !cursor.0.starts_with(CURSOR_PREFIX) {
             return Err(CoreError::invalid_input("Invalid directory paging cursor"));
         }
-        let state = self
+        let mut sessions = self
             .sessions
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let state = sessions
+            .sessions
             .get(&cursor.0)
-            .cloned()
             .ok_or_else(|| CoreError::invalid_input("Expired directory paging cursor"))?;
         if state.owner != owner
             || state.path != path
@@ -215,11 +290,7 @@ impl PagingSessions {
                 "Directory paging cursor does not match the request",
             ));
         }
-        self.sessions
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(&cursor.0);
-        Ok(Some(state))
+        Ok(sessions.remove(&cursor.0))
     }
 
     fn finish_page(
