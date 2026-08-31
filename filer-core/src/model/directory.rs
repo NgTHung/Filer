@@ -1,9 +1,35 @@
+//! # Directory Loading
+//!
+//! This module defines snapshot and page-oriented directory result contracts.
+//! Page cursors carry the last ordered row so the scanner can continue through
+//! the same comparator boundary without retaining the complete directory.
+//! Cursors are transient, single-use values and callers can restart with a
+//! cursorless page request when a cursor expires or no longer applies.
+//!
+//! ```
+//! use filer_core::{DirectoryCursor, DirectoryLoadOptions};
+//!
+//! let first_page = DirectoryLoadOptions::page(128);
+//! let next_page = DirectoryLoadOptions::page_after(
+//!     128,
+//!     DirectoryCursor("paging:v1:example".to_owned()),
+//! );
+//! assert!(first_page.is_paged() && next_page.is_paged());
+//! ```
+
 use serde::{Deserialize, Serialize};
 
 use crate::vfs::provider::ListingOptions;
 
 pub const DEFAULT_DIRECTORY_PAGE_SIZE: usize = 256;
 
+/// Opaque continuation value returned by a paged directory load.
+///
+/// A cursor represents the last keyset row observed for one page chain. The
+/// scanner accepts it once, while its transient session is retained, and then
+/// removes it. Concurrent metadata changes can therefore make a continuation
+/// skip or repeat a row. Treat an expired, evicted, or consumed cursor as a
+/// request to start a new cursorless page chain.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DirectoryCursor(pub String);
 
@@ -15,6 +41,7 @@ pub enum DirectoryLoadMode {
     },
     Page {
         limit: usize,
+        /// A single-use continuation returned by an earlier page result.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cursor: Option<DirectoryCursor>,
     },
@@ -61,6 +88,10 @@ impl DirectoryLoadOptions {
         }
     }
 
+    /// Request the next page using a previously returned, single-use cursor.
+    ///
+    /// If the cursor has expired, was evicted, or was already consumed, start
+    /// a new chain with [`Self::page`] instead of replaying this request.
     pub fn page_after(limit: usize, cursor: DirectoryCursor) -> Self {
         Self {
             listing: ListingOptions::fast(),
@@ -149,6 +180,7 @@ impl DirectoryLoadState {
 pub struct DirectoryPageRequest {
     pub listing: ListingOptions,
     pub limit: usize,
+    /// The single-use cursor that identifies the prior page boundary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<DirectoryCursor>,
 }
@@ -162,7 +194,12 @@ pub struct DirectoryPageResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectoryPageState {
     pub page_count: usize,
+    /// The count observed while computing the first page of this chain.
+    ///
+    /// Continuations reuse this point-in-time estimate instead of reporting a
+    /// live count, so mutations can make it stale.
     pub total_count: Option<usize>,
+    /// A single-use continuation for the next page, if more rows remain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<DirectoryCursor>,
     pub complete: bool,

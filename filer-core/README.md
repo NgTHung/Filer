@@ -105,9 +105,21 @@ incrementally over provider pages. Sorting, grouping, size filters, and
 name-pattern filters still require full materialization and emit snapshot
 events.
 
-Current cursors are best-effort under mutation. If files change between page
-requests, offset-backed providers may skip or duplicate rows. Explicit refresh
-and watcher-driven refresh are the current recovery paths.
+Paging cursors are opaque, single-use continuation values backed by at most
+256 transient sessions. Each session stores the last keyset row as a
+point-in-time boundary. If metadata used for sorting changes between page
+requests, that boundary can skip or duplicate a row. `DirectoryPageState::total_count`
+is the estimate observed on the first page and reused for its
+continuations, not a live running count. Offset-backed providers have the same
+mutation caveat in their provider cursor.
+
+Continuation state can be evicted when the session bound is full, and a cursor
+is removed as soon as a valid continuation consumes it. Replay tolerance is
+intentionally unsupported because retaining consumed state would weaken the
+memory bound and the upcoming PIPELINE-003 continuation design may change the
+stored provider state. An expired, evicted, or consumed cursor requires a new
+cursorless request; explicit refresh and watcher-driven refresh are the current
+recovery paths.
 
 ## Large Directory Benchmark
 
