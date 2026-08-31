@@ -1,7 +1,7 @@
 ---
 id: MODULES-002
 title: Prove git file decorations
-status: Done
+status: In Progress
 priority: High
 type: Feature
 parent: CORE-001
@@ -11,7 +11,7 @@ rules: [SEMANTIC-EXTENSION-OUTPUT, ACTOR-LONG-WORK]
 risk: Medium
 impact: "Exercises asynchronous extension output on large directory listings."
 tags: [extensions, git, decorations]
-last_updated: 2026-08-30
+last_updated: 2026-08-31
 ---
 
 ## Summary
@@ -27,5 +27,7 @@ Depends on CORE-025 so decoration identity is built on LocationRef rather than t
 - [x] Visible nodes are the bounded input to git status work.
 - [x] Modified, added, deleted, untracked, ignored, conflicted, and clean states use semantic decoration payloads.
 - [x] Directory pages render before decoration work completes.
-- [x] Repository changes invalidate affected decorations.
-- [x] A large-repository test proves decoration work does not block directory loading.
+- [ ] Repository changes, including paired renames, invalidate affected decorations.
+- [ ] Background Git status work disables optional index locks.
+- [ ] Empty visible sets do not retain repository watches.
+- [ ] A large-repository test runs the real Git backend and proves decoration work does not block directory loading.
