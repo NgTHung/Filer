@@ -133,6 +133,30 @@ impl GitStatusBackend for StaticBackend {
     }
 }
 
+struct GatedGitBackend {
+    started: Arc<Notify>,
+    finished: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[async_trait]
+impl GitStatusBackend for GatedGitBackend {
+    async fn status(
+        &self,
+        parent: &Path,
+        visible: &[GitDecorationTarget],
+        cancel: &crate::CancelSignal,
+    ) -> Result<GitStatusResult, crate::CoreError> {
+        self.started.notify_one();
+        let result = GitCliBackend::new().status(parent, visible, cancel).await;
+        self.finished.notify_one();
+        tokio::select! {
+            _ = self.release.notified() => result,
+            _ = cancel.cancelled() => Err(crate::CoreError::cancelled()),
+        }
+    }
+}
+
 fn request(parent: &Location, visible: &[LocationRef]) -> GitDecorationRequest {
     GitDecorationRequest {
         parent: LocationRef::from_location(parent),
@@ -787,7 +811,7 @@ async fn git_cli_reports_the_shared_directory_for_a_linked_worktree() {
 }
 
 #[tokio::test]
-async fn first_directory_page_arrives_before_gated_decoration_work() {
+async fn first_directory_page_arrives_before_real_decoration_work_completes() {
     const ENTRY_COUNT: usize = 10_000;
     const PAGE_SIZE: usize = 256;
     let temp = TempDir::new().unwrap();
@@ -803,12 +827,13 @@ async fn first_directory_page_arrives_before_gated_decoration_work() {
             ))
         })
         .collect();
-    let gate = Arc::new(Notify::new());
-    let backend = Arc::new(StaticBackend {
-        states: vec![FileDecorationState::Clean; PAGE_SIZE],
-        gate: Some(gate.clone()),
-        calls: Arc::new(Mutex::new(Vec::new())),
-        common_dir: temp.path().join(".git"),
+    let started = Arc::new(Notify::new());
+    let finished = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let backend = Arc::new(GatedGitBackend {
+        started: started.clone(),
+        finished: finished.clone(),
+        release: release.clone(),
     });
     let core = FilerCore::new();
     core.load(crate::modules::scan::ScanModule::new(Arc::new(
@@ -821,18 +846,21 @@ async fn first_directory_page_arrives_before_gated_decoration_work() {
     let decoration_request = request(&parent, &visible);
     let decoration_request_id = decoration_request.request;
 
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(decoration_request),
+        session,
+    })
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), started.notified())
+        .await
+        .unwrap();
     core.send(Command::Scan {
         location: LocationRef::from_location(&parent),
         session,
         pipeline: PipelineConfig::default(),
         load: DirectoryLoadOptions::page(PAGE_SIZE),
         request: scan_request,
-    })
-    .unwrap();
-    core.send(Command::Extension {
-        key: "git.status".to_string(),
-        payload: Arc::new(decoration_request),
-        session,
     })
     .unwrap();
 
@@ -846,11 +874,24 @@ async fn first_directory_page_arrives_before_gated_decoration_work() {
             _ => {}
         }
     }
-    gate.notify_waiters();
+    tokio::time::timeout(Duration::from_secs(2), finished.notified())
+        .await
+        .unwrap();
+    release.notify_one();
     loop {
-        if let Event::FileDecorationsUpdated { request, .. } = wait_for_event(&events).await
+        if let Event::FileDecorationsUpdated {
+            decorations,
+            request,
+            ..
+        } = wait_for_event(&events).await
             && request == decoration_request_id
         {
+            assert_eq!(decorations.len(), PAGE_SIZE);
+            assert!(
+                decorations
+                    .iter()
+                    .all(|decoration| decoration.state == FileDecorationState::Untracked)
+            );
             break;
         }
     }
