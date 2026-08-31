@@ -18,6 +18,8 @@ last_updated: "2026-08-31"
 
 Own the CORE-004 F24 scalability fix split from PIPELINE-002. For paging modes that do not require a full snapshot, preserve provider and pipeline continuation state so the first page can arrive before the directory walk completes and later pages do not restart that walk. Snapshot-only transforms must remain explicit and correct. CORE-018 owns session lifetime and cursor documentation; CORE-021 owns per-row allocation; CORE-028 measures the resulting public-contract behavior.
 
+The work is staged across three children. PIPELINE-004 adds the provider continuation handle, PIPELINE-005 dispatches page assembly on the pipeline paging mode, and PIPELINE-006 makes ordered continuations proportional and documents the streaming total-count contract. The criteria below stay here as the outcome this task owns.
+
 ## Acceptance Criteria
 
 - [ ] A 10,000-entry default local listing emits its first page through public core contracts before the provider reaches end of directory, proven with a controllable provider test.
