@@ -1,7 +1,7 @@
 ---
 id: MILESTONE-004
 title: Local excellence
-status: To Do
+status: In Progress
 priority: High
 type: Milestone
 milestone: "0.3.1"
