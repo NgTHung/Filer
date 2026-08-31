@@ -105,7 +105,29 @@ impl WatchProvider for LocalWatchProvider {
 
 /// Convert a single `notify` event into zero or more [`FsChange`]s.
 #[allow(unused)]
-fn notify_to_changes(event: &NotifyEvent) -> Vec<FsChange> {
+pub(crate) fn notify_to_changes(event: &NotifyEvent) -> Vec<FsChange> {
+    if matches!(
+        &event.kind,
+        EventKind::Modify(ModifyKind::Name(RenameMode::Both))
+    ) {
+        let mut paths = event.paths.iter();
+        let mut changes = Vec::with_capacity(event.paths.len().div_ceil(2));
+        while let Some(from) = paths.next() {
+            if let Some(path) = paths.next() {
+                changes.push(FsChange {
+                    path: path.clone(),
+                    kind: FsChangeKind::Renamed { from: from.clone() },
+                });
+            } else {
+                changes.push(FsChange {
+                    path: from.clone(),
+                    kind: FsChangeKind::Modified,
+                });
+            }
+        }
+        return changes;
+    }
+
     let kind = match &event.kind {
         EventKind::Create(CreateKind::File)
         | EventKind::Create(CreateKind::Folder)

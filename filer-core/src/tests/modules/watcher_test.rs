@@ -9,9 +9,11 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::navigation::navigator::NavCommand;
 use crate::modules::watch::watcher::{UnwatchScope, WatchCommand, WatchEventMode, Watcher};
-use crate::vfs::local_watch::LocalWatchProvider;
+use crate::vfs::local_watch::{LocalWatchProvider, notify_to_changes};
 use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 use async_trait::async_trait;
+use notify::EventKind;
+use notify::event::{ModifyKind, RenameMode};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -112,6 +114,25 @@ impl WatchProvider for TestWatchProvider {
         self.watched_paths.lock().unwrap().retain(|p| p != path);
         Ok(())
     }
+}
+
+#[test]
+fn paired_rename_preserves_source_and_destination_paths() {
+    let source = PathBuf::from("old.txt");
+    let destination = PathBuf::from("new.txt");
+    let event = notify::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both)))
+        .add_path(source.clone())
+        .add_path(destination.clone());
+
+    let changes = notify_to_changes(&event);
+
+    assert!(matches!(
+        changes.as_slice(),
+        [FsChange {
+            path,
+            kind: FsChangeKind::Renamed { from },
+        }] if path == &destination && from == &source
+    ));
 }
 
 #[tokio::test]

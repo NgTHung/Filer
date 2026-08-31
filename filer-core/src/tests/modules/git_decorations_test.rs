@@ -324,6 +324,26 @@ async fn repository_changes_invalidate_matching_visible_rows() {
             && locations == vec![LocationRef::from_location(&changed)]
     ));
 
+    watcher
+        .emit(
+            untouched.as_local_path().unwrap().to_path_buf(),
+            FsChangeKind::Renamed {
+                from: changed.as_local_path().unwrap().to_path_buf(),
+            },
+        )
+        .await;
+    let event = wait_for_event(&events).await;
+    assert!(matches!(
+        event,
+        Event::FileDecorationsInvalidated {
+            invalidation: FileDecorationInvalidation { locations },
+            session: event_session,
+            request: event_request,
+        } if event_session == session
+            && event_request == request_id
+            && locations == visible
+    ));
+
     core.send(Command::DestroySession(session)).unwrap();
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert!(watcher.watched.lock().unwrap().is_empty());
