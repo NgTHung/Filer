@@ -5,7 +5,7 @@ status: In Progress
 priority: High
 type: Milestone
 milestone: "0.3.0"
-last_updated: 2026-07-09
+last_updated: 2026-08-31
 ---
 
 ## Summary
@@ -18,7 +18,7 @@ Open 0.3.0 work is API-004 (NodeId removal), CORE-020 (cancel/shutdown/backpress
 
 - [ ] NodeId is removed from public and internal core contracts; LocationRef is the only addressing contract (API-004).
 - [x] Provider calls carry timeout and capability context through app-facing errors (PROVIDER-001).
-- [x] Cross-provider directory paging contracts landed (PIPELINE-001). Mutation-stable cursor lifetime and O(directory) next-page cost are tracked outside 0.3.0 (CORE-018 / PIPELINE-002).
+- [x] Cross-provider directory paging contracts landed (PIPELINE-001). Cursor lifetime and scalable page delivery are tracked outside 0.3.0 (CORE-018 / PIPELINE-003).
 - [x] Archive traversal uses segmented Location navigation (VFS-001).
 - [x] Undo and conflict-resolution contracts are defined (OPS-001).
 - [ ] Actor cancellation, shutdown, and high-volume event backpressure are hardened (CORE-020) so decoration and page streams do not rely on unbounded channels.
