@@ -284,7 +284,9 @@ async fn test_snapshot_only_filter_pages_through_a_full_walk_in_comparator_order
     let (cmd_tx, evt_rx) = spawn_scanner(provider);
 
     // A size-bounded filter cannot be applied incrementally, so this chain must
-    // stay on the walked path rather than claim streaming behavior.
+    // stay on the walked path rather than claim streaming behavior. Whether the
+    // size predicate itself narrows the result is CORE-017's contract, not this
+    // test's claim.
     let pipeline = PipelineConfig::default().filter(FilterConfig {
         min_size: Some(0),
         ..Default::default()

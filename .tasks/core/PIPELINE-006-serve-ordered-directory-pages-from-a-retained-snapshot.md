@@ -20,8 +20,8 @@ Stage 3 of PIPELINE-003. Sorted and grouped views need the full directory before
 
 ## Acceptance Criteria
 
-- [ ] A continuation in an ordered or snapshot-only mode serves its page from retained state with work proportional to the requested page, not to the directory.
-- [ ] Configurations that require a complete snapshot remain explicit and preserve their sorting, filtering, grouping, and cursor correctness instead of claiming streaming behavior.
-- [ ] Retained paging state is bounded so the session capacity limits memory, not just session count.
-- [ ] The cursor contract documents when total count is unknown on a streaming page and when it becomes known.
-- [ ] The public paging path exposes enough observable behavior for CORE-028 to measure first-page and next-page latency without private benchmark hooks.
+- [x] A continuation in an ordered or snapshot-only mode serves its page from retained state with work proportional to the requested page, not to the directory.
+- [x] Configurations that require a complete snapshot remain explicit and preserve their sorting, filtering, grouping, and cursor correctness instead of claiming streaming behavior.
+- [x] Retained paging state is bounded so the session capacity limits memory, not just session count.
+- [x] The cursor contract documents when total count is unknown on a streaming page and when it becomes known.
+- [x] The public paging path exposes enough observable behavior for CORE-028 to measure first-page and next-page latency without private benchmark hooks.

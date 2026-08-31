@@ -89,7 +89,7 @@ outcome and no new task is created. "New" names a task created by this synthesis
 | F21 | Async actor tests synchronize with fixed `sleep` plus `timeout` races, making the watcher and navigator suites load-sensitive and slow | CORE-011 | Medium | New: CORE-022 |
 | F22 | `cancel.rs` (`CancelMap`) has no direct unit test, the riskiest and least-covered code in the crate | CORE-011 | High (coverage) | New: CORE-016 |
 | F23 | A command-rename sweep corrupted README prose, replacing verbs like "search" with `SearchNodeCompat`; the `filer-core/README.md` Modules table lists a non-existent `bus/` and misplaces the workers; `vfs/local.rs:214` carries a stale `# TODO` rustdoc section on an implemented method | CORE-012 | Medium | New: CORE-023 |
-| F24 | The native and keyset cursors do not compose, so a "next page" rewalks the whole directory; O(directory) work per page on the large-directory target | CORE-009, CORE-010 | Medium | Deferred (see below) |
+| F24 | The native and keyset cursors do not compose, so a "next page" rewalks the whole directory; O(directory) work per page on the large-directory target | CORE-009, CORE-010 | Medium | Owned: PIPELINE-003 |
 
 ### Low
 
@@ -130,12 +130,11 @@ sign-off: carve an explicit exception in AGENTS.md for rustdoc-rendered doc comm
 `//!`), and keep the hard no-markdown rule for plain `//` inline comments. This is a rule change, so
 it stays a recommendation here rather than an edit.
 
-Cursor rewalk (F24). This is a scalability ceiling, not a correctness bug, and the fix (a cached
-materialized order keyed by the cursor, or pipeline-ordered provider paging) is a design decision
-that spans the pipeline, the provider cursor, and the paging session. It is larger than the
-tactical hot-path work in CORE-021 and is not yet a concrete change. Fold it into the directory
-presentation epic (PIPELINE-002) when that work is scoped, rather than create a speculative task
-now.
+Cursor rewalk (F24). This is a scalability ceiling, not a correctness bug, and the fix spans the
+pipeline, the provider cursor, and the paging session. It became PIPELINE-003, staged as
+PIPELINE-004 (a resumable provider walk), PIPELINE-005 (page assembly chosen by pipeline paging
+mode), and PIPELINE-006 (retained ordered continuations), rather than folding into the
+presentation epic.
 
 ## Remediation backlog
 

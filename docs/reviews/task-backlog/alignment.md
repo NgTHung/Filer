@@ -107,7 +107,7 @@ ambitions." CORE-004 status is discussed in F5.
 | --- | --- | --- | --- |
 | NAV-001 | To Do | 1 | Aligned. Frontend-independent navigation and session restore. |
 | OPS-002 | To Do | file ops | Aligned. Depends on OPS-001 contract. Correct order. |
-| PIPELINE-002 | To Do | presentation | Aligned. Owns the deferred cursor-rewalk design per VERDICT F24. |
+| PIPELINE-002 | To Do | presentation | Aligned. Owns presentation only; VERDICT F24 moved to PIPELINE-003. |
 | PREVIEW-001 | To Do | 3 | Aligned. Removes local-path assumption from previews. |
 | PROTOCOL-001 | To Do | 2 | Aligned. Depends on API-001 and MODULES-001. Correctly post-0.3.0. |
 | PROVIDER-002 | To Do | 3 | Sequencing. Missing PROVIDER-001 dependency. See F2. |
