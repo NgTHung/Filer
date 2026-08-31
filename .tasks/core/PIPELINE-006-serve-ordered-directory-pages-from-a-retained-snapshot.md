@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-006"
 title: "Serve ordered directory pages from a retained snapshot"
-status: In Progress
+status: Done
 priority: "High"
 type: "Bug"
 parent: "PIPELINE-003"
