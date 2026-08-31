@@ -8,6 +8,8 @@ use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
 #[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 
 use async_trait::async_trait;
@@ -604,6 +606,42 @@ async fn git_cli_preserves_non_utf8_filenames() {
 
     let result = GitCliBackend::new()
         .status(temp.path(), &[target], &crate::CancelSignal::new())
+        .await
+        .unwrap();
+
+    assert_eq!(result.decorations[0].state, FileDecorationState::Untracked);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn git_cli_disables_optional_index_locks() {
+    let temp = TempDir::new().unwrap();
+    let repository = temp.path().join("repository");
+    fs::create_dir(&repository).unwrap();
+    run_git(&repository, ["init", "-q"]);
+    let path = repository.join("visible.txt");
+    fs::write(&path, b"untracked").unwrap();
+    let wrapper = temp.path().join("git-with-lock-check");
+    fs::write(
+        &wrapper,
+        r#"#!/bin/sh
+if [ "$GIT_OPTIONAL_LOCKS" != "0" ]; then
+    exit 97
+fi
+exec git "$@"
+"#,
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&wrapper).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&wrapper, permissions).unwrap();
+    let target = GitDecorationTarget {
+        location: LocationRef::from_location(&Location::local(&path)),
+        path,
+    };
+
+    let result = GitCliBackend::with_program(wrapper)
+        .status(&repository, &[target], &crate::CancelSignal::new())
         .await
         .unwrap();
 

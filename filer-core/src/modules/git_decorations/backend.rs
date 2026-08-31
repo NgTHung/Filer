@@ -72,6 +72,8 @@ impl GitCliBackend {
         let mut command = Command::new(&self.program);
         command
             .args(args)
+            // Background decorations must not contend with foreground Git commands.
+            .env("GIT_OPTIONAL_LOCKS", "0")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
