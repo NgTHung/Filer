@@ -7,6 +7,7 @@ use crate::model::directory::{
 };
 use crate::model::node::NodeEntry;
 use crate::vfs::context::ProviderCx;
+use crate::vfs::listing_stream::DirectoryStream;
 use serde::{Deserialize, Serialize};
 
 /// A combined `Read + BufRead + Seek` object trait used by extraction crates.
@@ -78,6 +79,21 @@ pub trait FsProvider: Send + Sync {
 
     fn paging(&self) -> ProviderPaging {
         ProviderPaging::Fallback
+    }
+
+    /// Open a resumable walk of a directory.
+    ///
+    /// Returning `None` means the provider has no continuation handle, so
+    /// callers must fall back to a full listing. Providers that report
+    /// [`ProviderPaging::Native`] should override this; an offset cursor cannot
+    /// resume a walk without re-reading the prefix it skipped.
+    async fn open_listing(
+        &self,
+        _path: &Path,
+        _options: ListingOptions,
+        _cx: &ProviderCx<'_>,
+    ) -> Result<Option<Box<dyn DirectoryStream>>, CoreError> {
+        Ok(None)
     }
 
     /// List contents of a directory

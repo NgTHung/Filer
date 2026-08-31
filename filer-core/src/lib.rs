@@ -47,6 +47,7 @@ pub use services::preview::{ArchivePreviewEntry, PreviewData, PreviewOptions, Pr
 // VFS providers
 pub use vfs::archive::ArchiveFs;
 pub use vfs::context::ProviderCx;
+pub use vfs::listing_stream::{DirectoryStream, ListingBatch};
 pub use vfs::local::LocalFs;
 pub use vfs::provider::{Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging};
 pub use vfs::registry::{ProviderProfile, ProviderProfileId, ProviderRegistry};

@@ -19,8 +19,8 @@ Stage 1 of PIPELINE-003. Add a provider contract for resuming a directory walk w
 
 ## Acceptance Criteria
 
-- [ ] A provider can open a directory listing stream that yields every entry exactly once across successive batches without re-reading earlier entries.
-- [ ] A partially consumed stream can be stored and resumed later without the caller supplying an entry offset or a prior entry key.
-- [ ] The stream honors the requested listing detail and observes cancellation between batches.
-- [ ] Providers without native paging expose no stream and keep the existing full-listing fallback through an explicit default.
-- [ ] Dropping a stream releases the provider handle it holds.
+- [x] A provider can open a directory listing stream that yields every entry exactly once across successive batches without re-reading earlier entries.
+- [x] A partially consumed stream can be stored and resumed later without the caller supplying an entry offset or a prior entry key.
+- [x] The stream honors the requested listing detail and observes cancellation between batches.
+- [x] Providers without native paging expose no stream and keep the existing full-listing fallback through an explicit default.
+- [x] Dropping a stream releases the provider handle it holds.

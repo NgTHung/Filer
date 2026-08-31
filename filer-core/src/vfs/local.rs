@@ -9,6 +9,8 @@ use crate::model::directory::{
 };
 use crate::model::node::NodeEntry;
 use crate::vfs::context::ProviderCx;
+use crate::vfs::listing_stream::DirectoryStream;
+use crate::vfs::local_listing::{LocalListingStream, read_entry};
 use crate::vfs::provider::{
     Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging, ReadSeek,
     parse_offset_cursor, validate_page_limit,
@@ -55,6 +57,17 @@ impl FsProvider for LocalFs {
         ProviderPaging::Native
     }
 
+    async fn open_listing(
+        &self,
+        path: &Path,
+        options: ListingOptions,
+        cx: &ProviderCx<'_>,
+    ) -> Result<Option<Box<dyn DirectoryStream>>, CoreError> {
+        Self::check_cancel(cx)?;
+        let stream = LocalListingStream::open(path, options).await?;
+        Ok(Some(Box::new(stream)))
+    }
+
     /// List directory contents using only `d_type` from the dirent — no stat per entry.
     ///
     /// Fields that require stat (`size`, timestamps, permissions) are
@@ -71,14 +84,8 @@ impl FsProvider for LocalFs {
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
         {
             Self::check_cancel(cx)?;
-            match entry.file_type().await {
-                Ok(ft) => {
-                    let entry_path = entry.path();
-                    res.push(NodeEntry::from_dir_entry(entry_path, ft));
-                }
-                Err(e) => {
-                    tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in listing");
-                }
+            if let Some(entry) = read_entry(entry, ListingDetail::Fast).await {
+                res.push(entry);
             }
         }
         Ok(res)
@@ -128,30 +135,8 @@ impl FsProvider for LocalFs {
                 break;
             }
 
-            match request.listing.detail {
-                ListingDetail::Fast => match entry.file_type().await {
-                    Ok(ft) => {
-                        let entry_path = entry.path();
-                        entries.push(NodeEntry::from_dir_entry(entry_path, ft));
-                    }
-                    Err(e) => {
-                        tracing::debug!(path = %entry.path().display(), error = %e, "skipping entry in paged listing");
-                    }
-                },
-                ListingDetail::Metadata => {
-                    let entry_path = entry.path();
-                    match entry.metadata().await {
-                        Ok(meta) => match NodeEntry::from_metadata(meta, entry_path.clone()) {
-                            Ok(entry) => entries.push(entry),
-                            Err(e) => {
-                                tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in paged listing");
-                            }
-                        },
-                        Err(e) => {
-                            tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry metadata in paged listing");
-                        }
-                    }
-                }
+            if let Some(entry) = read_entry(entry, request.listing.detail).await {
+                entries.push(entry);
             }
             seen += 1;
         }
@@ -330,17 +315,8 @@ impl LocalFs {
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
         {
             Self::check_cancel(cx)?;
-            let entry_path = entry.path();
-            match entry.metadata().await {
-                Ok(meta) => match NodeEntry::from_metadata(meta, entry_path.clone()) {
-                    Ok(entry) => res.push(entry),
-                    Err(e) => {
-                        tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry in listing");
-                    }
-                },
-                Err(e) => {
-                    tracing::debug!(path = %entry_path.display(), error = %e, "skipping entry metadata");
-                }
+            if let Some(entry) = read_entry(entry, ListingDetail::Metadata).await {
+                res.push(entry);
             }
         }
         Ok(res)
