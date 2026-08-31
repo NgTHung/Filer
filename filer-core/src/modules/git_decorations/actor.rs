@@ -218,7 +218,9 @@ impl GitDecorationsActor {
         };
 
         self.remove_subscription(worker.session).await;
-        if let Some(repository) = result.repository {
+        if !worker.targets.is_empty()
+            && let Some(repository) = result.repository
+        {
             let watched_paths = self.register_watches(worker.session, &repository).await;
             self.subscriptions.insert(
                 worker.session,

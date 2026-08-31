@@ -275,6 +275,46 @@ async fn malformed_and_oversized_requests_are_recoverable_errors() {
 }
 
 #[tokio::test]
+async fn empty_visible_sets_do_not_retain_repository_watches() {
+    let temp = TempDir::new().unwrap();
+    let parent = Location::local(temp.path());
+    let watcher = Arc::new(TestWatchProvider::default());
+    let backend = Arc::new(StaticBackend {
+        states: Vec::new(),
+        gate: None,
+        calls: Arc::new(Mutex::new(Vec::new())),
+        common_dir: temp.path().join(".git"),
+    });
+    let core = FilerCore::new();
+    core.load(GitDecorationsModule::with_components(
+        backend,
+        watcher.clone(),
+    ));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let request = request(&parent, &[]);
+    let request_id = request.request;
+
+    core.send(Command::Extension {
+        key: "git.status".to_string(),
+        payload: Arc::new(request),
+        session,
+    })
+    .unwrap();
+
+    assert!(matches!(
+        wait_for_event(&events).await,
+        Event::FileDecorationsUpdated {
+            decorations,
+            request,
+            ..
+        } if request == request_id && decorations.is_empty()
+    ));
+    assert!(watcher.watched.lock().unwrap().is_empty());
+    core.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn repository_changes_invalidate_matching_visible_rows() {
     let temp = TempDir::new().unwrap();
     let parent = Location::local(temp.path());
