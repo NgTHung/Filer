@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-004"
 title: "Give providers a resumable directory listing stream"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Feature"
 parent: "PIPELINE-003"
@@ -10,7 +10,7 @@ rules: ["PROVIDER-ACCESS"]
 risk: "Medium"
 impact: "Replaces the offset rewalk in local paged listing with a retained provider handle."
 tags: ["core", "vfs", "provider", "paging", "performance"]
-last_updated: "2026-08-31"
+last_updated: 2026-08-31
 ---
 
 ## Summary
