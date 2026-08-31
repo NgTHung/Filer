@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-006"
 title: "Serve ordered directory pages from a retained snapshot"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Bug"
 parent: "PIPELINE-003"
@@ -11,7 +11,7 @@ rules: ["PIPELINE-TRANSFORMS"]
 risk: "Medium"
 impact: "Changes memory held per paging session and the reported total count on streaming pages."
 tags: ["core", "paging", "pipeline", "performance", "docs"]
-last_updated: "2026-08-31"
+last_updated: 2026-08-31
 ---
 
 ## Summary
