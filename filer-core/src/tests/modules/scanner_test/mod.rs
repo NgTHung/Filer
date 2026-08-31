@@ -365,3 +365,8 @@ include!("paging_session_tests.rs");
 mod streaming_paging_tests {
     include!("streaming_paging_tests.rs");
 }
+
+#[cfg(test)]
+mod ordered_paging_tests {
+    include!("ordered_paging_tests.rs");
+}

@@ -5,7 +5,7 @@ use crate::ProviderCx;
 #[test]
 fn selection_retains_only_page_size_plus_lookahead() {
     let config = PipelineConfig::default();
-    let mut selection = PageSelection::new(10, None, &config);
+    let mut selection = PageSelection::with_lookahead(10, 0, None, &config);
     let entries: Vec<_> = (0..10_000)
         .map(|index| {
             local_file_node(
@@ -33,7 +33,7 @@ fn selection_stops_after_periodic_cancellation_check() {
     let cancel = crate::CancelSignal::new();
     let context = ProviderCx::with_cancel(&cancel);
     let cancel_during_iteration = cancel.clone();
-    let mut selection = PageSelection::new(10, None, &config);
+    let mut selection = PageSelection::with_lookahead(10, 0, None, &config);
 
     let completed = selection.extend(
         (0..10_000).map(move |index| {

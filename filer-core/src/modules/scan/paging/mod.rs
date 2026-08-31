@@ -14,6 +14,7 @@
 //! let page = sessions.load_provider(provider, path, session, request, pipeline, &cx).await?;
 //! ```
 
+mod ordered;
 mod selection;
 mod session;
 mod stream;
@@ -32,10 +33,11 @@ use crate::pipeline::{PipelineConfig, effective_listing};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::{FsProvider, ProviderPaging, validate_page_limit};
 
+use ordered::RetainedPage;
 pub(crate) use selection::PageSelection;
 use session::{
-    CURSOR_PREFIX, Continuation, DEFAULT_PAGING_SESSION_CAPACITY, PagingSession,
-    PagingSessionStore, next_cursor,
+    CURSOR_PREFIX, Continuation, DEFAULT_PAGING_SESSION_CAPACITY, DEFAULT_RETAINED_ROW_BUDGET,
+    PagingSession, PagingSessionStore, RetainedChain, next_cursor,
 };
 use stream::{StreamedPage, streams_pages, take_page};
 
@@ -46,7 +48,7 @@ pub struct PagingSessions {
 
 impl Default for PagingSessions {
     fn default() -> Self {
-        Self::with_capacity(DEFAULT_PAGING_SESSION_CAPACITY)
+        Self::with_limits(DEFAULT_PAGING_SESSION_CAPACITY, DEFAULT_RETAINED_ROW_BUDGET)
     }
 }
 
@@ -60,15 +62,29 @@ impl PagingSessions {
         Self::default()
     }
 
+    #[cfg(test)]
     pub(crate) fn with_capacity(capacity: usize) -> Self {
+        Self::with_limits(capacity, DEFAULT_RETAINED_ROW_BUDGET)
+    }
+
+    /// Bound both how many chains are stored and how many rows they may retain.
+    pub(crate) fn with_limits(capacity: usize, retained_budget: usize) -> Self {
         Self {
-            sessions: Arc::new(Mutex::new(PagingSessionStore::new(capacity))),
+            sessions: Arc::new(Mutex::new(PagingSessionStore::new(
+                capacity,
+                retained_budget,
+            ))),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn len(&self) -> usize {
         self.store().len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn retained_rows(&self) -> usize {
+        self.store().retained_rows()
     }
 
     fn store(&self) -> std::sync::MutexGuard<'_, PagingSessionStore> {
@@ -157,6 +173,20 @@ impl PagingSessions {
                 .await;
         }
 
+        let continuation = match continuation.map(|s| s.into_retained(effective_request.limit)) {
+            Some(Ok(retained)) => {
+                return Ok(PageLoad::Page(self.retained_page(
+                    path,
+                    owner,
+                    effective_request,
+                    pipeline_config,
+                    retained,
+                )));
+            }
+            Some(Err(session)) => Some(*session),
+            None => None,
+        };
+
         self.walked_page(
             provider,
             path,
@@ -167,6 +197,87 @@ impl PagingSessions {
             cx,
         )
         .await
+    }
+
+    /// Serve a page out of rows an earlier walk already ordered.
+    fn retained_page(
+        &self,
+        path: &Path,
+        owner: SessionId,
+        request: DirectoryPageRequest,
+        pipeline: &PipelineConfig,
+        retained: RetainedChain,
+    ) -> DirectoryPageResult {
+        let page = RetainedPage::take(retained.rows, retained.tail_complete, request.limit);
+        self.finish_ordered_page(
+            path,
+            owner,
+            request,
+            pipeline,
+            retained.start_index,
+            retained.total_count,
+            page,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finish_ordered_page(
+        &self,
+        path: &Path,
+        owner: SessionId,
+        request: DirectoryPageRequest,
+        pipeline: &PipelineConfig,
+        start_index: usize,
+        total_count: Option<usize>,
+        page: RetainedPage,
+    ) -> DirectoryPageResult {
+        let has_more = page.has_more();
+        let RetainedPage {
+            entries,
+            rows,
+            tail_complete,
+            retain,
+        } = page;
+        let next_cursor = has_more
+            .then(|| entries.last().cloned())
+            .flatten()
+            .map(|last| {
+                let cursor = next_cursor();
+                self.store().insert(
+                    cursor.0.clone(),
+                    PagingSession {
+                        owner,
+                        path: path.to_path_buf(),
+                        request: DirectoryPageRequest {
+                            cursor: None,
+                            ..request.clone()
+                        },
+                        pipeline: pipeline.clone(),
+                        continuation: if retain {
+                            Continuation::Ordered {
+                                rows,
+                                last: Box::new(last),
+                                tail_complete,
+                            }
+                        } else {
+                            // Without a retention allowance the chain keeps only
+                            // its boundary and rewalks, as it did before.
+                            Continuation::Keyset {
+                                last: Box::new(last),
+                            }
+                        },
+                        start_index: start_index + entries.len(),
+                        total_count,
+                    },
+                );
+                cursor
+            });
+        let state = match next_cursor {
+            Some(cursor) => DirectoryPageState::partial(entries.len(), total_count, cursor),
+            None => DirectoryPageState::complete(entries.len(), total_count),
+        }
+        .with_window(start_index);
+        DirectoryPageResult { entries, state }
     }
 
     /// Serve a page from a live provider walk that outlives the request.
@@ -220,8 +331,10 @@ impl PagingSessions {
         continuation: Option<PagingSession>,
         cx: &ProviderCx<'_>,
     ) -> Result<PageLoad, CoreError> {
-        let mut selection = PageSelection::new(
+        let lookahead = self.store().retention_allowance();
+        let mut selection = PageSelection::with_lookahead(
             request.limit,
+            lookahead,
             continuation
                 .as_ref()
                 .and_then(PagingSession::keyset_boundary)
@@ -311,8 +424,23 @@ impl PagingSessions {
         if effective_request.cursor.is_none() {
             self.clear_session(owner);
         }
-        let mut selection = PageSelection::new(
+        let continuation = match continuation.map(|s| s.into_retained(effective_request.limit)) {
+            Some(Ok(retained)) => {
+                return Ok(PageLoad::Page(self.retained_page(
+                    path,
+                    owner,
+                    effective_request,
+                    pipeline_config,
+                    retained,
+                )));
+            }
+            Some(Err(session)) => Some(*session),
+            None => None,
+        };
+        let lookahead = self.store().retention_allowance();
+        let mut selection = PageSelection::with_lookahead(
             effective_request.limit,
+            lookahead,
             continuation
                 .as_ref()
                 .and_then(PagingSession::keyset_boundary)
@@ -427,47 +555,28 @@ impl PagingSessions {
             .as_ref()
             .map(|state| state.start_index)
             .unwrap_or(0);
-        let has_more = selection.entries.len() > request.limit;
-        selection.entries.truncate(request.limit);
         let stable_total_count = continuation
             .as_ref()
             .and_then(|state| state.total_count)
             .unwrap_or(selection.total_matches);
-        let total_count = Some(stable_total_count);
-        let next_cursor = has_more
-            .then(|| selection.entries.last().cloned())
-            .flatten()
-            .map(|last| {
-                let cursor = next_cursor();
-                self.store().insert(
-                    cursor.0.clone(),
-                    PagingSession {
-                        owner,
-                        path: path.to_path_buf(),
-                        request: DirectoryPageRequest {
-                            cursor: None,
-                            ..request.clone()
-                        },
-                        pipeline: pipeline.clone(),
-                        continuation: Continuation::Keyset {
-                            last: Box::new(last),
-                        },
-                        start_index: start_index + selection.entries.len(),
-                        total_count: Some(stable_total_count),
-                    },
-                );
-                cursor
-            });
-        let state = match next_cursor {
-            Some(cursor) => {
-                DirectoryPageState::partial(selection.entries.len(), total_count, cursor)
-            }
-            None => DirectoryPageState::complete(selection.entries.len(), total_count),
-        }
-        .with_window(start_index);
-        DirectoryPageResult {
+
+        // Rows the walk ordered past this page become the next page's answer.
+        let taken = request.limit.min(selection.entries.len());
+        let rows: VecDeque<NodeEntry> = selection.entries.split_off(taken).into();
+        let page = RetainedPage {
             entries: selection.entries,
-            state,
-        }
+            rows,
+            tail_complete: !selection.overflowed,
+            retain: selection.retains,
+        };
+        self.finish_ordered_page(
+            path,
+            owner,
+            request,
+            pipeline,
+            start_index,
+            Some(stable_total_count),
+            page,
+        )
     }
 }
