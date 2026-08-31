@@ -1,7 +1,7 @@
 ---
 id: REL-004
 title: Add watcher burst ordering and freshness tests
-status: In Progress
+status: Done
 priority: Medium
 type: TestDebt
 parent: CORE-001
@@ -19,5 +19,5 @@ Add a deterministic burst test through the existing TestWatchProvider. Register 
 
 ## Acceptance Criteria
 
-- [ ] A test injects a mixed create/delete/rename burst for distinct watched locations and asserts the LocationRef-scoped FsChanged events are emitted in the order injected.
-- [ ] The burst test asserts each watched location produces exactly one NavCommand::Invalidate refresh signal, with no duplicate signals.
+- [x] A test injects a mixed create/delete/rename burst for distinct watched locations and asserts the LocationRef-scoped FsChanged events are emitted in the order injected.
+- [x] The burst test asserts each watched location produces exactly one NavCommand::Invalidate refresh signal, with no duplicate signals.
