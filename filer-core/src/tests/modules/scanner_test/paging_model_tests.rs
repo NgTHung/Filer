@@ -23,8 +23,9 @@ fn selection_retains_only_page_size_plus_lookahead() {
 
     assert!(selection.extend(entries, &ProviderCx::none()));
 
-    assert_eq!(selection.total_matches, 10_000);
-    assert_eq!(selection.entries.len(), 11);
+    let selected = selection.finish();
+    assert_eq!(selected.total_matches, 10_000);
+    assert_eq!(selected.entries.len(), 11);
 }
 
 #[test]

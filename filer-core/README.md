@@ -94,32 +94,51 @@ Directory loading is explicit about cost and result shape.
 - `DirectoryLoadMode::Page` emits page events with `DirectoryPageState` and an
   optional `DirectoryCursor`.
 
-`FsProvider::list_page` is the provider paging contract. Providers without
-native paging inherit a compatibility fallback that materializes and slices a
-full listing. `LocalFs` overrides this and reads only enough entries for the
-requested page plus one lookahead entry.
+`FsProvider::open_listing` is the provider continuation contract. It returns a
+`DirectoryStream`, a walk the scanner can stop and resume, which `LocalFs` backs
+with a retained directory handle. Providers that return `None` have no
+continuation handle and fall back to `FsProvider::list_page`, whose default
+implementation materializes and slices a full listing.
 
-Pipeline paging is supported only when provider order is preserved. Empty
-pipelines use provider pages directly. Hidden-file and extension filters run
-incrementally over provider pages. Sorting, grouping, size filters, and
-name-pattern filters still require full materialization and emit snapshot
-events.
+`PipelineConfig::paging_mode` picks how a chain pages:
+
+- Empty pipelines emit provider pages directly.
+- Hidden-file and extension filters run incrementally over provider pages.
+- Sorting and grouping need every row before the first page is correct.
+- Size filters and name-pattern filters require a complete snapshot.
+
+The first two stream. A streaming page pulls only the rows it returns plus one
+lookahead and keeps the walk open, so the first page arrives before the walk
+reaches the end of the directory and each continuation costs one page. Neither
+mode adds an ordering stage to the pipeline, so their rows arrive in provider
+order. Ask for a sort to get a sorted view.
+
+The last two walk the directory once. The walk keeps the ordered rows past the
+page it returned, so later pages come from that tail rather than a second walk.
+Retention is bounded twice: one chain keeps at most 16,384 rows, and all chains
+share a 32,768-row budget. A chain that cannot retain keeps only its keyset
+boundary and walks again, which is slower and still correct.
 
 Paging cursors are opaque, single-use continuation values backed by at most
-256 transient sessions. Each session stores the last keyset row as a
+256 transient sessions. A walked chain stores the last ordered row as a
 point-in-time boundary. If metadata used for sorting changes between page
-requests, that boundary can skip or duplicate a row. `DirectoryPageState::total_count`
-is the estimate observed on the first page and reused for its
-continuations, not a live running count. Offset-backed providers have the same
-mutation caveat in their provider cursor.
+requests, that boundary can skip or duplicate a row. A chain serving retained
+rows answers from the snapshot its walk took, so it does not observe changes
+made after that walk.
+
+`DirectoryPageState::total_count` is `None` while a streaming chain is still
+partial, because a walk that stopped early cannot count what it has not seen. It
+becomes the chain's final count on the terminal page. A walked chain reports the
+count observed on its first page and reuses it for continuations, so it is a
+point-in-time estimate rather than a live count.
 
 Continuation state can be evicted when the session bound is full, and a cursor
-is removed as soon as a valid continuation consumes it. Replay tolerance is
-intentionally unsupported because retaining consumed state would weaken the
-memory bound and the upcoming PIPELINE-003 continuation design may change the
-stored provider state. An expired, evicted, or consumed cursor requires a new
-cursorless request; explicit refresh and watcher-driven refresh are the current
-recovery paths.
+is removed as soon as a valid continuation consumes it. Eviction, expiry, and
+the terminal page all drop the session, which releases the provider handle or
+retained rows it held. Replay tolerance is intentionally unsupported because
+retaining consumed state would weaken the memory bound. An expired, evicted, or
+consumed cursor requires a new cursorless request; explicit refresh and
+watcher-driven refresh are the current recovery paths.
 
 ## Large Directory Benchmark
 

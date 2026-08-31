@@ -1,10 +1,10 @@
 //! # Directory Loading
 //!
 //! This module defines snapshot and page-oriented directory result contracts.
-//! Page cursors carry the last ordered row so the scanner can continue through
-//! the same comparator boundary without retaining the complete directory.
-//! Cursors are transient, single-use values and callers can restart with a
-//! cursorless page request when a cursor expires or no longer applies.
+//! A cursor names continuation state the scanner holds, either an open provider
+//! walk or the ordered rows a previous walk left past the last page. Cursors are
+//! transient, single-use values and callers can restart with a cursorless page
+//! request when a cursor expires or no longer applies.
 //!
 //! ```
 //! use filer_core::{DirectoryCursor, DirectoryLoadOptions};
@@ -25,11 +25,13 @@ pub const DEFAULT_DIRECTORY_PAGE_SIZE: usize = 256;
 
 /// Opaque continuation value returned by a paged directory load.
 ///
-/// A cursor represents the last keyset row observed for one page chain. The
-/// scanner accepts it once, while its transient session is retained, and then
-/// removes it. Concurrent metadata changes can therefore make a continuation
-/// skip or repeat a row. Treat an expired, evicted, or consumed cursor as a
-/// request to start a new cursorless page chain.
+/// A cursor names one page chain's stored progress. The scanner accepts it
+/// once, while its transient session is retained, and then removes it.
+/// Concurrent changes can therefore make a continuation skip or repeat a row: a
+/// chain that walks the directory again can cross a moved boundary, and a chain
+/// serving retained rows cannot see changes made after its walk. Treat an
+/// expired, evicted, or consumed cursor as a request to start a new cursorless
+/// page chain.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DirectoryCursor(pub String);
 
@@ -194,10 +196,15 @@ pub struct DirectoryPageResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectoryPageState {
     pub page_count: usize,
-    /// The count observed while computing the first page of this chain.
+    /// How many rows the chain has counted, when it can know.
     ///
-    /// Continuations reuse this point-in-time estimate instead of reporting a
-    /// live count, so mutations can make it stale.
+    /// `None` while a streaming chain is still partial, because a walk that
+    /// stopped at the page boundary has not seen the rest of the directory. It
+    /// becomes the chain's final count on the terminal page.
+    ///
+    /// A chain that walks the directory reports the count observed on its first
+    /// page and reuses that point-in-time estimate for its continuations, so
+    /// mutations can make it stale.
     pub total_count: Option<usize>,
     /// A single-use continuation for the next page, if more rows remain.
     #[serde(default, skip_serializing_if = "Option::is_none")]

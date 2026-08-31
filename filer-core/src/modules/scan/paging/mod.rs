@@ -549,25 +549,26 @@ impl PagingSessions {
         request: DirectoryPageRequest,
         pipeline: &PipelineConfig,
         continuation: Option<PagingSession>,
-        mut selection: PageSelection<'_>,
+        selection: PageSelection<'_>,
     ) -> DirectoryPageResult {
         let start_index = continuation
             .as_ref()
             .map(|state| state.start_index)
             .unwrap_or(0);
+        let mut selected = selection.finish();
         let stable_total_count = continuation
             .as_ref()
             .and_then(|state| state.total_count)
-            .unwrap_or(selection.total_matches);
+            .unwrap_or(selected.total_matches);
 
         // Rows the walk ordered past this page become the next page's answer.
-        let taken = request.limit.min(selection.entries.len());
-        let rows: VecDeque<NodeEntry> = selection.entries.split_off(taken).into();
+        let taken = request.limit.min(selected.entries.len());
+        let rows: VecDeque<NodeEntry> = selected.entries.split_off(taken).into();
         let page = RetainedPage {
-            entries: selection.entries,
+            entries: selected.entries,
             rows,
-            tail_complete: !selection.overflowed,
-            retain: selection.retains,
+            tail_complete: !selected.overflowed,
+            retain: selected.retains,
         };
         self.finish_ordered_page(
             path,
