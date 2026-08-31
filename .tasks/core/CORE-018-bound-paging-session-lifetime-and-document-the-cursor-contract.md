@@ -1,7 +1,7 @@
 ---
 id: CORE-018
 title: Bound paging session lifetime and document the cursor contract
-status: In Progress
+status: Done
 priority: Medium
 type: Bug
 parent: CORE-027
@@ -24,6 +24,6 @@ Milestone 0.3.1 (MILESTONE-004 draft). Tracked under CORE-027 post-audit remedia
 
 ## Acceptance Criteria
 
-- [ ] The paging session map retains at most 256 continuation sessions, evicts the oldest unconsumed cursor when full, and has a regression test for eviction and expired-cursor recovery.
-- [ ] Public cursor documentation explains the keyset snapshot semantics, mutation caveat, first-page total estimate, bounded lifetime, and single-use behavior.
-- [ ] Replay tolerance is explicitly out of scope because consumed state is not retained; the documentation names cursorless refresh as the recovery path and explains why PIPELINE-003 may revisit the decision.
+- [x] The paging session map retains at most 256 continuation sessions, evicts the oldest unconsumed cursor when full, and has a regression test for eviction and expired-cursor recovery.
+- [x] Public cursor documentation explains the keyset snapshot semantics, mutation caveat, first-page total estimate, bounded lifetime, and single-use behavior.
+- [x] Replay tolerance is explicitly out of scope because consumed state is not retained; the documentation names cursorless refresh as the recovery path and explains why PIPELINE-003 may revisit the decision.
