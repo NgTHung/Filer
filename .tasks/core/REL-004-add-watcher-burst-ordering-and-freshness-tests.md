@@ -1,7 +1,7 @@
 ---
 id: REL-004
 title: Add watcher burst ordering and freshness tests
-status: To Do
+status: In Progress
 priority: Medium
 type: TestDebt
 parent: CORE-001
