@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-003"
 title: "Make large-directory paging proportional to page size"
-status: "To Do"
+status: Done
 priority: "High"
 type: "Bug"
 parent: "CORE-027"
@@ -11,7 +11,7 @@ rules: ["PROVIDER-ACCESS", "PIPELINE-TRANSFORMS", "ACTOR-LONG-WORK"]
 risk: "High"
 impact: "Changes provider traversal, paging session state, and first-page delivery on the large-directory hot path."
 tags: ["core", "audit", "remediation", "pipeline", "paging", "performance"]
-last_updated: "2026-08-31"
+last_updated: 2026-08-31
 ---
 
 ## Summary
@@ -22,8 +22,8 @@ The work is staged across three children. PIPELINE-004 adds the provider continu
 
 ## Acceptance Criteria
 
-- [ ] A 10,000-entry default local listing emits its first page through public core contracts before the provider reaches end of directory, proven with a controllable provider test.
-- [ ] A continuation request resumes stored provider and pipeline progress instead of replaying prior entries or walking the full directory again, with work proportional to the requested page under stable input.
-- [ ] Configurations that require a complete snapshot remain explicit and preserve their sorting, filtering, grouping, and cursor correctness instead of claiming streaming behavior.
-- [ ] Paging state composes with the CORE-018 lifetime bound and releases provider continuation resources when the cursor expires, is replaced, or reaches the terminal page.
-- [ ] The public paging path exposes enough observable behavior for CORE-028 to measure first-page and next-page latency without private benchmark hooks.
+- [x] A 10,000-entry default local listing emits its first page through public core contracts before the provider reaches end of directory, proven with a controllable provider test.
+- [x] A continuation request resumes stored provider and pipeline progress instead of replaying prior entries or walking the full directory again, with work proportional to the requested page under stable input.
+- [x] Configurations that require a complete snapshot remain explicit and preserve their sorting, filtering, grouping, and cursor correctness instead of claiming streaming behavior.
+- [x] Paging state composes with the CORE-018 lifetime bound and releases provider continuation resources when the cursor expires, is replaced, or reaches the terminal page.
+- [x] The public paging path exposes enough observable behavior for CORE-028 to measure first-page and next-page latency without private benchmark hooks.
