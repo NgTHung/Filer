@@ -3,7 +3,7 @@
 This report reviews the live `.tasks/` backlog against the current `filer-core`
 goal on 2026-06-15. It is review only. It does not change task state.
 
-Evidence comes from `cargo run -q -p filer-task -- validate`, `summary`,
+Evidence comes from `cargo run -q -p taskroot -- validate`, `summary`,
 `list --format json`, `ready --domain core --milestone 0.3.0 --format json`,
 `ready --format json`, `milestone 0.3.0 --exit-checklist`, and the current
 task files under `.tasks/core` and `.tasks/milestones`.

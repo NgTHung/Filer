@@ -7,7 +7,7 @@ recommended disposition for a later refinement pass.
 
 The backlog holds 48 tasks. Structural consistency (parents resolve, milestones match,
 dependencies form a DAG, rule IDs exist, Done tasks have checked criteria) is already
-guaranteed by `filer-task validate`. This review covers semantic alignment instead.
+guaranteed by `taskroot validate`. This review covers semantic alignment instead.
 
 ## Ambitions under test
 

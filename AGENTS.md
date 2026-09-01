@@ -99,15 +99,15 @@ comprehensive, delve, utilize, harness, realm, tapestry, unlock, revolutionary, 
 
 ## Task Tracking
 
-Filer tracks features, epics, milestones, and development work in `.tasks/`, version-controlled with the code. The `filer-task` CLI validates and queries them.
+Filer tracks features, epics, milestones, and development work in `.tasks/`, version-controlled with the code. The `taskroot` CLI validates and queries them.
 
-Use the repository-local `filer-task-workflow` skill for substantial planning or implementation, named task IDs, ready-work selection, and any work that may create or refine a task.
+Use the repository-local `taskroot-workflow` skill for substantial planning or implementation, named task IDs, ready-work selection, and any work that may create or refine a task.
 
-Run `filer-task` before and after task changes:
+Run `taskroot` before and after task changes:
 
 ```bash
-cargo run -p filer-task -- validate
-cargo run -p filer-task -- list
+cargo run -p taskroot -- validate
+cargo run -p taskroot -- list
 ```
 
 Project milestones live in `.tasks/milestones/`. Normal tasks reference one with `milestone: "0.3.0"`.
@@ -118,7 +118,7 @@ Project milestones live in `.tasks/milestones/`. Normal tasks reference one with
 
 ### Issue tracker
 
-For issue and spec publication, ticket breakdowns, triage, and wayfinding, use `.tasks/` through `filer-task`. See `docs/agents/issue-tracker.md`.
+For issue and spec publication, ticket breakdowns, triage, and wayfinding, use `.tasks/` through `taskroot`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

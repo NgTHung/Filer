@@ -1,22 +1,22 @@
 # Task Tracking
 
-The `.tasks/` directory stores Filer development work as markdown files with YAML frontmatter. `filer-task` validates metadata, links, criteria sections, prefixes, and rule references so task state stays useful during large roadmap migrations.
+The `.tasks/` directory stores Filer development work as markdown files with YAML frontmatter. `taskroot` validates metadata, links, criteria sections, prefixes, and rule references so task state stays useful during large roadmap migrations.
 
 This guide describes the behavior available in the repository today. The approved [task project contract](task-project-contract.md) defines planned portable domains, qualified identities, and project configuration. Update this guide with each implementation task so examples never lead the behavior they describe.
 
 Use these commands before and after task changes:
 
 ```bash
-cargo run -p filer-task -- validate
-cargo run -p filer-task -- validate --format json
-cargo run -p filer-task -- list
-cargo run -p filer-task -- summary
-cargo run -p filer-task -- list --format json
+cargo run -p taskroot -- validate
+cargo run -p taskroot -- validate --format json
+cargo run -p taskroot -- list
+cargo run -p taskroot -- summary
+cargo run -p taskroot -- list --format json
 ```
 
 ## Project Discovery
 
-`filer-task` starts at your current working directory and selects the nearest
+`taskroot` starts at your current working directory and selects the nearest
 ancestor that directly contains a `.tasks` directory. You can run commands from
 the project root or any nested path. A nested project takes precedence over an
 outer project.
@@ -26,8 +26,8 @@ paths resolve from your current working directory, and the path may point to a
 project root, a nested directory, or an existing file inside the project.
 
 ```bash
-cargo run -p filer-task -- list --root ../another-project/src --format json
-cargo run -p filer-task -- validate --root C:\work\another-project
+cargo run -p taskroot -- list --root ../another-project/src --format json
+cargo run -p taskroot -- validate --root C:\work\another-project
 ```
 
 The `.tasks` directory alone marks a project. It does not need
@@ -44,13 +44,13 @@ Create a new project with `init`. The command fails if the target already has a
 absent until the first task is added.
 
 ```bash
-cargo run -p filer-task -- init --root C:\work\new-project --domain work --prefix WORK
-cargo run -p filer-task -- init --root ../new-project --domain work --prefix WORK,BUG
+cargo run -p taskroot -- init --root C:\work\new-project --domain work --prefix WORK
+cargo run -p taskroot -- init --root ../new-project --domain work --prefix WORK,BUG
 ```
 
 ## Project Configuration
 
-`filer-task` loads `.tasks/config.json` once after project discovery and before
+`taskroot` loads `.tasks/config.json` once after project discovery and before
 it reads or writes task files. The file must use version 1. Every object is
 strict. Unknown fields, nulls, duplicate keys or list values, empty required
 collections, invalid portable names, conflicting milestone roles, and invalid
@@ -131,13 +131,13 @@ Library callers open an explicit root. Discovery stays a separate host or CLI
 step:
 
 ```rust
-use filer_task::project::{CriteriaPolicy, TaskProject};
+use taskroot::project::{CriteriaPolicy, TaskProject};
 
 let project = TaskProject::open(root)?;
 let policy = project.policy();
 let feature = policy.task_type("Feature");
 assert_eq!(feature.map(|value| value.criteria()), Some(CriteriaPolicy::Acceptance));
-# Ok::<(), filer_task::error::TaskError>(())
+# Ok::<(), taskroot::error::TaskError>(())
 ```
 
 `TaskProject` owns the canonical root and its immutable `ProjectPolicy`.
@@ -221,7 +221,7 @@ Required fields:
 
 Status and type are separate. Status records lifecycle state. Type classifies the work and selects its criteria heading. A configured project accepts the names in `task_types`; a compatibility project accepts the nine built-in names shown in the table. `Deferred` and `Obsolete` are statuses, not task types. They require `## Rationale` and may omit criteria. `Blocked` is also a status; it requires `## Blocked Reason` in addition to the criteria selected by the task type.
 
-Task type values are stored and emitted as strings. You can add a type in configuration without recompiling `filer-task`. The type's `criteria` value selects `## Acceptance Criteria` or `## Exit Criteria`. The optional `milestone` role, not the type name or directory, enables milestone validation, readiness blocking, context relations, and milestone commands.
+Task type values are stored and emitted as strings. You can add a type in configuration without recompiling `taskroot`. The type's `criteria` value selects `## Acceptance Criteria` or `## Exit Criteria`. The optional `milestone` role, not the type name or directory, enables milestone validation, readiness blocking, context relations, and milestone commands.
 
 Optional fields:
 
@@ -289,7 +289,7 @@ Milestone prefixes:
 
 ## Validation
 
-`cargo run -p filer-task -- validate` checks:
+`cargo run -p taskroot -- validate` checks:
 
 - YAML frontmatter parses into the strict task model.
 - Task IDs use `PREFIX-NUMBER`; relationship references use local IDs or `domain:LOCAL-ID`.
@@ -320,7 +320,7 @@ Use this order when changing taxonomy:
 
 1. Inventory every domain, prefix, type, milestone binding, and tag in the existing task files.
 2. Add a configuration that accepts the current repository without changing task files.
-3. Run `filer-task validate` and resolve every taxonomy issue.
+3. Run `taskroot validate` and resolve every taxonomy issue.
 4. Update task files and configuration together for the intended rename or restriction.
 5. Validate again before removing old prefixes, types, or tags from configuration.
 
@@ -340,19 +340,19 @@ qualified candidates.
 List focused task sets with filters:
 
 ```bash
-cargo run -p filer-task -- list --status "In Progress"
-cargo run -p filer-task -- list --priority High
-cargo run -p filer-task -- list --domain core
-cargo run -p filer-task -- list --parent core:CORE-000
-cargo run -p filer-task -- list --tag location
-cargo run -p filer-task -- list --milestone 0.3.0
-cargo run -p filer-task -- list --blocked
+cargo run -p taskroot -- list --status "In Progress"
+cargo run -p taskroot -- list --priority High
+cargo run -p taskroot -- list --domain core
+cargo run -p taskroot -- list --parent core:CORE-000
+cargo run -p taskroot -- list --tag location
+cargo run -p taskroot -- list --milestone 0.3.0
+cargo run -p taskroot -- list --blocked
 ```
 
 Use JSON output when another tool needs structured data:
 
 ```bash
-cargo run -p filer-task -- list --format json
+cargo run -p taskroot -- list --format json
 ```
 
 ### Triage tags
@@ -365,9 +365,9 @@ from that group, preserves unrelated tags, validates the result, and writes the
 task atomically:
 
 ```bash
-cargo run -p filer-task -- tag set core:CORE-042 triage-category enhancement
-cargo run -p filer-task -- tag set core:CORE-042 triage-state ready-for-agent
-cargo run -p filer-task -- tag clear core:CORE-042 triage-state
+cargo run -p taskroot -- tag set core:CORE-042 triage-category enhancement
+cargo run -p taskroot -- tag set core:CORE-042 triage-state ready-for-agent
+cargo run -p taskroot -- tag clear core:CORE-042 triage-state
 ```
 
 Use `list` to inspect a triage queue. Use `ready` when you need triaged tasks
@@ -375,8 +375,8 @@ that also satisfy Filer's lifecycle, dependency, hierarchy, and milestone
 rules:
 
 ```bash
-cargo run -p filer-task -- list --tag needs-triage
-cargo run -p filer-task -- ready --tag ready-for-agent --format json
+cargo run -p taskroot -- list --tag needs-triage
+cargo run -p taskroot -- ready --tag ready-for-agent --format json
 ```
 
 ## Agent Workflow
@@ -384,23 +384,23 @@ cargo run -p filer-task -- ready --tag ready-for-agent --format json
 Use `ready` to select executable work. A ready task is `To Do`, is not a milestone, has no child tasks, has only `Done` dependencies, and has only `To Do` or `In Progress` ancestors. Results sort by priority and then qualified identity.
 
 ```bash
-cargo run -p filer-task -- ready
-cargo run -p filer-task -- ready --domain core --milestone 0.3.0 --limit 5
-cargo run -p filer-task -- ready --tag provider --format json
+cargo run -p taskroot -- ready
+cargo run -p taskroot -- ready --domain core --milestone 0.3.0 --limit 5
+cargo run -p taskroot -- ready --tag provider --format json
 ```
 
 Use `show` when you need one task's full metadata and body sections:
 
 ```bash
-cargo run -p filer-task -- show core:PROVIDER-001
-cargo run -p filer-task -- show core:PROVIDER-001 --format json
+cargo run -p taskroot -- show core:PROVIDER-001
+cargo run -p taskroot -- show core:PROVIDER-001 --format json
 ```
 
 Use `context` before implementation. It returns the target task, readiness blockers, direct task relationships, the root-first `ancestors` chain, milestone, referenced architecture rule text, and whitepaper path. It does not infer source files.
 
 ```bash
-cargo run -p filer-task -- context core:PROVIDER-001
-cargo run -p filer-task -- context core:PROVIDER-001 --format json
+cargo run -p taskroot -- context core:PROVIDER-001
+cargo run -p taskroot -- context core:PROVIDER-001 --format json
 ```
 
 The `show`, `ready`, and `context` JSON envelopes use `schema_version: 2` and
@@ -416,48 +416,48 @@ pair.
 An agent should use this sequence:
 
 ```bash
-cargo run -p filer-task -- ready --limit 5 --format json
-cargo run -p filer-task -- context core:PROVIDER-001 --format json
-cargo run -p filer-task -- start core:PROVIDER-001
+cargo run -p taskroot -- ready --limit 5 --format json
+cargo run -p taskroot -- context core:PROVIDER-001 --format json
+cargo run -p taskroot -- start core:PROVIDER-001
 # Implement and test the task.
-cargo run -p filer-task -- validate
-cargo run -p filer-task -- done core:PROVIDER-001
+cargo run -p taskroot -- validate
+cargo run -p taskroot -- done core:PROVIDER-001
 ```
 
 Inspect dependencies that still need work:
 
 ```bash
-cargo run -p filer-task -- deps --incomplete core:CORE-042
-cargo run -p filer-task -- deps --incomplete core:CORE-042 --format json
+cargo run -p taskroot -- deps --incomplete core:CORE-042
+cargo run -p taskroot -- deps --incomplete core:CORE-042 --format json
 ```
 
 Inspect milestone exit criteria and progress:
 
 ```bash
-cargo run -p filer-task -- milestone 0.3.0 --exit-checklist
-cargo run -p filer-task -- milestone 0.3.0 --exit-checklist --format json
+cargo run -p taskroot -- milestone 0.3.0 --exit-checklist
+cargo run -p taskroot -- milestone 0.3.0 --exit-checklist --format json
 ```
 
 Generate progress summaries:
 
 ```bash
-cargo run -p filer-task -- summary
-cargo run -p filer-task -- summary --milestone 0.3.0
-cargo run -p filer-task -- summary --format json
+cargo run -p taskroot -- summary
+cargo run -p taskroot -- summary --milestone 0.3.0
+cargo run -p taskroot -- summary --format json
 ```
 
 Use lifecycle commands to keep status and rationale sections consistent:
 
 ```bash
-cargo run -p filer-task -- add --id core:CORE-042 --title "Provider timeout propagation" --priority High --type Feature --milestone 0.3.0
-cargo run -p filer-task -- add --domain core --id CORE-043 --title "Cache policy" --priority High --type Feature
-cargo run -p filer-task -- add --domain milestones --id MILESTONE-003 --title "Core contract stabilization" --priority High --type Milestone --milestone 0.3.0
-cargo run -p filer-task -- start core:CORE-042
-cargo run -p filer-task -- done core:CORE-042
-cargo run -p filer-task -- criterion-toggle core:CORE-042 0
-cargo run -p filer-task -- block core:CORE-042 "Waiting for provider timeout policy decision."
-cargo run -p filer-task -- defer core:CORE-042 "No longer needed for the current milestone."
-cargo run -p filer-task -- obsolete core:CORE-042 "Replaced by core:CORE-044."
+cargo run -p taskroot -- add --id core:CORE-042 --title "Provider timeout propagation" --priority High --type Feature --milestone 0.3.0
+cargo run -p taskroot -- add --domain core --id CORE-043 --title "Cache policy" --priority High --type Feature
+cargo run -p taskroot -- add --domain milestones --id MILESTONE-003 --title "Core contract stabilization" --priority High --type Milestone --milestone 0.3.0
+cargo run -p taskroot -- start core:CORE-042
+cargo run -p taskroot -- done core:CORE-042
+cargo run -p taskroot -- criterion-toggle core:CORE-042 0
+cargo run -p taskroot -- block core:CORE-042 "Waiting for provider timeout policy decision."
+cargo run -p taskroot -- defer core:CORE-042 "No longer needed for the current milestone."
+cargo run -p taskroot -- obsolete core:CORE-042 "Replaced by core:CORE-044."
 ```
 
 `add` accepts either `--id domain:LOCAL-ID` or an unqualified `--id` with an
@@ -495,7 +495,7 @@ Paths
 `add` can scaffold richer task files when a migration already knows the metadata:
 
 ```bash
-cargo run -p filer-task -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --parent milestones:MILESTONE-003 --milestone 0.3.0 --rule PROVIDER-ACCESS --risk High --impact "Touches provider calls and cancellation behavior." --tag provider --summary "Propagate provider deadlines through core calls." --criterion "Provider calls receive timeout context."
+cargo run -p taskroot -- add --domain core --id CORE-042 --title "Provider timeout propagation" --priority High --type Feature --parent milestones:MILESTONE-003 --milestone 0.3.0 --rule PROVIDER-ACCESS --risk High --impact "Touches provider calls and cancellation behavior." --tag provider --summary "Propagate provider deadlines through core calls." --criterion "Provider calls receive timeout context."
 ```
 
 Use `--criterion` for open checklist items and `--checked-criterion` when creating a `Done` task with completed criteria. `Blocked` tasks need `--blocked-reason`. `Deferred` and `Obsolete` tasks need `--rationale`.
@@ -504,7 +504,7 @@ Use `criterion-toggle` to flip one zero-based checklist item in the criteria
 section selected by the task type:
 
 ```bash
-cargo run -p filer-task -- criterion-toggle core:CORE-042 0
+cargo run -p taskroot -- criterion-toggle core:CORE-042 0
 ```
 
 ## Batch Import
@@ -543,13 +543,13 @@ Use `import` when migrating curated roadmap items into `.tasks/` without writing
 Validate the batch before writing:
 
 ```bash
-cargo run -p filer-task -- import docs/roadmap-migration.tasks.json --dry-run
+cargo run -p taskroot -- import docs/roadmap-migration.tasks.json --dry-run
 ```
 
 Write the batch once dry run passes:
 
 ```bash
-cargo run -p filer-task -- import docs/roadmap-migration.tasks.json
+cargo run -p taskroot -- import docs/roadmap-migration.tasks.json
 ```
 
 Use `--skip-existing` for reruns after a partial manual migration. Import validates the whole batch before writing files, including parent, dependency, milestone, and rule references.

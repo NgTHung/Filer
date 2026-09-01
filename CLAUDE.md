@@ -6,7 +6,7 @@ Claude Code loads this file automatically. The shared engineering rules for ever
 
 ## Claude Code Notes
 
-The `filer-task-workflow` skill is installed at `.claude/skills/filer-task-workflow/` (mirrored from `.agents/skills/` for Codex). Invoke it for the work described in the Task Tracking section above.
+The `taskroot-workflow` skill is installed at `.claude/skills/taskroot-workflow/` (mirrored from `.agents/skills/` for Codex). Invoke it for the work described in the Task Tracking section above.
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands

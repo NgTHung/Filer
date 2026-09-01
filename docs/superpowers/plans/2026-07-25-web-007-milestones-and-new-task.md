@@ -35,7 +35,7 @@
 
 Under an open tag policy `tags` is `{ "policy": "open" }` with no `allowed` key.
 
-`GET /api/projects/{project}/milestones` (`Vec<MilestoneAggregation>`, `filer-task/src/milestone.rs:28-36`):
+`GET /api/projects/{project}/milestones` (`Vec<MilestoneAggregation>`, `taskroot/src/milestone.rs:28-36`):
 
 ```json
 [
@@ -54,9 +54,9 @@ Under an open tag policy `tags` is `{ "policy": "open" }` with no `allowed` key.
 
 `tasks_by_status` is a Rust `BTreeMap`, so its keys arrive in **alphabetical** order (`Blocked`, `Deferred`, `Done`, `In Progress`, `Obsolete`, `To Do`) and empty statuses are absent entirely. Task 3 exists to restore lifecycle order.
 
-`GET /api/projects/{project}/tasks` (`Vec<Task>`, `filer-task/src/model.rs:89-111`) — flattened metadata, so each row has `qualified_id`, `path`, `domain`, `id`, `title`, `status`, `priority`, `type`, and optionally `milestone`, `last_updated`, `tags`.
+`GET /api/projects/{project}/tasks` (`Vec<Task>`, `taskroot/src/model.rs:89-111`) — flattened metadata, so each row has `qualified_id`, `path`, `domain`, `id`, `title`, `status`, `priority`, `type`, and optionally `milestone`, `last_updated`, `tags`.
 
-`POST /api/projects/{project}/tasks` returns `ShowView` (`filer-task/src/agent_context.rs:86-98`):
+`POST /api/projects/{project}/tasks` returns `ShowView` (`taskroot/src/agent_context.rs:86-98`):
 
 ```json
 {
@@ -117,18 +117,18 @@ Do not claim an acceptance criterion is met before Task 7 confirms it in a brows
 
 - [ ] **Step 1: Confirm the task is still ready**
 
-Run: `cargo run -q -p filer-task -- context web:WEB-007 --format json`
+Run: `cargo run -q -p taskroot -- context web:WEB-007 --format json`
 Expected: `readiness.ready` is `true` with an empty `blockers` array. If it is not, stop and report the blocker rather than starting.
 
 - [ ] **Step 2: Start it**
 
-Run: `cargo run -q -p filer-task -- start web:WEB-007`
+Run: `cargo run -q -p taskroot -- start web:WEB-007`
 Expected: status becomes `In Progress`. If it is already `In Progress`, skip this step; do not issue a second lifecycle mutation.
 
 - [ ] **Step 3: Validate and commit the state change**
 
 ```bash
-cargo run -q -p filer-task -- validate
+cargo run -q -p taskroot -- validate
 rtk git add .tasks/web/WEB-007-build-the-v2-milestones-screen-and-new-task-form.md
 rtk git commit -m "chore(tasks): start WEB-007"
 ```
@@ -287,9 +287,9 @@ rtk git commit -m "feat(task-web): share policy option readers across the filter
 **Interfaces:**
 - Consumes: `ApiError` from `static/js/api/client.js`.
 - Produces:
-  - `slugify(title) -> string` — mirrors `filer-task/src/lifecycle.rs:536-546`.
+  - `slugify(title) -> string` — mirrors `taskroot/src/lifecycle.rs:536-546`.
   - `nextNumber(tasks, domain, prefix) -> string` — one past the highest existing number, zero-padded to the width of that highest id, `"001"` when none exist.
-  - `preview(domain, prefix, number, title) -> { qualifiedId: string, path: string }` — mirrors `new_task_path` at `filer-task/src/lifecycle.rs:368-371`.
+  - `preview(domain, prefix, number, title) -> { qualifiedId: string, path: string }` — mirrors `new_task_path` at `taskroot/src/lifecycle.rs:368-371`.
   - `fieldError(error) -> { field: string | null, message: string, allowed: string[] }` — `field` is null when the failure is not attributable to one input.
 
 The path preview must match the server byte for byte, otherwise it lies to the user. `new_task_path` builds `<root>/.tasks/<domain>/<prefix>-<number>-<slug(title)>.md`; the preview omits the root because the client does not know it.
@@ -426,7 +426,7 @@ Create `filer-task-web/static/js/lib/newTask.js`:
 
 ```js
 // Everything the creation form derives before it posts. The slug and the path
-// mirror new_task_path and slug in filer-task/src/lifecycle.rs, so the preview
+// mirror new_task_path and slug in taskroot/src/lifecycle.rs, so the preview
 // names the file the server will actually write; changing either there without
 // changing this makes the preview lie.
 
@@ -522,7 +522,7 @@ rtk git commit -m "feat(task-web): derive new-task ids, paths, and error fields"
   - `progressPercent(done, total) -> number` — 0-100, integer, 0 when total is 0.
   - `statusGroups(tasksByStatus) -> Array<[string, object[]]>` — non-empty groups in lifecycle order, unknown statuses appended alphabetically.
 
-`STATUS_ORDER` matches the lifecycle order the `filer-task` CLI uses, and the same list already appears as `STATUS_OPTIONS` in `FilterMenu.js:4`. Keep them consistent; do not import one from the other, because the filter list is a query vocabulary and this one is a display order, and they are free to diverge.
+`STATUS_ORDER` matches the lifecycle order the `taskroot` CLI uses, and the same list already appears as `STATUS_OPTIONS` in `FilterMenu.js:4`. Keep them consistent; do not import one from the other, because the filter list is a query vocabulary and this one is a display order, and they are free to diverge.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -984,7 +984,7 @@ export function TaskDrawer({ view, onClose }) {
 }
 ```
 
-If `ValidationWarning` turns out not to expose `message`, check its definition in `filer-task/src/validate.rs` and render the field it does expose. Do not guess.
+If `ValidationWarning` turns out not to expose `message`, check its definition in `taskroot/src/validate.rs` and render the field it does expose. Do not guess.
 
 - [ ] **Step 2: Append the styles**
 
@@ -1531,10 +1531,10 @@ Edit `.tasks/web/WEB-007-build-the-v2-milestones-screen-and-new-task-form.md` an
 - [ ] **Step 7: Validate and complete**
 
 ```bash
-cargo run -q -p filer-task -- validate
-cargo run -q -p filer-task -- done web:WEB-007
-cargo run -q -p filer-task -- validate
-cargo run -q -p filer-task -- show web:WEB-007
+cargo run -q -p taskroot -- validate
+cargo run -q -p taskroot -- done web:WEB-007
+cargo run -q -p taskroot -- validate
+cargo run -q -p taskroot -- show web:WEB-007
 ```
 
 Expected: validation passes both times, `show` reports status `Done`.
@@ -1552,4 +1552,4 @@ rtk git commit -m "chore(tasks): complete WEB-007"
 
 - **WEB-013 unblocks.** It depends on WEB-007, WEB-008, WEB-011, and WEB-012, so it stays blocked; this only removes one of its four blockers.
 - **Sidebar counts do not refresh after a creation.** `Sidebar.js:34-62` reloads only when the project changes, so the Tasks count is stale until a project switch or reload. That is pre-existing behavior, not required by any WEB-007 criterion, and fixing it means lifting the counts into a store. Left alone deliberately; worth a follow-up task if it bothers anyone.
-- **The path preview duplicates a Rust rule.** `slugify` in `static/js/lib/newTask.js` mirrors `slug` in `filer-task/src/lifecycle.rs:536-546`. There is no way to share it across the language boundary without shipping the path back from a preview endpoint, which the task did not ask for. The module comment says so; if the Rust slug changes, that test file is what catches it.
+- **The path preview duplicates a Rust rule.** `slugify` in `static/js/lib/newTask.js` mirrors `slug` in `taskroot/src/lifecycle.rs:536-546`. There is no way to share it across the language boundary without shipping the path back from a preview endpoint, which the task did not ask for. The module comment says so; if the Rust slug changes, that test file is what catches it.

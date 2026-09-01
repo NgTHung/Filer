@@ -12,8 +12,8 @@ Filer stores triage roles as tags in the configured `triage-state` exclusive gro
 
 The `triage-category` group contains `bug` and `enhancement`.
 
-A triaged task carries exactly one category and one state. An untriaged task may carry neither. `filer-task` rejects multiple values from one group.
+A triaged task carries exactly one category and one state. An untriaged task may carry neither. `taskroot` rejects multiple values from one group.
 
-Set or clear roles through `filer-task tag set` and `filer-task tag clear`. Do not edit the full tag list to perform a triage transition.
+Set or clear roles through `taskroot tag set` and `taskroot tag clear`. Do not edit the full tag list to perform a triage transition.
 
-Triage state and lifecycle status answer different questions. A `ready-for-agent` task is executable only when `filer-task ready --tag ready-for-agent` returns it.
+Triage state and lifecycle status answer different questions. A `ready-for-agent` task is executable only when `taskroot ready --tag ready-for-agent` returns it.

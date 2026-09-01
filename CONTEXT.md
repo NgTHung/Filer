@@ -78,6 +78,14 @@ _Avoid_: Offset, bookmark
 
 ## Work and extensions
 
+**Task project**:
+The version-controlled tasks and policy that record planned work for one project.
+_Avoid_: Board, backlog
+
+**Taskroot**:
+The library and command-line tool that enforces the Task project contract.
+_Avoid_: Filer Task, filer-task
+
 **Request**:
 A correlated unit of asynchronous read-side user intent, such as a scan, search, preview, or metadata load.
 _Avoid_: File operation, command

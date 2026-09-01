@@ -1,6 +1,6 @@
 # Issue Tracker: Filer Tasks
 
-Engineering skills use the version-controlled `.tasks/` project as Filer's issue tracker. Use `filer-task` for task creation, queries, lifecycle changes, validation, and triage tags.
+Engineering skills use the version-controlled `.tasks/` project as Filer's issue tracker. Use `taskroot` for task creation, queries, lifecycle changes, validation, and triage tags.
 
 `docs/task-tracking.md` defines the authoritative task schema and command behavior.
 
@@ -9,8 +9,8 @@ Engineering skills use the version-controlled `.tasks/` project as Filer's issue
 Run:
 
 ```bash
-cargo run -p filer-task -- validate
-cargo run -p filer-task -- list
+cargo run -p taskroot -- validate
+cargo run -p taskroot -- list
 ```
 
 Use exact `domain:LOCAL-ID` identities. Select domains, prefixes, task types, milestones, and ordinary tags from `.tasks/config.json` and related tasks.
@@ -22,15 +22,15 @@ Run both commands again after changing tasks.
 Inspect structured task context:
 
 ```bash
-cargo run -p filer-task -- show core:CORE-042 --format json
-cargo run -p filer-task -- context core:CORE-042 --format json
+cargo run -p taskroot -- show core:CORE-042 --format json
+cargo run -p taskroot -- context core:CORE-042 --format json
 ```
 
 Read the Markdown task file when you need body sections or triage notes.
 
 ## Publishing an issue or spec
 
-Create one task per issue or spec through `filer-task add`. Preserve the criteria section required by the selected task type.
+Create one task per issue or spec through `taskroot add`. Preserve the criteria section required by the selected task type.
 
 A published spec may add its specification sections to the generated task body. Use `parent` for hierarchy and `depends_on` for blocking relationships.
 
@@ -43,7 +43,7 @@ Create one task per approved ticket in dependency order.
 - Use `parent` to connect tickets to their containing effort.
 - Use `depends_on` for blocking edges.
 - Apply `ready-for-agent` only when the ticket is specified for implementation.
-- Use `filer-task ready` to determine whether dependencies and hierarchy permit execution.
+- Use `taskroot ready` to determine whether dependencies and hierarchy permit execution.
 
 Do not modify or close a parent task unless the user requests it.
 
@@ -52,17 +52,17 @@ Do not modify or close a parent task unless the user requests it.
 Triage category and state are exclusive task tags. Change them through:
 
 ```bash
-cargo run -p filer-task -- tag set core:CORE-042 triage-category enhancement
-cargo run -p filer-task -- tag set core:CORE-042 triage-state needs-triage
-cargo run -p filer-task -- tag clear core:CORE-042 triage-state
+cargo run -p taskroot -- tag set core:CORE-042 triage-category enhancement
+cargo run -p taskroot -- tag set core:CORE-042 triage-state needs-triage
+cargo run -p taskroot -- tag clear core:CORE-042 triage-state
 ```
 
 An untriaged task has no `triage-state` tag. Find active queues with:
 
 ```bash
-cargo run -p filer-task -- list --tag needs-triage --format json
-cargo run -p filer-task -- list --tag needs-info --format json
-cargo run -p filer-task -- ready --tag ready-for-agent --format json
+cargo run -p taskroot -- list --tag needs-triage --format json
+cargo run -p taskroot -- list --tag needs-info --format json
+cargo run -p taskroot -- ready --tag ready-for-agent --format json
 ```
 
 Triage tags do not replace lifecycle status. Use `block` only when missing information genuinely blocks progress. Use `obsolete` with a rationale when an approved triage outcome is `wontfix`.

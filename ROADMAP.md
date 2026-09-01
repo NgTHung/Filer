@@ -160,15 +160,15 @@ near-term product boundary.
 `.tasks/` is the source of truth for work status, dependencies, priorities, and
 completion criteria. Do not add active checklists to this file.
 
-Use `filer-task` to inspect the current work:
+Use `taskroot` to inspect the current work:
 
 ```bash
-cargo run -p filer-task -- validate
-cargo run -p filer-task -- list --milestone 0.3.0
-cargo run -p filer-task -- milestone 0.3.0 --exit-checklist
-cargo run -p filer-task -- list --domain core
-cargo run -p filer-task -- list --blocked
-cargo run -p filer-task -- summary
+cargo run -p taskroot -- validate
+cargo run -p taskroot -- list --milestone 0.3.0
+cargo run -p taskroot -- milestone 0.3.0 --exit-checklist
+cargo run -p taskroot -- list --domain core
+cargo run -p taskroot -- list --blocked
+cargo run -p taskroot -- summary
 ```
 
 Task structure and lifecycle commands are documented in

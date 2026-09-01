@@ -1,6 +1,6 @@
 # Task project contract
 
-`filer-task` must identify the same task in a shell command, a task file, JSON output, and a long-lived library process. This contract defines that identity and the project policy that validates it. Later implementation tasks must follow this contract instead of adding command-specific rules.
+`taskroot` must identify the same task in a shell command, a task file, JSON output, and a long-lived library process. This contract defines that identity and the project policy that validates it. Later implementation tasks must follow this contract instead of adding command-specific rules.
 
 This document specifies the target behavior for UTILS-005. The current behavior remains documented in `task-tracking.md` until each child task implements and documents its part of this contract.
 
@@ -63,8 +63,8 @@ The `milestone` field remains a milestone value such as `0.3.0`. It is not a tas
 Every CLI argument that selects one task requires a qualified identity. This applies to `show`, `context`, `deps`, `start`, `done`, `block`, `defer`, and `obsolete`.
 
 ```bash
-filer-task show core:UTILS-006
-filer-task done release:REL-010
+taskroot show core:UTILS-006
+taskroot done release:REL-010
 ```
 
 An unqualified lookup fails. If that local ID exists, the error lists every matching qualified identity. If it does not exist, the error still states that the domain is required.
@@ -72,8 +72,8 @@ An unqualified lookup fails. If that local ID exists, the error lists every matc
 Task creation supports two equivalent forms:
 
 ```bash
-filer-task add --id core:WORK-001 [OTHER OPTIONS]
-filer-task add --domain core --id WORK-001 [OTHER OPTIONS]
+taskroot add --id core:WORK-001 [OTHER OPTIONS]
+taskroot add --domain core --id WORK-001 [OTHER OPTIONS]
 ```
 
 When `--id` is qualified, it supplies the domain and local ID. A matching `--domain core` is allowed. A conflicting `--domain app` fails with `domain_conflict`. An unqualified `--id` without `--domain` fails with `domain_required`.
@@ -315,7 +315,7 @@ let task = project.show(TaskIdentity::parse("core:UTILS-006")?)?;
 
 `discover_project_root(start)` is a separate helper for CLI and host applications. Opening several roots creates independent project values. Clones of one `TaskProject` share its loaded revision, but each root has independent revision and in-process coordination state.
 
-Every non-dry-run mutation takes an exclusive operating-system lock on `.tasks/.filer-task.lock`. The persistent empty file is a reserved project entry. Separate handles and processes that use `filer-task` therefore serialize writes to the same canonical root without blocking other roots. Process termination releases the operating-system lock; the file itself carries no owner or recovery state.
+Every non-dry-run mutation takes an exclusive operating-system lock on `.tasks/.taskroot.lock`. The persistent empty file is a reserved project entry. Separate handles and processes that use `taskroot` therefore serialize writes to the same canonical root without blocking other roots. Process termination releases the operating-system lock; the file itself carries no owner or recovery state.
 
 `TaskProject` hashes `.tasks/config.json` and every Markdown file below `.tasks` when it opens. `is_stale()` compares current content with that baseline, so detection does not depend on file size or timestamp precision. Successful mutations refresh the shared baseline for every clone. A stale mutation fails with `project_stale` before validation or writing. Consumers recover by calling `reload()`, replacing the old handle, rebuilding any derived view, and retrying only if the original intent remains valid under the new policy and task state.
 

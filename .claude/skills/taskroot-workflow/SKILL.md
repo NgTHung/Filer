@@ -1,19 +1,19 @@
 ---
-name: filer-task-workflow
+name: taskroot-workflow
 description: Use when planning or implementing substantial Filer work, when a request names a task ID, when choosing ready work, or when work may require creating or refining a task.
 ---
 
-<!-- Mirror of .agents/skills/filer-task-workflow/SKILL.md (Codex). Keep both copies identical; symlinks are not portable on this repo. -->
+<!-- Mirror stored in both agent skill directories. Keep both copies identical; symlinks are not portable on this repo. -->
 
-# Filer Task Workflow
+# Taskroot Workflow
 
-Make `.tasks/` the durable source of intent. Use `filer-task` JSON for decisions.
+Make `.tasks/` the durable source of intent. Use `taskroot` JSON for decisions.
 
 ## Enter the Workflow
 
 At the start of planning or implementation:
 
-1. Run `cargo run -q -p filer-task -- validate`.
+1. Run `cargo run -q -p taskroot -- validate`.
 2. Inspect the named task with `context DOMAIN:TASK-ID --format json`, or search with `ready` and `list --format json`.
 3. Read `docs/task-tracking.md` only for command details.
 4. Compose with relevant available planning, TDD, debugging, execution, review, and verification skills.
@@ -72,7 +72,7 @@ Before completion:
 1. Run focused tests, then the required crate checks.
 2. Review the diff against every criterion and repository size guidance.
 3. Change checklist criteria to checked only when evidence proves them.
-4. Run `cargo run -q -p filer-task -- validate`.
+4. Run `cargo run -q -p taskroot -- validate`.
 5. Run `done DOMAIN:TASK-ID` only after all required criteria are checked.
 6. Validate again and inspect `show DOMAIN:TASK-ID`.
 
