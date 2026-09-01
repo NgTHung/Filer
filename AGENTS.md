@@ -113,3 +113,17 @@ cargo run -p filer-task -- list
 Project milestones live in `.tasks/milestones/`. Normal tasks reference one with `milestone: "0.3.0"`.
 
 `docs/task-tracking.md` is the authoritative reference for when to create tasks, the task lifecycle, frontmatter, and every command. Do not restate those rules here.
+
+## Agent skills
+
+### Issue tracker
+
+For issue and spec publication, ticket breakdowns, triage, and wayfinding, use `.tasks/` through `filer-task`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the configured exclusive category and state tags with the default role names. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Before naming domain concepts or proposing architecture, follow the single-context domain documentation rules. See `docs/agents/domain.md`.
