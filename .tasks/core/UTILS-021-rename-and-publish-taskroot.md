@@ -17,9 +17,9 @@ Rename the reusable task project library and CLI from filer-task to Taskroot, co
 
 ## Acceptance Criteria
 
-- [ ] The crates.io package, Rust library, and installed executable use the taskroot name while .tasks remains the project marker.
-- [ ] Cargo metadata names the release documentation, repository, license, keywords, categories, and supported Rust version.
-- [ ] The packaged crate builds and its installed executable initializes and validates a fresh independent project.
-- [ ] Workspace consumers compile against the renamed Taskroot library without duplicating task logic.
-- [ ] Current user and agent documentation uses the published taskroot command and explains migration from filer-task.
+- [x] The crates.io package, Rust library, and installed executable use the taskroot name while .tasks remains the project marker.
+- [x] Cargo metadata names the release documentation, repository, license, keywords, categories, and supported Rust version.
+- [x] The packaged crate builds and its installed executable initializes and validates a fresh independent project.
+- [x] Workspace consumers compile against the renamed Taskroot library without duplicating task logic.
+- [x] Current user and agent documentation uses the published taskroot command and explains migration from filer-task.
 - [ ] The validated Taskroot release is published to crates.io.
