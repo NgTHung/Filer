@@ -196,12 +196,19 @@ Strict policy accepts only values in `allowed`:
 {
   "tags": {
     "policy": "strict",
-    "allowed": ["backend", "release", "security-review"]
+    "allowed": ["backend", "needs-triage", "ready-for-agent"],
+    "exclusive_groups": {
+      "triage-state": ["needs-triage", "ready-for-agent"]
+    }
   }
 }
 ```
 
 A tag contains 1 to 64 lowercase ASCII letters, digits, or single hyphens. It starts and ends with a letter or digit. The strict catalog may be empty, which forbids all tags. Catalog values must be unique. Open policy must omit `allowed`; strict policy must include it.
+
+`exclusive_groups` is optional under a strict policy. Group names follow tag
+name syntax, group values must be unique allowed tags, and a task may select at
+most one value from each group.
 
 ### Complete custom example
 
@@ -230,7 +237,8 @@ A tag contains 1 to 64 lowercase ASCII letters, digits, or single hyphens. It st
   },
   "tags": {
     "policy": "strict",
-    "allowed": ["backend", "release", "security-review"]
+    "allowed": ["backend", "release", "security-review"],
+    "exclusive_groups": {}
   }
 }
 ```
@@ -251,6 +259,7 @@ Version 1 rejects:
 - invalid domain, prefix, type, or tag names with the rejected value
 - more than one milestone-role type with every conflicting type name
 - `allowed` under open tag policy or a missing `allowed` under strict policy
+- exclusive groups under an open policy or group values absent from `allowed`
 
 Project configuration has one source and no merge layers. When `config.json` exists, it defines the complete domain, prefix, type, and tag policy. CLI values select from that policy and never override it. When the file is absent, the compatibility profile supplies the complete policy.
 
@@ -261,7 +270,7 @@ CLI and imported values follow the same policy:
 | Domain | A qualified ID or `--domain` names it explicitly. Unknown names fail. |
 | Prefix | The selected domain's prefix list validates the local ID. No flag can add a prefix. |
 | Task type | `--type`, imports, and stored tasks must name a configured type. |
-| Tag | Add, import, stored-task validation, and tag filters apply the configured open or strict policy. |
+| Tag | Add, import, edits, stored-task validation, and tag filters apply the configured policy and exclusive groups. |
 
 Filtering by an unknown domain or strict-policy tag is an input error rather than an empty result. This keeps a misspelled filter from looking like a valid query with no matches.
 
@@ -385,5 +394,6 @@ Each implementation task updates behavior and its corresponding documentation in
 | UTILS-010 | Configuration path, version, defaults, validation, and Rust policy API |
 | UTILS-011 | Prefix, type, milestone-role, tag policy, and taxonomy migration guidance |
 | UTILS-012 | Project isolation, write coordination, atomic writes, and reload recovery |
+| UTILS-020 | Exclusive tag-group configuration, validation, mutation, and triage usage |
 
 This document remains the normative contract. `task-tracking.md` remains the current user guide and must change only when the matching behavior lands.
