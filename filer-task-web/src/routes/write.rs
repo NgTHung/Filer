@@ -4,7 +4,7 @@
 //! one lock. Reopening the project after taking the lock makes external task
 //! edits visible to conditional writes and policy validation.
 
-use filer_task::{
+use taskroot::{
     agent_context::{ShowView, build_show},
     identity::TaskIdentity,
     model::Task,

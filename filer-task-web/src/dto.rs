@@ -5,7 +5,8 @@
 
 use std::{collections::BTreeMap, path::PathBuf};
 
-use filer_task::{
+use serde::{Deserialize, Serialize};
+use taskroot::{
     error::ValidationError,
     lifecycle::{FieldPatch, TaskPatch},
     model::{Priority, Risk, TaskType},
@@ -13,7 +14,6 @@ use filer_task::{
         CriteriaPolicy, DomainPolicy, ProjectPolicy, TagPolicy, TaskTypePolicy, TaskTypeRole,
     },
 };
-use serde::{Deserialize, Serialize};
 
 use crate::storage::ActivityRecord;
 

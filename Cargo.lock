@@ -1651,28 +1651,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "filer-task"
-version = "0.1.2"
-dependencies = [
- "clap",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2 0.10.9",
- "tempfile",
-]
-
-[[package]]
 name = "filer-task-web"
 version = "0.1.0"
 dependencies = [
  "axum",
- "filer-task",
  "http-body-util",
  "rand 0.9.2",
  "serde",
  "serde_json",
  "sqlx",
+ "taskroot",
  "tempfile",
  "tokio",
  "tower",
@@ -5415,6 +5403,18 @@ dependencies = [
  "filetime",
  "libc",
  "xattr",
+]
+
+[[package]]
+name = "taskroot"
+version = "0.1.2"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "tempfile",
 ]
 
 [[package]]

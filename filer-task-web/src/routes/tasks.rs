@@ -7,7 +7,8 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use filer_task::{
+use serde::Deserialize;
+use taskroot::{
     agent_context::{ReadyFilter, ShowView, TaskView, build_ready, build_show},
     graph::TaskGraph,
     milestone::{MilestoneAggregation, build_milestone_aggregations},
@@ -17,7 +18,6 @@ use filer_task::{
     taxonomy::validate_tag,
     validate::{TaskFilter, filter_tasks},
 };
-use serde::Deserialize;
 
 use crate::{app::AppState, dto::ProjectSummary, error::WebError, routes::blocking};
 
@@ -157,7 +157,7 @@ pub(crate) fn resolve_project_wide_identity(
     project: &TaskProject,
     tasks: &[Task],
     value: &str,
-) -> Result<filer_task::identity::TaskIdentity, WebError> {
+) -> Result<taskroot::identity::TaskIdentity, WebError> {
     let index = IdentityIndex::new(project.root(), tasks.iter().map(Task::identity));
     Ok(index.resolve_project_wide(value)?)
 }
@@ -166,7 +166,7 @@ pub(crate) fn resolve_identity(
     project: &TaskProject,
     tasks: &[Task],
     value: &str,
-) -> Result<filer_task::identity::TaskIdentity, WebError> {
+) -> Result<taskroot::identity::TaskIdentity, WebError> {
     let index = IdentityIndex::new(project.root(), tasks.iter().map(Task::identity));
     Ok(index.resolve_cli(value)?)
 }

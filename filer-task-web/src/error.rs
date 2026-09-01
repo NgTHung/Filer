@@ -12,8 +12,8 @@ use axum::{
 };
 use std::path::PathBuf;
 
-use filer_task::error::TaskError;
 use serde::Serialize;
+use taskroot::error::TaskError;
 
 use crate::{dto::ValidationIssue, storage::StorageError};
 
@@ -320,7 +320,7 @@ fn task_edit_error(error: TaskError) -> (StatusCode, ErrorBody) {
     )
 }
 
-fn edit_issue_field(issue: &filer_task::error::ValidationError) -> Option<String> {
+fn edit_issue_field(issue: &taskroot::error::ValidationError) -> Option<String> {
     if let Some(field) = issue.context.get("field").and_then(|value| value.as_str()) {
         return Some(field.to_string());
     }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["filer-app", "filer-core", "filer-ecosystem", "filer-task", "filer-task-web"]
+members = ["filer-app", "filer-core", "filer-ecosystem", "taskroot", "filer-task-web"]
 
 [profile.release]
 debug = 1

@@ -1,7 +1,7 @@
 use std::{fs, sync::Arc};
 
-use filer_task::project::TaskProject;
 use filer_task_web::registry::ProjectRegistry;
+use taskroot::project::TaskProject;
 use tempfile::TempDir;
 
 #[test]

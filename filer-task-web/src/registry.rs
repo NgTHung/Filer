@@ -18,7 +18,7 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use filer_task::{
+use taskroot::{
     error::ValidationError,
     project::TaskProject,
     repo::discover_project_root,
