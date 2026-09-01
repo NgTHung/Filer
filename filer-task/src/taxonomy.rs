@@ -134,6 +134,24 @@ pub fn validate_tags(
     for tag in tags {
         validate_tag(project, tag, field, domain, task)?;
     }
+    for (name, members) in project.policy().exclusive_tag_groups() {
+        let selected: Vec<String> = tags
+            .iter()
+            .filter(|tag| members.contains(tag))
+            .cloned()
+            .collect();
+        if selected.len() > 1 {
+            return Err(TaskError::TagRejected(Box::new(TaxonomyErrorContext {
+                rejected_value: selected.join(", "),
+                field: field.to_string(),
+                domain: domain.map(str::to_string),
+                policy: Some(format!("exclusive group {name}")),
+                allowed: members.clone(),
+                project_root: project.root().to_path_buf(),
+                task: task.map(str::to_string),
+            })));
+        }
+    }
     Ok(())
 }
 

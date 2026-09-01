@@ -235,6 +235,7 @@ pub struct ProjectPolicy {
     domains: BTreeMap<String, DomainPolicy>,
     task_types: BTreeMap<String, TaskTypePolicy>,
     tags: TagPolicy,
+    exclusive_tag_groups: BTreeMap<String, Vec<String>>,
     compatibility: bool,
 }
 
@@ -263,6 +264,14 @@ impl ProjectPolicy {
 
     pub fn tags(&self) -> &TagPolicy {
         &self.tags
+    }
+
+    pub fn exclusive_tag_group(&self, name: &str) -> Option<&[String]> {
+        self.exclusive_tag_groups.get(name).map(Vec::as_slice)
+    }
+
+    pub fn exclusive_tag_groups(&self) -> &BTreeMap<String, Vec<String>> {
+        &self.exclusive_tag_groups
     }
 
     pub fn is_compatibility(&self) -> bool {
@@ -305,6 +314,7 @@ impl ProjectPolicy {
             domains,
             task_types,
             tags: TagPolicy::Open,
+            exclusive_tag_groups: BTreeMap::new(),
             compatibility: true,
         }
     }
@@ -412,11 +422,13 @@ fn parse_policy(config_path: &Path, node: &JsonNode) -> Result<ProjectPolicy, Ta
         config_path,
         required(config_path, "$", fields, "task_types")?,
     )?;
-    let tags = parse_tags(config_path, required(config_path, "$", fields, "tags")?)?;
+    let (tags, exclusive_tag_groups) =
+        parse_tags(config_path, required(config_path, "$", fields, "tags")?)?;
     Ok(ProjectPolicy {
         domains,
         task_types,
         tags,
+        exclusive_tag_groups,
         compatibility: false,
     })
 }
@@ -520,15 +532,27 @@ fn parse_task_types(
     Ok(task_types)
 }
 
-fn parse_tags(config_path: &Path, node: &JsonNode) -> Result<TagPolicy, TaskError> {
+fn parse_tags(
+    config_path: &Path,
+    node: &JsonNode,
+) -> Result<(TagPolicy, BTreeMap<String, Vec<String>>), TaskError> {
     let path = "$.tags";
-    let fields = strict_object(config_path, path, node, &["policy", "allowed"])?;
+    let fields = strict_object(
+        config_path,
+        path,
+        node,
+        &["policy", "allowed", "exclusive_groups"],
+    )?;
     let policy = string(
         config_path,
         "$.tags.policy",
         required(config_path, path, fields, "policy")?,
     )?;
-    match policy {
+    let exclusive_groups = match field(fields, "exclusive_groups") {
+        Some(node) => parse_exclusive_tag_groups(config_path, node)?,
+        None => BTreeMap::new(),
+    };
+    let policy = match policy {
         "open" => {
             if field(fields, "allowed").is_some() {
                 return invalid(
@@ -538,7 +562,7 @@ fn parse_tags(config_path: &Path, node: &JsonNode) -> Result<TagPolicy, TaskErro
                     "open tag policy must omit `allowed`",
                 );
             }
-            Ok(TagPolicy::Open)
+            TagPolicy::Open
         }
         "strict" => {
             let allowed = string_array(
@@ -550,15 +574,68 @@ fn parse_tags(config_path: &Path, node: &JsonNode) -> Result<TagPolicy, TaskErro
             for tag in &allowed {
                 validate_name(config_path, "$.tags.allowed", tag, NameKind::Tag)?;
             }
-            Ok(TagPolicy::Strict { allowed })
+            TagPolicy::Strict { allowed }
         }
-        value => invalid(
-            config_path,
-            "$.tags.policy",
-            value,
-            "must be `open` or `strict`",
-        ),
+        value => {
+            return invalid(
+                config_path,
+                "$.tags.policy",
+                value,
+                "must be `open` or `strict`",
+            );
+        }
+    };
+    validate_exclusive_tag_groups(config_path, &policy, &exclusive_groups)?;
+    Ok((policy, exclusive_groups))
+}
+
+fn validate_exclusive_tag_groups(
+    config_path: &Path,
+    policy: &TagPolicy,
+    groups: &BTreeMap<String, Vec<String>>,
+) -> Result<(), TaskError> {
+    if groups.is_empty() {
+        return Ok(());
     }
+    let TagPolicy::Strict { allowed } = policy else {
+        return invalid(
+            config_path,
+            "$.tags.exclusive_groups",
+            "exclusive_groups",
+            "exclusive tag groups require a strict allowed tag catalog",
+        );
+    };
+    for (name, tags) in groups {
+        for tag in tags {
+            if !allowed.iter().any(|allowed| allowed == tag) {
+                return invalid(
+                    config_path,
+                    &format!("$.tags.exclusive_groups.{name}"),
+                    tag,
+                    "must belong to the allowed tag catalog",
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn parse_exclusive_tag_groups(
+    config_path: &Path,
+    node: &JsonNode,
+) -> Result<BTreeMap<String, Vec<String>>, TaskError> {
+    let fields = unique_object(config_path, "$.tags.exclusive_groups", node)?;
+    let mut groups = BTreeMap::new();
+    for (name, node) in fields {
+        let path = format!("$.tags.exclusive_groups.{name}");
+        validate_name(config_path, &path, name, NameKind::Tag)?;
+        let tags = string_array(config_path, &path, node, false)?;
+        for tag in &tags {
+            validate_name(config_path, &path, tag, NameKind::Tag)?;
+        }
+        groups.insert(name.clone(), tags);
+    }
+    Ok(groups)
 }
 
 fn strict_object<'a>(

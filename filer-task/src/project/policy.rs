@@ -135,6 +135,7 @@ impl ProjectPolicy {
             domains,
             task_types,
             tags: TagPolicy::Open,
+            exclusive_tag_groups: BTreeMap::new(),
             compatibility: false,
         })
     }
@@ -193,6 +194,19 @@ impl ProjectPolicy {
                     Value::Array(allowed.iter().cloned().map(Value::from).collect()),
                 );
             }
+        }
+        if !self.exclusive_tag_groups.is_empty() {
+            let groups = self
+                .exclusive_tag_groups
+                .iter()
+                .map(|(name, values)| {
+                    (
+                        name.clone(),
+                        Value::Array(values.iter().cloned().map(Value::from).collect()),
+                    )
+                })
+                .collect();
+            tags.insert("exclusive_groups".to_string(), Value::Object(groups));
         }
         Value::Object(tags)
     }
@@ -509,6 +523,7 @@ fn editable_policy(policy: &ProjectPolicy) -> ProjectPolicy {
 fn sort_policy(policy: &mut ProjectPolicy) {
     policy.domains = BTreeMap::from_iter(policy.domains.clone());
     policy.task_types = BTreeMap::from_iter(policy.task_types.clone());
+    policy.exclusive_tag_groups = BTreeMap::from_iter(policy.exclusive_tag_groups.clone());
     if let TagPolicy::Strict { allowed } = &mut policy.tags {
         allowed.sort();
     }
