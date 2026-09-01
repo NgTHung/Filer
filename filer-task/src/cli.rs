@@ -7,7 +7,7 @@ use crate::{
     identity::{IdentityError, TaskIdentity},
     lifecycle::{
         Criterion, NewTask, add_task, block_task, defer_task, done_task, import_tasks,
-        obsolete_task, start_task, toggle_criterion,
+        obsolete_task, set_exclusive_tag_group_value, start_task, toggle_criterion,
     },
     markdown::checklist_items,
     milestone::tasks_for_milestone,
@@ -52,6 +52,7 @@ pub enum Command {
     Start(TaskIdArgs),
     Done(TaskIdArgs),
     CriterionToggle(CriterionToggleArgs),
+    Tag(TagArgs),
     Block(ReasonArgs),
     Defer(ReasonArgs),
     Obsolete(ReasonArgs),
@@ -261,6 +262,40 @@ pub struct CriterionToggleArgs {
     pub id: String,
     #[arg(value_name = "INDEX", help = "Zero-based criteria index")]
     pub index: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct TagArgs {
+    #[command(subcommand)]
+    pub command: TagCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TagCommand {
+    Set(TagSetArgs),
+    Clear(TagClearArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct TagSetArgs {
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
+    pub root: Option<PathBuf>,
+    #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
+    pub id: String,
+    #[arg(value_name = "GROUP", help = "Configured exclusive tag group")]
+    pub group: String,
+    #[arg(value_name = "VALUE", help = "Tag value configured in the group")]
+    pub value: String,
+}
+
+#[derive(Debug, Args)]
+pub struct TagClearArgs {
+    #[arg(long, value_name = "PATH", help = ROOT_HELP)]
+    pub root: Option<PathBuf>,
+    #[arg(value_name = "TASK", help = "Exact domain:LOCAL-ID task identity")]
+    pub id: String,
+    #[arg(value_name = "GROUP", help = "Configured exclusive tag group")]
+    pub group: String,
 }
 
 #[derive(Debug, Args)]
@@ -640,6 +675,36 @@ pub fn run_criterion_toggle(args: CriterionToggleArgs) -> Result<(), TaskError> 
         "{}",
         render_task_action(&TaskActionOutput {
             action: TaskAction::CriterionToggled,
+            task_id: &identity.to_string(),
+            root: project.root(),
+            path: &path,
+        })
+    );
+    Ok(())
+}
+
+pub fn run_tag(args: TagArgs) -> Result<(), TaskError> {
+    match args.command {
+        TagCommand::Set(args) => {
+            run_tag_update(args.root, &args.id, &args.group, Some(&args.value))
+        }
+        TagCommand::Clear(args) => run_tag_update(args.root, &args.id, &args.group, None),
+    }
+}
+
+fn run_tag_update(
+    root: Option<PathBuf>,
+    id: &str,
+    group: &str,
+    value: Option<&str>,
+) -> Result<(), TaskError> {
+    let project = resolve_project(root)?;
+    let identity = resolve_existing_selector(&project, id)?;
+    let path = set_exclusive_tag_group_value(&project, &identity, group, value)?;
+    println!(
+        "{}",
+        render_task_action(&TaskActionOutput {
+            action: TaskAction::TagsUpdated,
             task_id: &identity.to_string(),
             root: project.root(),
             path: &path,

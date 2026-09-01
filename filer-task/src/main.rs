@@ -4,7 +4,7 @@ use clap::Parser;
 use filer_task::cli::{
     Cli, Command, run_add, run_block, run_context, run_criterion_toggle, run_defer, run_deps,
     run_done, run_import, run_init, run_list, run_milestone, run_obsolete, run_ready, run_show,
-    run_start, run_summary, run_validate,
+    run_start, run_summary, run_tag, run_validate,
 };
 
 fn main() -> ExitCode {
@@ -24,6 +24,7 @@ fn main() -> ExitCode {
         Command::Start(args) => run_start(args),
         Command::Done(args) => run_done(args),
         Command::CriterionToggle(args) => run_criterion_toggle(args),
+        Command::Tag(args) => run_tag(args),
         Command::Block(args) => run_block(args),
         Command::Defer(args) => run_defer(args),
         Command::Obsolete(args) => run_obsolete(args),

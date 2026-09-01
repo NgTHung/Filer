@@ -462,6 +462,20 @@ impl TaskProject {
     pub fn remove_tag(&self, tag: impl AsRef<str>) -> Result<Self, TaskError> {
         self.mutate_policy(|config_path, policy| {
             let tag = tag.as_ref();
+            if let Some((group, _)) = policy
+                .exclusive_tag_groups
+                .iter()
+                .find(|(_, members)| members.iter().any(|member| member == tag))
+            {
+                return Err(TaskError::ConfigInvalidValue {
+                    config_path: config_path.to_path_buf(),
+                    path: "$.tags.allowed".to_string(),
+                    value: tag.to_string(),
+                    constraint: format!(
+                        "tag belongs to exclusive group {group:?} and cannot be removed"
+                    ),
+                });
+            }
             let TagPolicy::Strict { allowed } = &mut policy.tags else {
                 return Err(TaskError::ConfigInvalidValue {
                     config_path: config_path.to_path_buf(),

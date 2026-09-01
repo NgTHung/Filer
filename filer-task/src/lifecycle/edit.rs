@@ -30,7 +30,7 @@ use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use crate::{
     atomic_write,
-    error::{TaskError, ValidationError},
+    error::{TaskError, TaxonomyErrorContext, ValidationError},
     frontmatter::{parse_metadata, render_metadata},
     identity::TaskIdentity,
     markdown::replace_or_append_section,
@@ -93,9 +93,33 @@ pub fn edit_task(
     identity: &TaskIdentity,
     patch: TaskPatch,
 ) -> Result<PathBuf, TaskError> {
+    edit_task_with_group_value(project, identity, patch, None)
+}
+
+/// Set or clear the selected value in one configured exclusive tag group.
+pub fn set_exclusive_tag_group_value(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+    group: &str,
+    value: Option<&str>,
+) -> Result<PathBuf, TaskError> {
+    edit_task_with_group_value(
+        project,
+        identity,
+        TaskPatch::default(),
+        Some((group, value)),
+    )
+}
+
+fn edit_task_with_group_value(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+    patch: TaskPatch,
+    group_value: Option<(&str, Option<&str>)>,
+) -> Result<PathBuf, TaskError> {
     let path = project.task_path(identity)?;
     project.with_write_lock(|| {
-        if patch.is_empty() {
+        if patch.is_empty() && group_value.is_none() {
             return Ok(path);
         }
 
@@ -107,6 +131,9 @@ pub fn edit_task(
             parse_metadata(&path, &content).map_err(|error| TaskError::Validation(vec![error]))?;
         let validation_scope = patch.validation_scope();
         apply_metadata_patch(&mut metadata, patch.clone());
+        if let Some((group, value)) = group_value {
+            apply_exclusive_tag_group_value(project, identity, &mut metadata, group, value)?;
+        }
         metadata.last_updated = Some(today());
         let body = patched_body(&content, &patch)?;
         let candidate = format!("{}{}", render_metadata(&metadata)?, body);
@@ -122,6 +149,45 @@ pub fn edit_task(
         })?;
         Ok(path)
     })
+}
+
+fn apply_exclusive_tag_group_value(
+    project: &TaskProject,
+    identity: &TaskIdentity,
+    metadata: &mut TaskMetadata,
+    group: &str,
+    value: Option<&str>,
+) -> Result<(), TaskError> {
+    let members = project.policy().exclusive_tag_group(group).ok_or_else(|| {
+        let configured = project
+            .policy()
+            .exclusive_tag_groups()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        TaskError::Message(format!(
+            "unknown exclusive tag group {group:?}; configured groups: {configured}"
+        ))
+    })?;
+    if let Some(value) = value
+        && !members.iter().any(|member| member == value)
+    {
+        return Err(TaskError::TagRejected(Box::new(TaxonomyErrorContext {
+            rejected_value: value.to_string(),
+            field: "tags".to_string(),
+            domain: Some(identity.domain.clone()),
+            policy: Some(format!("exclusive group {group}")),
+            allowed: members.to_vec(),
+            project_root: project.root().to_path_buf(),
+            task: Some(identity.to_string()),
+        })));
+    }
+    metadata.tags.retain(|tag| !members.contains(tag));
+    if let Some(value) = value {
+        metadata.tags.push(value.to_string());
+    }
+    Ok(())
 }
 
 fn apply_metadata_patch(metadata: &mut TaskMetadata, patch: TaskPatch) {

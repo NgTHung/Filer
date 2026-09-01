@@ -39,7 +39,7 @@ mod edit;
 mod write;
 
 pub use criteria::{set_criterion_checked, toggle_criterion};
-pub use edit::{FieldPatch, TaskPatch, edit_task};
+pub use edit::{FieldPatch, TaskPatch, edit_task, set_exclusive_tag_group_value};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Criterion {
