@@ -106,10 +106,18 @@ milestone role, and a strict tag catalog:
   },
   "tags": {
     "policy": "strict",
-    "allowed": ["backend", "release", "security-review"]
+    "allowed": ["backend", "needs-triage", "ready-for-agent", "release"],
+    "exclusive_groups": {
+      "triage-state": ["needs-triage", "ready-for-agent"]
+    }
   }
 }
 ```
+
+`exclusive_groups` is optional and requires a strict tag policy. Every group
+member must appear in `allowed`. A task may carry zero or one tag from each
+group. Validation rejects conflicting group members on stored tasks, direct
+creation, imports, and edits.
 
 When `config.json` is absent, Filer uses a fixed compatibility policy. It
 defines the `core`, `app`, `ecosystem`, and `milestones` domains with the
@@ -345,6 +353,30 @@ Use JSON output when another tool needs structured data:
 
 ```bash
 cargo run -p filer-task -- list --format json
+```
+
+### Triage tags
+
+Filer defines `triage-category` and `triage-state` as exclusive tag groups.
+Triage tags classify work without replacing its lifecycle `status`.
+
+Set or clear one group through the CLI. The command removes the previous value
+from that group, preserves unrelated tags, validates the result, and writes the
+task atomically:
+
+```bash
+cargo run -p filer-task -- tag set core:CORE-042 triage-category enhancement
+cargo run -p filer-task -- tag set core:CORE-042 triage-state ready-for-agent
+cargo run -p filer-task -- tag clear core:CORE-042 triage-state
+```
+
+Use `list` to inspect a triage queue. Use `ready` when you need triaged tasks
+that also satisfy Filer's lifecycle, dependency, hierarchy, and milestone
+rules:
+
+```bash
+cargo run -p filer-task -- list --tag needs-triage
+cargo run -p filer-task -- ready --tag ready-for-agent --format json
 ```
 
 ## Agent Workflow

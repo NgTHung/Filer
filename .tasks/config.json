@@ -57,6 +57,7 @@
       "audit",
       "backup",
       "benchmark",
+      "bug",
       "bugfix",
       "cache",
       "cancellation",
@@ -74,6 +75,7 @@
       "docs",
       "domains",
       "draft",
+      "enhancement",
       "errors",
       "events",
       "excellence",
@@ -92,6 +94,8 @@
       "model",
       "namespaces",
       "navigation",
+      "needs-info",
+      "needs-triage",
       "nodeid",
       "operations",
       "output",
@@ -108,6 +112,8 @@
       "providers",
       "quality",
       "queue",
+      "ready-for-agent",
+      "ready-for-human",
       "refactor",
       "reliability",
       "remediation",
@@ -134,8 +140,19 @@
       "vfs",
       "watcher",
       "web",
+      "wontfix",
       "workflow",
       "workspace"
-    ]
+    ],
+    "exclusive_groups": {
+      "triage-category": ["bug", "enhancement"],
+      "triage-state": [
+        "needs-triage",
+        "needs-info",
+        "ready-for-agent",
+        "ready-for-human",
+        "wontfix"
+      ]
+    }
   }
 }
