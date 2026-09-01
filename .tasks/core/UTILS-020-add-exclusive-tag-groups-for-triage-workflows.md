@@ -1,7 +1,7 @@
 ---
 id: "UTILS-020"
 title: "Add exclusive tag groups for triage workflows"
-status: In Progress
+status: Done
 priority: "High"
 type: "Feature"
 risk: "Medium"
@@ -16,8 +16,8 @@ Let projects define mutually exclusive tag groups and let callers change one gro
 
 ## Acceptance Criteria
 
-- [ ] Project configuration can define optional exclusive tag groups whose values belong to the allowed tag catalog.
-- [ ] Task validation rejects multiple tags from one exclusive group without affecting projects that define no groups.
-- [ ] A public library operation and CLI command set or clear one group value atomically while preserving unrelated tags and original bytes on failure.
-- [ ] Existing list and ready tag filters select triage roles while structural readiness rules remain unchanged.
-- [ ] Filer declares triage category and state groups, and task-tracking documentation explains their use.
+- [x] Project configuration can define optional exclusive tag groups whose values belong to the allowed tag catalog.
+- [x] Task validation rejects multiple tags from one exclusive group without affecting projects that define no groups.
+- [x] A public library operation and CLI command set or clear one group value atomically while preserving unrelated tags and original bytes on failure.
+- [x] Existing list and ready tag filters select triage roles while structural readiness rules remain unchanged.
+- [x] Filer declares triage category and state groups, and task-tracking documentation explains their use.
