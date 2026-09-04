@@ -1,7 +1,7 @@
 ---
 id: CORE-017
 title: Honor or remove the pipeline filter and hidden-file contracts
-status: In Progress
+status: Done
 priority: Medium
 type: Bug
 parent: CORE-027
