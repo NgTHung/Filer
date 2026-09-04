@@ -18,10 +18,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use filer_core::modules::scan::ScanModule;
 use filer_core::{
-    Capabilities, Command, CoreError, DirectoryCursor, DirectoryLoadOptions, DirectoryPageRequest,
-    DirectoryPageResult, DirectoryPageState, Event, FilerCore, FsProvider, Location, LocationRef,
-    NodeEntry, NodeEntryCapabilities, NodeMeta, PipelineConfig, ProviderCx, ProviderPaging,
-    RequestId,
+    Capabilities, Command, CoreError, DirectoryLoadOptions, DirectoryStream, Event, FilerCore,
+    FsProvider, ListingBatch, ListingOptions, Location, LocationRef, NodeEntry,
+    NodeEntryCapabilities, NodeMeta, PipelineConfig, ProviderCx, ProviderPaging, RequestId,
 };
 
 const ENTRY_COUNT: usize = 10_000;
@@ -29,15 +28,16 @@ const PAGE_SIZE: usize = 256;
 const EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct CountingProvider {
-    entries: Vec<NodeEntry>,
-    full_list_calls: AtomicUsize,
-    paged_rows_returned: AtomicUsize,
+    entries: Arc<[NodeEntry]>,
+    full_list_calls: Arc<AtomicUsize>,
+    stream_rows_yielded: Arc<AtomicUsize>,
+    stream_reached_end: Arc<AtomicUsize>,
 }
 
 impl CountingProvider {
     fn new(entry_count: usize) -> Self {
         let parent = Path::new("/benchmark");
-        let entries = (0..entry_count)
+        let entries: Vec<NodeEntry> = (0..entry_count)
             .map(|index| {
                 let name = format!("entry_{index:05}.dat");
                 let path = parent.join(&name);
@@ -62,9 +62,41 @@ impl CountingProvider {
             .collect();
 
         Self {
-            entries,
-            full_list_calls: AtomicUsize::new(0),
-            paged_rows_returned: AtomicUsize::new(0),
+            entries: entries.into(),
+            full_list_calls: Arc::new(AtomicUsize::new(0)),
+            stream_rows_yielded: Arc::new(AtomicUsize::new(0)),
+            stream_reached_end: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
+struct CountingStream {
+    entries: Arc<[NodeEntry]>,
+    next_index: usize,
+    rows_yielded: Arc<AtomicUsize>,
+    reached_end: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl DirectoryStream for CountingStream {
+    async fn next_batch(
+        &mut self,
+        max: usize,
+        _cx: &ProviderCx<'_>,
+    ) -> Result<ListingBatch, CoreError> {
+        if max == 0 {
+            return Ok(ListingBatch::partial(Vec::new()));
+        }
+        let end = self.next_index.saturating_add(max).min(self.entries.len());
+        let entries = self.entries[self.next_index..end].to_vec();
+        self.next_index = end;
+        self.rows_yielded
+            .fetch_add(entries.len(), Ordering::Relaxed);
+        if end == self.entries.len() {
+            self.reached_end.store(1, Ordering::Relaxed);
+            Ok(ListingBatch::final_batch(entries))
+        } else {
+            Ok(ListingBatch::partial(entries))
         }
     }
 }
@@ -88,38 +120,23 @@ impl FsProvider for CountingProvider {
         ProviderPaging::Native
     }
 
-    async fn list(&self, _path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<NodeEntry>, CoreError> {
-        self.full_list_calls.fetch_add(1, Ordering::Relaxed);
-        Ok(self.entries.clone())
-    }
-
-    async fn list_page(
+    async fn open_listing(
         &self,
         _path: &Path,
-        request: DirectoryPageRequest,
+        _options: ListingOptions,
         _cx: &ProviderCx<'_>,
-    ) -> Result<DirectoryPageResult, CoreError> {
-        let start = request
-            .cursor
-            .as_ref()
-            .map(|cursor| cursor.0.parse::<usize>())
-            .transpose()
-            .map_err(|error| CoreError::invalid_input(error.to_string()))?
-            .unwrap_or(0);
-        let end = start.saturating_add(request.limit).min(self.entries.len());
-        let entries = self.entries[start..end].to_vec();
-        self.paged_rows_returned
-            .fetch_add(entries.len(), Ordering::Relaxed);
-        let state = if end < self.entries.len() {
-            DirectoryPageState::partial(
-                entries.len(),
-                Some(self.entries.len()),
-                DirectoryCursor(end.to_string()),
-            )
-        } else {
-            DirectoryPageState::complete(entries.len(), Some(self.entries.len()))
-        };
-        Ok(DirectoryPageResult { entries, state })
+    ) -> Result<Option<Box<dyn DirectoryStream>>, CoreError> {
+        Ok(Some(Box::new(CountingStream {
+            entries: self.entries.clone(),
+            next_index: 0,
+            rows_yielded: self.stream_rows_yielded.clone(),
+            reached_end: self.stream_reached_end.clone(),
+        })))
+    }
+
+    async fn list(&self, _path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<NodeEntry>, CoreError> {
+        self.full_list_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(self.entries.to_vec())
     }
 
     async fn read(&self, path: &Path, _cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
@@ -146,7 +163,6 @@ impl FsProvider for CountingProvider {
 }
 
 #[tokio::test]
-#[ignore = "CORE-028 provisional gate: native paging currently walks the full provider"]
 async fn first_page_through_public_command_does_not_materialize_full_listing() {
     let provider = Arc::new(CountingProvider::new(ENTRY_COUNT));
     let core = FilerCore::new();
@@ -199,11 +215,11 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
     assert!(!page.complete);
     assert!(page.next_cursor.is_some());
     assert_eq!(provider.full_list_calls.load(Ordering::Relaxed), 0);
-    let paged_rows = provider.paged_rows_returned.load(Ordering::Relaxed);
-    assert!(
-        paged_rows <= PAGE_SIZE * 2,
-        "the first public page should require at most one page plus lookahead, observed {paged_rows} of {ENTRY_COUNT} provider rows"
+    assert_eq!(
+        provider.stream_rows_yielded.load(Ordering::Relaxed),
+        PAGE_SIZE + 1
     );
+    assert_eq!(provider.stream_reached_end.load(Ordering::Relaxed), 0);
 
     core.shutdown()
         .await
