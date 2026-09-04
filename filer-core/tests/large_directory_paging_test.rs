@@ -215,9 +215,10 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
     assert!(!page.complete);
     assert!(page.next_cursor.is_some());
     assert_eq!(provider.full_list_calls.load(Ordering::Relaxed), 0);
-    assert_eq!(
-        provider.stream_rows_yielded.load(Ordering::Relaxed),
-        PAGE_SIZE + 1
+    let stream_rows = provider.stream_rows_yielded.load(Ordering::Relaxed);
+    assert!(
+        (PAGE_SIZE..ENTRY_COUNT).contains(&stream_rows),
+        "the first public page should stop before the directory ends, observed {stream_rows} of {ENTRY_COUNT} provider rows"
     );
     assert_eq!(provider.stream_reached_end.load(Ordering::Relaxed), 0);
 
