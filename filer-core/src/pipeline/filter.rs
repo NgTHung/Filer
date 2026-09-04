@@ -1,4 +1,5 @@
 use crate::model::node::NodeEntry;
+use crate::model::query::QueryFilter;
 use crate::pipeline::{PipelineData, Stage};
 
 pub struct FilterHidden {
@@ -86,5 +87,42 @@ impl Stage for FilterByExtension {
 
     fn name(&self) -> &'static str {
         "filter_by_extension"
+    }
+}
+
+pub(crate) struct FilterByQuery {
+    filters: Vec<QueryFilter>,
+}
+
+impl FilterByQuery {
+    pub(crate) fn new(filters: Vec<QueryFilter>) -> Self {
+        Self { filters }
+    }
+
+    fn filter_nodes(&self, nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
+        nodes
+            .into_iter()
+            .filter(|node| self.filters.iter().all(|filter| filter.matches(node)))
+            .collect()
+    }
+}
+
+impl Stage for FilterByQuery {
+    fn process(&self, input: PipelineData) -> PipelineData {
+        match input {
+            PipelineData::Flat(nodes) => PipelineData::Flat(self.filter_nodes(nodes)),
+            PipelineData::Grouped(mut grouped) => {
+                for group in &mut grouped.groups {
+                    group.nodes = self.filter_nodes(std::mem::take(&mut group.nodes));
+                }
+                grouped.groups.retain(|group| !group.nodes.is_empty());
+                grouped.total_count = grouped.groups.iter().map(|group| group.nodes.len()).sum();
+                PipelineData::Grouped(grouped)
+            }
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "filter_by_query"
     }
 }

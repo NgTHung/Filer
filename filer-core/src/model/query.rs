@@ -34,6 +34,8 @@ pub enum QueryFilter {
     Extension(Vec<String>),
     SizeGreaterThan(u64),
     SizeLessThan(u64),
+    SizeAtLeast(u64),
+    SizeAtMost(u64),
     ModifiedAfter(i64),
     ModifiedBefore(i64),
     IsDirectory,
@@ -387,6 +389,8 @@ impl QueryFilter {
             }
             QueryFilter::SizeGreaterThan(n) => node.size > *n,
             QueryFilter::SizeLessThan(n) => node.size < *n,
+            QueryFilter::SizeAtLeast(n) => node.size >= *n,
+            QueryFilter::SizeAtMost(n) => node.size <= *n,
             QueryFilter::ModifiedAfter(ts) => node
                 .modified
                 .map(|t| systemtime_to_i64(t) > *ts)

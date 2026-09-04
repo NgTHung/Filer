@@ -6,6 +6,7 @@ pub mod sort;
 
 use crate::model::directory::DirectoryLoadState;
 use crate::model::node::NodeEntry;
+use crate::model::query::QueryFilter;
 
 #[allow(unused_imports)]
 pub use config::{
@@ -115,8 +116,6 @@ impl Pipeline {
                 ));
             }
 
-            // TODO: Add more filter stages as implemented
-            // - exclude_extensions
             if !filter_config.exclude_extensions.is_empty() {
                 pipeline = pipeline.add(filter::FilterByExtension::new(
                     filter_config.exclude_extensions.clone(),
@@ -124,8 +123,16 @@ impl Pipeline {
                 ));
             }
 
-            // - min_size / max_size
-            // - name_pattern
+            let mut query_filters = Vec::new();
+            if let Some(min_size) = filter_config.min_size {
+                query_filters.push(QueryFilter::SizeAtLeast(min_size));
+            }
+            if let Some(max_size) = filter_config.max_size {
+                query_filters.push(QueryFilter::SizeAtMost(max_size));
+            }
+            if !query_filters.is_empty() {
+                pipeline = pipeline.add(filter::FilterByQuery::new(query_filters));
+            }
         }
 
         // Add order stage
