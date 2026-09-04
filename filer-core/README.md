@@ -148,11 +148,13 @@ Run the public command-path benchmark with:
 cargo bench -p filer-core --bench large_directory
 ```
 
-The runner generates 10,000 local entries, excludes fixture creation from the
-timed samples, and reports minimum, median, p95, maximum, and mean latency. It
-measures a fast first page, fast next page, metadata first page, sorted first
-page, and fast full snapshot. Use the same machine, filesystem, Rust toolchain,
-entry count, and page size when you compare revisions.
+The runner generates a 10,000-entry local directory inside an isolated Git
+worktree, excludes fixture creation from the timed samples, and reports minimum,
+median, p95, maximum, and mean latency. It measures a fast first page with Git
+decorations off, the same page while a `git.status` request is active, a fast
+next page, metadata and sorted first pages, and a fast full snapshot. The Git
+executable must be available on `PATH`. Use the same machine, filesystem, Rust
+toolchain, entry count, and page size when you compare revisions.
 
 By default, the fixture uses your temporary directory. Set
 `FILER_BENCH_FIXTURE_ROOT` to measure a specific filesystem. You can also set
@@ -163,13 +165,14 @@ recorded 10,000-entry baseline.
 The provisional bounded-work gate is a separate structural test:
 
 ```bash
-cargo test -p filer-core --test large_directory_paging_test -- --ignored
+cargo test -p filer-core --test large_directory_paging_test
 ```
 
-This test is ignored in the normal suite while the gate fails. It counts rows
-returned by a native provider through the public scan command, so a fast machine
-cannot hide a full directory walk. Recorded results and machine details live in
-[`benches/baselines/`](benches/baselines/).
+It counts rows yielded by a resumable provider stream through the public scan
+command, so a fast machine cannot hide a full directory walk. The decoration
+scenario records listing latency when the semantic decoration request runs at
+the same time; it waits for the decoration event only after the listing sample
+ends. Recorded results and machine details live in [`benches/baselines/`](benches/baselines/).
 
 ## Cache And Refresh
 

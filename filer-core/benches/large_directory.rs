@@ -13,8 +13,11 @@ use std::error::Error;
 use std::fs::{self, File};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use filer_core::modules::git_decorations::{GitDecorationRequest, GitDecorationsModule};
 use filer_core::modules::scan::ScanModule;
 use filer_core::{
     Command, DirectoryCursor, DirectoryLoadMode, DirectoryLoadOptions, Event, FilerCore, LocalFs,
@@ -33,6 +36,7 @@ type BenchResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 #[derive(Clone, Copy)]
 enum Scenario {
     FirstPageFast,
+    FirstPageFastDecorations,
     NextPageFast,
     FirstPageMetadata,
     FirstPageSorted,
@@ -40,8 +44,9 @@ enum Scenario {
 }
 
 impl Scenario {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::FirstPageFast,
+        Self::FirstPageFastDecorations,
         Self::NextPageFast,
         Self::FirstPageMetadata,
         Self::FirstPageSorted,
@@ -51,6 +56,7 @@ impl Scenario {
     fn name(self) -> &'static str {
         match self {
             Self::FirstPageFast => "first_page_fast",
+            Self::FirstPageFastDecorations => "first_page_fast_decorations",
             Self::NextPageFast => "next_page_fast",
             Self::FirstPageMetadata => "first_page_metadata",
             Self::FirstPageSorted => "first_page_sorted",
@@ -81,6 +87,7 @@ impl Settings {
 
 struct Fixture {
     _directory: TempDir,
+    listing_path: PathBuf,
     location: LocationRef,
 }
 
@@ -93,18 +100,22 @@ impl Fixture {
             }
             None => tempfile::tempdir()?,
         };
+        let listing_path = directory.path().join("entries");
+        fs::create_dir(&listing_path)?;
         for index in 0..entry_count {
-            File::create(directory.path().join(format!("entry_{index:05}.dat")))?;
+            File::create(listing_path.join(format!("entry_{index:05}.dat")))?;
         }
-        let location = LocationRef::from_location(&Location::local(directory.path()));
+        initialize_git_repository(directory.path())?;
+        let location = LocationRef::from_location(&Location::local(&listing_path));
         Ok(Self {
             _directory: directory,
+            listing_path,
             location,
         })
     }
 
     fn path(&self) -> &Path {
-        self._directory.path()
+        &self.listing_path
     }
 }
 
@@ -120,6 +131,7 @@ impl Harness {
     async fn new(location: LocationRef, page_size: usize) -> BenchResult<Self> {
         let core = FilerCore::new();
         core.load(ScanModule::new(std::sync::Arc::new(LocalFs::new())));
+        core.load(GitDecorationsModule::new());
         let events = core.event_receiver();
         core.send(Command::Handshake)?;
         let session = loop {
@@ -153,24 +165,24 @@ impl Harness {
         &self,
         scenario: Scenario,
         prepared_cursor: Option<DirectoryCursor>,
-    ) -> BenchResult<usize> {
+    ) -> BenchResult<Measurement> {
         match scenario {
-            Scenario::FirstPageFast => self
-                .scan_page(PipelineConfig::default(), fast_page(self.page_size))
-                .await
-                .map(|result| result.rows),
+            Scenario::FirstPageFast => {
+                self.measure_page(PipelineConfig::default(), fast_page(self.page_size))
+                    .await
+            }
+            Scenario::FirstPageFastDecorations => self.scan_page_with_decorations().await,
             Scenario::NextPageFast => {
                 let cursor = prepared_cursor
                     .ok_or_else(|| io::Error::other("next-page benchmark was not prepared"))?;
-                self.scan_page(
+                self.measure_page(
                     PipelineConfig::default(),
                     DirectoryLoadOptions::page_after(self.page_size, cursor),
                 )
                 .await
-                .map(|result| result.rows)
             }
-            Scenario::FirstPageMetadata => self
-                .scan_page(
+            Scenario::FirstPageMetadata => {
+                self.measure_page(
                     PipelineConfig::default(),
                     DirectoryLoadOptions {
                         listing: filer_core::ListingOptions::metadata(),
@@ -181,16 +193,29 @@ impl Harness {
                     },
                 )
                 .await
-                .map(|result| result.rows),
-            Scenario::FirstPageSorted => self
-                .scan_page(
+            }
+            Scenario::FirstPageSorted => {
+                self.measure_page(
                     PipelineConfig::with_default_sort(),
                     fast_page(self.page_size),
                 )
                 .await
-                .map(|result| result.rows),
-            Scenario::FullSnapshotFast => self.scan_snapshot().await,
+            }
+            Scenario::FullSnapshotFast => self.measure_snapshot().await,
         }
+    }
+
+    async fn measure_page(
+        &self,
+        pipeline: PipelineConfig,
+        load: DirectoryLoadOptions,
+    ) -> BenchResult<Measurement> {
+        let start = Instant::now();
+        let page = self.scan_page(pipeline, load).await?;
+        Ok(Measurement {
+            rows: page.rows,
+            elapsed: start.elapsed(),
+        })
     }
 
     async fn scan_page(
@@ -256,11 +281,104 @@ impl Harness {
             }
         }
     }
+
+    async fn measure_snapshot(&self) -> BenchResult<Measurement> {
+        let start = Instant::now();
+        let rows = self.scan_snapshot().await?;
+        Ok(Measurement {
+            rows,
+            elapsed: start.elapsed(),
+        })
+    }
+
+    async fn scan_page_with_decorations(&self) -> BenchResult<Measurement> {
+        let scan_request = RequestId::new();
+        let decoration_request = RequestId::new();
+        let visible = (0..self.page_size)
+            .map(|index| {
+                LocationRef::from_location(&Location::local(
+                    self.location_path().join(format!("entry_{index:05}.dat")),
+                ))
+            })
+            .collect::<Vec<_>>();
+        let visible_count = visible.len();
+        let start = Instant::now();
+        self.core.send(Command::Extension {
+            key: "git.status".to_string(),
+            payload: Arc::new(GitDecorationRequest {
+                parent: self.location.clone(),
+                visible,
+                request: decoration_request,
+            }),
+            session: self.session,
+        })?;
+        self.core.send(Command::Scan {
+            location: self.location.clone(),
+            session: self.session,
+            pipeline: PipelineConfig::default(),
+            load: fast_page(self.page_size),
+            request: scan_request,
+        })?;
+
+        let mut page_rows = None;
+        let mut listing_elapsed = None;
+        let mut decorations_received = false;
+        while listing_elapsed.is_none() || !decorations_received {
+            match recv_event(&self.events).await? {
+                Event::DirectoryPageLoaded {
+                    groups, request, ..
+                } if request == scan_request => {
+                    page_rows = Some(groups.total_count);
+                    listing_elapsed = Some(start.elapsed());
+                }
+                Event::FileDecorationsUpdated {
+                    decorations,
+                    request,
+                    ..
+                } if request == decoration_request => {
+                    if decorations.len() != visible_count {
+                        return Err(io::Error::other(format!(
+                            "Git decoration benchmark returned {} rows for {visible_count} visible rows",
+                            decorations.len()
+                        ))
+                        .into());
+                    }
+                    decorations_received = true;
+                }
+                Event::Error {
+                    message,
+                    request: Some(request),
+                    ..
+                } if request == scan_request || request == decoration_request => {
+                    return Err(io::Error::other(message).into());
+                }
+                _ => {}
+            }
+        }
+
+        Ok(Measurement {
+            rows: page_rows.ok_or_else(|| io::Error::other("decoration benchmark page missing"))?,
+            elapsed: listing_elapsed
+                .ok_or_else(|| io::Error::other("decoration benchmark timing missing"))?,
+        })
+    }
+
+    fn location_path(&self) -> &Path {
+        self.location
+            .descriptor()
+            .and_then(|descriptor| descriptor.as_local_path())
+            .unwrap_or_else(|| Path::new("."))
+    }
 }
 
 struct PageObservation {
     rows: usize,
     cursor: Option<DirectoryCursor>,
+}
+
+struct Measurement {
+    rows: usize,
+    elapsed: Duration,
 }
 
 struct Summary {
@@ -319,9 +437,9 @@ async fn main() -> BenchResult<()> {
         let mut rows = 0;
         for _ in 0..settings.samples {
             let cursor = harness.prepare(scenario).await?;
-            let start = Instant::now();
-            rows = harness.run(scenario, cursor).await?;
-            samples.push(start.elapsed());
+            let measurement = harness.run(scenario, cursor).await?;
+            rows = measurement.rows;
+            samples.push(measurement.elapsed);
         }
         let summary = Summary::from_samples(&mut samples)?;
         println!(
@@ -349,6 +467,21 @@ async fn recv_event(events: &flume::Receiver<Event>) -> BenchResult<Event> {
 
 fn fast_page(page_size: usize) -> DirectoryLoadOptions {
     DirectoryLoadOptions::page(page_size)
+}
+
+fn initialize_git_repository(path: &Path) -> BenchResult<()> {
+    let output = ProcessCommand::new("git")
+        .args(["init", "-q"])
+        .current_dir(path)
+        .output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    ))
+    .into())
 }
 
 fn read_positive_usize(name: &str, default: usize) -> BenchResult<usize> {
