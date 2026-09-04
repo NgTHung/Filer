@@ -12,7 +12,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -31,7 +31,7 @@ struct CountingProvider {
     entries: Arc<[NodeEntry]>,
     full_list_calls: Arc<AtomicUsize>,
     stream_rows_yielded: Arc<AtomicUsize>,
-    stream_reached_end: Arc<AtomicUsize>,
+    stream_reached_end: Arc<AtomicBool>,
 }
 
 impl CountingProvider {
@@ -65,7 +65,7 @@ impl CountingProvider {
             entries: entries.into(),
             full_list_calls: Arc::new(AtomicUsize::new(0)),
             stream_rows_yielded: Arc::new(AtomicUsize::new(0)),
-            stream_reached_end: Arc::new(AtomicUsize::new(0)),
+            stream_reached_end: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -74,7 +74,7 @@ struct CountingStream {
     entries: Arc<[NodeEntry]>,
     next_index: usize,
     rows_yielded: Arc<AtomicUsize>,
-    reached_end: Arc<AtomicUsize>,
+    reached_end: Arc<AtomicBool>,
 }
 
 #[async_trait]
@@ -93,7 +93,7 @@ impl DirectoryStream for CountingStream {
         self.rows_yielded
             .fetch_add(entries.len(), Ordering::Relaxed);
         if end == self.entries.len() {
-            self.reached_end.store(1, Ordering::Relaxed);
+            self.reached_end.store(true, Ordering::Relaxed);
             Ok(ListingBatch::final_batch(entries))
         } else {
             Ok(ListingBatch::partial(entries))
@@ -216,11 +216,12 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
     assert!(page.next_cursor.is_some());
     assert_eq!(provider.full_list_calls.load(Ordering::Relaxed), 0);
     let stream_rows = provider.stream_rows_yielded.load(Ordering::Relaxed);
-    assert!(
-        (PAGE_SIZE..ENTRY_COUNT).contains(&stream_rows),
-        "the first public page should stop before the directory ends, observed {stream_rows} of {ENTRY_COUNT} provider rows"
+    assert_eq!(
+        stream_rows,
+        PAGE_SIZE + 1,
+        "the first public page should pull one page plus a continuation lookahead"
     );
-    assert_eq!(provider.stream_reached_end.load(Ordering::Relaxed), 0);
+    assert!(!provider.stream_reached_end.load(Ordering::Relaxed));
 
     core.shutdown()
         .await
