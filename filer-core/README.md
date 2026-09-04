@@ -169,10 +169,11 @@ cargo test -p filer-core --test large_directory_paging_test
 ```
 
 It counts rows yielded by a resumable provider stream through the public scan
-command, so a fast machine cannot hide a full directory walk. The decoration
-scenario records listing latency when the semantic decoration request runs at
-the same time; it waits for the decoration event only after the listing sample
-ends. Recorded results and machine details live in [`benches/baselines/`](benches/baselines/).
+command, so a fast machine cannot hide work beyond one page and its continuation
+lookahead. The decoration scenario waits for the real Git backend to accept its
+request before starting the listing timer. It waits for the decoration event
+only after the listing sample ends. Recorded results and machine details live in
+[`benches/baselines/`](benches/baselines/).
 
 ## Cache And Refresh
 

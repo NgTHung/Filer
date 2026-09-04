@@ -2,6 +2,8 @@
 //!
 //! Measures directory first paint and continuation through Filer-core's public
 //! command and event contracts against a generated local filesystem fixture.
+//! The generated fixture keeps inputs reproducible, and public contracts keep
+//! timings aligned with the behavior clients observe.
 //!
 //! ```
 //! use filer_core::DirectoryLoadOptions;
