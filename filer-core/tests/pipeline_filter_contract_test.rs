@@ -13,6 +13,12 @@ fn file(name: &str, size: u64) -> NodeEntry {
     entry
 }
 
+fn file_with_hidden_state(name: &str, hidden: bool) -> NodeEntry {
+    let mut entry = file(name, 0);
+    entry.meta.hidden = hidden;
+    entry
+}
+
 #[test]
 fn pipeline_applies_inclusive_size_bounds() {
     let config = PipelineConfig::default().filter(FilterConfig {
@@ -51,4 +57,19 @@ fn pipeline_applies_name_glob() {
     let names: Vec<_> = filtered.iter().map(|entry| entry.name.as_str()).collect();
 
     assert_eq!(names, ["report-a.txt", "report-b.md"]);
+}
+
+#[test]
+fn pipeline_uses_node_metadata_for_hidden_state() {
+    let config = PipelineConfig::default().show_hidden(false);
+    let entries = vec![
+        file_with_hidden_state(".dotfile", false),
+        file_with_hidden_state("attribute-hidden.txt", true),
+        file_with_hidden_state("visible.txt", false),
+    ];
+
+    let filtered = Pipeline::from_config(&config).execute_flat(entries);
+    let names: Vec<_> = filtered.iter().map(|entry| entry.name.as_str()).collect();
+
+    assert_eq!(names, [".dotfile", "visible.txt"]);
 }
