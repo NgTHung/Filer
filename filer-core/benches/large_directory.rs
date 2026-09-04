@@ -11,19 +11,24 @@
 
 use std::error::Error;
 use std::fs::{self, File};
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use filer_core::modules::git_decorations::{GitDecorationRequest, GitDecorationsModule};
+use filer_core::modules::git_decorations::{
+    GitCliBackend, GitDecorationRequest, GitDecorationTarget, GitDecorationsModule,
+    GitStatusBackend, GitStatusResult,
+};
 use filer_core::modules::scan::ScanModule;
 use filer_core::{
-    Command, DirectoryCursor, DirectoryLoadMode, DirectoryLoadOptions, Event, FilerCore, LocalFs,
-    Location, LocationRef, PipelineConfig, RequestId,
+    CancelSignal, Command, CoreError, DirectoryCursor, DirectoryLoadMode, DirectoryLoadOptions,
+    Event, FilerCore, LocalFs, Location, LocationRef, PipelineConfig, RequestId,
 };
 use tempfile::TempDir;
+use tokio::sync::Notify;
 
 const DEFAULT_ENTRY_COUNT: usize = 10_000;
 const DEFAULT_PAGE_SIZE: usize = 256;
@@ -119,25 +124,61 @@ impl Fixture {
     }
 }
 
+struct DecorationBenchmarkBackend {
+    git: GitCliBackend,
+    started: Arc<Notify>,
+}
+
+impl DecorationBenchmarkBackend {
+    fn new(started: Arc<Notify>) -> Self {
+        Self {
+            git: GitCliBackend::new(),
+            started,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GitStatusBackend for DecorationBenchmarkBackend {
+    async fn status(
+        &self,
+        parent: &Path,
+        visible: &[GitDecorationTarget],
+        cancel: &CancelSignal,
+    ) -> Result<GitStatusResult, CoreError> {
+        self.started.notify_one();
+        self.git.status(parent, visible, cancel).await
+    }
+}
+
 struct Harness {
     core: FilerCore,
     events: flume::Receiver<Event>,
     session: filer_core::model::session::SessionId,
     location: LocationRef,
+    location_path: PathBuf,
+    decorations_started: Arc<Notify>,
     page_size: usize,
 }
 
 impl Harness {
     async fn new(location: LocationRef, page_size: usize) -> BenchResult<Self> {
+        let location_path = location
+            .descriptor()
+            .and_then(|descriptor| descriptor.as_local_path())
+            .map(Path::to_path_buf)
+            .ok_or_else(|| io::Error::other("benchmark fixture must have a local descriptor"))?;
+        let decorations_started = Arc::new(Notify::new());
         let core = FilerCore::new();
         core.load(ScanModule::new(std::sync::Arc::new(LocalFs::new())));
-        core.load(GitDecorationsModule::new());
+        core.load(GitDecorationsModule::with_backend(Arc::new(
+            DecorationBenchmarkBackend::new(decorations_started.clone()),
+        )));
         let events = core.event_receiver();
         core.send(Command::Handshake)?;
         let session = loop {
-            match recv_event(&events).await? {
-                Event::SessionCreated(session) => break session,
-                _ => {}
+            if let Event::SessionCreated(session) = recv_event(&events).await? {
+                break session;
             }
         };
         Ok(Self {
@@ -145,6 +186,8 @@ impl Harness {
             events,
             session,
             location,
+            location_path,
+            decorations_started,
             page_size,
         })
     }
@@ -210,12 +253,11 @@ impl Harness {
         pipeline: PipelineConfig,
         load: DirectoryLoadOptions,
     ) -> BenchResult<Measurement> {
-        let start = Instant::now();
-        let page = self.scan_page(pipeline, load).await?;
-        Ok(Measurement {
-            rows: page.rows,
-            elapsed: start.elapsed(),
+        measure(async {
+            let page = self.scan_page(pipeline, load).await?;
+            Ok(page.rows)
         })
+        .await
     }
 
     async fn scan_page(
@@ -283,12 +325,7 @@ impl Harness {
     }
 
     async fn measure_snapshot(&self) -> BenchResult<Measurement> {
-        let start = Instant::now();
-        let rows = self.scan_snapshot().await?;
-        Ok(Measurement {
-            rows,
-            elapsed: start.elapsed(),
-        })
+        measure(self.scan_snapshot()).await
     }
 
     async fn scan_page_with_decorations(&self) -> BenchResult<Measurement> {
@@ -297,12 +334,12 @@ impl Harness {
         let visible = (0..self.page_size)
             .map(|index| {
                 LocationRef::from_location(&Location::local(
-                    self.location_path().join(format!("entry_{index:05}.dat")),
+                    self.location_path.join(format!("entry_{index:05}.dat")),
                 ))
             })
             .collect::<Vec<_>>();
         let visible_count = visible.len();
-        let start = Instant::now();
+        let decorations_started = self.decorations_started.notified();
         self.core.send(Command::Extension {
             key: "git.status".to_string(),
             payload: Arc::new(GitDecorationRequest {
@@ -312,6 +349,10 @@ impl Harness {
             }),
             session: self.session,
         })?;
+        tokio::time::timeout(EVENT_TIMEOUT, decorations_started)
+            .await
+            .map_err(|_| io::Error::other("timed out waiting for Git decoration work to start"))?;
+        let start = Instant::now();
         self.core.send(Command::Scan {
             location: self.location.clone(),
             session: self.session,
@@ -362,13 +403,6 @@ impl Harness {
                 .ok_or_else(|| io::Error::other("decoration benchmark timing missing"))?,
         })
     }
-
-    fn location_path(&self) -> &Path {
-        self.location
-            .descriptor()
-            .and_then(|descriptor| descriptor.as_local_path())
-            .unwrap_or_else(|| Path::new("."))
-    }
 }
 
 struct PageObservation {
@@ -379,6 +413,15 @@ struct PageObservation {
 struct Measurement {
     rows: usize,
     elapsed: Duration,
+}
+
+async fn measure(operation: impl Future<Output = BenchResult<usize>>) -> BenchResult<Measurement> {
+    let start = Instant::now();
+    let rows = operation.await?;
+    Ok(Measurement {
+        rows,
+        elapsed: start.elapsed(),
+    })
 }
 
 struct Summary {
