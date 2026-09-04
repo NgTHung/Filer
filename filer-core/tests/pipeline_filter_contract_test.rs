@@ -33,3 +33,22 @@ fn pipeline_applies_inclusive_size_bounds() {
 
     assert_eq!(names, ["minimum", "between", "maximum"]);
 }
+
+#[test]
+fn pipeline_applies_name_glob() {
+    let config = PipelineConfig::default().filter(FilterConfig {
+        name_pattern: Some("report-?.*".to_string()),
+        ..Default::default()
+    });
+    let entries = vec![
+        file("report-a.txt", 0),
+        file("report-b.md", 0),
+        file("report-long.txt", 0),
+        file("old-report-a.txt", 0),
+    ];
+
+    let filtered = Pipeline::from_config(&config).execute_flat(entries);
+    let names: Vec<_> = filtered.iter().map(|entry| entry.name.as_str()).collect();
+
+    assert_eq!(names, ["report-a.txt", "report-b.md"]);
+}

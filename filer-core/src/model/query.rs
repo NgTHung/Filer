@@ -43,6 +43,7 @@ pub enum QueryFilter {
     IsHidden,
     NameContains(String),
     NameMatches(String), // Regex
+    NameGlob(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -406,8 +407,55 @@ impl QueryFilter {
             QueryFilter::NameMatches(pattern) => regex::Regex::new(pattern)
                 .map(|re| re.is_match(&node.name))
                 .unwrap_or(false),
+            QueryFilter::NameGlob(pattern) => glob_matches(pattern, &node.name),
         }
     }
+}
+
+fn glob_matches(pattern: &str, value: &str) -> bool {
+    let mut pattern_index = 0;
+    let mut value_index = 0;
+    let mut wildcard_pattern = None;
+    let mut wildcard_value = None;
+
+    while value_index < value.len() {
+        let pattern_char = pattern[pattern_index..].chars().next();
+        let value_char = value[value_index..].chars().next();
+
+        match (pattern_char, value_char) {
+            (Some('*'), _) => {
+                pattern_index += '*'.len_utf8();
+                wildcard_pattern = Some(pattern_index);
+                wildcard_value = Some(value_index);
+            }
+            (Some('?'), Some(actual)) => {
+                pattern_index += '?'.len_utf8();
+                value_index += actual.len_utf8();
+            }
+            (Some(expected), Some(actual)) if expected == actual => {
+                pattern_index += expected.len_utf8();
+                value_index += actual.len_utf8();
+            }
+            _ => {
+                let (Some(pattern_after_wildcard), Some(wildcard_start)) =
+                    (wildcard_pattern, wildcard_value)
+                else {
+                    return false;
+                };
+                let Some(next_value_char) = value[wildcard_start..].chars().next() else {
+                    return false;
+                };
+                let next_value_index = wildcard_start + next_value_char.len_utf8();
+                wildcard_value = Some(next_value_index);
+                value_index = next_value_index;
+                pattern_index = pattern_after_wildcard;
+            }
+        }
+    }
+
+    pattern[pattern_index..]
+        .chars()
+        .all(|character| character == '*')
 }
 
 fn systemtime_to_i64(t: std::time::SystemTime) -> i64 {

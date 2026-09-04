@@ -130,6 +130,9 @@ impl Pipeline {
             if let Some(max_size) = filter_config.max_size {
                 query_filters.push(QueryFilter::SizeAtMost(max_size));
             }
+            if let Some(name_pattern) = &filter_config.name_pattern {
+                query_filters.push(QueryFilter::NameGlob(name_pattern.clone()));
+            }
             if !query_filters.is_empty() {
                 pipeline = pipeline.add(filter::FilterByQuery::new(query_filters));
             }
