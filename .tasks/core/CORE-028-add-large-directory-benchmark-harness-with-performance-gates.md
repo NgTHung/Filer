@@ -1,7 +1,7 @@
 ---
 id: CORE-028
 title: Add large-directory benchmark harness with performance gates
-status: In Progress
+status: Done
 priority: High
 type: Feature
 milestone: "0.3.1"
@@ -20,6 +20,6 @@ Add a reproducible benchmark harness for large-directory listing and paging so m
 
 - [x] A benchmark harness lists a generated 10,000-entry directory through public core contracts and reports first-page and next-page latency.
 - [x] Baseline numbers are recorded in the repository with the machine profile used to produce them.
-- [ ] Provisional gate: after PIPELINE-003, the first page of a 10,000-entry local directory is delivered without waiting for the full directory walk, and the harness proves it.
-- [ ] Provisional gate: decoration emission never delays listing delivery; the harness measures listing latency with decorations on and off.
+- [x] Provisional gate: after PIPELINE-003, the first page of a 10,000-entry local directory is delivered without waiting for the full directory walk, and the harness proves it.
+- [x] Provisional gate: decoration emission never delays listing delivery; the harness measures listing latency with decorations on and off.
 - [x] The harness runs from a single cargo command documented in the crate README.
