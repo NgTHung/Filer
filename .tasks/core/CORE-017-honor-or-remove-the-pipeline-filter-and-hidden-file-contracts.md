@@ -21,6 +21,6 @@ Milestone 0.3.1 (MILESTONE-004 draft). Tracked under CORE-027 post-audit remedia
 
 ## Acceptance Criteria
 
-- [ ] FilterConfig size and name filters either apply as real stages or are removed along with their paging_mode and effective_listing influence; no accepted config is silently ignored.
-- [ ] If implemented, the size and name predicates are shared with SearchQuery rather than reimplemented.
-- [ ] FilterHidden filters on NodeMeta::hidden so the Windows hidden-attribute case is honored, pinned by a test that distinguishes a dotfile from a hidden-attribute file.
+- [x] FilterConfig size and name filters either apply as real stages or are removed along with their paging_mode and effective_listing influence; no accepted config is silently ignored.
+- [x] If implemented, the size and name predicates are shared with SearchQuery rather than reimplemented.
+- [x] FilterHidden filters on NodeMeta::hidden so the Windows hidden-attribute case is honored, pinned by a test that distinguishes a dotfile from a hidden-attribute file.
