@@ -10,30 +10,11 @@ impl FilterHidden {
     pub fn new(show_hidden: bool) -> Self {
         Self { show_hidden }
     }
-
-    fn filter_nodes(&self, nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
-        nodes
-            .into_iter()
-            .filter(|entry| self.show_hidden || !entry.meta.hidden)
-            .collect()
-    }
 }
 
 impl Stage for FilterHidden {
     fn process(&self, input: PipelineData) -> PipelineData {
-        match input {
-            PipelineData::Flat(nodes) => PipelineData::Flat(self.filter_nodes(nodes)),
-            PipelineData::Grouped(mut grouped) => {
-                // Filter within each group
-                for group in &mut grouped.groups {
-                    group.nodes = self.filter_nodes(std::mem::take(&mut group.nodes));
-                }
-                // Remove empty groups and recalculate total
-                grouped.groups.retain(|g| !g.nodes.is_empty());
-                grouped.total_count = grouped.groups.iter().map(|g| g.nodes.len()).sum();
-                PipelineData::Grouped(grouped)
-            }
-        }
+        retain_nodes(input, |entry| self.show_hidden || !entry.meta.hidden)
     }
 
     fn name(&self) -> &'static str {
@@ -53,36 +34,21 @@ impl FilterByExtension {
             exclusion,
         }
     }
-
-    fn filter_nodes(&self, nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
-        nodes
-            .into_iter()
-            .filter(|f| {
-                let has_ext = self
-                    .extensions
-                    .iter()
-                    .any(|extension| f.extension().is_some_and(|actual| actual == extension));
-                if self.exclusion { !has_ext } else { has_ext }
-            })
-            .collect()
-    }
 }
 
 impl Stage for FilterByExtension {
     fn process(&self, input: PipelineData) -> PipelineData {
-        match input {
-            PipelineData::Flat(nodes) => PipelineData::Flat(self.filter_nodes(nodes)),
-            PipelineData::Grouped(mut grouped) => {
-                // Filter within each group
-                for group in &mut grouped.groups {
-                    group.nodes = self.filter_nodes(std::mem::take(&mut group.nodes));
-                }
-                // Remove empty groups and recalculate total
-                grouped.groups.retain(|g| !g.nodes.is_empty());
-                grouped.total_count = grouped.groups.iter().map(|g| g.nodes.len()).sum();
-                PipelineData::Grouped(grouped)
+        retain_nodes(input, |entry| {
+            let has_extension = self
+                .extensions
+                .iter()
+                .any(|extension| entry.extension().is_some_and(|actual| actual == extension));
+            if self.exclusion {
+                !has_extension
+            } else {
+                has_extension
             }
-        }
+        })
     }
 
     fn name(&self) -> &'static str {
@@ -98,31 +64,36 @@ impl FilterByQuery {
     pub(crate) fn new(filters: Vec<QueryFilter>) -> Self {
         Self { filters }
     }
-
-    fn filter_nodes(&self, nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
-        nodes
-            .into_iter()
-            .filter(|node| self.filters.iter().all(|filter| filter.matches(node)))
-            .collect()
-    }
 }
 
 impl Stage for FilterByQuery {
     fn process(&self, input: PipelineData) -> PipelineData {
-        match input {
-            PipelineData::Flat(nodes) => PipelineData::Flat(self.filter_nodes(nodes)),
-            PipelineData::Grouped(mut grouped) => {
-                for group in &mut grouped.groups {
-                    group.nodes = self.filter_nodes(std::mem::take(&mut group.nodes));
-                }
-                grouped.groups.retain(|group| !group.nodes.is_empty());
-                grouped.total_count = grouped.groups.iter().map(|group| group.nodes.len()).sum();
-                PipelineData::Grouped(grouped)
-            }
-        }
+        retain_nodes(input, |node| {
+            self.filters.iter().all(|filter| filter.matches(node))
+        })
     }
 
     fn name(&self) -> &'static str {
         "filter_by_query"
+    }
+}
+
+fn retain_nodes(
+    input: PipelineData,
+    mut predicate: impl FnMut(&NodeEntry) -> bool,
+) -> PipelineData {
+    match input {
+        PipelineData::Flat(mut nodes) => {
+            nodes.retain(&mut predicate);
+            PipelineData::Flat(nodes)
+        }
+        PipelineData::Grouped(mut grouped) => {
+            for group in &mut grouped.groups {
+                group.nodes.retain(&mut predicate);
+            }
+            grouped.groups.retain(|group| !group.nodes.is_empty());
+            grouped.total_count = grouped.groups.iter().map(|group| group.nodes.len()).sum();
+            PipelineData::Grouped(grouped)
+        }
     }
 }
