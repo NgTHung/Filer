@@ -178,11 +178,14 @@ impl Pipeline {
     }
 
     pub fn execute(&self, data: Vec<NodeEntry>) -> PipelineData {
-        let mut pipeline_data = filter::retain_nodes(PipelineData::Flat(data), |entry| {
-            self.row_filters
-                .iter()
-                .all(|row_filter| row_filter.matches(entry))
-        });
+        let mut pipeline_data = PipelineData::Flat(data);
+        if !self.row_filters.is_empty() {
+            pipeline_data = filter::retain_nodes(pipeline_data, |entry| {
+                self.row_filters
+                    .iter()
+                    .all(|row_filter| row_filter.matches(entry))
+            });
+        }
 
         for stage in &self.stages {
             pipeline_data = stage.process(pipeline_data);
