@@ -14,7 +14,9 @@
     use crate::pipeline::{FilterConfig, GroupBy, PipelineConfig};
     use crate::services::dir_cache::DirCache;
     use flume::Receiver;
+    #[cfg(feature = "metadata-archive")]
     use std::io::Write;
+    #[cfg(feature = "metadata-archive")]
     use zip::write::SimpleFileOptions;
 
     const SCAN_TIMEOUT: Duration = Duration::from_millis(2000);
@@ -175,6 +177,7 @@
         events
     }
 
+    #[cfg(feature = "metadata-archive")]
     fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {
         let file = std::fs::File::create(path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
@@ -355,6 +358,7 @@
     }
 
     #[tokio::test]
+    #[cfg(feature = "metadata-archive")]
     async fn test_scan_location_segmented_zip_emits_directory_entries_loaded() {
         let temp = tempfile::tempdir().unwrap();
         let archive = temp.path().join("bundle.zip");
@@ -403,6 +407,7 @@
     }
 
     #[tokio::test]
+    #[cfg(feature = "metadata-archive")]
     async fn test_scan_location_segmented_zip_applies_pipeline_config() {
         let temp = tempfile::tempdir().unwrap();
         let archive = temp.path().join("bundle.zip");
@@ -457,6 +462,7 @@
     }
 
     #[tokio::test]
+    #[cfg(feature = "metadata-archive")]
     async fn test_archive_provider_cache_hit_preserves_member_locations() {
         let temp = tempfile::tempdir().unwrap();
         let archive = temp.path().join("bundle.zip");

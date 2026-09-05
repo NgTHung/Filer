@@ -14,11 +14,14 @@
 //! ```
 
 use async_trait::async_trait;
+#[cfg(feature = "metadata-archive")]
 use std::collections::BTreeMap;
+#[cfg(feature = "metadata-archive")]
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[cfg(feature = "metadata-archive")]
 use zip::ZipArchive;
 
 use crate::errors::{CoreError, ErrorCode};
@@ -58,12 +61,7 @@ impl ArchiveFs {
         path: &Path,
         cx: &ProviderCx<'_>,
     ) -> Result<Vec<ArchiveChild>, CoreError> {
-        let archive_path = self.archive_path.clone();
-        let member_path = path.to_path_buf();
-        let reader = self.provider.open_reader(&archive_path, cx).await?;
-        tokio::task::spawn_blocking(move || list_zip_children(reader, &member_path))
-            .await
-            .map_err(|e| CoreError::actor("archive_fs", e.to_string()))?
+        list_children(self.provider.as_ref(), &self.archive_path, path, cx).await
     }
 }
 
@@ -80,12 +78,7 @@ impl<'a> BorrowedArchiveFs<'a> {
         path: &Path,
         cx: &ProviderCx<'_>,
     ) -> Result<Vec<ArchiveChild>, CoreError> {
-        let archive_path = self.archive_path.clone();
-        let member_path = path.to_path_buf();
-        let reader = self.provider.open_reader(&archive_path, cx).await?;
-        tokio::task::spawn_blocking(move || list_zip_children(reader, &member_path))
-            .await
-            .map_err(|e| CoreError::actor("archive_fs", e.to_string()))?
+        list_children(self.provider, &self.archive_path, path, cx).await
     }
 }
 
@@ -155,6 +148,30 @@ impl FsProvider for ArchiveFs {
     }
 }
 
+async fn list_children(
+    provider: &dyn FsProvider,
+    archive_path: &Path,
+    member: &Path,
+    cx: &ProviderCx<'_>,
+) -> Result<Vec<ArchiveChild>, CoreError> {
+    #[cfg(feature = "metadata-archive")]
+    {
+        let reader = provider.open_reader(archive_path, cx).await?;
+        let member = member.to_path_buf();
+        tokio::task::spawn_blocking(move || list_zip_children(reader, &member))
+            .await
+            .map_err(|e| CoreError::actor("archive_fs", e.to_string()))?
+    }
+    #[cfg(not(feature = "metadata-archive"))]
+    {
+        let _ = (provider, archive_path, member, cx);
+        Err(CoreError::unsupported_operation(
+            "archive listing requires the metadata-archive feature",
+        ))
+    }
+}
+
+#[cfg(feature = "metadata-archive")]
 fn list_zip_children(
     reader: Box<dyn crate::vfs::provider::ReadSeek>,
     path: &Path,
@@ -164,6 +181,7 @@ fn list_zip_children(
     list_zip_directory(&mut archive, path)
 }
 
+#[cfg(feature = "metadata-archive")]
 fn list_zip_directory<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     directory: &Path,
@@ -266,6 +284,7 @@ fn is_zip_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "metadata-archive")]
 fn zip_directory_prefix(path: &Path) -> String {
     if path.as_os_str().is_empty() {
         String::new()
@@ -278,6 +297,7 @@ fn zip_directory_prefix(path: &Path) -> String {
     }
 }
 
+#[cfg(feature = "metadata-archive")]
 fn zip_entry_name(path: &Path) -> String {
     path.components()
         .map(|component| component.as_os_str().to_string_lossy())

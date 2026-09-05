@@ -4,8 +4,10 @@ use async_trait::async_trait;
 
 use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeInfo};
+#[cfg(feature = "metadata-archive")]
+use crate::services::preview::provider::ArchivePreviewEntry;
 use crate::services::preview::provider::{
-    ArchivePreviewEntry, PreviewData, PreviewOptions, PreviewProvider,
+    PreviewData, PreviewOptions, PreviewProvider,
 };
 
 pub struct ArchiveProvider;

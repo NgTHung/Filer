@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use std::path::Path;
 
 use crate::errors::CoreError;
-use crate::services::metadata::extended::{AudioMetadata, ExtendedMetadata};
+use crate::services::metadata::extended::ExtendedMetadata;
+#[cfg(feature = "metadata-audio")]
+use crate::services::metadata::extended::{AudioMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::vfs::context::ProviderCx;
@@ -75,7 +77,10 @@ impl MetadataExtractor for AudioExtractor {
         cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-audio"))]
-        return Ok(ExtendedMetadata::Unavailable);
+        {
+            let _ = (path, mime, provider, cx);
+            Ok(ExtendedMetadata::Unavailable)
+        }
 
         #[cfg(feature = "metadata-audio")]
         {

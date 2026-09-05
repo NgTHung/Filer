@@ -5,6 +5,7 @@ use crate::model::directory::{DirectoryCursor, DirectoryPageRequest};
 use crate::services::mime::{DetectionConfidence, MAGIC_BYTE_WINDOW, MimeCategory, MimeDetector};
 use crate::vfs::local::LocalFs;
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
+#[cfg(feature = "metadata-archive")]
 use crate::vfs::segmented::SegmentedLocationResolver;
 use async_trait::async_trait;
 use std::collections::HashMap;

@@ -20,6 +20,7 @@ mod image_extractor_tests {
         assert_eq!(extractor().name(), "image");
     }
 
+    #[cfg(feature = "metadata-image")]
     #[tokio::test]
     async fn png_returns_image_variant() {
         let f = temp_file_with(&png_1x1(), ".png");
@@ -31,6 +32,7 @@ mod image_extractor_tests {
         assert!(matches!(result, ExtendedMetadata::Image(_)));
     }
 
+    #[cfg(feature = "metadata-image")]
     #[tokio::test]
     async fn png_has_correct_dimensions() {
         let f = temp_file_with(&png_1x1(), ".png");
@@ -46,6 +48,7 @@ mod image_extractor_tests {
         assert_eq!(meta.height, 1);
     }
 
+    #[cfg(feature = "metadata-image")]
     #[tokio::test]
     async fn png_format_string_is_png() {
         let f = temp_file_with(&png_1x1(), ".png");
@@ -60,6 +63,7 @@ mod image_extractor_tests {
         assert_eq!(meta.format.to_uppercase(), "PNG");
     }
 
+    #[cfg(feature = "metadata-image")]
     #[tokio::test]
     async fn png_without_exif_has_none_exif() {
         let f = temp_file_with(&png_1x1(), ".png");
@@ -75,6 +79,7 @@ mod image_extractor_tests {
         assert!(meta.exif.is_none());
     }
 
+    #[cfg(feature = "metadata-image")]
     #[tokio::test]
     async fn jpeg_returns_image_variant() {
         let f = temp_file_with(&jpeg_minimal(), ".jpg");
@@ -86,6 +91,7 @@ mod image_extractor_tests {
         assert!(matches!(result, ExtendedMetadata::Image(_)));
     }
 
+    #[cfg(feature = "metadata-image")]
     #[tokio::test]
     async fn jpeg_format_string_is_jpeg() {
         let f = temp_file_with(&jpeg_minimal(), ".jpg");

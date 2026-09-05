@@ -1,9 +1,12 @@
 use async_trait::async_trait;
+#[cfg(feature = "metadata-archive")]
 use std::io::Read;
 use std::path::Path;
 
 use crate::errors::CoreError;
-use crate::services::metadata::extended::{ArchiveEntry, ArchiveMetadata, ExtendedMetadata};
+use crate::services::metadata::extended::ExtendedMetadata;
+#[cfg(feature = "metadata-archive")]
+use crate::services::metadata::extended::{ArchiveEntry, ArchiveMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::vfs::context::ProviderCx;
@@ -21,6 +24,7 @@ impl ArchiveExtractor {
     }
 
     /// Returns `true` when the filename suffix indicates a compressed tarball.
+    #[cfg(feature = "metadata-archive")]
     fn is_tarball(path: &Path) -> bool {
         path.file_name()
             .and_then(|n| n.to_str())
@@ -167,7 +171,10 @@ impl MetadataExtractor for ArchiveExtractor {
         cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-archive"))]
-        return Ok(ExtendedMetadata::Unavailable);
+        {
+            let _ = (path, mime, provider, cx);
+            Ok(ExtendedMetadata::Unavailable)
+        }
 
         #[cfg(feature = "metadata-archive")]
         {

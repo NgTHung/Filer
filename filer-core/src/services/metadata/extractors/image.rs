@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use std::path::Path;
 
 use crate::errors::CoreError;
+#[cfg(feature = "metadata-image")]
 use crate::services::metadata::ImageMetadata;
 use crate::services::metadata::extended::ExtendedMetadata;
 use crate::services::metadata::extractor::MetadataExtractor;
@@ -163,7 +164,10 @@ impl MetadataExtractor for ImageExtractor {
         cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-image"))]
-        return Ok(ExtendedMetadata::Unavailable);
+        {
+            let _ = (path, mime, provider, cx);
+            Ok(ExtendedMetadata::Unavailable)
+        }
 
         #[cfg(feature = "metadata-image")]
         {

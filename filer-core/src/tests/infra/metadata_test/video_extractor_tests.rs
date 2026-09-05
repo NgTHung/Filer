@@ -20,6 +20,7 @@ mod video_extractor_tests {
         assert_eq!(extractor().name(), "video");
     }
 
+    #[cfg(feature = "metadata-video")]
     #[tokio::test]
     async fn mp4_returns_video_variant() {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
@@ -31,6 +32,7 @@ mod video_extractor_tests {
         assert!(matches!(result, ExtendedMetadata::Video(_)));
     }
 
+    #[cfg(feature = "metadata-video")]
     #[tokio::test]
     async fn mp4_format_string_is_mp4() {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
@@ -45,6 +47,7 @@ mod video_extractor_tests {
         assert_eq!(meta.format.to_uppercase(), "MP4");
     }
 
+    #[cfg(feature = "metadata-video")]
     #[tokio::test]
     async fn video_duration_is_non_negative() {
         let f = temp_file_with(&mp4_ftyp(), ".mp4");
@@ -59,6 +62,7 @@ mod video_extractor_tests {
         assert!(meta.duration_secs >= 0.0);
     }
 
+    #[cfg(feature = "metadata-video")]
     #[tokio::test]
     async fn video_exposes_width_and_height() {
         // Dimensions may be 0 for a stub file, but the fields must exist and be populated.

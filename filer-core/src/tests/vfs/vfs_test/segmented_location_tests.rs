@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "metadata-archive"))]
 mod segmented_location_tests {
     use super::*;
     use crate::model::location::{LocationDescriptor, LocationSegment};

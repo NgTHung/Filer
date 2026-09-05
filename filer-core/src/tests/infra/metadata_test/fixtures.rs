@@ -49,6 +49,7 @@ fn temp_file_with(bytes: &[u8], suffix: &str) -> tempfile::NamedTempFile {
 ///
 /// IHDR: width=1, height=1, 8-bit RGBA (color type 6).
 /// IDAT: zlib-compressed single transparent pixel.
+#[cfg(feature = "metadata-image")]
 fn png_1x1() -> Vec<u8> {
     vec![
         // PNG signature
@@ -67,6 +68,7 @@ fn png_1x1() -> Vec<u8> {
 }
 
 /// Minimal JPEG: SOI + JFIF APP0 marker + EOI.
+#[cfg(feature = "metadata-image")]
 fn jpeg_minimal() -> Vec<u8> {
     vec![
         0xFF, 0xD8, // SOI
@@ -81,6 +83,7 @@ fn jpeg_minimal() -> Vec<u8> {
 }
 
 /// Minimal ID3v2.3 tag with zero frames (MP3 file stub).
+#[cfg(feature = "metadata-audio")]
 fn mp3_id3_header() -> Vec<u8> {
     vec![
         0x49, 0x44, 0x33, // "ID3"
@@ -91,11 +94,13 @@ fn mp3_id3_header() -> Vec<u8> {
 }
 
 /// OGG stream capture pattern (first 14 bytes of a valid OGG page).
+#[cfg(feature = "metadata-audio")]
 fn ogg_capture() -> Vec<u8> {
     b"OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00".to_vec()
 }
 
 /// Minimal MP4 ftyp box (28 bytes) — isom/iso2/avc1 compatible brands.
+#[cfg(feature = "metadata-video")]
 fn mp4_ftyp() -> Vec<u8> {
     vec![
         0x00, 0x00, 0x00, 0x1C, // box size = 28
@@ -109,6 +114,7 @@ fn mp4_ftyp() -> Vec<u8> {
 }
 
 /// Minimal valid PDF with one empty page (no /Title).
+#[cfg(feature = "metadata-document")]
 fn pdf_one_page() -> Vec<u8> {
     b"%PDF-1.4\n\
       1 0 obj<</Type /Catalog /Pages 2 0 R>>endobj\n\
@@ -128,6 +134,7 @@ fn pdf_one_page() -> Vec<u8> {
 }
 
 /// Minimal empty ZIP (End of Central Directory record only, 0 entries).
+#[cfg(feature = "metadata-archive")]
 fn zip_empty() -> Vec<u8> {
     vec![
         0x50, 0x4B, 0x05, 0x06, // EOCD signature

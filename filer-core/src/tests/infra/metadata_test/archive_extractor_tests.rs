@@ -20,6 +20,7 @@ mod archive_extractor_tests {
         assert_eq!(extractor().name(), "archive");
     }
 
+    #[cfg(feature = "metadata-archive")]
     #[tokio::test]
     async fn empty_zip_returns_archive_variant() {
         let f = temp_file_with(&zip_empty(), ".zip");
@@ -31,6 +32,7 @@ mod archive_extractor_tests {
         assert!(matches!(result, ExtendedMetadata::Archive(_)));
     }
 
+    #[cfg(feature = "metadata-archive")]
     #[tokio::test]
     async fn empty_zip_has_zero_file_count() {
         let f = temp_file_with(&zip_empty(), ".zip");
@@ -46,6 +48,7 @@ mod archive_extractor_tests {
         assert!(meta.entries.is_empty());
     }
 
+    #[cfg(feature = "metadata-archive")]
     #[tokio::test]
     async fn empty_zip_format_string_is_zip() {
         let f = temp_file_with(&zip_empty(), ".zip");
@@ -60,6 +63,7 @@ mod archive_extractor_tests {
         assert_eq!(meta.format.to_uppercase(), "ZIP");
     }
 
+    #[cfg(feature = "metadata-archive")]
     #[tokio::test]
     async fn empty_zip_has_zero_total_size() {
         let f = temp_file_with(&zip_empty(), ".zip");

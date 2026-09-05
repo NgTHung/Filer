@@ -20,6 +20,7 @@ mod document_extractor_tests {
         assert_eq!(extractor().name(), "document");
     }
 
+    #[cfg(feature = "metadata-document")]
     #[tokio::test]
     async fn pdf_returns_document_variant() {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
@@ -31,6 +32,7 @@ mod document_extractor_tests {
         assert!(matches!(result, ExtendedMetadata::Document(_)));
     }
 
+    #[cfg(feature = "metadata-document")]
     #[tokio::test]
     async fn pdf_page_count_is_one() {
         let f = temp_file_with(&pdf_one_page(), ".pdf");
@@ -45,6 +47,7 @@ mod document_extractor_tests {
         assert_eq!(meta.page_count, Some(1));
     }
 
+    #[cfg(feature = "metadata-document")]
     #[tokio::test]
     async fn pdf_title_is_none_when_absent() {
         let f = temp_file_with(&pdf_one_page(), ".pdf");

@@ -1,11 +1,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+#[cfg(feature = "metadata-archive")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 
+#[cfg(feature = "metadata-archive")]
+use crate::ArchiveFs;
+
 use crate::{
-    ArchiveFs, Capabilities, CoreError, ErrorCode, FsProvider, NodeEntry, ProviderCx,
+    Capabilities, CoreError, ErrorCode, FsProvider, NodeEntry, ProviderCx,
     ProviderProfile, ProviderProfileId, ProviderRef, ProviderRegistry,
 };
 

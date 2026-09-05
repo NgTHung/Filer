@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use std::path::Path;
 
 use crate::errors::CoreError;
-use crate::services::metadata::extended::{DocumentMetadata, ExtendedMetadata};
+use crate::services::metadata::extended::ExtendedMetadata;
+#[cfg(feature = "metadata-document")]
+use crate::services::metadata::extended::{DocumentMetadata};
 use crate::services::metadata::extractor::MetadataExtractor;
 use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::vfs::context::ProviderCx;
@@ -58,7 +60,10 @@ impl MetadataExtractor for DocumentExtractor {
         cx: &ProviderCx<'_>,
     ) -> Result<ExtendedMetadata, CoreError> {
         #[cfg(not(feature = "metadata-document"))]
-        return Ok(ExtendedMetadata::Unavailable);
+        {
+            let _ = (path, mime, provider, cx);
+            Ok(ExtendedMetadata::Unavailable)
+        }
 
         #[cfg(feature = "metadata-document")]
         {

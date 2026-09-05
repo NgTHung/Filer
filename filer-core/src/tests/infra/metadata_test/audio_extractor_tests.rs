@@ -20,6 +20,7 @@ mod audio_extractor_tests {
         assert_eq!(extractor().name(), "audio");
     }
 
+    #[cfg(feature = "metadata-audio")]
     #[tokio::test]
     async fn mp3_returns_audio_variant() {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
@@ -31,6 +32,7 @@ mod audio_extractor_tests {
         assert!(matches!(result, ExtendedMetadata::Audio(_)));
     }
 
+    #[cfg(feature = "metadata-audio")]
     #[tokio::test]
     async fn mp3_format_string_is_mp3() {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
@@ -45,6 +47,7 @@ mod audio_extractor_tests {
         assert_eq!(meta.format.to_uppercase(), "MP3");
     }
 
+    #[cfg(feature = "metadata-audio")]
     #[tokio::test]
     async fn audio_duration_is_non_negative() {
         let f = temp_file_with(&mp3_id3_header(), ".mp3");
@@ -59,6 +62,7 @@ mod audio_extractor_tests {
         assert!(meta.duration_secs >= 0.0);
     }
 
+    #[cfg(feature = "metadata-audio")]
     #[tokio::test]
     async fn ogg_returns_audio_variant() {
         let f = temp_file_with(&ogg_capture(), ".ogg");
@@ -70,6 +74,7 @@ mod audio_extractor_tests {
         assert!(matches!(result, ExtendedMetadata::Audio(_)));
     }
 
+    #[cfg(feature = "metadata-audio")]
     #[tokio::test]
     async fn mp3_with_no_frames_has_empty_tags() {
         // ID3 header with zero frames → no title, artist, or album.
