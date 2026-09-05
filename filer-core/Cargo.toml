@@ -67,6 +67,7 @@ all-features = ["metadata-archive-rar", "metadata", "preview"]
 [dev-dependencies]
 tempfile = "3.27.0"  # also listed as optional dep for runtime archive chaining
 tracing-subscriber = "0.3"  # capturing layer for command-path tracing tests
+stats_alloc = "0.1.10"
 
 [[bench]]
 name = "large_directory"

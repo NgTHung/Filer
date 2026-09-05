@@ -11,6 +11,7 @@
 //! assert!(DirectoryLoadOptions::page(256).is_paged());
 //! ```
 
+use std::alloc::System;
 use std::error::Error;
 use std::fs::{self, File};
 use std::future::Future;
@@ -25,12 +26,17 @@ use filer_core::modules::git_decorations::{
     GitStatusBackend, GitStatusResult,
 };
 use filer_core::modules::scan::ScanModule;
+use filer_core::pipeline::FilterConfig;
 use filer_core::{
     CancelSignal, Command, CoreError, DirectoryCursor, DirectoryLoadMode, DirectoryLoadOptions,
     Event, FilerCore, LocalFs, Location, LocationRef, PipelineConfig, RequestId,
 };
+use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 use tempfile::TempDir;
 use tokio::sync::Notify;
+
+#[global_allocator]
+static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 const DEFAULT_ENTRY_COUNT: usize = 10_000;
 const DEFAULT_PAGE_SIZE: usize = 256;
@@ -43,6 +49,7 @@ type BenchResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 #[derive(Clone, Copy)]
 enum Scenario {
     FirstPageFast,
+    FirstPageFiltered,
     FirstPageFastDecorations,
     NextPageFast,
     FirstPageMetadata,
@@ -51,8 +58,9 @@ enum Scenario {
 }
 
 impl Scenario {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::FirstPageFast,
+        Self::FirstPageFiltered,
         Self::FirstPageFastDecorations,
         Self::NextPageFast,
         Self::FirstPageMetadata,
@@ -63,6 +71,7 @@ impl Scenario {
     fn name(self) -> &'static str {
         match self {
             Self::FirstPageFast => "first_page_fast",
+            Self::FirstPageFiltered => "first_page_filtered",
             Self::FirstPageFastDecorations => "first_page_fast_decorations",
             Self::NextPageFast => "next_page_fast",
             Self::FirstPageMetadata => "first_page_metadata",
@@ -216,6 +225,10 @@ impl Harness {
                 self.measure_page(PipelineConfig::default(), fast_page(self.page_size))
                     .await
             }
+            Scenario::FirstPageFiltered => {
+                self.measure_page(filtered_pipeline(), fast_page(self.page_size))
+                    .await
+            }
             Scenario::FirstPageFastDecorations => self.scan_page_with_decorations().await,
             Scenario::NextPageFast => {
                 let cursor = prepared_cursor
@@ -354,6 +367,7 @@ impl Harness {
         tokio::time::timeout(EVENT_TIMEOUT, decorations_started)
             .await
             .map_err(|_| io::Error::other("timed out waiting for Git decoration work to start"))?;
+        let region = Region::new(GLOBAL);
         let start = Instant::now();
         self.core.send(Command::Scan {
             location: self.location.clone(),
@@ -365,6 +379,7 @@ impl Harness {
 
         let mut page_rows = None;
         let mut listing_elapsed = None;
+        let mut allocation_stats = None;
         let mut decorations_received = false;
         while listing_elapsed.is_none() || !decorations_received {
             match recv_event(&self.events).await? {
@@ -373,6 +388,8 @@ impl Harness {
                 } if request == scan_request => {
                     page_rows = Some(groups.total_count);
                     listing_elapsed = Some(start.elapsed());
+                    let stats = region.change();
+                    allocation_stats = Some((stats.allocations, stats.bytes_allocated));
                 }
                 Event::FileDecorationsUpdated {
                     decorations,
@@ -399,10 +416,14 @@ impl Harness {
             }
         }
 
+        let (allocations, allocated_bytes) = allocation_stats
+            .ok_or_else(|| io::Error::other("decoration benchmark allocation stats missing"))?;
         Ok(Measurement {
             rows: page_rows.ok_or_else(|| io::Error::other("decoration benchmark page missing"))?,
             elapsed: listing_elapsed
                 .ok_or_else(|| io::Error::other("decoration benchmark timing missing"))?,
+            allocations,
+            allocated_bytes,
         })
     }
 }
@@ -415,14 +436,20 @@ struct PageObservation {
 struct Measurement {
     rows: usize,
     elapsed: Duration,
+    allocations: usize,
+    allocated_bytes: usize,
 }
 
 async fn measure(operation: impl Future<Output = BenchResult<usize>>) -> BenchResult<Measurement> {
+    let region = Region::new(GLOBAL);
     let start = Instant::now();
     let rows = operation.await?;
+    let stats = region.change();
     Ok(Measurement {
         rows,
         elapsed: start.elapsed(),
+        allocations: stats.allocations,
+        allocated_bytes: stats.bytes_allocated,
     })
 }
 
@@ -459,6 +486,22 @@ impl Summary {
     }
 }
 
+struct CountSummary {
+    median: usize,
+}
+
+impl CountSummary {
+    fn from_samples(samples: &mut [usize]) -> BenchResult<Self> {
+        if samples.is_empty() {
+            return Err(io::Error::other("benchmark produced no allocation samples").into());
+        }
+        samples.sort_unstable();
+        Ok(Self {
+            median: samples[samples.len() / 2],
+        })
+    }
+}
+
 #[tokio::main]
 async fn main() -> BenchResult<()> {
     let settings = Settings::from_environment()?;
@@ -469,8 +512,16 @@ async fn main() -> BenchResult<()> {
 
     print_profile(&settings, fixture.path(), fixture_duration);
     println!(
-        "{:<24} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10}",
-        "scenario", "rows", "min_ms", "median_ms", "p95_ms", "max_ms", "mean_ms"
+        "{:<24} {:>8} {:>10} {:>10} {:>10} {:>10} {:>10} {:>12} {:>16}",
+        "scenario",
+        "rows",
+        "min_ms",
+        "median_ms",
+        "p95_ms",
+        "max_ms",
+        "mean_ms",
+        "alloc_med",
+        "bytes_med"
     );
 
     for scenario in Scenario::ALL {
@@ -479,16 +530,22 @@ async fn main() -> BenchResult<()> {
             let _ = harness.run(scenario, cursor).await?;
         }
         let mut samples = Vec::with_capacity(settings.samples);
+        let mut allocation_samples = Vec::with_capacity(settings.samples);
+        let mut allocated_byte_samples = Vec::with_capacity(settings.samples);
         let mut rows = 0;
         for _ in 0..settings.samples {
             let cursor = harness.prepare(scenario).await?;
             let measurement = harness.run(scenario, cursor).await?;
             rows = measurement.rows;
             samples.push(measurement.elapsed);
+            allocation_samples.push(measurement.allocations);
+            allocated_byte_samples.push(measurement.allocated_bytes);
         }
         let summary = Summary::from_samples(&mut samples)?;
+        let allocation_summary = CountSummary::from_samples(&mut allocation_samples)?;
+        let allocated_byte_summary = CountSummary::from_samples(&mut allocated_byte_samples)?;
         println!(
-            "{:<24} {:>8} {:>10.3} {:>10.3} {:>10.3} {:>10.3} {:>10.3}",
+            "{:<24} {:>8} {:>10.3} {:>10.3} {:>10.3} {:>10.3} {:>10.3} {:>12} {:>16}",
             scenario.name(),
             rows,
             millis(summary.min),
@@ -496,6 +553,8 @@ async fn main() -> BenchResult<()> {
             millis(summary.p95),
             millis(summary.max),
             millis(summary.mean),
+            allocation_summary.median,
+            allocated_byte_summary.median,
         );
     }
 
@@ -512,6 +571,10 @@ async fn recv_event(events: &flume::Receiver<Event>) -> BenchResult<Event> {
 
 fn fast_page(page_size: usize) -> DirectoryLoadOptions {
     DirectoryLoadOptions::page(page_size)
+}
+
+fn filtered_pipeline() -> PipelineConfig {
+    PipelineConfig::default().filter(FilterConfig::only_extensions(vec!["dat".to_string()]))
 }
 
 fn initialize_git_repository(path: &Path) -> BenchResult<()> {
