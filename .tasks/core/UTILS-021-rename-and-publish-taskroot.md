@@ -1,14 +1,14 @@
 ---
 id: "UTILS-021"
 title: "Rename and publish Taskroot"
-status: In Progress
+status: Done
 priority: "High"
 type: "Feature"
 milestone: "0.3.0"
 risk: "Medium"
 impact: "Creates the public Taskroot package and command while preserving the existing task-project storage contract."
 tags: ["tooling", "tasks", "cli", "library", "portability"]
-last_updated: 2026-09-01
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -22,4 +22,8 @@ Rename the reusable task project library and CLI from filer-task to Taskroot, co
 - [x] The packaged crate builds and its installed executable initializes and validates a fresh independent project.
 - [x] Workspace consumers compile against the renamed Taskroot library without duplicating task logic.
 - [x] Current user and agent documentation uses the published taskroot command and explains migration from filer-task.
-- [ ] The validated Taskroot release is published to crates.io.
+- [x] The validated Taskroot release is published to crates.io.
+
+## Completion evidence
+
+The maintainer confirmed on 2026-09-05 that the validated Taskroot release was published to crates.io. The earlier package and consumer checks remain recorded in commit bc2bd8b.
