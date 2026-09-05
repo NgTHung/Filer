@@ -1,7 +1,7 @@
 ---
 id: "CORE-024"
 title: "Remove code preview theme unwrap fallback"
-status: In Progress
+status: Done
 priority: "High"
 type: "Refactor"
 parent: "CORE-027"
@@ -21,5 +21,5 @@ Exercise the fallback with preview-code enabled. Preserve plain-text content and
 ## Acceptance Criteria
 
 - [x] The command-dispatcher sends in operations/mod.rs, watch/mod.rs, and search/mod.rs route through send_or_warn.
-- [ ] The code.rs theme fallback returns an unstyled string instead of unwrapping, pinned by a test with an empty theme set.
+- [x] The code.rs theme fallback returns an unstyled string instead of unwrapping, pinned by a test with an empty theme set.
 - [x] Incomplete feature-gated VFS provider stubs no longer exist in filer-core.
