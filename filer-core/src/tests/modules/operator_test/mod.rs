@@ -12,6 +12,8 @@
 //!   - Create: folder, file, collision
 //!   - Cancel: mid-copy, session destroy
 
+use crate::tests::fixtures::state::SharedLog;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -34,7 +36,7 @@ use crate::model::progress::{ProgressKind, ProgressStatus, ProgressTarget};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::modules::operations::operator::{OperationEventMode, Operator, OpsCommand};
+use crate::modules::operations::operator::{OperationEventMode, Operator, OpsCommand, TrashFn};
 use crate::services::dir_cache::{DirCache, SharedDirCache};
 use crate::tests::fixtures::{local_file_node, local_node_entry};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
@@ -47,7 +49,7 @@ const TIMEOUT: Duration = Duration::from_millis(3000);
 #[derive(Clone)]
 struct MockOpsProvider {
     /// Directory listings, keyed by path (for recursive copy)
-    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<NodeEntry>)>>>,
+    files_by_path: SharedLog<(PathBuf, Vec<NodeEntry>)>,
     /// Paths that exist (for collision checks)
     existing_paths: Arc<Mutex<Vec<PathBuf>>>,
     /// Metadata results, keyed by path (for is-dir checks)
@@ -66,7 +68,7 @@ struct MockOpsProvider {
     rename_calls: Arc<Mutex<Vec<(PathBuf, PathBuf)>>>,
     delete_calls: Arc<Mutex<Vec<PathBuf>>>,
     mkdir_calls: Arc<Mutex<Vec<PathBuf>>>,
-    write_calls: Arc<Mutex<Vec<(PathBuf, Vec<u8>)>>>,
+    write_calls: SharedLog<(PathBuf, Vec<u8>)>,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
 }
 
@@ -352,18 +354,18 @@ impl FsProvider for MockOpsProvider {
 }
 
 /// A no-op trash function for tests that don't care about trash behavior.
-fn noop_trash_fn() -> Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync> {
+fn noop_trash_fn() -> TrashFn {
     Arc::new(|_path| Ok(()))
 }
 
 /// A trash function that records calls for assertion.
 fn tracking_trash_fn() -> (
-    Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>,
+    TrashFn,
     Arc<Mutex<Vec<PathBuf>>>,
 ) {
     let calls: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
     let calls_clone = calls.clone();
-    let f: Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync> =
+    let f: TrashFn =
         Arc::new(move |path: &Path| {
             calls_clone.lock().unwrap().push(path.to_path_buf());
             Ok(())
@@ -383,7 +385,7 @@ fn spawn_operator(
 fn spawn_operator_with_trash(
     provider: MockOpsProvider,
     registry: NodeRegistry,
-    trash_fn: Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>,
+    trash_fn: TrashFn,
 ) -> (flume::Sender<OpsCommand>, Receiver<Event>) {
     let (cmd_tx, cmd_rx) = flume::unbounded::<OpsCommand>();
     let (evt_tx, evt_rx) = flume::unbounded::<Event>();

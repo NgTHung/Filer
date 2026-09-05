@@ -12,6 +12,8 @@
 
 #![allow(dead_code)]
 
+pub(crate) mod state;
+
 use std::path::PathBuf;
 use std::time::Duration;
 

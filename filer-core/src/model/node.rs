@@ -83,16 +83,18 @@ impl NodeEntry {
             .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_string();
-        Ok(Self::from_parts(
-            LocationRef::from_location(&Location::local(path.clone())),
-            name.as_str(),
-            kind_from_metadata(&meta, &path),
-            meta.len(),
-            meta.modified().ok(),
-            meta.created().ok(),
-            meta.accessed().ok(),
-            meta_for_path(&meta, &name),
-        ))
+        Ok(Self {
+            size: meta.len(),
+            modified: meta.modified().ok(),
+            created: meta.created().ok(),
+            accessed: meta.accessed().ok(),
+            meta: meta_for_path(&meta, &name),
+            ..Self::from_location_ref(
+                LocationRef::from_location(&Location::local(path.clone())),
+                name,
+                kind_from_metadata(&meta, &path),
+            )
+        })
     }
 
     /// Create a local entry from directory-entry type data without a stat.
@@ -102,19 +104,17 @@ impl NodeEntry {
             .and_then(|name| name.to_str())
             .unwrap_or("")
             .to_string();
-        Self::from_parts(
-            LocationRef::from_location(&Location::local(path.clone())),
-            name.as_str(),
-            kind_from_file_type(&file_type, &path),
-            0,
-            None,
-            None,
-            None,
-            NodeMeta {
+        Self {
+            meta: NodeMeta {
                 hidden: is_hidden_name(&name),
                 ..NodeMeta::default()
             },
-        )
+            ..Self::from_location_ref(
+                LocationRef::from_location(&Location::local(path.clone())),
+                name,
+                kind_from_file_type(&file_type, &path),
+            )
+        }
     }
 
     /// Create a provider-owned entry with default metadata.
@@ -122,32 +122,6 @@ impl NodeEntry {
         location: LocationRef,
         name: impl Into<String>,
         kind: NodeKind,
-    ) -> Self {
-        let name = name.into();
-        let navigate = matches!(kind, NodeKind::Directory { .. });
-        Self::from_parts(
-            location,
-            &name,
-            kind,
-            0,
-            None,
-            None,
-            None,
-            NodeMeta::default(),
-        )
-        .with_readable(true)
-        .with_navigable(navigate)
-    }
-
-    fn from_parts(
-        location: LocationRef,
-        name: &str,
-        kind: NodeKind,
-        size: u64,
-        modified: Option<SystemTime>,
-        created: Option<SystemTime>,
-        accessed: Option<SystemTime>,
-        meta: NodeMeta,
     ) -> Self {
         let navigate = matches!(kind, NodeKind::Directory { .. });
         Self {
@@ -157,13 +131,13 @@ impl NodeEntry {
                 read: true,
                 navigate,
             },
-            name: name.to_string(),
+            name: name.into(),
             kind,
-            size,
-            modified,
-            created,
-            accessed,
-            meta,
+            size: 0,
+            modified: None,
+            created: None,
+            accessed: None,
+            meta: NodeMeta::default(),
         }
     }
 

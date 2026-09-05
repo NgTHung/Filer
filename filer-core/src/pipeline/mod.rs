@@ -167,6 +167,10 @@ impl Pipeline {
         pipeline
     }
 
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "This public builder appends a stage; arithmetic addition does not describe pipeline composition."
+    )]
     pub fn add<S: Stage + 'static>(mut self, stage: S) -> Self {
         self.stages.push(Box::new(stage));
         self

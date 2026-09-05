@@ -1,6 +1,6 @@
 use flume::Receiver;
 use rapidhash::fast::RandomState;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::actors::cancel::{CancelMap, CancellationToken};
@@ -10,7 +10,7 @@ use crate::api::events::Event;
 use crate::errors::ErrorCode;
 use crate::model::directory::DirectoryLoadState;
 use crate::model::directory::{DirectoryLoadOptions, DirectoryPageResult};
-use crate::model::location::{Location, LocationId, LocationRef, LocationRoute};
+use crate::model::location::{Location, LocationRef, LocationRoute};
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
 };
@@ -25,6 +25,7 @@ use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 use crate::vfs::segmented::SegmentedLocationResolver;
 
+use super::execution::{ScanEvents, ScanResources, ScanTarget};
 use super::paging::{PageLoad, PagingSessions};
 
 /// Commands for scanner actor
@@ -108,14 +109,12 @@ impl Scanner {
 
     fn dispatch_scan_with_location(
         &self,
-        path: PathBuf,
+        target: ScanTarget,
         session: SessionId,
         pipeline_config: PipelineConfig,
         load_options: DirectoryLoadOptions,
         invalidate_cache: bool,
         request: RequestId,
-        parent_location: LocationRef,
-        parent_location_id: Option<LocationId>,
     ) {
         let provider = self.provider.clone();
         let events = self.events_sender.clone();
@@ -130,20 +129,22 @@ impl Scanner {
         let cancel = active_scans.arm(session);
         work.spawn(cancel.clone(), async move {
             Self::scan_directory(
-                &provider,
-                &events,
-                &path,
-                session,
+                ScanResources {
+                    provider: &provider,
+                    cancel: &cancel,
+                    cache: cache.as_ref(),
+                    paging: &paging,
+                },
+                ScanEvents {
+                    events: &events,
+                    latest_scans: &latest_scans,
+                    session,
+                    request,
+                },
+                target,
                 pipeline_config,
                 load_options,
-                &cancel,
-                request,
-                &latest_scans,
-                cache.as_ref(),
-                &paging,
                 invalidate_cache,
-                parent_location,
-                parent_location_id,
             )
             .await;
             active_scans.remove_if_current(session, &cancel).await;
@@ -198,14 +199,16 @@ impl Scanner {
             }
         };
         self.dispatch_scan_with_location(
-            path,
+            ScanTarget {
+                path,
+                parent_location: LocationRef::from_location(&location),
+                parent_location_id: Some(location.id()),
+            },
             session,
             pipeline_config,
             load_options,
             invalidate_cache,
             request,
-            LocationRef::from_location(&location),
-            Some(location.id()),
         );
     }
 
@@ -232,15 +235,17 @@ impl Scanner {
         work.spawn(cancel.clone(), async move {
             Self::scan_segmented_location(
                 &provider,
-                &events,
+                ScanEvents {
+                    events: &events,
+                    latest_scans: &latest_scans,
+                    session,
+                    request,
+                },
                 descriptor,
                 parent,
-                session,
                 pipeline_config,
                 load_options,
                 &cancel,
-                request,
-                &latest_scans,
             )
             .await;
             active_scans.remove_if_current(session, &cancel).await;
@@ -248,21 +253,31 @@ impl Scanner {
     }
 
     async fn scan_directory(
-        provider: &Arc<dyn FsProvider>,
-        events: &EventSink,
-        path: &Path,
-        session: SessionId,
+        resources: ScanResources<'_>,
+        scan_events: ScanEvents<'_>,
+        target: ScanTarget,
         pipeline_config: PipelineConfig,
         load_options: DirectoryLoadOptions,
-        cancel: &CancellationToken,
-        request: RequestId,
-        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
-        cache: Option<&SharedDirCache>,
-        paging: &PagingSessions,
         invalidate_cache: bool,
-        parent_location: LocationRef,
-        parent_location_id: Option<LocationId>,
     ) {
+        let ScanResources {
+            provider,
+            cancel,
+            cache,
+            paging,
+        } = resources;
+        let ScanEvents {
+            events,
+            latest_scans,
+            session,
+            request,
+        } = scan_events;
+        let ScanTarget {
+            path,
+            parent_location,
+            parent_location_id,
+        } = target;
+        let path = path.as_path();
         if invalidate_cache {
             paging.clear_session(session);
             if let Some(cache) = cache
@@ -326,12 +341,9 @@ impl Scanner {
                 {
                     Ok(PageLoad::Page(page)) => {
                         Self::emit_page_result(
-                            events,
-                            latest_scans,
+                            scan_events,
                             path,
                             parent_location.clone(),
-                            session,
-                            request,
                             page,
                             &pipeline_config,
                             "scan page result (cached)",
@@ -547,12 +559,9 @@ impl Scanner {
             }
 
             Self::emit_page_result(
-                events,
-                latest_scans,
+                scan_events,
                 path,
                 parent_location.clone(),
-                session,
-                request,
                 page,
                 &pipeline_config,
                 "scan page result",
@@ -748,16 +757,19 @@ impl Scanner {
 
     async fn scan_segmented_location(
         provider: &Arc<dyn FsProvider>,
-        events: &EventSink,
+        scan_events: ScanEvents<'_>,
         descriptor: crate::LocationDescriptor,
         parent: LocationRef,
-        session: SessionId,
         pipeline_config: PipelineConfig,
         load_options: DirectoryLoadOptions,
         cancel: &CancellationToken,
-        request: RequestId,
-        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
     ) {
+        let ScanEvents {
+            events,
+            latest_scans,
+            session,
+            request,
+        } = scan_events;
         let target_path = descriptor.display_path();
         let target = std::path::Path::new(&target_path);
         Self::emit_scan_progress(
@@ -867,16 +879,19 @@ impl Scanner {
     }
 
     async fn emit_page_result(
-        events: &EventSink,
-        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
+        scan_events: ScanEvents<'_>,
         path: &Path,
         parent_location: LocationRef,
-        session: SessionId,
-        request: RequestId,
         page: DirectoryPageResult,
         pipeline_config: &PipelineConfig,
         context: &'static str,
     ) {
+        let ScanEvents {
+            events,
+            latest_scans,
+            session,
+            request,
+        } = scan_events;
         let page_state = page.state.clone();
         Self::emit_scan_progress(
             events,

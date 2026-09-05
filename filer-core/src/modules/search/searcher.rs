@@ -30,6 +30,10 @@ pub enum SearchEventMode {
 
 /// Commands for searcher actor
 #[derive(Debug, Clone)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Keep the public command payload inline to avoid an allocation for each search request."
+)]
 pub enum SearchCommand {
     Search {
         query: SearchQuery,

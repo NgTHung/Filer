@@ -23,7 +23,7 @@ use crate::{CoreError, ErrorCode, ErrorTarget, FsProvider, ProviderCx};
 
 use super::target::{affected_location, resolve_direct_target, resolve_direct_targets};
 
-type TrashFn = Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>;
+pub(crate) type TrashFn = Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>;
 
 /// Build the provider context for an operation from its cancel token and an
 /// optional deadline. Every operator provider call goes through `cx.race`, so
@@ -304,9 +304,7 @@ impl Operator {
                         &dst_sub,
                         &cx,
                         &events,
-                        session,
-                        operation,
-                        request,
+                        &ProgressScope::operation(OperationKind::Copy, session, request, operation),
                         &mut items_done,
                     )
                     .await
@@ -1099,9 +1097,7 @@ async fn copy_dir_recursive(
     dst: &Path,
     cx: &ProviderCx<'_>,
     events: &EventSink,
-    session: SessionId,
-    operation: OperationId,
-    request: RequestId,
+    scope: &ProgressScope,
     items_done: &mut usize,
 ) -> Result<(), CoreError> {
     cx.race(fs.scheme(), fs.mkdir(dst, cx)).await?;
@@ -1114,7 +1110,7 @@ async fn copy_dir_recursive(
         let dst_child = dst.join(&entry.name);
         if entry.is_dir() {
             Box::pin(copy_dir_recursive(
-                fs, &src_child, &dst_child, cx, events, session, operation, request, items_done,
+                fs, &src_child, &dst_child, cx, events, scope, items_done,
             ))
             .await?;
         } else {
@@ -1125,12 +1121,7 @@ async fn copy_dir_recursive(
             send_or_warn_async(
                 events,
                 Event::ProgressUpdated {
-                    scope: ProgressScope::operation(
-                        OperationKind::Copy,
-                        session,
-                        request,
-                        operation,
-                    ),
+                    scope: scope.clone(),
                     snapshot: ProgressSnapshot::new(
                         ProgressStatus::Running,
                         ProgressPhase::Processing,

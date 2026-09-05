@@ -6,6 +6,8 @@
 //! The module stack used in every test:
 //!   ScanModule::new(MockProvider) + NavigationModule::new(scan.sender())
 
+use support::state::SharedLog;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -36,7 +38,7 @@ const TIMEOUT: Duration = Duration::from_millis(2000);
 #[derive(Clone)]
 struct MockProvider {
     /// directory path → children
-    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<NodeEntry>)>>>,
+    files_by_path: SharedLog<(PathBuf, Vec<NodeEntry>)>,
     /// Records every path that `list()` was called with
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
 }

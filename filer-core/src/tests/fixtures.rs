@@ -4,6 +4,9 @@
 //! when a test needs a location-native row. Assertions should use the resulting
 //! `LocationRef` or `NodeEntry` identity.
 
+#[path = "../../tests/support/state.rs"]
+pub(crate) mod state;
+
 use std::path::PathBuf;
 use std::time::SystemTime;
 

@@ -14,6 +14,8 @@
 //! core.load(scan);
 //! ```
 
+mod execution;
+
 #[cfg(not(test))]
 mod paging;
 #[cfg(test)]

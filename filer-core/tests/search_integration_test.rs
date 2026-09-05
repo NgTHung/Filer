@@ -6,6 +6,8 @@
 //! The module stack used in every test:
 //!   ScanModule::new(MockProvider) + SearchModule::new(MockProvider)
 
+use support::state::SharedLog;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -30,7 +32,7 @@ const TIMEOUT: Duration = Duration::from_millis(3000);
 /// Search assertions use native entries throughout the provider boundary.
 #[derive(Clone)]
 struct MockProvider {
-    files_by_path: Arc<Mutex<Vec<(PathBuf, Vec<NodeEntry>)>>>,
+    files_by_path: SharedLog<(PathBuf, Vec<NodeEntry>)>,
 }
 
 impl MockProvider {
