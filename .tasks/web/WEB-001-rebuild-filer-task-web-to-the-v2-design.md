@@ -1,13 +1,13 @@
 ---
 id: WEB-001
 title: Rebuild filer-task-web to the v2 design
-status: To Do
+status: Deferred
 priority: High
 type: Epic
 risk: Medium
 impact: "Replaces the flat v1 task-web UI: ready-work, milestones, new-task creation, a policy-aware task list, a detail drawer with lifecycle actions, multi-project switching, project/policy configuration, task editing, and a light/dark theme."
 tags: [web, tasks, tooling]
-last_updated: 2026-07-15
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -22,3 +22,7 @@ Rebuilds filer-task-web around the screens the Filer Tasks v2 design proposed (c
 - [ ] The web app can find or create a project by path and edit its domain/prefix/type/tag policy, and an already-created task's own fields can be edited after the fact.
 - [ ] The static frontend ships the five core screens (Ready, Tasks, Milestones, New task, and the task detail drawer) and the command palette, wired to the project-scoped endpoints, plus a Settings screen, in-drawer task editing, and a light/dark theme toggle.
 - [ ] In-process API tests cover the new endpoints and filer-task validate passes after web-driven writes.
+
+## Rationale
+
+The maintainer approved keeping task-web work outside the active filer-core scope on 2026-09-05. Completed children remain Done; resume the remaining theme work when this area is selected.

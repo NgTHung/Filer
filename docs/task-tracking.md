@@ -332,6 +332,11 @@ Create tasks when work introduces a feature, capability, significant refactor, a
 
 When starting work, move the task to `In Progress`. When complete, verify the implementation, tests, and criteria before marking it `Done`. Use `Blocked` only when progress depends on a missing decision, external state, or unresolved dependency. Use `Deferred` or `Obsolete` with a clear rationale so future readers know why the work is not active.
 
+When you reproduce a client race owned by core, create or refine a concrete core
+bug task with the reproduction, expected event ordering, and regression test.
+Use an active parent when one covers the work. This replaces the open-ended
+REL-006 standing ticket; ordinary race fixes need a finite completion condition.
+
 Commands that select one task require its exact `domain:LOCAL-ID` identity.
 This applies to `show`, `context`, `deps`, every lifecycle command, and the
 `list --parent` filter. An unqualified selector fails and lists matching
@@ -383,11 +388,26 @@ cargo run -p taskroot -- ready --tag ready-for-agent --format json
 
 Use `ready` to select executable work. A ready task is `To Do`, is not a milestone, has no child tasks, has only `Done` dependencies, and has only `To Do` or `In Progress` ancestors. Results sort by priority and then qualified identity.
 
+For Filer, the current execution scope is domain `core`, milestone `0.3.1`.
+Use the scoped, triaged queue below unless the user selects a named task or
+another scope. A ready result establishes lifecycle eligibility, while
+`ready-for-agent` records that the task is specified. Milestone dependencies
+do not automatically gate member tasks; scheduled future entry tasks carry
+explicit dependencies on the preceding milestone.
+
 ```bash
-cargo run -p taskroot -- ready
-cargo run -p taskroot -- ready --domain core --milestone 0.3.0 --limit 5
-cargo run -p taskroot -- ready --tag provider --format json
+cargo run -p taskroot -- ready --domain core --milestone 0.3.1 --tag ready-for-agent --format json
+cargo run -p taskroot -- list --domain core --milestone 0.3.1 --tag needs-triage --format json
 ```
+
+Treat the unfiltered queue as a project inventory. App evaluation and task-web
+epics are Deferred while core is the focus; their existing children are retained.
+When you resume another area, reactivate its parent and inspect the selected
+child's context and specification before implementation. An empty scoped queue
+calls for refinement or a progress report, not automatic expansion into another
+crate. CORE-021 and CORE-024 lead the current queue; staged remediation and
+the initial benchmark slice follow. Dependency cleanup is optional lower-priority
+work. Update this scope when the active milestone changes.
 
 Use `show` when you need one task's full metadata and body sections:
 
@@ -416,12 +436,12 @@ pair.
 An agent should use this sequence:
 
 ```bash
-cargo run -p taskroot -- ready --limit 5 --format json
-cargo run -p taskroot -- context core:PROVIDER-001 --format json
-cargo run -p taskroot -- start core:PROVIDER-001
+cargo run -p taskroot -- ready --domain core --milestone 0.3.1 --tag ready-for-agent --limit 5 --format json
+cargo run -p taskroot -- context core:CORE-021 --format json
+cargo run -p taskroot -- start core:CORE-021
 # Implement and test the task.
 cargo run -p taskroot -- validate
-cargo run -p taskroot -- done core:PROVIDER-001
+cargo run -p taskroot -- done core:CORE-021
 ```
 
 Inspect dependencies that still need work:

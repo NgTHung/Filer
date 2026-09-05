@@ -1,16 +1,16 @@
 ---
-id: OPS-002
-title: Expand professional file operations
-status: To Do
-priority: Medium
-type: Epic
+id: "OPS-002"
+title: "Expand professional file operations"
+status: "To Do"
+priority: "Medium"
+type: "Epic"
 milestone: "0.5.0"
-depends_on: [OPS-001]
-rules: [PROVIDER-ACCESS, ACTOR-LONG-WORK, CORE-MECHANICS-BUILTIN]
-risk: High
+depends_on: ["OPS-001"]
+rules: ["PROVIDER-ACCESS", "ACTOR-LONG-WORK", "CORE-MECHANICS-BUILTIN"]
+risk: "High"
 impact: "Adds queued, reversible, bulk, and archive operations."
-tags: [operations, queue, archive]
-last_updated: 2026-09-05
+tags: ["operations", "queue", "archive", "enhancement", "needs-triage"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary

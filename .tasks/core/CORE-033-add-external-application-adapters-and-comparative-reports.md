@@ -1,16 +1,16 @@
 ---
 id: "CORE-033"
 title: "Add external application adapters and comparative reports"
-status: Deferred
+status: "Deferred"
 priority: "Medium"
 type: "Feature"
 parent: "CORE-029"
 depends_on: ["CORE-032"]
 risk: "Medium"
 impact: "Places Filer results beside pinned Yazi and Broot runs without mixing application and in-process leaderboards."
-tags: ["core", "performance", "benchmark", "tooling", "output"]
+tags: ["core", "performance", "benchmark", "tooling", "output", "enhancement", "needs-triage"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: 2026-09-05
+last_updated: "2026-09-05"
 ---
 
 ## Summary

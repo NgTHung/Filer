@@ -8,7 +8,7 @@ parent: "core:CORE-022"
 milestone: "0.3.1"
 rules: ["ACTOR-LONG-WORK", "SESSION-BOUNDARY"]
 risk: "Low"
-tags: ["core", "testing", "async"]
+tags: ["core", "testing", "async", "enhancement", "ready-for-agent"]
 last_updated: "2026-09-05"
 ---
 

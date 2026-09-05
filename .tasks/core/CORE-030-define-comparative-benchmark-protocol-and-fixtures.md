@@ -8,7 +8,7 @@ parent: "CORE-029"
 milestone: "0.3.1"
 risk: "Low"
 impact: "Fixes semantic equivalence, fixture identity, and result meaning before competitor measurements are trusted."
-tags: ["core", "performance", "benchmark", "protocol", "testing"]
+tags: ["core", "performance", "benchmark", "protocol", "testing", "enhancement", "ready-for-agent"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
 last_updated: "2026-09-05"
 ---

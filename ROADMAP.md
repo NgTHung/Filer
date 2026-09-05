@@ -4,7 +4,9 @@ This roadmap tracks the core engine and shared project architecture. The desktop
 app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
 roadmap lives in `filer-ecosystem/ROADMAP.md`.
 
-Current milestone: `0.3.0`.
+Current milestone: `0.3.1`, Local excellence. Core contract stabilization in
+`0.3.0` is complete. Use the scoped queue in
+[task tracking](docs/task-tracking.md#agent-workflow) when choosing work.
 
 ## Product Direction
 
@@ -25,13 +27,11 @@ scanning, search, operations, sessions, provider access, cache correctness, and
 event routing. Clients render extension output; extensions should not depend on
 desktop-only UI code.
 
-The current priority is **Core Contract Stabilization**. "Core" means the stable
-contracts that prevent churn across the app, future web clients, and extensions:
-request identity, cancellation, stale-event rejection, operation identity,
-structured error categories, provider addressing, large-directory loading
-contracts, extension output envelopes, and local-profile boundaries. It does
-not mean building every planned extension surface, web transport, marketplace,
-or app rewrite immediately.
+The current priority is local performance and reliability through the public
+core contracts. Finish the remaining allocation and maintenance work, then
+record comparable flat-directory baselines and one browse journey. The semantic
+extension plane follows in 0.4.0. App evaluation, task-web features, and broader
+benchmark adapters remain later work.
 
 The proof target for this phase is practical: Filer should load a very large
 local directory, such as `C:\Windows\System32`, without blocking the client, and
@@ -64,8 +64,7 @@ the misleading generic public cancel command in favor of explicit
 stable `TimedOut` code. API-006 removes the path- and NodeId-addressed command
 and event compatibility variants, so Location-native results are now the only
 public result surface. API-007 and API-017 have retired the remaining FileNode
-rows and NodeId-keyed internals. Remaining `0.3.0` work should finish
-provider-context timeout propagation.
+rows and NodeId-keyed internals. Provider-context timeout propagation is complete.
 
 Milestone labels:
 
@@ -164,8 +163,8 @@ Use `taskroot` to inspect the current work:
 
 ```bash
 cargo run -p taskroot -- validate
-cargo run -p taskroot -- list --milestone 0.3.0
-cargo run -p taskroot -- milestone 0.3.0 --exit-checklist
+cargo run -p taskroot -- list --milestone 0.3.1
+cargo run -p taskroot -- milestone 0.3.1 --exit-checklist
 cargo run -p taskroot -- list --domain core
 cargo run -p taskroot -- list --blocked
 cargo run -p taskroot -- summary

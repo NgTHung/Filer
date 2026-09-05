@@ -1,14 +1,14 @@
 ---
-id: SERVICES-001
-title: Remove the mime crate dependency
-status: To Do
-priority: Low
-type: Refactor
+id: "SERVICES-001"
+title: "Remove the mime crate dependency"
+status: "To Do"
+priority: "Low"
+type: "Refactor"
 milestone: "0.3.1"
-risk: Low
+risk: "Low"
 impact: "Drops the mime crate; the detector's text-type check uses string comparison."
-tags: [mime, dependencies]
-last_updated: 2026-07-09
+tags: ["mime", "dependencies", "enhancement", "ready-for-agent"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary

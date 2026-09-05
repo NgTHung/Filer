@@ -8,7 +8,7 @@ parent: "core:CORE-019"
 milestone: "0.3.1"
 rules: ["ACTOR-LONG-WORK", "PIPELINE-TRANSFORMS"]
 risk: "Medium"
-tags: ["core", "refactor", "paging"]
+tags: ["core", "refactor", "paging", "enhancement", "ready-for-agent"]
 last_updated: "2026-09-05"
 ---
 

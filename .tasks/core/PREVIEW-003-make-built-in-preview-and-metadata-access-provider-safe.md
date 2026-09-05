@@ -9,7 +9,7 @@ milestone: "0.4.0"
 depends_on: ["core:PREVIEW-002"]
 rules: ["PROVIDER-ACCESS", "ACTOR-LONG-WORK"]
 risk: "Medium"
-tags: ["core"]
+tags: ["core", "enhancement", "needs-triage"]
 last_updated: "2026-09-05"
 ---
 

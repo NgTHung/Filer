@@ -1,13 +1,13 @@
 ---
 id: "WEB-014"
 title: "Make filer-task-web a persistent team webapp"
-status: "To Do"
+status: Deferred
 priority: "High"
 type: "Epic"
 risk: "High"
 impact: "Turns filer-task-web from a stateless local executable into a self-hosted team webapp with an embedded SQLite layer for registry, identity, activity, index, and saved views, while .tasks/ files remain the source of truth."
 tags: ["web", "tasks", "server", "state"]
-last_updated: "2026-08-02"
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -22,3 +22,7 @@ web:WEB-001 rebuilds the UI but keeps filer-task-web a stateless local executabl
 - [ ] Task list queries are served from a database index that stays consistent with file changes made outside the webapp.
 - [ ] Named filter views persist in the database and are shared across the team.
 - [ ] The .tasks/ files remain the only source of truth for task content; deleting the database loses no task data.
+
+## Rationale
+
+The maintainer approved keeping task-web work outside the active filer-core scope on 2026-09-05. Persistence already landed in the completed children; index and saved-view work remain available when this parent is reactivated.

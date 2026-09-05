@@ -9,7 +9,7 @@ milestone: "0.4.0"
 depends_on: ["core:PREVIEW-003", "core:MODULES-003", "core:MODULES-004", "core:MODULES-005"]
 rules: ["SEMANTIC-EXTENSION-OUTPUT", "SESSION-BOUNDARY"]
 risk: "Medium"
-tags: ["core"]
+tags: ["core", "enhancement", "needs-triage"]
 last_updated: "2026-09-05"
 ---
 

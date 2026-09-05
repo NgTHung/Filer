@@ -1,15 +1,15 @@
 ---
-id: SERVICES-003
-title: Evaluate type detection with the file-format crate
-status: To Do
-priority: Low
-type: Design
+id: "SERVICES-003"
+title: "Evaluate type detection with the file-format crate"
+status: "To Do"
+priority: "Low"
+type: "Design"
 milestone: "0.3.1"
-depends_on: [SERVICES-002]
-risk: High
+depends_on: ["SERVICES-002"]
+risk: "High"
 impact: "Measures whether replacing the existing detectors improves cost without changing category routing or provider reads."
-tags: [mime, detection, dependencies]
-last_updated: 2026-09-05
+tags: ["mime", "detection", "dependencies", "enhancement", "ready-for-agent"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary

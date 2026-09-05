@@ -1,7 +1,7 @@
 ---
 id: "UI-001"
 title: "Select the filer-app UI framework"
-status: "To Do"
+status: Deferred
 priority: "High"
 type: "Epic"
 rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK", "PIPELINE-TRANSFORMS"]
@@ -9,7 +9,7 @@ risk: "High"
 impact: "Chooses the long-lived desktop UI stack and prevents framework concerns from entering filer-core."
 tags: ["architecture", "testing", "benchmark", "performance", "dependencies"]
 whitepaper: "docs/architecture/filer-app.md"
-last_updated: "2026-08-11"
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -23,3 +23,7 @@ Evaluate every serious desktop UI candidate against the same framework-neutral a
 - [ ] UI-010 records the selected framework, measured evidence, accepted limitations, dependency strategy, and fallback.
 - [ ] No candidate receives a passing result through missing behavior, reduced workloads, disabled accessibility, or framework-specific business logic.
 - [ ] Prototype dependencies and code are isolated so rejected candidates can be removed without changing the framework-free app model.
+
+## Rationale
+
+The maintainer approved keeping app evaluation outside the active filer-core scope on 2026-09-05. Preserve all candidate tasks and reactivate this parent when desktop work is selected.

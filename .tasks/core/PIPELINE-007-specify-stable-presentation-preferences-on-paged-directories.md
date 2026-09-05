@@ -9,7 +9,7 @@ milestone: "0.5.0"
 depends_on: ["milestones:MILESTONE-005", "core:PIPELINE-003"]
 rules: ["PIPELINE-TRANSFORMS", "CORE-LIBRARY"]
 risk: "Medium"
-tags: ["core"]
+tags: ["core", "enhancement", "ready-for-agent"]
 last_updated: "2026-09-05"
 ---
 

@@ -8,7 +8,7 @@ parent: "core:CORE-031"
 milestone: "0.3.1"
 depends_on: ["core:CORE-039"]
 risk: "Medium"
-tags: ["core", "benchmark", "performance"]
+tags: ["core", "benchmark", "performance", "enhancement", "ready-for-agent"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
 last_updated: "2026-09-05"
 ---

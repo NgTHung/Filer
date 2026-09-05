@@ -7,7 +7,7 @@ type: "TestDebt"
 parent: "core:CORE-022"
 milestone: "0.3.1"
 risk: "Low"
-tags: ["core", "testing"]
+tags: ["core", "testing", "enhancement", "ready-for-agent"]
 last_updated: "2026-09-05"
 ---
 

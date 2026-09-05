@@ -6,12 +6,12 @@ priority: High
 type: Feature
 parent: MODULES-001
 milestone: "0.4.0"
-depends_on: [MODULES-002]
+depends_on: [MODULES-002, milestones:MILESTONE-004]
 rules: [WIRE-SAFE-EXTENSIONS, SEMANTIC-EXTENSION-OUTPUT]
 risk: High
 impact: "Fixes the serializable envelope shapes every extension output and future transport client depends on."
 tags: [extensions, semantic-output]
-last_updated: 2026-07-09
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -21,4 +21,3 @@ Define the serializable envelope types that carry semantic extension output: dec
 ## Rationale
 
 Staged decomposition of MODULES-001; reactivate when MILESTONE-005 (0.4.0) work begins.
-

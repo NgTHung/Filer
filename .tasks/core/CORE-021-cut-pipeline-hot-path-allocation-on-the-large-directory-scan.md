@@ -1,16 +1,16 @@
 ---
-id: CORE-021
-title: Cut pipeline hot-path allocation on the large-directory scan
-status: To Do
-priority: High
-type: Refactor
-parent: CORE-027
+id: "CORE-021"
+title: "Cut pipeline hot-path allocation on the large-directory scan"
+status: "To Do"
+priority: "High"
+type: "Refactor"
+parent: "CORE-027"
 milestone: "0.3.1"
-rules: [PIPELINE-TRANSFORMS]
-risk: Low
+rules: ["PIPELINE-TRANSFORMS"]
+risk: "Low"
 impact: "Per-row allocation and dead stage work on the scan hot path tax the performance-first priority."
-tags: [core, audit, remediation, performance]
-last_updated: 2026-09-05
+tags: ["core", "audit", "remediation", "performance", "enhancement", "ready-for-agent"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary

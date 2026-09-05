@@ -1,13 +1,13 @@
 ---
 id: "WEB-022"
 title: "Publish task progression to an external read-only service"
-status: "To Do"
+status: Deferred
 priority: "High"
 type: "Epic"
 risk: "Medium"
 impact: "Lets an independent service present current task progress without access to a checkout or Filer internals."
 tags: ["web", "contracts", "sync", "tasks"]
-last_updated: "2026-08-08"
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -21,3 +21,7 @@ Task state only exists inside a checkout, but a separate read-only service needs
 - [ ] Raw task files, local paths, and Markdown never cross the publish boundary.
 - [ ] Delivery failure never rolls back or blocks a committed local task write.
 - [ ] Receiver storage, hosting, read APIs, and user interface remain outside the Filer repository.
+
+## Rationale
+
+The maintainer approved keeping external task publication outside the active filer-core scope on 2026-09-05. Preserve the contract and publisher tasks for later selection.

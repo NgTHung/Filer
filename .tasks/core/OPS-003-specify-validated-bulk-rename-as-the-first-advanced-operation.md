@@ -9,7 +9,7 @@ milestone: "0.5.0"
 depends_on: ["milestones:MILESTONE-005", "core:OPS-001"]
 rules: ["PROVIDER-ACCESS", "ACTOR-LONG-WORK"]
 risk: "Medium"
-tags: ["core"]
+tags: ["core", "enhancement", "ready-for-agent"]
 last_updated: "2026-09-05"
 ---
 

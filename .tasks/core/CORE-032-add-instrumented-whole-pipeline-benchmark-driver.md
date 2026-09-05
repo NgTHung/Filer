@@ -9,7 +9,7 @@ milestone: "0.3.1"
 depends_on: ["CORE-031"]
 risk: "Medium"
 impact: "Measures one correct input-to-view journey without requiring a desktop client."
-tags: ["core", "performance", "benchmark", "tracing", "pipeline"]
+tags: ["core", "performance", "benchmark", "tracing", "pipeline", "enhancement", "ready-for-agent"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
 last_updated: "2026-09-05"
 ---

@@ -277,7 +277,9 @@ Use these phases:
 
 Derive provider, pipeline, queue, view-update, and render durations from one
 monotonic clock domain. Propagate the run, action, session, and request ids
-through every phase. Missing or duplicate phases invalidate the sample.
+through every phase. Missing or duplicate phases required by the selected
+scenario invalidate the sample. CORE-042 owns this internal attribution;
+the initial CORE-032 journey requires only its public input/event/view markers.
 
 The reference application is a deterministic consumer of public Filer-core
 events. It maintains viewport, selection, sorting, filtering, grouping, and

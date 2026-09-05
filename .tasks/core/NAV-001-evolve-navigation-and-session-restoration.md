@@ -1,15 +1,15 @@
 ---
-id: NAV-001
-title: Evolve navigation and session restoration
-status: To Do
-priority: Medium
-type: Epic
+id: "NAV-001"
+title: "Evolve navigation and session restoration"
+status: "To Do"
+priority: "Medium"
+type: "Epic"
 milestone: "0.5.0"
-rules: [SESSION-BOUNDARY, ACTOR-LONG-WORK]
-risk: Medium
+rules: ["SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
+risk: "Medium"
 impact: "Extends session state used by tabs, panes, workspaces, and transport."
-tags: [navigation, sessions, workspace]
-last_updated: 2026-09-05
+tags: ["navigation", "sessions", "workspace", "enhancement", "needs-triage"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary

@@ -1,16 +1,16 @@
 ---
 id: "CORE-034"
 title: "Add system framework and recursive peer adapters"
-status: Deferred
+status: "Deferred"
 priority: "Medium"
 type: "Feature"
 parent: "CORE-029"
 depends_on: ["CORE-031", "CORE-042"]
 risk: "Medium"
 impact: "Extends semantic comparisons to GIO, KIO, walkdir, jwalk, and ignore without making system libraries required for Filer-core."
-tags: ["core", "performance", "benchmark", "provider", "search"]
+tags: ["core", "performance", "benchmark", "provider", "search", "enhancement", "needs-triage"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: 2026-09-05
+last_updated: "2026-09-05"
 ---
 
 ## Summary

@@ -103,6 +103,8 @@ Filer tracks features, epics, milestones, and development work in `.tasks/`, ver
 
 Use the repository-local `taskroot-workflow` skill for substantial planning or implementation, named task IDs, ready-work selection, and any work that may create or refine a task.
 
+When choosing work, read the Agent Workflow section of `docs/task-tracking.md` for the active scope and scoped ready queue.
+
 Run `taskroot` before and after task changes:
 
 ```bash

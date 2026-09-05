@@ -1,15 +1,15 @@
 ---
-id: SEARCH-001
-title: Expand provider-aware search
-status: To Do
-priority: Medium
-type: Epic
+id: "SEARCH-001"
+title: "Expand provider-aware search"
+status: "To Do"
+priority: "Medium"
+type: "Epic"
 milestone: "0.5.0"
-rules: [PROVIDER-ACCESS, ACTOR-LONG-WORK, SESSION-BOUNDARY]
-risk: Medium
+rules: ["PROVIDER-ACCESS", "ACTOR-LONG-WORK", "SESSION-BOUNDARY"]
+risk: "Medium"
 impact: "Extends search roots, indexing, and provider delegation."
-tags: [search, provider, indexing]
-last_updated: 2026-09-05
+tags: ["search", "provider", "indexing", "enhancement", "needs-triage"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary

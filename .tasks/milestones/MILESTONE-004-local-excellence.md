@@ -35,8 +35,8 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 - CORE-027 and children CORE-017, CORE-018, CORE-019, CORE-021, CORE-022, CORE-024, PIPELINE-003
 - CORE-028 (benchmark harness; gates the performance criteria below)
 - CORE-030, CORE-039, CORE-031 with CORE-040/CORE-041, and CORE-032 (initial comparative evidence and one browse journey)
-- SERVICES-001 and SERVICES-003 (dependency cleanup; SERVICES-003 may close without the swap per its own criteria)
-- REL-006 stays milestone-free by its recorded rationale; reproduced races landing during 0.3.1 still route through it
+- SERVICES-001 and SERVICES-003 (optional dependency cleanup and a measured detector decision; neither gates this milestone)
+- Reproduced client races use concrete core bug tasks under the workflow in docs/task-tracking.md; REL-006 is retired
 
 ## Exit Criteria
 

@@ -1,15 +1,15 @@
 ---
-id: PIPELINE-002
-title: Evolve directory presentation contracts
-status: To Do
-priority: Medium
-type: Epic
+id: "PIPELINE-002"
+title: "Evolve directory presentation contracts"
+status: "To Do"
+priority: "Medium"
+type: "Epic"
 milestone: "0.5.0"
-rules: [PIPELINE-TRANSFORMS]
-risk: Medium
+rules: ["PIPELINE-TRANSFORMS"]
+risk: "Medium"
 impact: "Changes sorting, grouping, and folder preference behavior across clients."
-tags: [pipeline, sorting, grouping, performance]
-last_updated: 2026-09-05
+tags: ["pipeline", "sorting", "grouping", "performance", "enhancement", "needs-triage"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary

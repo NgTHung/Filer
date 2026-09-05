@@ -7,7 +7,7 @@ type: "Epic"
 parent: "core:CORE-029"
 depends_on: ["core:CORE-032"]
 risk: "Medium"
-tags: ["core", "benchmark", "performance"]
+tags: ["core", "benchmark", "performance", "enhancement", "needs-triage"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
 last_updated: "2026-09-05"
 ---

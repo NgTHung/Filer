@@ -1,15 +1,15 @@
 ---
-id: CORE-024
-title: Remove code preview theme unwrap fallback
-status: To Do
-priority: High
-type: Refactor
-parent: CORE-027
+id: "CORE-024"
+title: "Remove code preview theme unwrap fallback"
+status: "To Do"
+priority: "High"
+type: "Refactor"
+parent: "CORE-027"
 milestone: "0.3.1"
-risk: Low
+risk: "Low"
 impact: "Theme fallback can panic when the theme set is empty, violating the no-panic rule on a preview path."
-tags: [core, audit, remediation, reliability]
-last_updated: 2026-09-05
+tags: ["core", "audit", "remediation", "reliability", "bug", "ready-for-agent"]
+last_updated: "2026-09-05"
 ---
 
 ## Summary
