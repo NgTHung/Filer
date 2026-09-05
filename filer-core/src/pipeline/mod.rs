@@ -88,12 +88,16 @@ pub trait Stage: Send + Sync {
 /// Use `PipelineConfig` for cross-process communication and build
 /// the Pipeline in-core with `Pipeline::from_config()`.
 pub struct Pipeline {
+    row_filters: Vec<Box<dyn filter::RowFilter>>,
     stages: Vec<Box<dyn Stage>>,
 }
 
 impl Pipeline {
     pub fn new() -> Self {
-        Self { stages: Vec::new() }
+        Self {
+            row_filters: Vec::new(),
+            stages: Vec::new(),
+        }
     }
 
     /// Build a Pipeline from a serializable PipelineConfig
@@ -106,18 +110,19 @@ impl Pipeline {
         // Add filter stages
         if let Some(filter_config) = &config.filter {
             // Hidden files filter
-            pipeline = pipeline.add(filter::FilterHidden::new(filter_config.show_hidden));
+            pipeline =
+                pipeline.add_row_filter(filter::FilterHidden::new(filter_config.show_hidden));
 
             // Extension filter (include)
             if !filter_config.include_extensions.is_empty() {
-                pipeline = pipeline.add(filter::FilterByExtension::new(
+                pipeline = pipeline.add_row_filter(filter::FilterByExtension::new(
                     filter_config.include_extensions.clone(),
                     false,
                 ));
             }
 
             if !filter_config.exclude_extensions.is_empty() {
-                pipeline = pipeline.add(filter::FilterByExtension::new(
+                pipeline = pipeline.add_row_filter(filter::FilterByExtension::new(
                     filter_config.exclude_extensions.clone(),
                     true,
                 ));
@@ -134,7 +139,7 @@ impl Pipeline {
                 query_filters.push(QueryFilter::NameGlob(name_pattern.clone()));
             }
             if !query_filters.is_empty() {
-                pipeline = pipeline.add(filter::FilterByQuery::new(query_filters));
+                pipeline = pipeline.add_row_filter(filter::FilterByQuery::new(query_filters));
             }
         }
 
@@ -167,8 +172,17 @@ impl Pipeline {
         self
     }
 
+    fn add_row_filter<F: filter::RowFilter + 'static>(mut self, filter: F) -> Self {
+        self.row_filters.push(Box::new(filter));
+        self
+    }
+
     pub fn execute(&self, data: Vec<NodeEntry>) -> PipelineData {
-        let mut pipeline_data = PipelineData::Flat(data);
+        let mut pipeline_data = filter::retain_nodes(PipelineData::Flat(data), |entry| {
+            self.row_filters
+                .iter()
+                .all(|row_filter| row_filter.matches(entry))
+        });
 
         for stage in &self.stages {
             pipeline_data = stage.process(pipeline_data);
@@ -210,14 +224,22 @@ impl Pipeline {
         }
     }
 
+    /// Apply only the filters configured from `PipelineConfig` to one row.
+    pub(crate) fn filter_entry(&self, entry: NodeEntry) -> Option<NodeEntry> {
+        self.row_filters
+            .iter()
+            .all(|row_filter| row_filter.matches(&entry))
+            .then_some(entry)
+    }
+
     /// Get number of stages
     pub fn len(&self) -> usize {
-        self.stages.len()
+        self.row_filters.len() + self.stages.len()
     }
 
     /// Check if pipeline is empty
     pub fn is_empty(&self) -> bool {
-        self.stages.is_empty()
+        self.row_filters.is_empty() && self.stages.is_empty()
     }
 }
 

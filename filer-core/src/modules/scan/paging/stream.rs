@@ -78,7 +78,7 @@ pub(crate) async fn take_page(
         let batch = stream.next_batch(batch_size(config, shortfall), cx).await?;
         exhausted = batch.end_of_directory;
         for entry in batch.entries {
-            if let Some(kept) = pipeline.execute_flat(vec![entry]).pop() {
+            if let Some(kept) = pipeline.filter_entry(entry) {
                 pending.push_back(kept);
             }
         }

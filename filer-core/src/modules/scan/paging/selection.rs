@@ -77,8 +77,7 @@ impl<'a> PageSelection<'a> {
             if index % CANCELLATION_CHECK_INTERVAL == 0 && cx.is_cancelled() {
                 return false;
             }
-            let mut filtered = self.pipeline.execute_flat(vec![entry]);
-            let Some(entry) = filtered.pop() else {
+            let Some(entry) = self.pipeline.filter_entry(entry) else {
                 continue;
             };
             self.total_matches += 1;
