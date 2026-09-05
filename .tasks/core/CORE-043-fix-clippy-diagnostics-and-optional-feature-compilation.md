@@ -1,7 +1,7 @@
 ---
 id: "CORE-043"
 title: "Fix Clippy diagnostics and optional-feature compilation"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Bug"
 parent: "core:CORE-027"
@@ -9,7 +9,7 @@ milestone: "0.3.1"
 risk: "Medium"
 impact: "Restores clean filer-core builds and lint checks across optional feature configurations."
 tags: ["core", "bug", "quality", "testing", "remediation", "ready-for-agent"]
-last_updated: "2026-09-05"
+last_updated: 2026-09-05
 ---
 
 ## Summary
