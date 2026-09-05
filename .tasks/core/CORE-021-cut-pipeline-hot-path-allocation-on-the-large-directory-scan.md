@@ -2,7 +2,7 @@
 id: CORE-021
 title: Cut pipeline hot-path allocation on the large-directory scan
 status: To Do
-priority: Medium
+priority: High
 type: Refactor
 parent: CORE-027
 milestone: "0.3.1"
@@ -10,19 +10,20 @@ rules: [PIPELINE-TRANSFORMS]
 risk: Low
 impact: "Per-row allocation and dead stage work on the scan hot path tax the performance-first priority."
 tags: [core, audit, remediation, performance]
-last_updated: 2026-08-31
+last_updated: 2026-09-05
 ---
 
 ## Summary
 
-The grouped pipeline branches clone every node they touch: FilterHidden, FilterByExtension, and SortBy all do group.nodes = self.xxx(group.nodes.clone()), a deep per-row Vec<FileNode> allocation that std::mem::take(&mut group.nodes) removes. Separately, PageSelection::extend calls execute_flat(vec![entry]) once per directory row, allocating a one-element Vec and walking every stage for a single node, while the real order comes from the compare_nodes binary insert that follows, so the SortBy and GroupBy stages do nothing useful per row. On the large-directory target this is per-row allocation plus dead stage work on the hot path. Remove the grouped-branch clones via mem::take and avoid the per-row full-pipeline execution.
+Grouped filters already retain NodeEntry values in place in pipeline/filter.rs, and grouped sorting uses mem::take in pipeline/sort.rs. Preserve those improvements. Both modules/scan/paging/stream.rs and modules/scan/paging/selection.rs still call execute_flat(vec![entry]) for each provider row. Remove those temporary vectors and selection-irrelevant stages through shared Pipeline-owned filtering logic. Keep paging mechanics outside the predicate implementation.
 
-Boundary: this task is per-row allocation and dead stage work only. CORE-018 owns paging session TTL and cursor docs. PIPELINE-003 owns first-page streaming and O(directory) next-page rewalk (audit F24).
+CORE-018 and PIPELINE-003 are Done. Preserve their bounded cursor lifetime, streaming lookahead, ordered continuation, and cancellation contracts. Comparator changes, new filter semantics, and scanner decomposition are outside this task.
 
-Milestone 0.3.1 (MILESTONE-004 draft). Tracked under CORE-027 post-audit remediation.
+Use the existing pipeline_filter_contract_test and scanner paging tests as behavioral references. Measure the existing path before implementation and repeat on the same generated input after the change.
 
 ## Acceptance Criteria
 
-- [ ] Grouped filter and sort stages move their input with mem::take instead of cloning, with no behavior change.
-- [ ] The paging hot path no longer runs the full pipeline per row; per-row filtering keeps only the work that affects selection.
-- [ ] A benchmark or test demonstrates reduced per-row allocation on a large-directory scan.
+- [x] Grouped filters retain nodes in place and grouped sorting moves its input without cloning rows.
+- [ ] Streaming page assembly and PageSelection share Pipeline-owned row filtering without allocating a temporary Vec or executing sort/group stages for each row.
+- [ ] Regression tests compare flat and paged results for hidden, extension inclusion/exclusion, name, and size filters; sorted and grouped output, lookahead, and cancellation behavior remain correct.
+- [ ] Before/after allocation counts and allocated bytes on a 10,000-entry fixture demonstrate the reduction for both paging paths; public first/next-page timings are recorded with the machine and revision.
