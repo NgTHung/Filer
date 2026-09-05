@@ -5,6 +5,7 @@ use std::fs;
 use filer_core::services::mime::{DetectionConfidence, MimeCategory, MimeInfo};
 use filer_core::services::preview::providers::CodeProvider;
 use filer_core::services::preview::{PreviewData, PreviewOptions, PreviewProvider};
+use syntect::highlighting::ThemeSet;
 
 fn text_mime() -> MimeInfo {
     MimeInfo {
@@ -39,6 +40,37 @@ async fn unknown_theme_preserves_highlighted_preview_payload() {
         } => {
             assert_ne!(content, source);
             assert!(content.contains("main"));
+            assert_eq!(language, "Rust");
+            assert_eq!(theme, "theme-that-does-not-exist");
+            assert!(!truncated);
+        }
+        other => panic!("expected highlighted text, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn empty_theme_set_returns_unstyled_highlighted_preview() {
+    let directory = tempfile::tempdir().expect("temporary directory should be available");
+    let path = directory.path().join("sample.rs");
+    let source = "fn main() {}\n";
+    fs::write(&path, source).expect("source fixture should be writable");
+
+    let mut options = PreviewOptions::default();
+    options.syntax_theme = "theme-that-does-not-exist".to_string();
+
+    let result = CodeProvider::with_theme_set(ThemeSet::new())
+        .generate(&path, &text_mime(), &options)
+        .await
+        .expect("code preview should be generated");
+
+    match result {
+        PreviewData::HighlightedText {
+            content,
+            language,
+            theme,
+            truncated,
+        } => {
+            assert_eq!(content, source);
             assert_eq!(language, "Rust");
             assert_eq!(theme, "theme-that-does-not-exist");
             assert!(!truncated);
