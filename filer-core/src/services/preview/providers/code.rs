@@ -80,7 +80,11 @@ impl CodeProvider {
             .themes
             .get(theme)
             .or_else(|| self.themes.themes.get("base16-ocean.dark"))
-            .unwrap_or_else(|| self.themes.themes.values().next().unwrap());
+            .or_else(|| self.themes.themes.values().next());
+
+        let Some(theme_obj) = theme_obj else {
+            return code.to_owned();
+        };
 
         let mut highlighter = HighlightLines::new(syntax, theme_obj);
         let mut output = String::new();
