@@ -3,15 +3,38 @@ use std::path::Path;
 use async_trait::async_trait;
 use tokio::io::AsyncReadExt;
 
+#[cfg(feature = "preview-code")]
+use syntect::highlighting::ThemeSet;
+
 use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeInfo};
 use crate::services::preview::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
+#[cfg(feature = "preview-code")]
+pub struct CodeProvider {
+    themes: ThemeSet,
+}
+
+#[cfg(not(feature = "preview-code"))]
 pub struct CodeProvider;
 
 impl CodeProvider {
+    #[cfg(feature = "preview-code")]
+    pub fn new() -> Self {
+        Self {
+            themes: ThemeSet::load_defaults(),
+        }
+    }
+
+    #[cfg(not(feature = "preview-code"))]
     pub fn new() -> Self {
         Self
+    }
+
+    #[cfg(feature = "preview-code")]
+    /// Creates a provider with the supplied syntax theme catalog.
+    pub fn with_theme_set(themes: ThemeSet) -> Self {
+        Self { themes }
     }
 
     #[cfg(feature = "preview-code")]
@@ -40,25 +63,24 @@ impl CodeProvider {
     }
 
     #[cfg(feature = "preview-code")]
-    fn highlight(code: &str, language: &str, theme: &str) -> String {
+    fn highlight(&self, code: &str, language: &str, theme: &str) -> String {
         use syntect::easy::HighlightLines;
-        use syntect::highlighting::ThemeSet;
         use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
         use syntect::parsing::SyntaxSet;
         use syntect::util::LinesWithEndings;
 
         let ss = SyntaxSet::load_defaults_newlines();
-        let ts = ThemeSet::load_defaults();
 
         let syntax = ss
             .find_syntax_by_name(language)
             .unwrap_or_else(|| ss.find_syntax_plain_text());
 
-        let theme_obj = ts
+        let theme_obj = self
+            .themes
             .themes
             .get(theme)
-            .or_else(|| ts.themes.get("base16-ocean.dark"))
-            .unwrap_or_else(|| ts.themes.values().next().unwrap());
+            .or_else(|| self.themes.themes.get("base16-ocean.dark"))
+            .unwrap_or_else(|| self.themes.themes.values().next().unwrap());
 
         let mut highlighter = HighlightLines::new(syntax, theme_obj);
         let mut output = String::new();
@@ -103,7 +125,7 @@ impl PreviewProvider for CodeProvider {
 
         #[cfg(feature = "preview-code")]
         if let Some(lang) = Self::detect_language(path) {
-            let highlighted = Self::highlight(&content, lang, &options.syntax_theme);
+            let highlighted = self.highlight(&content, lang, &options.syntax_theme);
             return Ok(PreviewData::HighlightedText {
                 content: highlighted,
                 language: lang.to_string(),
