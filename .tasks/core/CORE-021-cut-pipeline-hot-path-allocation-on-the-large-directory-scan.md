@@ -24,6 +24,6 @@ Use the existing pipeline_filter_contract_test and scanner paging tests as behav
 ## Acceptance Criteria
 
 - [x] Grouped filters retain nodes in place and grouped sorting moves its input without cloning rows.
-- [ ] Streaming page assembly and PageSelection share Pipeline-owned row filtering without allocating a temporary Vec or executing sort/group stages for each row.
-- [ ] Regression tests compare flat and paged results for hidden, extension inclusion/exclusion, name, and size filters; sorted and grouped output, lookahead, and cancellation behavior remain correct.
-- [ ] Before/after allocation counts and allocated bytes on a 10,000-entry fixture demonstrate the reduction for both paging paths; public first/next-page timings are recorded with the machine and revision.
+- [x] Streaming page assembly and PageSelection share Pipeline-owned row filtering without allocating a temporary Vec or executing sort/group stages for each row.
+- [x] Regression tests compare flat and paged results for hidden, extension inclusion/exclusion, name, and size filters; sorted and grouped output, lookahead, and cancellation behavior remain correct.
+- [x] Before/after allocation counts and allocated bytes on a 10,000-entry fixture demonstrate the reduction for both paging paths; public first/next-page timings are recorded with the machine and revision.
