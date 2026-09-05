@@ -9,19 +9,19 @@ rules: [SESSION-BOUNDARY, ACTOR-LONG-WORK]
 risk: Medium
 impact: "Extends session state used by tabs, panes, workspaces, and transport."
 tags: [navigation, sessions, workspace]
-last_updated: 2026-07-09
+last_updated: 2026-09-05
 ---
 
 ## Summary
 
 Provide frontend-independent restorable session state on top of the existing Location-native navigation history.
 
-Back/forward navigation, history index, and can_forward already exist in the navigator after CORE-025. This epic focuses on snapshots, restore, multi-session workspace layout, and future transport handoff.
+Back/forward navigation, history index, and can_forward already exist. NAV-002 first specifies restoration of one session's Location, history, and PipelineConfig, then creates implementation stages. Selection hints and provider recovery follow that contract; clients and ecosystem profiles own durable workspace layout. Future transport compatibility means a serializable snapshot contract here, with transport implementation owned by PROTOCOL-001.
 
 ## Exit Criteria
 
 - [x] Core exposes first-class forward navigation (navigator Forward / can_forward / history index).
 - [ ] Session snapshots restore location, history, pipeline configuration, selection hints, and active providers.
 - [ ] Tabs and split panes can use independent sessions without shared mutable navigation state.
-- [ ] Workspace restore represents panes, locations, provider profiles, and frontend-owned layout references.
-- [ ] Session handoff can cross a future server transport.
+- [ ] Core snapshot references let clients restore their panes and provider profiles without storing client layout or provider secrets in core.
+- [ ] Session snapshots have a serializable handoff contract that future PROTOCOL-001 transport can consume.

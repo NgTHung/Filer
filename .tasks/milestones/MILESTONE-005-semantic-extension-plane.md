@@ -9,7 +9,7 @@ depends_on: [MILESTONE-004]
 risk: High
 impact: "Turns the in-process git decoration prototype into a portable semantic extension data plane."
 tags: [extensions, semantic-output, draft]
-last_updated: 2026-07-09
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -26,7 +26,7 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 
 - MODULES-001 epic and children MODULES-003, MODULES-004, MODULES-005, MODULES-006 (all Deferred; reactivate when 0.4.0 work begins)
 - CORE-003 (owned solely by this milestone; 0.3.1 no longer references its light path)
-- PREVIEW-001 (provider-safe core first; extension-host criteria after MODULES-005)
+- PREVIEW-001: PREVIEW-002 specifies contracts, PREVIEW-003 stages provider-safe implementation, and PREVIEW-004 integrates the completed host contracts
 - Ecosystem output-contract tasks when filed under ecosystem domain
 
 ## Exit Criteria
@@ -36,5 +36,5 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 - [ ] MODULES-005 is Done: the trusted in-process host validates manifests, maps permissions to sessions and provider capabilities, and disables failing extensions without poisoning listing.
 - [ ] MODULES-006 is Done: git decorations flow through the envelope data plane, listing latency stays within recorded tolerance of the CORE-028 baseline, and the direct in-process contract is deleted.
 - [ ] filer-ecosystem output contracts align with core envelopes for the git decoration vertical slice.
-- [ ] PREVIEW-001 provider-safe core criteria are Done; extension-host preview criteria may remain open with rationale recorded here if host pieces are staged.
+- [ ] PREVIEW-003 provider-safe core criteria are Done; PREVIEW-004 extension integration may remain open with rationale recorded here if host pieces are staged.
 - [ ] CORE-003 terminal and editor helpers launch through client-neutral commands and stay optional file-manager actions, not IDE features.

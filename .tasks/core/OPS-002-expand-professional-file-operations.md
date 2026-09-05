@@ -10,12 +10,14 @@ rules: [PROVIDER-ACCESS, ACTOR-LONG-WORK, CORE-MECHANICS-BUILTIN]
 risk: High
 impact: "Adds queued, reversible, bulk, and archive operations."
 tags: [operations, queue, archive]
-last_updated: 2026-07-09
+last_updated: 2026-09-05
 ---
 
 ## Summary
 
 Build advanced operation workflows on the conflict and undo contracts.
+
+OPS-003 specifies validated bulk rename first and creates separate planning and execution tickets. Queue/history/pause and archive operations remain later stages, refined against actual provider guarantees. Create their implementation tickets before starting those stages; this epic is an outcome map rather than a single implementation assignment.
 
 ## Exit Criteria
 

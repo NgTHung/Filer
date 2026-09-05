@@ -9,7 +9,7 @@ rules: [PROVIDER-ACCESS, ACTOR-LONG-WORK, SESSION-BOUNDARY]
 risk: Medium
 impact: "Extends search roots, indexing, and provider delegation."
 tags: [search, provider, indexing]
-last_updated: 2026-07-09
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -17,6 +17,8 @@ last_updated: 2026-07-09
 Add scoped roots, optional indexing, and native provider search behind core-owned routing.
 
 Core search expansion does not hard-depend on MODULES-001. Extension search contributions wait until the wire-safe extension data plane exists.
+
+SEARCH-002 specifies explicit roots first and creates bounded routing and regression tickets. Native provider delegation follows; indexing needs a measured workload before implementation is selected. Extension contributions become a separate stage depending on the host contracts. Preserve the remaining outcomes below when refining each stage.
 
 ## Exit Criteria
 
