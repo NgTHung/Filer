@@ -125,20 +125,16 @@ impl ImageExtractor {
                     .map(|e| e.display_value().to_string()),
                 f_number: source
                     .get_field(Tag::FNumber, In::PRIMARY)
-                    .map(|e| e.display_value().to_string().parse().ok())
-                    .flatten(),
+                    .and_then(|e| e.display_value().to_string().parse().ok()),
                 iso: source
                     .get_field(Tag::ISOSpeed, In::PRIMARY)
-                    .map(|e| e.display_value().to_string().parse().ok())
-                    .flatten(),
+                    .and_then(|e| e.display_value().to_string().parse().ok()),
                 focal_length: source
                     .get_field(Tag::FocalLength, In::PRIMARY)
-                    .map(|e| e.display_value().to_string().parse().ok())
-                    .flatten(),
+                    .and_then(|e| e.display_value().to_string().parse().ok()),
                 orientation: source
                     .get_field(Tag::Orientation, In::PRIMARY)
-                    .map(|e| e.display_value().to_string().parse().ok())
-                    .flatten(),
+                    .and_then(|e| e.display_value().to_string().parse().ok()),
                 raw: source
                     .fields()
                     .map(|v| (format!("{}", v.tag), v.display_value().to_string()))

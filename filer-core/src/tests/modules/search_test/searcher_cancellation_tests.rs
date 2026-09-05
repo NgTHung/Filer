@@ -122,11 +122,9 @@ mod searcher_cancellation_tests {
                     session: s,
                     ..
                 } = e
-                {
-                    if *s == session {
+                    && *s == session {
                         return Some(matches.len());
                     }
-                }
                 None
             })
             .sum();

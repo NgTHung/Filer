@@ -70,11 +70,8 @@ mod cancel_tests {
         // Collect all events for 300ms — should see nothing for our session
         let mut events = Vec::new();
         let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
-        loop {
-            match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(e)) => events.push(e),
-                _ => break,
-            }
+        while let Ok(Ok(e)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            events.push(e);
         }
 
         let session_events: Vec<_> = events
@@ -116,11 +113,8 @@ mod cancel_tests {
 
         let mut events = Vec::new();
         let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
-        loop {
-            match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-                Ok(Ok(e)) => events.push(e),
-                _ => break,
-            }
+        while let Ok(Ok(e)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+            events.push(e);
         }
 
         let session_events: Vec<_> = events

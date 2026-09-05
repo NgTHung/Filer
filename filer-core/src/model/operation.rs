@@ -67,7 +67,7 @@ impl<'de> Deserialize<'de> for OperationConflictResolution {
     {
         deserializer.deserialize_str(StringEnumVisitor::new(
             "operation conflict resolution",
-            |value| OperationConflictResolution::from_wire_value(value),
+            OperationConflictResolution::from_wire_value,
         ))
     }
 }
@@ -147,7 +147,7 @@ impl<'de> Deserialize<'de> for OperationProviderGuarantee {
     {
         deserializer.deserialize_str(StringEnumVisitor::new(
             "operation provider guarantee",
-            |value| OperationProviderGuarantee::from_wire_value(value),
+            OperationProviderGuarantee::from_wire_value,
         ))
     }
 }

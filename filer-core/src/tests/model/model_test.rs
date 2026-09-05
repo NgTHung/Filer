@@ -89,13 +89,13 @@ fn test_node_entry_is_dir() {
     let f1 = NodeEntry::from_path(dir);
     let f2 = NodeEntry::from_path(file);
     let f3 = NodeEntry::from_path(nonexistent);
-    assert_eq!(f1.is_ok(), true);
-    assert_eq!(f2.is_ok(), true);
-    assert_eq!(f3.is_ok(), false);
+    assert!(f1.is_ok());
+    assert!(f2.is_ok());
+    assert!(!f3.is_ok());
     let u1 = f1.unwrap();
     let u2 = f2.unwrap();
-    assert_eq!(u1.is_dir(), true);
-    assert_eq!(u2.is_file(), true);
+    assert!(u1.is_dir());
+    assert!(u2.is_file());
 }
 
 #[test]

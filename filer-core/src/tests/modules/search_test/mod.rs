@@ -278,11 +278,8 @@ async fn wait_for_error(evt_rx: &Receiver<Event>, expected_session: SessionId) -
 async fn collect_events_for(evt_rx: &Receiver<Event>, duration: Duration) -> Vec<Event> {
     let mut events = Vec::new();
     let deadline = tokio::time::Instant::now() + duration;
-    loop {
-        match tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
-            Ok(Ok(event)) => events.push(event),
-            _ => break,
-        }
+    while let Ok(Ok(event)) = tokio::time::timeout_at(deadline, evt_rx.recv_async()).await {
+        events.push(event);
     }
     events
 }

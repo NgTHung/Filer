@@ -227,7 +227,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/home/user/docs"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -318,7 +318,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/empty"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -343,7 +343,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/data"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -384,7 +384,7 @@ mod navigation_flow_tests {
         // Navigate into the child
         core.send(Command::Navigate {
             location: local_location("/parent/child"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -393,7 +393,7 @@ mod navigation_flow_tests {
 
         // Navigate up — should land in /parent
         core.send(Command::NavigateUp {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -419,14 +419,14 @@ mod navigation_flow_tests {
         // Navigate to /a/b, go up, navigate further — no "Unknown session" error
         core.send(Command::Navigate {
             location: local_location("/a/b"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::NavigateUp {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -439,11 +439,9 @@ mod navigation_flow_tests {
                 message,
                 ..
             } = &event
-            {
-                if ev_session == &session {
+                && ev_session == &session {
                     panic!("Unexpected error for session after NavigateUp: {}", message);
                 }
-            }
         }
     }
 
@@ -460,7 +458,7 @@ mod navigation_flow_tests {
         // First navigate to root so the navigator has a current directory
         core.send(Command::Navigate {
             location: local_location("/"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -468,7 +466,7 @@ mod navigation_flow_tests {
 
         // Now try to go up from root
         core.send(Command::NavigateUp {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -503,14 +501,14 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/docs"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::Refresh {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -537,7 +535,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/work"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -546,7 +544,7 @@ mod navigation_flow_tests {
         let calls_after_nav = provider.list_calls().len();
 
         core.send(Command::Refresh {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -616,7 +614,7 @@ mod navigation_flow_tests {
 
         // No Navigate first — Refresh should fail gracefully
         core.send(Command::Refresh {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -651,7 +649,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/dir_a"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -659,14 +657,14 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/dir_b"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::NavigateBack {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -692,7 +690,7 @@ mod navigation_flow_tests {
         for dir in &["/a", "/b", "/c"] {
             core.send(Command::Navigate {
                 location: local_location(*dir),
-                session: session,
+                session,
                 request: filer_core::RequestId::new(),
             })
             .unwrap();
@@ -700,7 +698,7 @@ mod navigation_flow_tests {
         }
 
         core.send(Command::NavigateBack {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -708,7 +706,7 @@ mod navigation_flow_tests {
         assert_eq!(p, local_location("/b"), "first back should yield /b");
 
         core.send(Command::NavigateBack {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -728,14 +726,14 @@ mod navigation_flow_tests {
         // Single navigation — no history to go back to
         core.send(Command::Navigate {
             location: local_location("/only"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
         core.send(Command::NavigateBack {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -764,7 +762,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/alpha"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -772,7 +770,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/beta"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -781,7 +779,7 @@ mod navigation_flow_tests {
         // Go back — immediately start listening for the NavState snapshot.
         let rx = core.event_receiver();
         core.send(Command::NavigateBack {
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -806,11 +804,10 @@ mod navigation_flow_tests {
                     );
                     dir_loaded = true;
                 }
-                Ok(Ok(Event::CurrentNavigateState { state, session: s })) if s == session => {
-                    if state.can_forward {
+                Ok(Ok(Event::CurrentNavigateState { state, session: s })) if s == session
+                    && state.can_forward => {
                         can_forward = true;
                     }
-                }
                 _ => {}
             }
             if can_forward && dir_loaded {
@@ -970,7 +967,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/snap"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -1014,7 +1011,7 @@ mod navigation_flow_tests {
 
         core.send(Command::Navigate {
             location: local_location("/x"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();
@@ -1023,7 +1020,7 @@ mod navigation_flow_tests {
         let rx = core.event_receiver();
         core.send(Command::Navigate {
             location: local_location("/y"),
-            session: session,
+            session,
             request: filer_core::RequestId::new(),
         })
         .unwrap();

@@ -23,8 +23,10 @@ async fn unknown_theme_preserves_highlighted_preview_payload() {
     let source = "fn main() {}\n";
     fs::write(&path, source).expect("source fixture should be writable");
 
-    let mut options = PreviewOptions::default();
-    options.syntax_theme = "theme-that-does-not-exist".to_string();
+    let options = PreviewOptions {
+        syntax_theme: "theme-that-does-not-exist".to_string(),
+        ..PreviewOptions::default()
+    };
 
     let result = CodeProvider::new()
         .generate(&path, &text_mime(), &options)
@@ -55,8 +57,10 @@ async fn empty_theme_set_returns_unstyled_highlighted_preview() {
     let source = "fn main() {}\n";
     fs::write(&path, source).expect("source fixture should be writable");
 
-    let mut options = PreviewOptions::default();
-    options.syntax_theme = "theme-that-does-not-exist".to_string();
+    let options = PreviewOptions {
+        syntax_theme: "theme-that-does-not-exist".to_string(),
+        ..PreviewOptions::default()
+    };
 
     let result = CodeProvider::with_theme_set(ThemeSet::new())
         .generate(&path, &text_mime(), &options)

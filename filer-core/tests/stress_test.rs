@@ -179,7 +179,7 @@ impl LazyTreeFs {
 
     /// Total files that will match the "match_" query.
     fn expected_matches(&self) -> usize {
-        let per_dir = (self.files_per_dir + self.match_every - 1) / self.match_every;
+        let per_dir = self.files_per_dir.div_ceil(self.match_every);
         self.total_dirs() * per_dir
     }
 

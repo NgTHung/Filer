@@ -246,8 +246,10 @@ mod registry_tests {
         };
         let cancel = crate::CancelSignal::new();
         let cx = crate::ProviderCx::with_cancel(&cancel);
-        let mut options = PreviewOptions::default();
-        options.detection_strategy = DetectionStrategy::MagicBytes;
+        let options = PreviewOptions {
+            detection_strategy: DetectionStrategy::MagicBytes,
+            ..PreviewOptions::default()
+        };
 
         let result = reg
             .generate_with_options(Path::new("ambiguous.txt"), &options, &provider, &cx)

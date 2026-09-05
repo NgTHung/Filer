@@ -30,14 +30,12 @@ mod scanner_command_tests {
                     location: l1,
                     pipeline: pl1,
                     session: s1,
-                    request: _,
                     ..
                 },
                 ScanCommand::ScanLocation {
                     location: l2,
                     pipeline: pl2,
                     session: s2,
-                    request: _,
                     ..
                 },
             ) => {
