@@ -1,7 +1,7 @@
 ---
 id: "CORE-021"
 title: "Cut pipeline hot-path allocation on the large-directory scan"
-status: In Progress
+status: Done
 priority: "High"
 type: "Refactor"
 parent: "CORE-027"
