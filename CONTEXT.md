@@ -94,6 +94,18 @@ _Avoid_: File operation, command
 A correlated mutation of file-system state, such as copy, move, delete, rename, or create.
 _Avoid_: Request, action
 
+**Accepted file operation**:
+A File operation that Core has validated and admitted for execution. Acceptance records an obligation to report its outcome, not a guarantee of success.
+_Avoid_: Sent command, completed operation
+
+**Mutation queue**:
+The ordered accepted File operations belonging to one Session. It includes work waiting for execution or a recovery decision.
+_Avoid_: Request queue, history
+
+**Session closure**:
+The end of a Session's activity, completed after its accepted work has settled and its resources have been released.
+_Avoid_: Window closure, cancellation request
+
 **Extension**:
 An optional contributor of file-manager capability or meaning through Core-owned contracts. Normal file management does not depend on an Extension.
 _Avoid_: Core module, plugin when no packaging or isolation is implied

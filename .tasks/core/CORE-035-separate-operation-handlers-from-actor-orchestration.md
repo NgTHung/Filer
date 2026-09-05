@@ -16,6 +16,11 @@ last_updated: "2026-09-05"
 
 Split modules/operations/operator.rs along existing command, transfer, mutation, and shared event/cache support responsibilities. Preserve public imports through re-exports. First move command and shared support code mechanically, then transfer handlers, then mutation handlers in separate commits. Each complex diff stays below 700 changed lines; document any larger mechanical move. Use the existing operator_test cases as the behavior contract.
 
+Keep this extraction behavior-preserving. OPS-004 depends on it to replace the
+current per-Session cancellation slot with bounded FIFO scheduling. OPS-005 and
+REL-008 then add failure recovery and graceful closure under ADR-0001; do not mix
+those behavior changes into this mechanical split.
+
 ## Acceptance Criteria
 
 - [ ] Operation modules each stay under 700 lines and share event, provider-context, and cache plumbing without changing public command or event types.

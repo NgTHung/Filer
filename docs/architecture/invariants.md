@@ -2,6 +2,9 @@
 
 This file owns the rule IDs used by task frontmatter. Reference these IDs in `rules` when a task can affect a project-level constraint.
 
+[Core composition and work lifetime](../adr/0001-core-runtime-lifecycle.md)
+records the accepted runtime direction and its open implementation tasks.
+
 ## CORE-LIBRARY
 
 `filer-core` is a library. It must not depend on GUI frameworks, HTTP servers, desktop shell UI, or app-specific state.

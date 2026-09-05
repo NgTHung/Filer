@@ -40,6 +40,7 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 - SERVICES-001 and SERVICES-003 (optional dependency cleanup and a measured detector decision; neither gates this milestone)
 - app:UI-011 and children UI-012 through UI-015 (companion validation work, not a core exit gate)
 - Reproduced client races use concrete core bug tasks under the workflow in docs/task-tracking.md; REL-006 is retired
+- API-018, API-019, REL-007, OPS-004, OPS-005, REL-008, and REL-009 (accepted ADR-0001 follow-ups under CORE-027; refine before implementation, without adding new milestone exit gates)
 
 ## Exit Criteria
 

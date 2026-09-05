@@ -12,15 +12,25 @@ The three owners are `filer-app` for application UI state, `filer-core` for runt
 
 ## Core owns session and runtime state
 
-`filer-core` owns the state that exists only while the application runs. A session represents one connected client, a desktop window or a web browser, and `filer-core` isolates each one.
+`filer-core` owns the state that exists only while the application runs. A Session represents an independent client activity context. Closing its view does not end accepted file operations.
 
 Session identity lives in `SessionId` (`filer-core/src/model/session.rs`). The `SessionManager` in `filer-core/src/api/session_manager.rs` holds the live sessions in a concurrent map and owns their lifecycle from handshake to teardown. Each `Session` carries its own `NavigatorState` (`filer-core/src/modules/navigation/navigator.rs`), so navigation history and selection stay scoped to one client. This is the `SESSION-BOUNDARY` rule in practice: state that belongs to user activity carries session identity.
 
 `NavState` is the serializable snapshot of navigation that crosses the wire to a client. `NavigatorState` is the full mutable state that stays in core. Keep that split. Send `NavState`, do not leak `NavigatorState`.
 
-Authorization is a core concern, authentication is not. Each session holds a `SessionPolicy` (`AllowAll` for native desktop, a restricted policy for web or remote clients). The transport authenticates the user before the session exists. `filer-core` then decides what that session may do. Do not move authentication tokens or transport credentials into core.
+Authorization remains a future Core concern; authentication belongs to the transport. The supported native model uses `AllowAll` and the OS user's filesystem permissions. Restricted-Session enforcement is deferred: the existing `SessionPolicy` types do not establish that command execution enforces their rules. Future Core policy may narrow OS-granted access. Do not move authentication tokens or transport credentials into Core.
 
 Per-session view settings also live in core as `PipelineConfig` (`filer-core/src/pipeline/config.rs`), which holds sort, filter, and group choices. This config is small and serializable so it can travel between a frontend and core. It describes how to present a directory, not how the app window looks, so it stays in core rather than app config.
+
+The accepted [runtime lifecycle](../adr/0001-core-runtime-lifecycle.md) assigns
+mutation admission, per-Session FIFO queues, failure pauses, and completion to
+Core. The client owns the recovery UI and keeps consuming events while Core
+finishes accepted work. SessionDestroyed will mean completed cleanup, not receipt
+of a close request; REL-008 owns that change from current behavior.
+
+Event delivery currently uses one shared runtime stream. The client bridge owns
+its single consumer and distributes events by Session identity. Separate Session
+streams are deferred, so shared backpressure remains a limitation.
 
 ## Provider references and the secrets boundary
 

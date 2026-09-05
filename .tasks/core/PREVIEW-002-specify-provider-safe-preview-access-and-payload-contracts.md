@@ -17,6 +17,10 @@ last_updated: "2026-09-05"
 
 Inspect the current path-based PreviewProvider::generate, preview cache, metadata extractor, FsProvider reads, and Previewer cancellation flow. Specify the smallest provider-backed text/code slice and the access contract needed by remaining built-in providers. Preserve NodeEntry/Location identity and renderer-neutral payloads. This design does not require the extension host.
 
+Preserve ADR-0001 and REL-009 supersession scopes: a replacement preview can
+cancel the prior preview for its view, while independent metadata work must not
+share a cancellation slot solely because it belongs to the same Session.
+
 ## Acceptance Criteria
 
 - [ ] The design names synchronous row fields, lazy metadata guarantees, accessible labels, provider reads, timeout/cancellation behavior, and errors for unsupported reads.

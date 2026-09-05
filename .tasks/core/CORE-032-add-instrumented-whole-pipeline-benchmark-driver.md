@@ -18,6 +18,12 @@ last_updated: "2026-09-05"
 
 Build a deterministic reference client for one journey: open flat-10k, commit a viewport, continue paging, sort by name, apply and clear a name filter, then refresh. Consume public commands and events and validate each committed virtual view. First land state transitions and their tests, then scripted timing and reporting in a separate commit. Extended search, mutation, decorations, trace attribution, and concurrent responsiveness belong to CORE-042.
 
+Use this evidence when evaluating abstraction costs under ADR-0001. Preserve
+useful abstractions unless measured UX benefits justify changing them. Do not
+infer that dispatch overhead is a bottleneck or invent new latency gates from
+the architecture discussion. Keep physical rendering claims in UI-015 and the
+extended attribution work in CORE-042.
+
 ## Acceptance Criteria
 
 - [ ] The reference client correlates sessions and requests and validates visible identities and ordering after every action in the initial browse journey.

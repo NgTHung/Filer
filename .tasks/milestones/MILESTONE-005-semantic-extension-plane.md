@@ -33,7 +33,7 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 
 - [ ] MODULES-003 is Done: versioned serializable envelopes cover decorations, badges, action state, metadata, and invalidations, pinned by round-trip tests.
 - [ ] MODULES-004 is Done: session-bound scoped subscriptions deliver core context without letting a slow subscriber block directory loading.
-- [ ] MODULES-005 is Done: the trusted in-process host validates manifests, maps permissions to sessions and provider capabilities, and disables failing extensions without poisoning listing.
+- [ ] MODULES-005 is Done: the trusted compiled-in host validates manifests, uses API-019 typed startup registration, and reports contribution failures without poisoning listing. Restricted authorization remains deferred to REL-010 and is not implied by manifest declarations.
 - [ ] MODULES-006 is Done: git decorations flow through the envelope data plane, listing latency stays within recorded tolerance of the CORE-028 baseline, and the direct in-process contract is deleted.
 - [ ] filer-ecosystem output contracts align with core envelopes for the git decoration vertical slice.
 - [ ] PREVIEW-003 provider-safe core criteria are Done; PREVIEW-004 extension integration may remain open with rationale recorded here if host pieces are staged.

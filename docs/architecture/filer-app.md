@@ -158,18 +158,21 @@ Row position is never identity. Sorting, grouping, paging, insertions, and delet
 
 ## Sessions and tabs
 
-Each independent navigation context uses its own core session. A single-tab window therefore owns one session. Additional tabs own additional sessions so their history, pipeline state, cancellation, and events cannot interfere.
+Each independent navigation context uses its own core session. A single-tab window therefore owns one session. Additional tabs own additional sessions for history, pipeline state, and scoped cancellation. Event delivery still shares one runtime stream and its backpressure; separate Session streams are deferred.
 
-The app keeps an explicit mapping from `SessionId` to window and tab identity. An event with an unknown or destroyed session is logged and discarded.
+The app keeps an explicit mapping from `SessionId` to window and tab identity. Closing a tab retains routing for its pending operations until SessionDestroyed. An event with an unknown or destroyed session is logged and discarded.
 
 Tab closure follows this order:
 
 1. mark the tab as closing and stop accepting new intents
 2. cancel tab-owned search and preview work
 3. request core session destruction
-4. remove the tab after session teardown or a bounded shutdown fallback
+4. allow the view to close while the process-level operation model retains pending work and recovery controls
+5. release the Session mapping after Core finishes accepted mutations, settles outcomes, releases resources, and emits SessionDestroyed
 
-Application shutdown stops new commands, persists valid app state, destroys sessions, drains terminal events for a bounded interval, and calls core shutdown. Shutdown errors are reported and must not be ignored.
+When the last window closes with pending mutations, offer finish operations and quit or explicit cancellation. Finishing preserves the process, Core, and event consumer until accepted mutations and cleanup complete. If an operation fails, interrupt exit and keep or reopen an operations window to resolve the paused queue. A timeout must not silently discard accepted work. Save valid app state and report shutdown errors.
+
+These are accepted lifecycle requirements from [ADR-0001](../adr/0001-core-runtime-lifecycle.md), with Core completion tracked by REL-008 and the mutation UI by deferred UI-016. UI-011 remains a read-only validation track; its teardown tests cover reads and channel failures without claiming mutation-drain support.
 
 ## Unidirectional data flow
 
@@ -201,6 +204,10 @@ The core bridge owns the mechanical connection to `CoreHandle`:
 - expose transport health and shutdown state
 
 The bridge must not poll continuously at idle. Use the framework's event-loop proxy, subscription, channel wakeup, signal, or equivalent mechanism.
+
+Use one Core event consumer and distribute events by Session identity. Cloning
+the current receiver produces competing consumers, not Session subscriptions.
+Keep this consumer alive during graceful exit and queue recovery.
 
 Core events enter the controller through an app-owned enum. The bridge may normalize compatibility-free event shapes, but it must retain session, request, operation, location, completion, and error data.
 
@@ -344,6 +351,14 @@ Every operation records:
 Destructive confirmations are app-owned overlays. Conflict behavior comes from core contracts and provider guarantees. The UI must not invent atomicity, undo, trash, or cross-provider guarantees.
 
 Pending operations may decorate rows, but they do not remove or rename authoritative rows before core completion or a matching filesystem change. On success, affected views refresh or reconcile from explicit affected locations. On failure, the original view remains valid.
+
+Core accepts mutations into a bounded FIFO queue per Session. A full queue returns
+an explicit busy rejection before acceptance. A failed operation reports partial
+changes and pauses that Session's remaining mutations; other Sessions continue.
+Expose retry, continue, and cancellation explicitly, including while a Session
+is closing. Reconcile partial changes rather than assuming failure left the
+filesystem untouched. Do not infer that a later delete is independent of a failed
+copy. Accepted queued work survives tab closure; it is not durable across crashes.
 
 ## Clipboard and drag-and-drop
 
@@ -494,7 +509,7 @@ Model tests cover page insertion, gap and overlap detection, group projection, s
 
 ### Core bridge tests
 
-A fake core port verifies command construction, Location-native routing, event batching, wakeups, cancellation, channel closure, and bounded shutdown. Contract tests use the real public core API for one vertical slice without depending on a UI framework.
+A fake core port verifies command construction, Location-native routing, event batching, wakeups, cancellation, channel closure, graceful completion, and exit interrupted by a paused queue. Contract tests use the real public core API for one vertical slice without depending on a UI framework. The active UI-011 slice covers read-only teardown.
 
 ### Platform tests
 
