@@ -388,24 +388,32 @@ cargo run -p taskroot -- ready --tag ready-for-agent --format json
 
 Use `ready` to select executable work. A ready task is `To Do`, is not a milestone, has no child tasks, has only `Done` dependencies, and has only `To Do` or `In Progress` ancestors. Results sort by priority and then qualified identity.
 
-For Filer, the current execution scope is domain `core`, milestone `0.3.1`.
-Use the scoped, triaged queue below unless the user selects a named task or
-another scope. A ready result establishes lifecycle eligibility, while
+For Filer, the primary execution scope is domain `core`, milestone `0.3.1`.
+The approved companion track is app:UI-011 and its children, which validate
+public core contracts in a real desktop window. Both queues below are active;
+core remains the priority and the app track can proceed alongside it. Use these
+scopes unless the user selects a named task or another scope. A ready result
+establishes lifecycle eligibility, while
 `ready-for-agent` records that the task is specified. Milestone dependencies
 do not automatically gate member tasks; scheduled future entry tasks carry
 explicit dependencies on the preceding milestone.
 
 ```bash
 cargo run -p taskroot -- ready --domain core --milestone 0.3.1 --tag ready-for-agent --format json
+cargo run -p taskroot -- ready --domain app --milestone 0.3.1 --tag ready-for-agent --format json
 cargo run -p taskroot -- list --domain core --milestone 0.3.1 --tag needs-triage --format json
 ```
 
-Treat the unfiltered queue as a project inventory. App evaluation and task-web
-epics are Deferred while core is the focus; their existing children are retained.
+Treat the unfiltered queue as a project inventory. UI-001 framework evaluation
+and task-web epics remain Deferred; their existing children are retained.
+UI-011 uses a provisional renderer and is independent of UI-001 and the
+comparative benchmark chain. Its milestone membership schedules feedback during
+0.3.1 without adding an app release gate to the core milestone.
 When you resume another area, reactivate its parent and inspect the selected
 child's context and specification before implementation. An empty scoped queue
-calls for refinement or a progress report, not automatic expansion into another
-crate. CORE-021 and CORE-024 lead the current queue; staged remediation and
+calls for checking the other approved queue, refinement, or a progress report,
+not automatic expansion into unrelated work. CORE-021 and CORE-024 lead the core
+queue; staged remediation and
 the initial benchmark slice follow. Dependency cleanup is optional lower-priority
 work. Update this scope when the active milestone changes.
 

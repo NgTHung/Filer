@@ -26,4 +26,4 @@ Evaluate every serious desktop UI candidate against the same framework-neutral a
 
 ## Rationale
 
-The maintainer approved keeping app evaluation outside the active filer-core scope on 2026-09-05. Preserve all candidate tasks and reactivate this parent when desktop work is selected.
+The maintainer approved keeping full framework evaluation deferred on 2026-09-05. The later app:UI-011 exception permits a small validation client using a provisional renderer, without selecting a production framework or requiring this evaluation. Preserve all candidate tasks and reactivate this parent when full framework evaluation is selected.

@@ -23,7 +23,9 @@ view. It must not require changes to filer-app.
 
 External application adapters run released binaries in isolated environments.
 They are benchmark tools, not Filer-core dependencies. Full filer-app coverage
-can use the same protocol when application work resumes.
+can use the same protocol when the full application work resumes. The separate
+app:UI-011 validation track supplies real-window feedback during 0.3.1 and does
+not become a dependency of this benchmark package.
 
 The full program covers the scenarios below. The 0.3.1 slice implements only
 flat-10k/flat-100k, fast and metadata browsing, continuation, and one journey
@@ -284,8 +286,9 @@ the initial CORE-032 journey requires only its public input/event/view markers.
 The reference application is a deterministic consumer of public Filer-core
 events. It maintains viewport, selection, sorting, filtering, grouping, and
 search state, then commits a virtual frame. This gives Filer-core a rigorous
-input-to-view benchmark while filer-app is out of scope. A later filer-app
-adapter replaces the virtual commit with its actual frame commit.
+input-to-view benchmark independently of the app:UI-011 desktop validation
+track. Keep its virtual-view measurements separate from that track's actual
+window/frame observations. A later benchmark adapter can measure the real app.
 
 ### Responsiveness Under Work
 

@@ -20,7 +20,37 @@ The design covers:
 - failure recovery, diagnostics, and testing
 - the adapter contract required from any UI framework
 
-Feature-specific product behavior belongs in `.tasks/app` after a framework is selected. The architecture only fixes boundaries that would be expensive to change later.
+Full application implementation follows framework selection. The approved UI-011 validation track below exercises a bounded subset before that decision. Feature-specific behavior belongs in `.tasks/app`; this document fixes shared boundaries.
+
+## Active validation track
+
+On 2026-09-05, the maintainer approved app:UI-011 as a companion to core 0.3.1.
+It supplies a real consumer of the stabilized Location-native contracts while
+UI-001 framework evaluation remains deferred. Its completion is not a core
+milestone exit gate.
+
+The scope is one window, one session, folder navigation, loaded-row focus and
+selection, a virtualized directory list, continuation paging, recoverable errors,
+and asynchronous Git decorations. Search, previews, file mutations, persistent
+workspaces, and full desktop integration stay outside this track.
+
+UI-012 isolates testable state and build targets from the legacy app.
+UI-013 connects public core commands and events. UI-014 supplies the window and
+viewport. UI-015 adds decorations and records the real-window proof. Each task
+starts with tests and splits implementation into reviewable commits.
+
+Use the existing Iced dependency provisionally, confined to the UI adapter.
+Keep the controller, model, and core bridge free of renderer types. Preserve
+legacy source without requiring migration of its unrelated features. Record
+the target/build isolation choice before implementation; do not add compatibility
+aliases back into core. A renderer limitation is evidence for future evaluation,
+not a reason to move app state or filesystem behavior into core.
+
+Reuse existing fixtures and contract-test helpers where their scope matches.
+The CORE-032 benchmark remains independently runnable and reports virtual-view
+timing; UI-015 records actual window interaction and rendering. Neither result
+substitutes for the other or selects the final framework. Route reproduced core
+failures through concrete regression tasks in docs/task-tracking.md.
 
 ## Hard rules
 
@@ -515,7 +545,8 @@ The final decision compares measured behavior and maintenance cost. Repository p
 
 ## Delivery stages
 
-The rewrite should land in reviewable stages after the framework decision.
+The full rewrite should land in reviewable stages after the framework decision.
+UI-011 is the earlier bounded validation exception described above.
 
 1. Build and test the framework-free model, controller, effects, and fake ports.
 2. Add the selected framework adapter with one window, one tab, navigation, and a virtualized directory view.
@@ -529,4 +560,3 @@ Each stage must compile and test independently. The rewrite must not keep two ap
 ## Decision record
 
 The chosen framework and rejected candidates will be recorded after the common evaluation epics complete. That record must identify measured evidence, accepted limitations, required upstream work, dependency pinning, licensing, and the fallback plan if the chosen framework cannot meet a release gate.
-

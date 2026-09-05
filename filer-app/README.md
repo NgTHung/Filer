@@ -4,7 +4,12 @@
 manager that consumes `filer-core` for navigation, search, preview generation,
 file operations, and filesystem events.
 
-Current milestone: `0.2.0`.
+Active work: app:UI-011, a minimal validation client alongside core 0.3.1.
+It covers one window, Location-native browsing, paging, and asynchronous Git
+decorations with a provisional renderer. See the
+[validation scope](../docs/architecture/filer-app.md#active-validation-track).
+Implementation is tracked in UI-012 through UI-015. Full framework evaluation
+and the app rewrite remain deferred.
 
 The app target is simple: make local file management feel clean, fast, and
 predictable before expanding into more advanced workflows. The visual direction
@@ -14,6 +19,11 @@ closer to Xplorer: efficient navigation, quick access, useful context actions,
 and fast feedback while working with files.
 
 ## Current Capabilities
+
+The list below describes the legacy app. Its source still uses retired core
+identities; it is not evidence of compatibility with the current core. The
+validation track creates an isolated entry point and records its launch command
+when that target exists.
 
 - Local folder navigation through the core navigation module.
 - Details-list file view with sortable columns.

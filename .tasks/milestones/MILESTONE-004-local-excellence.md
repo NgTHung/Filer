@@ -16,7 +16,7 @@ last_updated: 2026-09-05
 
 Local file-manager excellence after 0.3.0 contract stabilization. Prove System32-scale browsing and git decoration delivery through public core contracts, measured by a benchmark harness instead of asserted. Core work is CORE-027 audit remediations, PIPELINE-003 scalable page delivery, and CORE-028 benchmarks.
 
-Scope note: AGENTS.md pins repository focus to filer-core, so every exit criterion here is a core-side contract gate. filer-app consumption of these contracts is the intended demo, not a gate; app polish and open-in-terminal/editor helpers move to 0.4.0 (CORE-003) or dedicated app tasks filed later.
+Scope note: every exit criterion here remains a core-side contract gate. app:UI-011 and its children are an approved companion track during 0.3.1, providing real-window feedback without making the app or framework selection a core release gate. App polish and open-in-terminal/editor helpers remain later work.
 
 ## Scope change rationale
 
@@ -25,6 +25,8 @@ On 2026-08-26, comparative peer evidence and instrumented whole-pipeline journey
 On 2026-08-31, the CORE-004 F24 paging scalability fix moved from the 0.5.0 PIPELINE-002 presentation epic into PIPELINE-003. CORE-028 already makes first-page streaming a 0.3.1 gate, so keeping its implementation in 0.5.0 created a cross-milestone dependency and made this milestone impossible to close in order.
 
 On 2026-09-05, the maintainer approved the backlog review's smaller benchmark release boundary. This milestone requires flat Filer/std/Tokio comparisons, reproducible reports, and one public-core browse journey. CORE-029 remains a milestone-free program; CORE-033, CORE-034, and CORE-042 retain deferred application adapters, frameworks, recursive fixtures, and extended instrumentation. CORE-030 now specifies the design, CORE-039 implements validation and flat fixtures, and CORE-031 stages the runner and reports through CORE-040 and CORE-041.
+
+Later on 2026-09-05, the maintainer approved a bounded app-validation exception because benchmark evidence alone cannot reveal rendering and interaction problems. app:UI-011 stages a framework-free model, public-core bridge, provisional window, and asynchronous decorations through UI-012 to UI-015. The track depends on completed core contracts, not this milestone's completion or the deferred framework evaluation. Its results feed concrete core regression tasks.
 
 ## Draft policy
 
@@ -36,6 +38,7 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 - CORE-028 (benchmark harness; gates the performance criteria below)
 - CORE-030, CORE-039, CORE-031 with CORE-040/CORE-041, and CORE-032 (initial comparative evidence and one browse journey)
 - SERVICES-001 and SERVICES-003 (optional dependency cleanup and a measured detector decision; neither gates this milestone)
+- app:UI-011 and children UI-012 through UI-015 (companion validation work, not a core exit gate)
 - Reproduced client races use concrete core bug tasks under the workflow in docs/task-tracking.md; REL-006 is retired
 
 ## Exit Criteria
