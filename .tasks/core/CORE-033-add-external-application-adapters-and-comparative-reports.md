@@ -1,17 +1,16 @@
 ---
 id: "CORE-033"
 title: "Add external application adapters and comparative reports"
-status: "To Do"
+status: Deferred
 priority: "Medium"
 type: "Feature"
 parent: "CORE-029"
-milestone: "0.3.1"
-depends_on: ["CORE-032", "CORE-034"]
+depends_on: ["CORE-032"]
 risk: "Medium"
 impact: "Places Filer results beside pinned Yazi and Broot runs without mixing application and in-process leaderboards."
 tags: ["core", "performance", "benchmark", "tooling", "output"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: "2026-08-26"
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -26,3 +25,7 @@ Add isolated Yazi and Broot adapters, raw result storage, and generated peer rep
 - [ ] Unsupported application semantics appear as `not_supported` and never as zero-duration or estimated results.
 - [ ] Randomized multi-process sampling records startup, steady-state input-to-frame, CPU, peak memory, raw samples, and failure transcripts.
 - [ ] Generated reports keep engine, core, reference-application, and external-application leaderboards separate and can be reproduced from stored raw JSON.
+
+## Rationale
+
+The maintainer approved a smaller 0.3.1 benchmark gate on 2026-09-05. External application adapters follow the initial browse journey and reports; no later release milestone is assigned.

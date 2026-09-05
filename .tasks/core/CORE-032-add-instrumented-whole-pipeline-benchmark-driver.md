@@ -1,6 +1,6 @@
 ---
 id: "CORE-032"
-title: "Add instrumented whole-pipeline benchmark driver"
+title: "Measure one public-core browse journey"
 status: "To Do"
 priority: "High"
 type: "Feature"
@@ -8,21 +8,19 @@ parent: "CORE-029"
 milestone: "0.3.1"
 depends_on: ["CORE-031"]
 risk: "Medium"
-impact: "Measures browse, presentation, search, cancellation, refresh, and frame commitment as user-visible journeys."
+impact: "Measures one correct input-to-view journey without requiring a desktop client."
 tags: ["core", "performance", "benchmark", "tracing", "pipeline"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: "2026-08-26"
+last_updated: "2026-09-05"
 ---
 
 ## Summary
 
-Drive semantic application actions through a deterministic reference client and correlate black-box input-to-view latency with Filer trace phases. The reference client consumes public commands and events, maintains application view state, and commits a virtual frame without requiring filer-app work.
+Build a deterministic reference client for one journey: open flat-10k, commit a viewport, continue paging, sort by name, apply and clear a name filter, then refresh. Consume public commands and events and validate each committed virtual view. First land state transitions and their tests, then scripted timing and reporting in a separate commit. Extended search, mutation, decorations, trace attribution, and concurrent responsiveness belong to CORE-042.
 
 ## Acceptance Criteria
 
-- [ ] A deterministic reference client consumes public Filer-core commands and events and commits viewport, selection, sort, filter, group, paging, search, and refresh state.
-- [ ] Scripted browse-organize-search, mutation-recovery, and decorated-browse journeys define correctness digests at every visible milestone supported by current core capabilities.
-- [ ] Correlated trace phases cover input, command routing, provider work, pipeline work, event delivery, view commit, frame commit, and quiescence without changing command semantics.
-- [ ] Results report black-box input-to-correct-frame latency beside provider, pipeline, queue, view, and render attribution from one monotonic clock domain.
-- [ ] Responsiveness measurements cover input latency, maximum stall, queue high-water mark, stale work, cancellation-to-quiescence, and post-cancel activity while long work runs.
-- [ ] Tests reject missing or duplicate trace phases, cross-request correlation, wrong view digests, and terminal work after cancellation.
+- [ ] The reference client correlates sessions and requests and validates visible identities and ordering after every action in the initial browse journey.
+- [ ] Tests reject stale responses, duplicate pages, wrong view digests, and missing terminal events; the harness cleans up pending work after failed samples.
+- [ ] Results record semantic-input-to-correct-virtual-view latency using one monotonic clock, separately from engine and core results; virtual commits are never described as physical rendering.
+- [ ] Raw JSON, a generated baseline report, and one documented command reproduce the journey without filer-app changes.

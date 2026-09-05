@@ -24,6 +24,8 @@ On 2026-08-26, comparative peer evidence and instrumented whole-pipeline journey
 
 On 2026-08-31, the CORE-004 F24 paging scalability fix moved from the 0.5.0 PIPELINE-002 presentation epic into PIPELINE-003. CORE-028 already makes first-page streaming a 0.3.1 gate, so keeping its implementation in 0.5.0 created a cross-milestone dependency and made this milestone impossible to close in order.
 
+On 2026-09-05, the maintainer approved the backlog review's smaller benchmark release boundary. This milestone requires flat Filer/std/Tokio comparisons, reproducible reports, and one public-core browse journey. CORE-029 remains a milestone-free program; CORE-033, CORE-034, and CORE-042 retain deferred application adapters, frameworks, recursive fixtures, and extended instrumentation. CORE-030 now specifies the design, CORE-039 implements validation and flat fixtures, and CORE-031 stages the runner and reports through CORE-040 and CORE-041.
+
 ## Draft policy
 
 This milestone is a draft plan. You or any agent may modify it as much as needed (exit criteria, membership, priority, depends_on, title, or replacement by a better split) until work for 0.3.1 has started. Work has started when this milestone or any task with `milestone: "0.3.1"` first moves to `In Progress`. Until then, treat this file as editable intent, not a locked commitment. After work starts, change scope only deliberately and record why.
@@ -32,7 +34,7 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 
 - CORE-027 and children CORE-017, CORE-018, CORE-019, CORE-021, CORE-022, CORE-024, PIPELINE-003
 - CORE-028 (benchmark harness; gates the performance criteria below)
-- CORE-029 and children CORE-030 through CORE-034 (comparative protocol, peer adapters, whole-pipeline driver, and reports)
+- CORE-030, CORE-039, CORE-031 with CORE-040/CORE-041, and CORE-032 (initial comparative evidence and one browse journey)
 - SERVICES-001 and SERVICES-003 (dependency cleanup; SERVICES-003 may close without the swap per its own criteria)
 - REL-006 stays milestone-free by its recorded rationale; reproduced races landing during 0.3.1 still route through it
 
@@ -44,7 +46,7 @@ Required, not deferrable:
 - [ ] CORE-021 is Done: the large-directory hot path sheds its per-row allocation overhead.
 - [x] PIPELINE-003 is Done: default large-directory paging emits the first page before end of directory and resumes continuations without a full rewalk while snapshot-only transforms remain correct.
 - [x] CORE-028 is Done: the benchmark harness exists, baseline numbers are recorded, and structural tests prove proportional first-page traversal and listing delivery independent of Git completion.
-- [ ] CORE-029 is Done: correctness-checked peer baselines and whole-pipeline browse, presentation, search, cancellation, and responsiveness journeys are recorded without mixing in-process and application leaderboards.
+- [ ] CORE-030, CORE-039, CORE-031, and CORE-032 are Done: correctness-checked Filer/std/Tokio baselines, raw reports, and one browse journey are recorded with separate engine, core, and reference-client results.
 - [x] MODULES-002 emits semantic row decorations without making listing wait for Git completion, proven by the CORE-028 ordering test and active-decoration comparison.
 
 Deferrable only with recorded rationale in this file:

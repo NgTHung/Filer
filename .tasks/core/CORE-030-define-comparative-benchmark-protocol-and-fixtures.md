@@ -10,17 +10,17 @@ risk: "Low"
 impact: "Fixes semantic equivalence, fixture identity, and result meaning before competitor measurements are trusted."
 tags: ["core", "performance", "benchmark", "protocol", "testing"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: "2026-08-26"
+last_updated: "2026-09-05"
 ---
 
 ## Summary
 
-Define the versioned adapter protocol, deterministic fixture corpus, scenario contracts, and sampling policy before competitor timings are accepted. Correctness, requested fields, cache state, and timing boundaries must be machine-readable so unlike work cannot enter the same ranking.
+Specify the initial adapter protocol, flat fixture manifests, and browse scenario contracts in docs/benchmarks/comparative-performance.md. This is a design deliverable with normative valid/invalid JSON examples and a conformance matrix. CORE-039 owns executable validation and fixture generation. Define extension points for later scenarios without requiring the full fixture corpus or adapters to close this task.
 
 ## Acceptance Criteria
 
-- [ ] A versioned request and newline-delimited event schema carries scenario, fixture, implementation, cache, sample, phase, row-count, digest, status, and monotonic-time fields.
-- [ ] Versioned manifests generate `flat-10k`, `flat-100k`, `tree-100k`, `sparse-match-100k`, `git-10k`, `hostile-10k`, and `mutation-10k` with stable expected digests.
-- [ ] Browse, presentation, search, mutation, responsiveness, and whole-pipeline journey scenarios define start barriers, milestones, terminal conditions, and semantic output.
-- [ ] Sampling rules separate cold start, cold filesystem, warm start, and warm steady state and record the machine, filesystem, build, version, and application configuration.
-- [ ] Protocol and fixture conformance tests reject version mismatches, missing phases, wrong digests, duplicate rows, and unsupported scenarios reported as successful.
+- [ ] A versioned schema and valid/invalid examples define requests, events, identities, required phases, counts, digests, statuses, and one monotonic clock domain.
+- [ ] flat-10k and flat-100k manifests define reproducible relative identities, requested metadata, and canonical digests; provider enumeration order is not assumed stable.
+- [ ] Fast/metadata browse, continuation, name sort, filter, and refresh specify barriers, visible milestones, and completion for the initial reference journey.
+- [ ] Sampling and unavailable-metric rules identify cache state, machine, filesystem, build, and adapter version; correctness gates distinguish streaming, sparse filtering, and snapshot-only transforms.
+- [ ] A conformance matrix maps every rejection and scenario gate to tests CORE-039 will implement; extended corpus and journeys are assigned to CORE-042.

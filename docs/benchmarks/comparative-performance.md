@@ -25,7 +25,13 @@ External application adapters run released binaries in isolated environments.
 They are benchmark tools, not Filer-core dependencies. Full filer-app coverage
 can use the same protocol when application work resumes.
 
-The suite covers:
+The full program covers the scenarios below. The 0.3.1 slice implements only
+flat-10k/flat-100k, fast and metadata browsing, continuation, and one journey
+through paging, name sorting, filtering, and refresh. CORE-029 owns the full
+program; its completion is outside the 0.3.1 exit gate. CORE-042 owns the
+remaining fixtures, journeys, and internal trace attribution.
+
+The full suite covers:
 
 - flat directory browsing and continuation
 - metadata enrichment
@@ -33,7 +39,7 @@ The suite covers:
 - recursive search, first match, completion, and cancellation
 - navigation sequences, refresh, and cache reuse
 - filesystem mutation convergence
-- semantic decorations when MODULES-002 lands
+- semantic decorations through the completed MODULES-002 contract
 - input responsiveness while long work is active
 
 ## Benchmark Layers
@@ -115,7 +121,7 @@ Every timed sample must prove semantic equivalence.
 
 The fixture manifest records expected digests for:
 
-- complete provider-order rows
+- complete row membership, independent of unspecified provider enumeration order
 - sorted rows
 - grouped labels and group order
 - filtered rows
@@ -124,6 +130,11 @@ The fixture manifest records expected digests for:
 
 An adapter result is invalid when its digest, row count, completion state, or
 error behavior differs. Invalid results never appear in a performance ranking.
+
+Use fixture-relative identities for membership digests. Check order only when
+the scenario requests it. For provider-order pages, validate visible rows against
+the adapter's observed sequence and validate uniqueness and membership across
+the completed chain. Different filesystem enumeration orders remain valid.
 
 For mutable scenarios, record the expected final generation and digest. Measure
 convergence only after correctness identifies the authoritative generation.
@@ -355,8 +366,12 @@ Record:
 Correctness and structural gates are portable:
 
 - output digests match
-- the first 256-row page examines no more than 512 provider rows
-- cancellation emits no terminal result after the cancellation barrier
+- an unfiltered provider-order first page of 256 rows examines at most 512
+  provider rows on the flat fixture
+- sparse filters produce the correct matches and preserve continuation without
+  a fixed examined-row ceiling; snapshot-only sorting/grouping stays explicit
+- cancellation permits its documented terminal status and rejects stale success
+  results after the scenario's cancellation barrier
 - mutable views converge without duplicate or missing rows
 
 Performance regression gates run on a reference machine. Begin with:
@@ -392,17 +407,20 @@ Place the comparison runner and adapters in an isolated benchmark package under
 `filer-core/benchmarks/`. Keep its dependencies out of Filer-core production
 and normal dev dependency graphs.
 
-The initial stage implements:
+The 0.3.1 stages are:
 
-1. protocol and fixture manifests
-2. Filer public-command adapter
-3. `std::fs` and Tokio flat-listing adapters
-4. reference application and browse-pipeline journey
-5. raw JSON and generated Markdown output
+1. CORE-030: protocol/schema examples, two flat manifests, and conformance design
+2. CORE-039: executable validation and flat fixture generation
+3. CORE-040 under CORE-031: isolated runner and Filer public-command adapter
+4. CORE-041 under CORE-031: std/Tokio adapters, raw JSON, and generated reports
+5. CORE-032: one reference-client browse journey and a recorded virtual-view baseline
 
-Add GIO, KIO, recursive walkers, Yazi, and Broot as later adapters. System
-framework and external application adapters may be capability-gated, but the
-runner must record their absence instead of silently dropping rows.
+CORE-042 later adds the remaining fixture corpus, search, mutation, decoration,
+responsiveness, and internal trace attribution. CORE-034 adds GIO, KIO, and
+recursive walkers after those fixtures exist. CORE-033 adds Yazi and Broot
+independently of the system-framework adapters. All three are deferred without
+a release milestone. Record missing capabilities explicitly when these stages
+are selected.
 
 ## Reference Interfaces
 

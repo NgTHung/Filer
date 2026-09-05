@@ -1,17 +1,16 @@
 ---
 id: "CORE-034"
 title: "Add system framework and recursive peer adapters"
-status: "To Do"
+status: Deferred
 priority: "Medium"
 type: "Feature"
 parent: "CORE-029"
-milestone: "0.3.1"
-depends_on: ["CORE-031"]
+depends_on: ["CORE-031", "CORE-042"]
 risk: "Medium"
 impact: "Extends semantic comparisons to GIO, KIO, walkdir, jwalk, and ignore without making system libraries required for Filer-core."
 tags: ["core", "performance", "benchmark", "provider", "search"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: "2026-08-26"
+last_updated: 2026-09-05
 ---
 
 ## Summary
@@ -25,3 +24,7 @@ Add capability-gated framework and recursive-search adapters after the common ru
 - [ ] Every adapter records its library or framework version, build options, runtime capabilities, and system dependency availability.
 - [ ] Canonical match and row digests gate timing results, including hidden and ignore-aware scenarios.
 - [ ] Missing system frameworks produce explicit capability records and do not fail unrelated benchmark adapters.
+
+## Rationale
+
+The maintainer approved a smaller 0.3.1 benchmark gate on 2026-09-05. System-framework and recursive adapters follow initial baselines and CORE-042 fixtures; no later release milestone is assigned.
