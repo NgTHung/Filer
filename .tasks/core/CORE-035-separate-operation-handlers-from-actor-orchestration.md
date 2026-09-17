@@ -1,7 +1,7 @@
 ---
 id: "CORE-035"
 title: "Separate operation handlers from actor orchestration"
-status: In Progress
+status: Done
 priority: "Medium"
 type: "Refactor"
 parent: "core:CORE-019"
@@ -23,6 +23,6 @@ those behavior changes into this mechanical split.
 
 ## Acceptance Criteria
 
-- [ ] Operation modules each stay under 700 lines and share event, provider-context, and cache plumbing without changing public command or event types.
-- [ ] Copy, move, delete, rename, and create preserve operation identity, timeout, cancellation, cache invalidation, and terminal-event behavior.
-- [ ] Existing operator and operation integration tests pass; cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
+- [x] Operation modules each stay under 700 lines and share event, provider-context, and cache plumbing without changing public command or event types.
+- [x] Copy, move, delete, rename, and create preserve operation identity, timeout, cancellation, cache invalidation, and terminal-event behavior.
+- [x] Existing operator and operation integration tests pass; cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
