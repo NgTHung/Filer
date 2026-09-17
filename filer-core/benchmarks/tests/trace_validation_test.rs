@@ -1066,6 +1066,35 @@ fn accepts_optional_row_first_on_open() {
 }
 
 #[test]
+fn accepts_page_before_viewport_with_cumulative_counts() {
+    let manifest = manifest("flat-10k-v1.json");
+    let scenario = "browse.fast.first";
+    let request = request(
+        &manifest,
+        scenario,
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "uncontrolled", "empty"),
+    );
+    let mut trace = fast_trace(&manifest, scenario, false, true);
+    trace.events.swap(3, 4);
+    trace.events[4]["counts"] =
+        json!({"examined":256,"accepted":256,"emitted":256,"visible":256});
+    for (sequence, event) in trace.events.iter_mut().enumerate() {
+        event["sequence"] = json!(sequence);
+        event["timestamp_ns"] = json!(sequence + 1);
+    }
+
+    let sample = validate_trace(manifest, request, scenario, trace, true, true);
+
+    assert_eq!(
+        sample.status.kind,
+        filer_core_benchmarks::StatusKind::Success
+    );
+}
+
+#[test]
 fn classifies_streaming_first_page_gate() {
     let flat_10k = manifest("flat-10k-v1.json");
     let request = request(

@@ -571,11 +571,14 @@ impl SampleValidator<'_> {
                     | Phase::ViewportCommitted
                     | Phase::PageCommitted
                     | Phase::TransformCompleted
-            ) && current.emitted != event.output.as_ref().map(|output| output.row_count)
+            ) && current
+                .emitted
+                .zip(event.output.as_ref().map(|output| output.row_count))
+                .is_some_and(|(emitted, row_count)| emitted < row_count)
             {
                 return Err(ProtocolError::new(
                     ErrorCode::InvalidCounts,
-                    "emitted count must cover the complete committed rows",
+                    "emitted count cannot be smaller than the committed rows",
                 ));
             }
         }
