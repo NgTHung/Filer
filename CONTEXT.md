@@ -76,6 +76,28 @@ _Avoid_: Snapshot, chunk
 An opaque, transient continuation for the next Directory page in the same chain. A cursor is single-use and does not identify a durable position.
 _Avoid_: Offset, bookmark
 
+## Benchmark evidence
+
+**Benchmark fixture**:
+A versioned, generated filesystem dataset with stable relative identities and expected semantic results.
+_Avoid_: Test directory, sample data
+
+**Benchmark run**:
+A group of randomized Benchmark samples that share one experimental plan and profile set.
+_Avoid_: Sample, invocation
+
+**Benchmark sample**:
+One attempt to execute a benchmark scenario for one implementation under one declared cache and environment identity.
+_Avoid_: Run, iteration
+
+**Scenario action**:
+One semantic input measured between its ready barrier and required completion inside a benchmark scenario.
+_Avoid_: File operation, trace phase
+
+**Semantic milestone**:
+An observable correct state required by a benchmark scenario, such as a committed viewport or completed listing.
+_Avoid_: Internal trace point, elapsed time
+
 ## Work and extensions
 
 **Task project**:
