@@ -82,6 +82,10 @@ _Avoid_: Offset, bookmark
 A versioned, generated filesystem dataset with stable relative identities and expected semantic results.
 _Avoid_: Test directory, sample data
 
+**Benchmark adapter**:
+A process that translates a Benchmark scenario into one measured implementation and reports canonical protocol events.
+_Avoid_: Provider, implementation under test
+
 **Benchmark run**:
 A group of randomized Benchmark samples that share one experimental plan and profile set.
 _Avoid_: Sample, invocation

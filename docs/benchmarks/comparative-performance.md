@@ -245,20 +245,23 @@ are excluded from rankings. A non-success trace may go directly from
 `sample.started` to `sample.completed`; a success trace must contain every
 required scenario phase.
 
-These are schema-valid events from one sample. The page digest is illustrative
-because provider order is observed rather than prescribed:
+A complete valid adapter-support result is:
 
 ```json
 {"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":0,"timestamp_ns":4100,"phase":"sample.started","action_id":null,"counts":{"examined":0,"accepted":0,"emitted":0,"visible":0},"rows":[],"output":null,"metrics":{},"status":null}
-{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":3,"timestamp_ns":8900,"phase":"page.committed","action_id":"open","counts":{"examined":256,"accepted":256,"emitted":256,"visible":40},"rows":[{"identity":".dir-000000","kind":"directory"}],"output":{"scope":"page","digest":"sha256:4444444444444444444444444444444444444444444444444444444444444444","row_count":256,"continuation":"more"},"metrics":{},"status":null}
-{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":6,"timestamp_ns":20100,"phase":"sample.completed","action_id":null,"counts":{"examined":10000,"accepted":10000,"emitted":10000,"visible":40},"rows":[],"output":null,"metrics":{"cpu_time_ns":{"unavailable":"not_observable"}},"status":{"kind":"success","code":null,"message":null}}
+{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":1,"timestamp_ns":4200,"phase":"sample.completed","action_id":null,"counts":{"examined":0,"accepted":0,"emitted":0,"visible":0},"rows":[],"output":null,"metrics":{"cpu_time_ns":{"unavailable":"not_observable"}},"status":{"kind":"not_supported","code":"scenario_not_supported","message":"browse.fast.first is not supported"}}
 ```
 
-The second event is not a complete page event because its row array has one row
-while `output.row_count` is 256. It is shown only as a field-level schema
-example. A trace validator rejects it with `output_row_count_mismatch`. CORE-039
-golden traces must contain the full row array. This distinction keeps schema
-parsing tests small without weakening trace conformance.
+This event is invalid because its row array has one row while
+`output.row_count` is 256. Its digest is the correct page digest for the one
+shown row, which isolates the count failure:
+
+```json
+{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":3,"timestamp_ns":8900,"phase":"page.committed","action_id":"open","counts":{"examined":256,"accepted":256,"emitted":256,"visible":40},"rows":[{"identity":".dir-000000","kind":"directory"}],"output":{"scope":"page","digest":"sha256:b01ec7b38aa3ead7298b439da888bd9e943cb15bd431d05d3dee13698bb4c2f9","row_count":256,"continuation":"more"},"metrics":{},"status":null}
+```
+
+A trace validator rejects it with `output_row_count_mismatch`. CORE-039 golden
+traces must contain every row claimed by an output.
 
 ### Clock and Digest Rules
 
