@@ -88,17 +88,12 @@ struct RawStatus {
     message: Presence<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 enum Presence<T> {
+    #[default]
     Missing,
     Null,
     Value(T),
-}
-
-impl<T> Default for Presence<T> {
-    fn default() -> Self {
-        Self::Missing
-    }
 }
 
 impl<'de, T> Deserialize<'de> for Presence<T>

@@ -5,6 +5,7 @@
 //! generation parameters and the fixed expected values, while row digests
 //! cover the semantic observations adapters must report.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -129,6 +130,7 @@ pub struct ValidatedManifest {
     expected: ExpectedDigests,
     manifest_digest: String,
     rows: Vec<CanonicalRow>,
+    identity_rows: BTreeMap<String, CanonicalRow>,
 }
 
 impl ValidatedManifest {
@@ -237,6 +239,10 @@ impl ValidatedManifest {
 
     pub fn digest_rows(&self, scope: &str, fields: &[Field], rows: &[CanonicalRow]) -> String {
         canonical_digest(scope, fields, rows)
+    }
+
+    pub(crate) fn expected_row(&self, identity: &str) -> Option<&CanonicalRow> {
+        self.identity_rows.get(identity)
     }
 }
 
@@ -355,6 +361,11 @@ fn validate_manifest(raw: RawManifest) -> Result<ValidatedManifest, ManifestErro
             "manifest_digest does not cover the ordered manifest records",
         ));
     }
+    let identity_rows = rows
+        .iter()
+        .cloned()
+        .map(|row| (row.identity.clone(), row))
+        .collect();
     Ok(ValidatedManifest {
         id: raw.id,
         generator,
@@ -366,6 +377,7 @@ fn validate_manifest(raw: RawManifest) -> Result<ValidatedManifest, ManifestErro
         expected,
         manifest_digest: raw.manifest_digest,
         rows,
+        identity_rows,
     })
 }
 

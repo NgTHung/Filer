@@ -16,7 +16,9 @@
 mod canonical;
 mod error;
 mod manifests;
+mod scenarios;
 mod schema;
+mod validator;
 
 pub use canonical::{CanonicalRow, canonical_digest};
 pub use error::{ErrorCode, ErrorContext, ProtocolError};
@@ -28,4 +30,8 @@ pub use schema::{
     Filter, FixtureReference, Group, Implementation, Kind, MetricValue, Output, OutputScope, Phase,
     ProcessCache, Request, Row, SemanticCache, Sort, Status, StatusKind, UnavailableReason,
     parse_event_line, parse_event_lines, parse_request_bytes,
+};
+pub use validator::{
+    DeclaredCapabilities, GateResult, RunValidator, SampleValidator, StructuralGates,
+    ValidatedSample,
 };
