@@ -694,13 +694,17 @@ fn rejects_missing_rows_duplicates_digests_sequence_clock_and_stale_actions() {
         .iter()
         .position(|line| String::from_utf8_lossy(line).contains("page.committed"))
         .expect("page event");
-
     let viewport_index = valid
         .iter()
         .position(|line| String::from_utf8_lossy(line).contains("viewport.committed"))
         .expect("viewport event");
+
+    let listing_index = valid
+        .iter()
+        .position(|line| String::from_utf8_lossy(line).contains("listing.completed"))
+        .expect("listing event");
     let mut missing_phase = valid.clone();
-    missing_phase.remove(viewport_index);
+    missing_phase.remove(listing_index);
     assert_eq!(
         run_lines(
             &manifest,
@@ -1079,8 +1083,7 @@ fn accepts_page_before_viewport_with_cumulative_counts() {
     );
     let mut trace = fast_trace(&manifest, scenario, false, true);
     trace.events.swap(3, 4);
-    trace.events[4]["counts"] =
-        json!({"examined":256,"accepted":256,"emitted":256,"visible":256});
+    trace.events[4]["counts"] = json!({"examined":256,"accepted":256,"emitted":256,"visible":256});
     for (sequence, event) in trace.events.iter_mut().enumerate() {
         event["sequence"] = json!(sequence);
         event["timestamp_ns"] = json!(sequence + 1);
@@ -1111,12 +1114,7 @@ fn rejects_listing_before_required_row_first() {
     listing["counts"] = json!({"examined":0,"accepted":0,"emitted":0,"visible":0});
     trace.events.insert(2, listing);
 
-    let error = run_lines(
-        &manifest,
-        &request,
-        scenario,
-        resequence(trace.lines()),
-    );
+    let error = run_lines(&manifest, &request, scenario, resequence(trace.lines()));
 
     assert_eq!(error.code(), ErrorCode::InvalidPhase);
 }
@@ -1804,11 +1802,11 @@ fn rejects_missing_required_phase() {
         ("cold", "warm", "empty"),
     );
     let mut lines = fast_trace(&manifest, "browse.fast.first", false, true).lines();
-    let viewport = lines
+    let listing = lines
         .iter()
-        .position(|line| String::from_utf8_lossy(line).contains("viewport.committed"))
-        .expect("viewport event");
-    lines.remove(viewport);
+        .position(|line| String::from_utf8_lossy(line).contains("listing.completed"))
+        .expect("listing event");
+    lines.remove(listing);
     assert_eq!(
         run_lines(&manifest, &request, "browse.fast.first", resequence(lines),).code(),
         ErrorCode::MissingRequiredPhase
