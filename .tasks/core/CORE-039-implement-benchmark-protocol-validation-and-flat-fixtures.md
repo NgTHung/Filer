@@ -1,7 +1,7 @@
 ---
 id: "CORE-039"
 title: "Implement benchmark protocol validation and flat fixtures"
-status: In Progress
+status: Done
 priority: "High"
 type: "Feature"
 parent: "core:CORE-029"
@@ -32,6 +32,6 @@ Follow [the staged execution plan](../../docs/benchmarks/core-039-execution-plan
 
 ## Acceptance Criteria
 
-- [ ] Protocol tests reject version mismatches, malformed events, missing required phases, duplicate rows, wrong digests, and unsupported scenarios reported as success.
-- [ ] Both flat fixtures reproduce their expected membership and requested metadata from versioned manifests; generation stays outside timed samples.
-- [ ] Production and normal development dependency graphs remain unchanged, and the isolated package tests pass.
+- [x] Protocol tests reject version mismatches, malformed events, missing required phases, duplicate rows, wrong digests, and unsupported scenarios reported as success.
+- [x] Both flat fixtures reproduce their expected membership and requested metadata from versioned manifests; generation stays outside timed samples.
+- [x] Production and normal development dependency graphs remain unchanged, and the isolated package tests pass.
