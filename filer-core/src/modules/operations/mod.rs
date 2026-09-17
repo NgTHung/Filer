@@ -13,6 +13,7 @@ mod command;
 pub mod operator;
 mod support;
 pub mod target;
+mod transfer;
 
 use std::sync::Arc;
 
