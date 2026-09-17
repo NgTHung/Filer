@@ -15,6 +15,7 @@
 
 mod canonical;
 mod error;
+mod fixtures;
 mod manifests;
 mod scenarios;
 mod schema;
@@ -22,6 +23,9 @@ mod validator;
 
 pub use canonical::{CanonicalRow, canonical_digest};
 pub use error::{ErrorCode, ErrorContext, ProtocolError};
+pub use fixtures::{
+    FixtureError, FixtureErrorCode, PreparedFixture, prepare_fixture, prepare_fixture_from_path,
+};
 pub use manifests::{
     ExpectedDigests, GeneratorParameters, ManifestError, ManifestErrorCode, ValidatedManifest,
 };
