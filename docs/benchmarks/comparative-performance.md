@@ -416,7 +416,7 @@ Version 1 supports these standalone scenarios:
 | `browse.fast.first` | `flat-10k-v1`; identity and kind; provider order | Fixture ready; no listing work started | `row.first`, 40-row `viewport.committed`, 256-row `page.committed`, `listing.completed` | 10,000 unique identities and the membership digest match |
 | `browse.fast.scale` | `flat-100k-v1`; identity and kind; provider order | Fixture ready; no listing work started | 40-row viewport, 256-row page, `listing.completed` | 100,000 unique identities and the membership digest match |
 | `browse.metadata.first` | `flat-10k-v1`; all four row fields; provider order | Fixture ready; no metadata work started | 40-row viewport, 256-row page, `listing.completed` | Membership and metadata digests match |
-| `browse.next` | `flat-10k-v1`; identity and kind; provider order | Untimed page 1 is committed and its continuation is retained | Every page from 2 through 40 commits; pages 2, 10, and 40 are reported as timed milestones | Page 40 has 16 rows and `end`; the 40-page chain has no duplicates and matches membership |
+| `browse.next` | `flat-10k-v1`; identity and kind; provider order | Fixture ready; no listing work started | `open` commits page 1, then every page from 2 through 40 commits; pages 2, 10, and 40 are continuation milestones | Page 40 has 16 rows and `end`; the 40-page chain has no duplicates and matches membership |
 | `view.sort.name` | `flat-10k-v1`; identity and kind; ascending name | Complete unsorted snapshot is ready | `transform.completed`, then `view.committed` | Full order and first-40 viewport digests match |
 | `view.filter.common` | `flat-10k-v1`; identity and kind; ascending name; name contains `file-0001` | Complete name-sorted snapshot is ready | `transform.completed`, then `view.committed` | Exactly 90 rows and both filter digests match |
 | `browse.refresh` | `flat-10k-v1`; identity and kind; ascending name | Warm complete snapshot is visible; no refresh work started | New `listing.completed`, `transform.completed`, then `view.committed` | A new enumeration matches membership; sorted output and viewport digests match |
@@ -782,7 +782,7 @@ gate tests:
 | `accepts_fast_first_trace` | First row, 40-row viewport, 256-row page, 10,000-row completion, and membership | CORE-040 |
 | `accepts_fast_scale_trace` | 40-row viewport, 256-row page, 100,000-row completion, and membership | CORE-040 |
 | `accepts_metadata_first_trace` | Requested metadata projection, metadata digest, and no extra fields | CORE-040 and CORE-041 |
-| `accepts_continuation_trace` | Pages 2 through 40, final 16 rows, continuation state, uniqueness, and membership | CORE-040 |
+| `accepts_continuation_trace` | Pages 1 through 40, final 16 rows, continuation state, uniqueness, and membership | CORE-040 |
 | `accepts_name_sort_trace` | Snapshot barrier, full name-order digest, and viewport digest | CORE-032 |
 | `accepts_name_filter_trace` | Snapshot barrier, 90-row filtered digest, and viewport digest | CORE-032 |
 | `accepts_refresh_trace` | New enumeration, membership, restored name order, and visible viewport | CORE-032 |
