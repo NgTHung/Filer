@@ -94,28 +94,197 @@ Every adapter reads one scenario request and writes newline-delimited JSON
 events. A protocol version prevents an old adapter from silently producing an
 incompatible result.
 
-A run request contains:
+Version 1 uses one UTF-8 JSON object followed by `\n` on standard input. The
+adapter writes only UTF-8 JSON objects followed by `\n` on standard output.
+Diagnostics go to standard error. Objects are strict: a receiver rejects
+unknown fields, missing fields, duplicate object keys, non-integer JSON
+numbers, and values outside the ranges below. A schema change that alters a
+required field or its meaning requires a new protocol version.
 
-- protocol version and scenario id
-- fixture manifest id and digest
-- implementation id, version, and build profile
-- cache mode
-- page and viewport size
-- requested fields, sort, filter, group, and search configuration
-- sample, process, and randomized-order identifiers
+### Request Schema v1
 
-Each event contains:
+The request is one object with these required fields:
 
-- run and sample id
-- monotonic timestamp in nanoseconds
-- phase name
-- rows examined, accepted, emitted, and visible when known
-- output digest when the phase commits semantic state
-- structured error or cancellation status
+| Field | Type and rule |
+|---|---|
+| `protocol_version` | Integer `1`. |
+| `type` | String `run_request`. |
+| `run_id` | Opaque identifier shared by a benchmark run. |
+| `sample_id` | Opaque identifier unique within `run_id`. |
+| `process_id` | Opaque identifier for the adapter process. |
+| `order_id` | Opaque identifier for the randomized round and position. |
+| `scenario_id` | A scenario identifier declared in this document. |
+| `fixture` | Object containing exact `id` and `digest` strings from a fixture manifest. |
+| `implementation` | Object containing `id`, `version`, `source_revision`, `build_profile`, and executable `binary_digest`. |
+| `adapter` | Object containing `id`, `version`, and `binary_digest`. |
+| `environment` | Object containing machine and filesystem profile identifiers and their digests. |
+| `cache` | Object containing `process`, `filesystem`, and `semantic` states. |
+| `viewport_size` | Integer from 1 through `page_size`. Version 1 uses 40. |
+| `page_size` | Integer from 1 through 4096. Version 1 uses 256. |
+| `requested_fields` | Non-empty ordered set drawn from the canonical row fields. |
+| `sort` | Object with `field` and `direction`. |
+| `filter` | A tagged filter object. |
+| `group` | A tagged group object. |
+| `search` | A tagged search object. |
+| `clock` | Exact object `{"kind":"process_monotonic","unit":"nanosecond"}`. |
 
-Use a canonical row shape for comparison. Include only fields required by the
-scenario. A fast-listing adapter must not lose because another adapter gathered
-metadata that the scenario did not request.
+Opaque identifiers match `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`. Digests match
+`sha256:[0-9a-f]{64}`. The runner rejects a repeated `(run_id, sample_id)` and
+an event whose four correlation identifiers do not equal its request.
+
+`requested_fields` uses this canonical order: `identity`, `kind`,
+`size_bytes`, then `modified_unix_ns`. `identity` and `kind` are always
+required. A metadata browse adds `size_bytes` and `modified_unix_ns`. An
+adapter must not collect extra metadata during the timed interval and must not
+emit unrequested row fields.
+
+Version 1 accepts `provider_order` with direction `none`, or `name` with
+direction `ascending`. Its filter is either `{"kind":"none"}` or
+`{"kind":"name_contains","value":"file-0001","case_sensitive":true}`.
+Its `group` and `search` objects are both `{"kind":"none"}`. Later scenarios
+may add tagged variants only in a new protocol version.
+
+Cache values are closed enums. `process` is `cold` or `warm`. `filesystem` is
+`controlled_cold`, `fresh_copy`, `warm`, or `uncontrolled`. `semantic` is
+`empty`, `reset`, or `reused`. Samples with different cache triples do not
+share a result set.
+
+A valid request is:
+
+```json
+{"protocol_version":1,"type":"run_request","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","scenario_id":"browse.fast.first","fixture":{"id":"flat-10k-v1","digest":"sha256:b684d98507db303ffc02805732bfc721d65af093db142b32887c35b0d0e5a95e"},"implementation":{"id":"filer-core","version":"0.3.1","source_revision":"0123456789abcdef0123456789abcdef01234567","build_profile":"release","binary_digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},"adapter":{"id":"filer-public","version":"1.0.0","binary_digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111"},"environment":{"machine_profile_id":"linux-x86_64-lab-01","machine_profile_digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222","filesystem_profile_id":"ext4-lab-01","filesystem_profile_digest":"sha256:3333333333333333333333333333333333333333333333333333333333333333"},"cache":{"process":"cold","filesystem":"warm","semantic":"empty"},"viewport_size":40,"page_size":256,"requested_fields":["identity","kind"],"sort":{"field":"provider_order","direction":"none"},"filter":{"kind":"none"},"group":{"kind":"none"},"search":{"kind":"none"},"clock":{"kind":"process_monotonic","unit":"nanosecond"}}
+```
+
+This request is invalid for at least two independent reasons: version 1 does
+not permit a numeric string or an unknown field. Conformance tests mutate one
+field at a time, so rejection-code precedence is not part of the protocol:
+
+```json
+{"protocol_version":"1","type":"run_request","extra":true}
+```
+
+### Event Schema v1
+
+Every event contains every field in this table. Use an empty object or array,
+or `null` only where the table permits it. This keeps missing observations
+distinct from unavailable observations.
+
+| Field | Type and rule |
+|---|---|
+| `protocol_version` | Integer `1`. |
+| `type` | String `run_event`. |
+| `run_id`, `sample_id`, `process_id`, `order_id` | Exact request values. |
+| `sequence` | Unsigned 64-bit integer, starting at zero and increasing by exactly one. |
+| `timestamp_ns` | Unsigned 64-bit nanoseconds from the adapter process monotonic clock. |
+| `phase` | One of the phase names below. |
+| `action_id` | A scenario action identifier, or `null` for sample phases. |
+| `counts` | Object with `examined`, `accepted`, `emitted`, and `visible`. |
+| `rows` | Array of canonical rows. Empty when the phase exposes no rows. |
+| `output` | A semantic output object, or `null`. |
+| `metrics` | Object from metric name to an observed or unavailable value. |
+| `status` | A terminal status object on `sample.completed`, otherwise `null`. |
+
+The phase enum is `sample.started`, `action.started`, `row.first`,
+`viewport.committed`, `page.committed`, `listing.completed`,
+`transform.completed`, `view.committed`, `action.completed`, and
+`sample.completed`. Scenario tables below select the required subset and
+order. A success trace has exactly one `sample.started` first and one
+`sample.completed` last. It has one `action.started` and one
+`action.completed` for each prescribed action.
+
+Counts are cumulative within an action and never decrease. Each count is an
+unsigned 64-bit integer or an unavailable value. When each relevant pair is
+observed, `accepted <= examined`, `emitted <= accepted`, and
+`visible <= emitted`.
+`action.started` resets action counts to zero. Sample phases use totals across
+completed actions. Correctness-required counts cannot be unavailable. An
+unavailable value has this exact shape:
+
+```json
+{"unavailable":"not_observable"}
+```
+
+The reason is `unsupported`, `permission_denied`, `not_observable`, or
+`platform_unavailable`. Metrics use the same value shape. Adapters must not
+write zero when a count or metric is unavailable. `emitted` and `visible` are
+required on commit phases. `accepted` is also required for a filter.
+`examined` is required only when the adapter declares an observable streaming
+work metric; otherwise its structural gate is `not_evaluable`.
+
+Canonical rows contain exactly the requested fields. `identity` is a non-empty
+UTF-8 fixture-relative path using `/`; it cannot start with `/`, contain `.` or
+`..` segments, contain `\\`, or contain NUL. `kind` is `file` or `directory`.
+`size_bytes` is an unsigned 64-bit integer for a file and `null` for a
+directory. `modified_unix_ns` is a signed 64-bit integer. The initial flat
+fixtures use ASCII identities. CORE-042 must version the identity encoding
+before adding non-UTF-8 names.
+
+`rows` contains one row for `row.first`; the complete committed viewport or
+page for its commit phase; every observed row for `listing.completed`; and the
+complete transformed result for `transform.completed`. `view.committed`
+contains its visible viewport. Other phases use an empty array. Rows within an
+event are unique. A provider-order continuation chain cannot repeat an
+identity across page commits. `output` has `scope`, `digest`, `row_count`, and
+`continuation`. Scope is `membership`, `metadata`, `ordered`, `page`, or
+`viewport`. Continuation is `more`, `end`, or `not_applicable`. Every phase
+that carries rows requires an output and matching row count; other phases
+require `null`.
+
+Terminal status is one of these exact objects:
+
+```json
+{"kind":"success","code":null,"message":null}
+{"kind":"not_supported","code":"scenario_not_supported","message":"browse.refresh is not supported"}
+{"kind":"error","code":"fixture_digest_mismatch","message":"fixture content does not match its manifest"}
+{"kind":"cancelled","code":"cancelled_at_barrier","message":"the scenario reached its cancellation barrier"}
+```
+
+Only `success` is eligible for timing. `not_supported` is a capability result,
+not a zero-duration sample. `error` and `cancelled` preserve diagnostics but
+are excluded from rankings. A non-success trace may go directly from
+`sample.started` to `sample.completed`; a success trace must contain every
+required scenario phase.
+
+These are schema-valid events from one sample. The page digest is illustrative
+because provider order is observed rather than prescribed:
+
+```json
+{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":0,"timestamp_ns":4100,"phase":"sample.started","action_id":null,"counts":{"examined":0,"accepted":0,"emitted":0,"visible":0},"rows":[],"output":null,"metrics":{},"status":null}
+{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":3,"timestamp_ns":8900,"phase":"page.committed","action_id":"open","counts":{"examined":256,"accepted":256,"emitted":256,"visible":40},"rows":[{"identity":".dir-000000","kind":"directory"}],"output":{"scope":"page","digest":"sha256:4444444444444444444444444444444444444444444444444444444444444444","row_count":256,"continuation":"more"},"metrics":{},"status":null}
+{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":6,"timestamp_ns":20100,"phase":"sample.completed","action_id":null,"counts":{"examined":10000,"accepted":10000,"emitted":10000,"visible":40},"rows":[],"output":null,"metrics":{"cpu_time_ns":{"unavailable":"not_observable"}},"status":{"kind":"success","code":null,"message":null}}
+```
+
+The second event is not a complete page event because its row array has one row
+while `output.row_count` is 256. It is shown only as a field-level schema
+example. A trace validator rejects it with `output_row_count_mismatch`. CORE-039
+golden traces must contain the full row array. This distinction keeps schema
+parsing tests small without weakening trace conformance.
+
+### Clock and Digest Rules
+
+All timestamps in one sample come from the same process-local monotonic clock.
+They are nondecreasing by `sequence`. They are not Unix time and cannot be
+compared across processes. The adapter samples the clock for `action.started`
+immediately before invoking the measured action. Runner wall-clock timestamps
+belong in raw-result metadata, not event timestamps.
+
+Every digest uses SHA-256 and the `sha256:` prefix. Canonical digest input is a
+sequence of UTF-8 tokens. Encode a token as its byte length in ASCII, `:`, then
+its bytes. Concatenate these tokens without separators:
+
+1. `filer-benchmark-digest-v1`
+2. the scope
+3. the decimal field count, followed by each field name
+4. the decimal row count
+5. each row value in field order, using `~` for JSON `null` and base-10
+   integers without leading zeroes
+
+Membership and metadata inputs sort rows by identity bytes. Membership hashes
+only `identity`. Metadata hashes `identity`, `kind`, `size_bytes`, and
+`modified_unix_ns`. Ordered, page, and viewport inputs preserve the committed
+row order and hash exactly the requested fields. This encoding makes provider
+enumeration order irrelevant to membership while preserving order where a
+scenario requires it.
 
 ## Correctness Before Timing
 
@@ -163,10 +332,139 @@ timed sample.
 Record the filesystem type and mount options. Keep tmpfs, Btrfs, ext4, APFS,
 and NTFS results separate.
 
+### Flat Manifest Schema v1
+
+The initial manifest object contains `schema_version`, `id`, `generator`,
+`entry_count`, `requested_metadata`, `expected`, and `manifest_digest`.
+`generator` contains every generation parameter. `expected` contains
+membership, metadata, and name-order digests plus applicable
+reference-journey digests. Unknown or missing fields are invalid.
+
+`flat-v1` generates index `i` in `[0, entry_count)`:
+
+1. The entry is a directory when `i % 10 == 0`; otherwise it is a file.
+2. Prefix the name with `.` when `i % 25 == 0`.
+3. A directory is `dir-{i:06}`. A file is `file-{i:06}.{extension}`.
+4. File extensions are `["rs","txt","log","bin"]`, selected by `i % 4`.
+5. File size is `((i * 7919) % 1048573) + 1`. Creation may use sparse files.
+6. Modification time is `1704067200000000000 + i * 1000000000` Unix
+   nanoseconds for both files and directories.
+
+Create all entries before applying final modification times so directory
+creation cannot change a recorded timestamp. The root path, inode, allocation,
+creation time, access time, owner, and provider enumeration position are not
+fixture identity. Directories have `size_bytes: null` in canonical rows.
+
+The manifest digest uses the digest algorithm above with scope `manifest` and
+fields `name`, `value`. Hash these ordered records: `manifest_id`,
+`entry_count`, `schema_version`, `generator`, `directory_every`,
+`hidden_every`, `extensions`, `size_multiplier`, `size_modulus`, `size_offset`,
+`modified_base_unix_ns`, `modified_step_ns`, `membership_digest`,
+`metadata_digest`, and `name_order_digest`. Values are the exact strings shown
+by the manifest, with extensions encoded as `rs,txt,log,bin`. The
+`manifest_digest` field itself is excluded.
+
+The normative manifests are:
+
+```json
+{"schema_version":1,"id":"flat-10k-v1","generator":{"id":"flat-v1","directory_every":10,"hidden_every":25,"extensions":["rs","txt","log","bin"],"size_multiplier":7919,"size_modulus":1048573,"size_offset":1,"modified_base_unix_ns":1704067200000000000,"modified_step_ns":1000000000},"entry_count":10000,"requested_metadata":["size_bytes","modified_unix_ns"],"expected":{"membership_digest":"sha256:ac84c83acce8b289874fc468a4aa77b113404ff041e54af0ba588cc1e2c905a9","metadata_digest":"sha256:581febb0f3f93343ada6474ed2d99d706c0a03494c303267968e158454a2ef81","name_order_digest":"sha256:a83cb70360ea0d060fde788c3a5c0ab30fa2be56c0c4ac2bb604f78b8aa8ac22","name_viewport_digest":"sha256:f8637ffa842a13652e47c6523d87838eef4849433896fd37c9e746b42163ce3a","filter_count":90,"filter_order_digest":"sha256:193ef6adbff68a4b7fad2050ddb8b85e3c830484bbe3bcc4e557b86cb43161ea","filter_viewport_digest":"sha256:76d10051562590383e451a7965ff09b6af26a0e832ac329fa478aacc3663fc92"},"manifest_digest":"sha256:b684d98507db303ffc02805732bfc721d65af093db142b32887c35b0d0e5a95e"}
+```
+
+```json
+{"schema_version":1,"id":"flat-100k-v1","generator":{"id":"flat-v1","directory_every":10,"hidden_every":25,"extensions":["rs","txt","log","bin"],"size_multiplier":7919,"size_modulus":1048573,"size_offset":1,"modified_base_unix_ns":1704067200000000000,"modified_step_ns":1000000000},"entry_count":100000,"requested_metadata":["size_bytes","modified_unix_ns"],"expected":{"membership_digest":"sha256:b32e48f7e2c31b06e7c5256e624b61c7f3d3bcbc4ede922a145ef7a4d544f1d3","metadata_digest":"sha256:d2dd00efed47da4987dc30ae8bd558cfad45d9aa9ce34d2b0f2f5ccb2349831d","name_order_digest":"sha256:119be04466ebb4673c185af2f177a771155a957f53f70fd7e30dec7201573dcf","name_viewport_digest":"sha256:f8637ffa842a13652e47c6523d87838eef4849433896fd37c9e746b42163ce3a"},"manifest_digest":"sha256:dd55706f9be421dafc15a7237493158c3703ea9a0e379e7d51f6653020e1566e"}
+```
+
+The expected name order compares UTF-8 identity bytes in ascending order.
+`filter_*` selects identities containing `file-0001`, case-sensitively, after
+name sorting. Provider-order pages have no golden page digest. Validate each
+observed page digest against its emitted rows, reject duplicate identities,
+and compare the completed chain's order-independent membership digest with the
+manifest. This permits different valid filesystem enumeration orders.
+
 ## Scenario Contracts
 
 Each scenario defines its start barrier, timed milestones, terminal condition,
 correctness digest, and supported benchmark layers.
+
+### Version 1 Barriers
+
+Before `sample.started`, the runner validates the fixture manifest and profile
+digests, establishes the requested cache state, and lets the adapter finish
+untimed initialization. Before each `action.started`, the adapter has applied
+all prior actions and has no pending work for them. The timestamp on
+`action.started` is the timing origin. Setup work required by the action itself
+cannot move before that event.
+
+An output milestone becomes visible only when the consumer could use it. Reading
+40 entries without committing them is not a viewport milestone. A page commit
+contains that page's complete canonical rows. `listing.completed` proves the
+full membership or metadata digest and carries all observed rows.
+`transform.completed` proves and carries the complete ordered or filtered
+result. `view.committed` proves the visible viewport. `action.completed`
+follows all required outputs and pending work for that action.
+`sample.completed` follows the final action. The event timestamp marks the
+semantic milestone after canonical rows exist; NDJSON serialization after that
+timestamp is not presented as provider or transform latency.
+
+Version 1 supports these standalone scenarios:
+
+| Scenario | Fixture and request | Start barrier | Required success milestones | Completion |
+|---|---|---|---|---|
+| `browse.fast.first` | `flat-10k-v1`; identity and kind; provider order | Fixture ready; no listing work started | `row.first`, 40-row `viewport.committed`, 256-row `page.committed`, `listing.completed` | 10,000 unique identities and the membership digest match |
+| `browse.fast.scale` | `flat-100k-v1`; identity and kind; provider order | Fixture ready; no listing work started | 40-row viewport, 256-row page, `listing.completed` | 100,000 unique identities and the membership digest match |
+| `browse.metadata.first` | `flat-10k-v1`; all four row fields; provider order | Fixture ready; no metadata work started | 40-row viewport, 256-row page, `listing.completed` | Membership and metadata digests match |
+| `browse.next` | `flat-10k-v1`; identity and kind; provider order | Untimed page 1 is committed and its continuation is retained | Every page from 2 through 40 commits; pages 2, 10, and 40 are reported as timed milestones | Page 40 has 16 rows and `end`; the 40-page chain has no duplicates and matches membership |
+| `view.sort.name` | `flat-10k-v1`; identity and kind; ascending name | Complete unsorted snapshot is ready | `transform.completed`, then `view.committed` | Full order and first-40 viewport digests match |
+| `view.filter.common` | `flat-10k-v1`; identity and kind; ascending name; name contains `file-0001` | Complete name-sorted snapshot is ready | `transform.completed`, then `view.committed` | Exactly 90 rows and both filter digests match |
+| `browse.refresh` | `flat-10k-v1`; identity and kind; ascending name | Warm complete snapshot is visible; no refresh work started | New `listing.completed`, `transform.completed`, then `view.committed` | A new enumeration matches membership; sorted output and viewport digests match |
+
+Each row in the table expands to `action.started`, the listed milestones, and
+`action.completed`. `browse.next` uses action ids `page-0002` through
+`page-0040`. Other action ids are `open`, `sort-name`, `filter-name`, and
+`clear-filter`, and `refresh`. A provider may emit viewport before page, but
+each named milestone appears exactly once. `row.first` precedes every other
+browse output when it is required.
+
+Provider enumeration order is observed, not prescribed. For provider-order
+scenarios, page and viewport digests must match their event rows but do not
+have golden values. The validator accumulates page identities and checks the
+final order-independent membership digest. A continuation of `end` before the
+manifest count or `more` at the final page is invalid.
+
+Name sorting compares identity UTF-8 bytes in ascending order. It is a
+snapshot-only transform in version 1. The sort clock starts only after the
+complete input snapshot is ready, and the adapter cannot describe listing time
+as sorting time. The filter uses the same complete snapshot. Sparse streaming
+filters in the extended suite keep their own listing and filter costs and do
+not inherit the unfiltered first-page examined-row gate.
+
+### Initial Reference Journey
+
+`journey.browse-reference` uses `flat-10k-v1` in one warm process. It performs
+these actions without resetting semantic state:
+
+1. `open` commits the observed first viewport and page, then pauses at its
+   continuation barrier.
+2. `page-0002` through `page-0040` continue the provider-order page chain.
+   Pages 2, 10, and 40 are visible timing milestones; page 40 also emits
+   `listing.completed`.
+3. `sort-name` commits the full name order and its first viewport.
+4. `filter-name` applies the case-sensitive `file-0001` substring filter and
+   commits 90 ordered rows plus its first viewport.
+5. `clear-filter` restores the name-sorted full order and first viewport.
+6. `refresh` starts a new provider enumeration, then restores the name-sorted
+   full order and first viewport.
+
+The journey start barrier is an idle adapter with the fixture verified and no
+location loaded. Each action uses the barrier rules above. It completes only
+after `refresh` has no pending work and the final membership, name-order, and
+viewport digests match. The validator rejects stale action ids, a commit after
+its action completed, a missing page, or an output from a superseded action.
+These are public input/event/view milestones. They do not claim a physical
+frame commit.
+
+The following tables describe the later suite. They are not protocol v1
+requirements unless a version 1 scenario above names them.
 
 ### Browse
 
@@ -366,6 +664,32 @@ Record:
 - implementation versions, commits, and binary digests
 - adapter configuration and declared capabilities
 
+The raw result stores immutable machine, filesystem, build, and adapter profile
+records. The request references the machine and filesystem records by id and
+digest and carries the build and adapter identity directly. A machine record
+contains OS, kernel, CPU model, physical and logical CPU counts, memory, power
+policy, and virtualization state. A filesystem record contains filesystem type,
+sorted mount options, block size, mount identity, fixture path class, and cache
+preparation method. A build record contains source revision, compiler version,
+target, features, build profile, and binary digest. An adapter record contains
+adapter id, version, binary digest, configuration, and declared capabilities.
+Profile digests use the canonical token algorithm with scope `profile`, fields
+`name` and `value`, and records in the order listed here.
+
+Do not infer cache state. `controlled_cold` requires a recorded platform cache
+reset. `fresh_copy` requires a new fixture path and records whether its source
+may still be cached. `uncontrolled` is never reported as cold. Warmup samples
+are stored but marked ineligible. A steady-state sample records the warmup
+action id and the semantic reset barrier.
+
+Every requested resource metric appears on `sample.completed` as an observed
+integer or an unavailable value. Reports show observed coverage as `n/N` and
+group unavailable reasons. They never replace unavailable values with zero,
+drop the implementation from correctness results, or estimate a value. A gate
+that needs an unavailable metric is `not_evaluable`, not passed. Correctness
+counts and digests required by a scenario remain mandatory even when resource
+metrics are unavailable.
+
 ## Gates and Interpretation
 
 Correctness and structural gates are portable:
@@ -378,6 +702,16 @@ Correctness and structural gates are portable:
 - cancellation permits its documented terminal status and rejects stale success
   results after the scenario's cancellation barrier
 - mutable views converge without duplicate or missing rows
+
+The first-page examined-row gate applies only to an adapter that declares a
+streaming listing capability and can observe examined rows at its public
+boundary. An unavailable examined count makes that structural gate
+`not_evaluable`. It does not invalidate an otherwise correct sample. A sparse
+filter has no fixed examined-row ceiling because correct matches may occur at
+the end of the source. It must instead preserve continuation, reach completion,
+and match the filtered digest. A snapshot-only sort or group starts timing
+after its complete input snapshot barrier and reports transform latency. It
+cannot claim a streaming first-page result.
 
 Performance regression gates run on a reference machine. Begin with:
 
@@ -392,6 +726,73 @@ semantically equivalent framework adapter.
 
 Do not hide a tradeoff in an aggregate score. Publish browse, search,
 presentation, responsiveness, resource, and reliability results separately.
+
+## Version 1 Conformance Matrix
+
+CORE-039 implements each named validator test below through the adapter
+request/event seam. Tests use golden JSON messages and generated flat fixtures,
+not Filer internals. The runtime owner later proves that a real adapter can
+produce a conforming trace. Rejection codes are stable version 1 result codes.
+
+| Test | Invalid input or rejection rule | Required result code |
+|---|---|---|
+| `rejects_malformed_json` | A request or stdout line is not one complete JSON object | `malformed_json` |
+| `rejects_unsupported_protocol_version` | Request or event version is not integer `1` | `unsupported_protocol_version` |
+| `rejects_unknown_missing_or_duplicate_fields` | A strict object has an unknown, missing, or duplicate key | `invalid_schema` |
+| `rejects_invalid_scalar_types_and_ranges` | A field has the wrong JSON type, an integer is out of range, or an id or digest has invalid syntax | `invalid_schema` |
+| `rejects_invalid_scenario_configuration` | Fixture, fields, sort, filter, page, viewport, group, search, or cache state does not match the scenario | `invalid_scenario_configuration` |
+| `rejects_fixture_reference_mismatch` | Fixture id or digest differs from the selected manifest | `fixture_reference_mismatch` |
+| `rejects_reused_sample_identity` | `(run_id, sample_id)` was already accepted | `duplicate_sample` |
+| `rejects_event_correlation_mismatch` | Any event correlation id differs from the request | `correlation_mismatch` |
+| `rejects_sequence_gap_or_duplicate` | Sequence does not start at zero or advance by one | `invalid_sequence` |
+| `rejects_monotonic_clock_regression` | A later sequence has a lower timestamp | `clock_regression` |
+| `rejects_unknown_or_misordered_phase` | A phase is unknown, outside its action, or violates the scenario order | `invalid_phase` |
+| `rejects_stale_or_unknown_action` | Action id is unknown, completed, or superseded | `invalid_action` |
+| `rejects_inconsistent_counts` | Counts decrease or violate `accepted <= examined`, `emitted <= accepted`, or `visible <= emitted` | `invalid_counts` |
+| `rejects_unavailable_correctness_count` | A scenario-required count uses an unavailable value | `required_count_unavailable` |
+| `rejects_invalid_row_projection` | Identity is unsafe, kind or metadata is invalid, or requested fields are missing or extra | `invalid_row` |
+| `rejects_duplicate_rows` | A commit repeats a row or a continuation chain repeats an identity | `duplicate_identity` |
+| `rejects_output_row_count_mismatch` | Output count differs from the committed rows or required manifest count | `output_row_count_mismatch` |
+| `rejects_wrong_output_digest` | A commit digest differs from canonical rows or a golden digest | `output_digest_mismatch` |
+| `rejects_incomplete_membership` | Completed provider-order rows do not match the manifest membership | `membership_mismatch` |
+| `rejects_missing_required_phase` | A success trace omits a scenario phase | `missing_required_phase` |
+| `rejects_duplicate_required_phase` | A singleton phase or terminal event appears twice | `duplicate_phase` |
+| `rejects_invalid_terminal_status` | Status is missing, appears before terminal, has the wrong shape, or terminal is not last | `invalid_status` |
+| `rejects_unsupported_scenario_reported_as_success` | The adapter lacks a required capability but emits success | `unsupported_reported_as_success` |
+| `rejects_non_event_stdout` | Standard output contains diagnostics or any non-event JSON object | `unexpected_stdout` |
+
+The invalid request above is the golden case for `invalid_schema`. The
+one-row, 256-count page event is the golden case for
+`output_row_count_mismatch`. The following terminal event is a normative
+`unsupported_reported_as_success` case when the adapter capability record does
+not include `browse.refresh`:
+
+```json
+{"protocol_version":1,"type":"run_event","run_id":"run-local-001","sample_id":"sample-0001","process_id":"process-0001","order_id":"round-01-position-02","sequence":1,"timestamp_ns":4200,"phase":"sample.completed","action_id":null,"counts":{"examined":0,"accepted":0,"emitted":0,"visible":0},"rows":[],"output":null,"metrics":{},"status":{"kind":"success","code":null,"message":null}}
+```
+
+CORE-039 also implements one accepting golden trace and these initial scenario
+gate tests:
+
+| Test | Gate proven from the trace | Runtime owner |
+|---|---|---|
+| `accepts_fast_first_trace` | First row, 40-row viewport, 256-row page, 10,000-row completion, and membership | CORE-040 |
+| `accepts_fast_scale_trace` | 40-row viewport, 256-row page, 100,000-row completion, and membership | CORE-040 |
+| `accepts_metadata_first_trace` | Requested metadata projection, metadata digest, and no extra fields | CORE-040 and CORE-041 |
+| `accepts_continuation_trace` | Pages 2 through 40, final 16 rows, continuation state, uniqueness, and membership | CORE-040 |
+| `accepts_name_sort_trace` | Snapshot barrier, full name-order digest, and viewport digest | CORE-032 |
+| `accepts_name_filter_trace` | Snapshot barrier, 90-row filtered digest, and viewport digest | CORE-032 |
+| `accepts_refresh_trace` | New enumeration, membership, restored name order, and visible viewport | CORE-032 |
+| `accepts_reference_journey_trace` | All action barriers, visible milestones, completion, and no stale outputs | CORE-032 |
+| `classifies_streaming_first_page_gate` | Observed `examined <= 512` passes; a larger value fails; unavailable is `not_evaluable` | CORE-040 and CORE-041 |
+| `does_not_apply_streaming_cap_to_sparse_filter` | Exact sparse result and continuation pass without a fixed examined-row ceiling | CORE-042 |
+| `keeps_snapshot_transform_separate` | Sort timing starts after snapshot completion and cannot be ranked as streaming | CORE-032 |
+
+CORE-042 owns the executable cases for tree, sparse-match, Git, hostile-name,
+and mutation fixtures; search, cancellation, mutation-recovery, decorated
+browse, responsiveness, and internal trace phases. Those additions must extend
+this matrix with their versioned schema and golden values. They cannot change
+version 1 meanings or make CORE-039 depend on the extended corpus.
 
 ## Result Storage
 
