@@ -17,6 +17,10 @@ last_updated: 2026-09-17
 
 Implement the CORE-030 protocol and deterministic flat-10k/flat-100k manifests inside the isolated filer-core/benchmarks package. Land schema validation and golden messages first, then fixture generation as a separate commit. Fixtures expose stable relative identities and requested metadata; provider-order results use order-independent membership validation unless a scenario explicitly requests ordering. Broader fixtures belong to CORE-042.
 
+## Execution Plan
+
+Follow [the staged execution plan](../../docs/benchmarks/core-039-execution-plan.md). It records protocol clarifications, public test interfaces, seven implementation and verification commits, conformance coverage, fixture readback checks, and dependency-isolation evidence. Planning does not complete any acceptance criterion.
+
 ## Acceptance Criteria
 
 - [ ] Protocol tests reject version mismatches, malformed events, missing required phases, duplicate rows, wrong digests, and unsupported scenarios reported as success.
