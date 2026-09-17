@@ -9,7 +9,8 @@ use std::collections::BTreeSet;
 use crate::manifests::ValidatedManifest;
 use crate::scenarios::{ActionKind, ScenarioPlan, validate_request};
 use crate::schema::{
-    Event, Filter, Phase, Request, Status, StatusKind, parse_event_line, parse_request_bytes,
+    Event, Filter, Phase, Request, Status, StatusKind, is_valid_identifier, parse_event_line,
+    parse_request_bytes,
 };
 use crate::{ErrorCode, ProtocolError};
 
@@ -87,13 +88,7 @@ impl RunValidator {
     ) -> Result<Self, ProtocolError> {
         let requested_metrics = requested_metrics.into_iter().collect::<BTreeSet<_>>();
         for name in &requested_metrics {
-            if name.is_empty()
-                || name.len() > 128
-                || !name.bytes().enumerate().all(|(index, byte)| {
-                    (index == 0 && byte.is_ascii_alphanumeric())
-                        || (index > 0 && (byte.is_ascii_alphanumeric() || b"._:-".contains(&byte)))
-                })
-            {
+            if !is_valid_identifier(name) {
                 return Err(ProtocolError::new(
                     ErrorCode::InvalidSchema,
                     "requested metric name is not a valid identifier",

@@ -12,6 +12,7 @@ mod request;
 mod validation;
 
 pub use framing::{parse_event_line, parse_event_lines, parse_request_bytes};
+pub(crate) use validation::{is_valid_digest, is_valid_identifier};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Request {

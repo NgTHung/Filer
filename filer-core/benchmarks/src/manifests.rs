@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::canonical::{CanonicalRow, canonical_digest, digest_records};
+use crate::schema::is_valid_digest;
 use crate::{Field, FixtureReference, Kind};
 
 const EXPECTED_METADATA: [&str; 2] = ["size_bytes", "modified_unix_ns"];
@@ -581,12 +582,7 @@ fn manifest_digest(
 }
 
 fn validate_digest(value: &str) -> Result<(), ManifestError> {
-    if value.len() != 71
-        || !value.starts_with("sha256:")
-        || !value[7..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    {
+    if !is_valid_digest(value) {
         return Err(expected_error("digest must match sha256:[0-9a-f]{64}"));
     }
     Ok(())
