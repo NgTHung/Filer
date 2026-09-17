@@ -10,6 +10,7 @@
 //! - `ops.cancel` — cancel a specific active operation
 
 mod command;
+mod mutation;
 pub mod operator;
 mod support;
 pub mod target;
