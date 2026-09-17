@@ -207,10 +207,14 @@ impl ValidatedManifest {
 
     pub fn expected_filter_rows(&self) -> Option<Vec<CanonicalRow>> {
         self.expected.filter_count.map(|_| {
-            self.expected_name_rows()
-                .into_iter()
+            let mut rows = self
+                .rows
+                .iter()
                 .filter(|row| row.identity.contains("file-0001"))
-                .collect()
+                .cloned()
+                .collect::<Vec<_>>();
+            rows.sort_by(|left, right| left.identity.as_bytes().cmp(right.identity.as_bytes()));
+            rows
         })
     }
 

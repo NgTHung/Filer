@@ -47,24 +47,47 @@ impl CanonicalRow {
 }
 
 pub fn canonical_digest(scope: &str, fields: &[Field], rows: &[CanonicalRow]) -> String {
-    let mut ordered = rows.to_vec();
-    if matches!(scope, "membership" | "metadata") {
-        ordered.sort_by(|left, right| left.identity.as_bytes().cmp(right.identity.as_bytes()));
+    let mut hasher = Sha256::new();
+    write_token(&mut hasher, "filer-benchmark-digest-v1");
+    write_token(&mut hasher, scope);
+    write_token(&mut hasher, &fields.len().to_string());
+    for field in fields {
+        write_token(&mut hasher, field.as_str());
     }
-    let values = ordered
-        .iter()
-        .map(|row| {
-            fields
-                .iter()
-                .map(|field| row.value(*field))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-    digest_records(
-        scope,
-        fields.iter().map(|field| field.as_str()).collect(),
-        values,
-    )
+    write_token(&mut hasher, &rows.len().to_string());
+
+    if matches!(scope, "membership" | "metadata") {
+        let mut ordered = rows.iter().collect::<Vec<_>>();
+        ordered.sort_by(|left, right| left.identity.as_bytes().cmp(right.identity.as_bytes()));
+        for row in ordered {
+            write_row(&mut hasher, fields, row);
+        }
+    } else {
+        for row in rows {
+            write_row(&mut hasher, fields, row);
+        }
+    }
+    hex_digest(&hasher.finalize())
+}
+
+fn write_row(hasher: &mut Sha256, fields: &[Field], row: &CanonicalRow) {
+    for field in fields {
+        match field {
+            Field::Identity => write_token(hasher, &row.identity),
+            Field::Kind => write_token(
+                hasher,
+                match row.kind {
+                    Kind::File => "file",
+                    Kind::Directory => "directory",
+                },
+            ),
+            Field::SizeBytes => match row.size_bytes {
+                Some(value) => write_token(hasher, &value.to_string()),
+                None => write_token(hasher, "~"),
+            },
+            Field::ModifiedUnixNs => write_token(hasher, &row.modified_unix_ns.to_string()),
+        }
+    }
 }
 
 pub(crate) fn digest_records(scope: &str, fields: Vec<&str>, rows: Vec<Vec<String>>) -> String {

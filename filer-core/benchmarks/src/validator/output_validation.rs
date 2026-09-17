@@ -197,7 +197,7 @@ impl SampleValidator<'_> {
                 ))
             }
             Phase::TransformCompleted => {
-                let count = self.ordered_rows(kind).len() as u64;
+                let count = self.expected_ordered_count(kind);
                 Ok((OutputScope::Ordered, Continuation::NotApplicable, count))
             }
             _ => Err(ProtocolError::new(
@@ -209,12 +209,17 @@ impl SampleValidator<'_> {
 
     fn viewport_count(&self, kind: &ActionKind) -> u64 {
         match kind {
-            ActionKind::FilterName => {
-                self.ordered_rows(kind)
-                    .len()
-                    .min(self.request.viewport_size as usize) as u64
-            }
+            ActionKind::FilterName => self
+                .expected_ordered_count(kind)
+                .min(self.request.viewport_size),
             _ => self.request.viewport_size,
+        }
+    }
+
+    fn expected_ordered_count(&self, kind: &ActionKind) -> u64 {
+        match kind {
+            ActionKind::FilterName => self.manifest.expected().filter_count.unwrap_or(0),
+            _ => self.manifest.entry_count() as u64,
         }
     }
 
@@ -323,11 +328,9 @@ impl SampleValidator<'_> {
     }
 
     fn ordered_rows(&self, kind: &ActionKind) -> Vec<CanonicalRow> {
-        let all = self.manifest.expected_name_rows();
         match kind {
             ActionKind::FilterName => self.manifest.expected_filter_rows().unwrap_or_default(),
-            ActionKind::ClearFilter | ActionKind::SortName | ActionKind::Refresh => all,
-            _ => all,
+            _ => self.manifest.expected_name_rows(),
         }
     }
 
