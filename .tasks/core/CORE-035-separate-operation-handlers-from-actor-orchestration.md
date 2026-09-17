@@ -1,7 +1,7 @@
 ---
 id: "CORE-035"
 title: "Separate operation handlers from actor orchestration"
-status: "To Do"
+status: In Progress
 priority: "Medium"
 type: "Refactor"
 parent: "core:CORE-019"
@@ -9,7 +9,7 @@ milestone: "0.3.1"
 rules: ["ACTOR-LONG-WORK", "PROVIDER-ACCESS"]
 risk: "Medium"
 tags: ["core", "refactor", "enhancement", "ready-for-agent"]
-last_updated: "2026-09-05"
+last_updated: 2026-09-17
 ---
 
 ## Summary
