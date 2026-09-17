@@ -551,6 +551,20 @@ impl SampleValidator<'_> {
             .map(|action| &action.counts);
         if let Some(previous) = previous {
             current.validate_progress(previous)?;
+            let repeated_continuation_proof = event.phase == Phase::ListingCompleted
+                && self
+                    .state
+                    .current_action
+                    .as_ref()
+                    .is_some_and(|action| {
+                        matches!(action.plan.kind, ActionKind::Page { page_number: 40 })
+                    });
+            if repeated_continuation_proof && current != *previous {
+                return Err(ProtocolError::new(
+                    ErrorCode::InvalidCounts,
+                    "continuation membership proof cannot increase action counts",
+                ));
+            }
         }
         current.validate_relations()?;
         if output_phase {

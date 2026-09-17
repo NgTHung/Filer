@@ -1122,6 +1122,40 @@ fn rejects_listing_before_required_row_first() {
 }
 
 #[test]
+fn rejects_inflated_continuation_proof_counts() {
+    let manifest = manifest("flat-10k-v1.json");
+    let scenario = "browse.next";
+    let request = request(
+        &manifest,
+        scenario,
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "uncontrolled", "empty"),
+    );
+    let mut trace = continuation_trace(&manifest, false);
+    for event in &mut trace.events {
+        if event["action_id"] == "page-0040"
+            && matches!(
+                event["phase"].as_str(),
+                Some("listing.completed" | "action.completed")
+            )
+        {
+            event["counts"] =
+                json!({"examined":10000,"accepted":10000,"emitted":10000,"visible":10000});
+        }
+        if event["phase"] == "sample.completed" {
+            event["counts"] =
+                json!({"examined":19984,"accepted":19984,"emitted":19984,"visible":19984});
+        }
+    }
+
+    let error = run_lines(&manifest, &request, scenario, trace.lines());
+
+    assert_eq!(error.code(), ErrorCode::InvalidCounts);
+}
+
+#[test]
 fn classifies_streaming_first_page_gate() {
     let flat_10k = manifest("flat-10k-v1.json");
     let request = request(
