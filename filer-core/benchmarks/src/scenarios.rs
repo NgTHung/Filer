@@ -5,7 +5,7 @@
 //! the trace state machine responsible for progress, not scenario knowledge.
 
 use crate::manifests::ValidatedManifest;
-use crate::schema::{Field, Filter, Phase, Request, Sort};
+use crate::schema::{Field, Filter, Phase, ProcessCache, Request, SemanticCache, Sort};
 use crate::{ErrorCode, ProtocolError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -177,13 +177,46 @@ fn validate_request_shape(request: &Request, kind: &ScenarioKind) -> Result<(), 
             "filter does not match the scenario",
         ));
     }
+    match kind {
+        ScenarioKind::FastFirst
+            if request.cache.process != ProcessCache::Cold
+                || request.cache.semantic != SemanticCache::Empty =>
+        {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidScenarioConfiguration,
+                "browse.fast.first requires a cold process and empty semantic cache",
+            ));
+        }
+        ScenarioKind::NameSort | ScenarioKind::NameFilter | ScenarioKind::Refresh
+            if request.cache.process != ProcessCache::Warm
+                || request.cache.semantic != SemanticCache::Reused =>
+        {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidScenarioConfiguration,
+                "snapshot scenarios require a warm process and reused semantic cache",
+            ));
+        }
+        ScenarioKind::ReferenceJourney
+            if request.cache.process != ProcessCache::Warm
+                || request.cache.semantic != SemanticCache::Empty =>
+        {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidScenarioConfiguration,
+                "the reference journey requires a warm process and empty semantic cache",
+            ));
+        }
+        _ => {}
+    }
     Ok(())
 }
 
 fn open_action(page_number: u64, row_first: bool, listing: ListingKind) -> ActionPlan {
     let mut required = vec![Phase::ViewportCommitted, Phase::PageCommitted];
+    let mut optional = Vec::new();
     if row_first {
         required.insert(0, Phase::RowFirst);
+    } else {
+        optional.push(Phase::RowFirst);
     }
     if listing != ListingKind::None {
         required.push(Phase::ListingCompleted);
@@ -196,7 +229,7 @@ fn open_action(page_number: u64, row_first: bool, listing: ListingKind) -> Actio
             listing,
         },
         required,
-        optional: Vec::new(),
+        optional,
     }
 }
 

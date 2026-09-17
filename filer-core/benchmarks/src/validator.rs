@@ -201,8 +201,13 @@ impl SampleValidator<'_> {
 
     fn ingest_event(&mut self, event: Event) -> Result<(), ProtocolError> {
         if self.state.completed {
+            let code = if event.phase == Phase::SampleCompleted {
+                ErrorCode::DuplicatePhase
+            } else {
+                ErrorCode::InvalidStatus
+            };
             return Err(ProtocolError::new(
-                ErrorCode::InvalidStatus,
+                code,
                 "event arrived after sample.completed",
             ));
         }
@@ -255,7 +260,13 @@ impl SampleValidator<'_> {
     }
 
     fn sample_started(&mut self, event: Event) -> Result<(), ProtocolError> {
-        if self.state.started || event.sequence != 0 || event.action_id.is_some() {
+        if self.state.started {
+            return Err(ProtocolError::new(
+                ErrorCode::DuplicatePhase,
+                "sample.started may occur only once",
+            ));
+        }
+        if event.sequence != 0 || event.action_id.is_some() {
             return Err(ProtocolError::new(
                 ErrorCode::InvalidPhase,
                 "sample.started must be the first singleton phase",
@@ -464,6 +475,7 @@ impl SampleValidator<'_> {
                 "action phase was emitted more than once",
             ));
         }
+        self.validate_milestone_order(action, event.phase)?;
         if event.status.is_some() {
             return Err(ProtocolError::new(
                 ErrorCode::InvalidStatus,
@@ -476,6 +488,61 @@ impl SampleValidator<'_> {
         self.record_milestone(event.phase, rows)?;
         if let Some(action) = self.state.current_action.as_mut() {
             action.seen.push(event.phase);
+        }
+        Ok(())
+    }
+
+    fn validate_milestone_order(
+        &self,
+        action: &ActionState,
+        phase: Phase,
+    ) -> Result<(), ProtocolError> {
+        if action.plan.optional.contains(&phase) && !action.plan.required.contains(&phase) {
+            if action
+                .seen
+                .iter()
+                .any(|seen| action.plan.required.contains(seen))
+            {
+                return Err(ProtocolError::new(
+                    ErrorCode::InvalidPhase,
+                    "optional milestone must precede required action output",
+                ));
+            }
+            return Ok(());
+        }
+        let position = action
+            .plan
+            .required
+            .iter()
+            .position(|required| *required == phase)
+            .ok_or_else(|| {
+                ProtocolError::new(
+                    ErrorCode::InvalidPhase,
+                    "phase has no position in the action sequence",
+                )
+            })?;
+        let missing_prior = action.plan.required[..position].iter().any(|required| {
+            if matches!(action.plan.kind, ActionKind::Open { .. })
+                && phase == Phase::ListingCompleted
+            {
+                return false;
+            }
+            if matches!(action.plan.kind, ActionKind::Open { .. })
+                && matches!(
+                    (phase, *required),
+                    (Phase::ViewportCommitted, Phase::PageCommitted)
+                        | (Phase::PageCommitted, Phase::ViewportCommitted)
+                )
+            {
+                return false;
+            }
+            !action.seen.contains(required)
+        });
+        if missing_prior {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidPhase,
+                "action milestones are out of order",
+            ));
         }
         Ok(())
     }
@@ -512,8 +579,13 @@ impl SampleValidator<'_> {
                 ));
             }
         }
-        if matches!(self.request.filter, Filter::NameContains { .. }) && current.accepted.is_none()
-        {
+        let filter_requires_accepted = matches!(self.request.filter, Filter::NameContains { .. })
+            || self
+                .state
+                .current_action
+                .as_ref()
+                .is_some_and(|action| matches!(action.plan.kind, ActionKind::FilterName));
+        if filter_requires_accepted && current.accepted.is_none() {
             return Err(ProtocolError::new(
                 ErrorCode::RequiredCountUnavailable,
                 "filtered work requires an accepted count",
@@ -636,6 +708,14 @@ impl SampleValidator<'_> {
             return Err(ProtocolError::new(
                 ErrorCode::OutputDigestMismatch,
                 "output digest does not match its complete rows",
+            ));
+        }
+        if let Some(expected_digest) = self.expected_digest(&action.plan.kind, event.phase, scope)
+            && expected_digest != output.digest
+        {
+            return Err(ProtocolError::new(
+                ErrorCode::OutputDigestMismatch,
+                "output digest does not match the normative scenario digest",
             ));
         }
         match event.phase {
@@ -783,6 +863,28 @@ impl SampleValidator<'_> {
         Ok(())
     }
 
+    fn expected_digest(&self, kind: &ActionKind, phase: Phase, scope: OutputScope) -> Option<&str> {
+        match scope {
+            OutputScope::Membership => Some(self.manifest.membership_digest()),
+            OutputScope::Metadata => Some(self.manifest.metadata_digest()),
+            OutputScope::Ordered => match kind {
+                ActionKind::SortName | ActionKind::ClearFilter | ActionKind::Refresh => {
+                    Some(self.manifest.name_order_digest())
+                }
+                ActionKind::FilterName => self.manifest.filter_order_digest(),
+                _ => None,
+            },
+            OutputScope::Viewport if phase == Phase::ViewCommitted => match kind {
+                ActionKind::SortName | ActionKind::ClearFilter | ActionKind::Refresh => {
+                    Some(self.manifest.name_viewport_digest())
+                }
+                ActionKind::FilterName => self.manifest.filter_viewport_digest(),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     fn validate_ordered_view(
         &self,
         kind: &ActionKind,
@@ -864,6 +966,9 @@ impl SampleValidator<'_> {
         }
         if !self.capabilities.streaming_unfiltered_listing {
             self.state.gate = GateResult::NotApplicable;
+            return Ok(());
+        }
+        if !self.capabilities.examined_count_observable {
             return Ok(());
         }
         let examined = self

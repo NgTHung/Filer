@@ -139,11 +139,15 @@ impl TraceBuilder {
     }
 
     fn finish_not_supported(&mut self, scenario: &str) {
-        let status = json!({
-            "kind":"not_supported",
-            "code":"scenario_not_supported",
-            "message":format!("{scenario} is not supported")
-        });
+        self.finish_status(
+            "not_supported",
+            "scenario_not_supported",
+            &format!("{scenario} is not supported"),
+        );
+    }
+
+    fn finish_status(&mut self, kind: &str, code: &str, message: &str) {
+        let status = json!({"kind":kind,"code":code,"message":message});
         self.push("sample.completed", None, [0; 4], &[], None, Some(status));
     }
 
@@ -828,4 +832,500 @@ fn run_lines(
         }
     }
     sample.finish().expect_err("mutated trace should fail")
+}
+
+fn sort_trace(manifest: &ValidatedManifest) -> TraceBuilder {
+    let fields = vec![Field::Identity, Field::Kind];
+    let rows = manifest.expected_name_rows();
+    let mut trace = TraceBuilder::new(&fields);
+    trace.start_sample();
+    trace.start_action("sort-name");
+    let total = [manifest.entry_count() as u64; 4];
+    trace.milestone(
+        "transform.completed",
+        "sort-name",
+        total,
+        &rows,
+        "ordered",
+        "not_applicable",
+    );
+    trace.milestone(
+        "view.committed",
+        "sort-name",
+        total,
+        &rows[..40],
+        "viewport",
+        "not_applicable",
+    );
+    trace.end_action("sort-name", total);
+    trace.finish_success();
+    trace
+}
+
+fn filter_trace(manifest: &ValidatedManifest) -> TraceBuilder {
+    let fields = vec![Field::Identity, Field::Kind];
+    let rows = manifest.expected_filter_rows().expect("filter values");
+    let mut trace = TraceBuilder::new(&fields);
+    trace.start_sample();
+    trace.start_action("filter-name");
+    let counts = [
+        manifest.entry_count() as u64,
+        rows.len() as u64,
+        rows.len() as u64,
+        rows.len() as u64,
+    ];
+    trace.milestone(
+        "transform.completed",
+        "filter-name",
+        counts,
+        &rows,
+        "ordered",
+        "not_applicable",
+    );
+    trace.milestone(
+        "view.committed",
+        "filter-name",
+        counts,
+        &rows[..40],
+        "viewport",
+        "not_applicable",
+    );
+    trace.end_action("filter-name", counts);
+    trace.finish_success();
+    trace
+}
+
+fn refresh_trace(manifest: &ValidatedManifest) -> TraceBuilder {
+    let fields = vec![Field::Identity, Field::Kind];
+    let provider_rows = manifest.expected_rows();
+    let named_rows = manifest.expected_name_rows();
+    let mut trace = TraceBuilder::new(&fields);
+    trace.start_sample();
+    trace.start_action("refresh");
+    let total = [manifest.entry_count() as u64; 4];
+    trace.milestone(
+        "listing.completed",
+        "refresh",
+        total,
+        &provider_rows,
+        "membership",
+        "not_applicable",
+    );
+    trace.milestone(
+        "transform.completed",
+        "refresh",
+        total,
+        &named_rows,
+        "ordered",
+        "not_applicable",
+    );
+    trace.milestone(
+        "view.committed",
+        "refresh",
+        total,
+        &named_rows[..40],
+        "viewport",
+        "not_applicable",
+    );
+    trace.end_action("refresh", total);
+    trace.finish_success();
+    trace
+}
+
+fn fast_trace_with_examined(manifest: &ValidatedManifest, examined: Value) -> TraceBuilder {
+    let mut trace = fast_trace(manifest, "browse.fast.first", false, true);
+    let page = trace
+        .events
+        .iter_mut()
+        .find(|event| event["phase"] == "page.committed")
+        .expect("page event");
+    page["counts"]["examined"] = examined;
+    trace
+}
+
+#[test]
+fn accepts_name_sort_trace() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "view.sort.name",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"none"}),
+        ("warm", "warm", "reused"),
+    );
+    let sample = validate_trace(
+        manifest.clone(),
+        request,
+        "view.sort.name",
+        sort_trace(&manifest),
+        false,
+        false,
+    );
+    assert_eq!(
+        sample.structural_gates.first_page_examined,
+        GateResult::NotApplicable
+    );
+}
+
+#[test]
+fn accepts_name_filter_trace() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "view.filter.common",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"name_contains","value":"file-0001","case_sensitive":true}),
+        ("warm", "warm", "reused"),
+    );
+    let sample = validate_trace(
+        manifest.clone(),
+        request,
+        "view.filter.common",
+        filter_trace(&manifest),
+        false,
+        false,
+    );
+    assert_eq!(sample.event_count, 6);
+    assert_eq!(
+        sample.structural_gates.first_page_examined,
+        GateResult::NotApplicable
+    );
+}
+
+#[test]
+fn accepts_refresh_trace() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "browse.refresh",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"none"}),
+        ("warm", "warm", "reused"),
+    );
+    let sample = validate_trace(
+        manifest.clone(),
+        request,
+        "browse.refresh",
+        refresh_trace(&manifest),
+        false,
+        false,
+    );
+    assert_eq!(
+        sample.status.kind,
+        filer_core_benchmarks::StatusKind::Success
+    );
+}
+
+#[test]
+fn accepts_reference_journey_trace() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "journey.browse-reference",
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("warm", "warm", "empty"),
+    );
+    let sample = validate_trace(
+        manifest.clone(),
+        request,
+        "journey.browse-reference",
+        continuation_trace(&manifest, true),
+        true,
+        true,
+    );
+    assert_eq!(
+        sample.status.kind,
+        filer_core_benchmarks::StatusKind::Success
+    );
+}
+
+#[test]
+fn accepts_optional_row_first_on_open() {
+    let manifest = manifest("flat-100k-v1.json");
+    let request = request(
+        &manifest,
+        "browse.fast.scale",
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "warm", "empty"),
+    );
+    validate_trace(
+        manifest.clone(),
+        request,
+        "browse.fast.scale",
+        fast_trace(&manifest, "browse.fast.scale", false, true),
+        true,
+        true,
+    );
+}
+
+#[test]
+fn classifies_streaming_first_page_gate() {
+    let flat_10k = manifest("flat-10k-v1.json");
+    let request = request(
+        &flat_10k,
+        "browse.fast.first",
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "warm", "empty"),
+    );
+    let passed = validate_trace(
+        flat_10k.clone(),
+        request.clone(),
+        "browse.fast.first",
+        fast_trace_with_examined(&flat_10k, json!(512)),
+        true,
+        true,
+    );
+    assert_eq!(
+        passed.structural_gates.first_page_examined,
+        GateResult::Passed
+    );
+    let failed = validate_trace(
+        flat_10k.clone(),
+        request.clone(),
+        "browse.fast.first",
+        fast_trace_with_examined(&flat_10k, json!(513)),
+        true,
+        true,
+    );
+    assert_eq!(
+        failed.structural_gates.first_page_examined,
+        GateResult::Failed
+    );
+    let unavailable = validate_trace(
+        flat_10k.clone(),
+        request.clone(),
+        "browse.fast.first",
+        fast_trace_with_examined(&flat_10k, json!({"unavailable":"not_observable"})),
+        true,
+        true,
+    );
+    assert_eq!(
+        unavailable.structural_gates.first_page_examined,
+        GateResult::NotEvaluable
+    );
+    let not_streaming = validate_trace(
+        flat_10k.clone(),
+        request.clone(),
+        "browse.fast.first",
+        fast_trace_with_examined(&flat_10k, json!(512)),
+        false,
+        true,
+    );
+    assert_eq!(
+        not_streaming.structural_gates.first_page_examined,
+        GateResult::NotApplicable
+    );
+    let not_observable = validate_trace(
+        flat_10k.clone(),
+        request,
+        "browse.fast.first",
+        fast_trace_with_examined(&flat_10k, json!(512)),
+        true,
+        false,
+    );
+    assert_eq!(
+        not_observable.structural_gates.first_page_examined,
+        GateResult::NotEvaluable
+    );
+}
+
+#[test]
+fn does_not_apply_streaming_cap_to_sparse_filter() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "view.filter.common",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"name_contains","value":"file-0001","case_sensitive":true}),
+        ("warm", "warm", "reused"),
+    );
+    let sample = validate_trace(
+        manifest.clone(),
+        request,
+        "view.filter.common",
+        filter_trace(&manifest),
+        true,
+        true,
+    );
+    assert_eq!(
+        sample.structural_gates.first_page_examined,
+        GateResult::NotApplicable
+    );
+}
+
+#[test]
+fn rejects_misordered_transform_and_view_phases() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "view.sort.name",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"none"}),
+        ("warm", "warm", "reused"),
+    );
+    let mut lines = sort_trace(&manifest).lines();
+    let transform = lines
+        .iter()
+        .position(|line| String::from_utf8_lossy(line).contains("transform.completed"))
+        .expect("transform event");
+    let view = lines
+        .iter()
+        .position(|line| String::from_utf8_lossy(line).contains("view.committed"))
+        .expect("view event");
+    lines.swap(transform, view);
+    assert_eq!(
+        run_lines(&manifest, &request, "view.sort.name", resequence(lines)).code(),
+        ErrorCode::InvalidPhase
+    );
+}
+
+#[test]
+fn rejects_skipped_pages_and_output_after_completed_action() {
+    let flat_10k = manifest("flat-10k-v1.json");
+    let browse_request = request(
+        &flat_10k,
+        "browse.next",
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "warm", "empty"),
+    );
+    let skipped = continuation_trace(&flat_10k, false)
+        .lines()
+        .into_iter()
+        .filter(|line| !String::from_utf8_lossy(line).contains("page-0010"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        run_lines(
+            &flat_10k,
+            &browse_request,
+            "browse.next",
+            resequence(skipped),
+        )
+        .code(),
+        ErrorCode::InvalidAction
+    );
+
+    let sort_request = request(
+        &flat_10k,
+        "view.sort.name",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"none"}),
+        ("warm", "warm", "reused"),
+    );
+    let mut output_after_completion = sort_trace(&flat_10k).lines();
+    let transform = output_after_completion
+        .iter()
+        .find(|line| String::from_utf8_lossy(line).contains("transform.completed"))
+        .cloned()
+        .expect("transform event");
+    let completed = output_after_completion
+        .iter()
+        .position(|line| String::from_utf8_lossy(line).contains("action.completed"))
+        .expect("action completion");
+    output_after_completion.insert(completed + 1, transform);
+    assert_eq!(
+        run_lines(
+            &flat_10k,
+            &sort_request,
+            "view.sort.name",
+            resequence(output_after_completion),
+        )
+        .code(),
+        ErrorCode::InvalidAction
+    );
+}
+
+#[test]
+fn rejects_unavailable_correctness_count() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "view.filter.common",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"name_contains","value":"file-0001","case_sensitive":true}),
+        ("warm", "warm", "reused"),
+    );
+    let mut lines = filter_trace(&manifest).lines();
+    let transform = lines
+        .iter()
+        .position(|line| String::from_utf8_lossy(line).contains("transform.completed"))
+        .expect("transform event");
+    let mut event: Value = serde_json::from_slice(&lines[transform]).expect("event JSON");
+    event["counts"]["accepted"] = json!({"unavailable":"not_observable"});
+    lines[transform] = line(event);
+    assert_eq!(
+        run_lines(&manifest, &request, "view.filter.common", resequence(lines),).code(),
+        ErrorCode::RequiredCountUnavailable
+    );
+}
+
+#[test]
+fn rejects_cache_state_outside_scenario_contract() {
+    let manifest = manifest("flat-10k-v1.json");
+    let bad_request = request(
+        &manifest,
+        "view.sort.name",
+        &["identity", "kind"],
+        ("name", "ascending"),
+        json!({"kind":"none"}),
+        ("cold", "warm", "empty"),
+    );
+    let mut validator = RunValidator::new(
+        manifest,
+        capabilities("view.sort.name", false, false),
+        Vec::<String>::new(),
+    )
+    .expect("context should be valid");
+    let error = match validator.start_sample(&bad_request) {
+        Ok(_) => panic!("cold empty sort must be rejected"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code(), ErrorCode::InvalidScenarioConfiguration);
+}
+
+#[test]
+fn accepts_error_and_cancelled_diagnostics() {
+    let manifest = manifest("flat-10k-v1.json");
+    let request = request(
+        &manifest,
+        "browse.fast.first",
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "warm", "empty"),
+    );
+    for (kind, code) in [
+        ("error", "fixture_digest_mismatch"),
+        ("cancelled", "cancelled_at_barrier"),
+    ] {
+        let mut trace = TraceBuilder::new(&[Field::Identity, Field::Kind]);
+        trace.start_sample();
+        trace.finish_status(kind, code, "diagnostic");
+        let sample = validate_trace(
+            manifest.clone(),
+            request.clone(),
+            "browse.fast.first",
+            trace,
+            true,
+            true,
+        );
+        assert_ne!(
+            sample.status.kind,
+            filer_core_benchmarks::StatusKind::Success
+        );
+    }
 }
