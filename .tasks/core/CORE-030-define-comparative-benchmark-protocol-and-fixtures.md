@@ -1,7 +1,7 @@
 ---
 id: "CORE-030"
 title: "Define comparative benchmark protocol and fixtures"
-status: In Progress
+status: Done
 priority: "High"
 type: "Design"
 parent: "CORE-029"
@@ -19,8 +19,8 @@ Specify the initial adapter protocol, flat fixture manifests, and browse scenari
 
 ## Acceptance Criteria
 
-- [ ] A versioned schema and valid/invalid examples define requests, events, identities, required phases, counts, digests, statuses, and one monotonic clock domain.
-- [ ] flat-10k and flat-100k manifests define reproducible relative identities, requested metadata, and canonical digests; provider enumeration order is not assumed stable.
-- [ ] Fast/metadata browse, continuation, name sort, filter, and refresh specify barriers, visible milestones, and completion for the initial reference journey.
-- [ ] Sampling and unavailable-metric rules identify cache state, machine, filesystem, build, and adapter version; correctness gates distinguish streaming, sparse filtering, and snapshot-only transforms.
-- [ ] A conformance matrix maps every rejection and scenario gate to tests CORE-039 will implement; extended corpus and journeys are assigned to CORE-042.
+- [x] A versioned schema and valid/invalid examples define requests, events, identities, required phases, counts, digests, statuses, and one monotonic clock domain.
+- [x] flat-10k and flat-100k manifests define reproducible relative identities, requested metadata, and canonical digests; provider enumeration order is not assumed stable.
+- [x] Fast/metadata browse, continuation, name sort, filter, and refresh specify barriers, visible milestones, and completion for the initial reference journey.
+- [x] Sampling and unavailable-metric rules identify cache state, machine, filesystem, build, and adapter version; correctness gates distinguish streaming, sparse filtering, and snapshot-only transforms.
+- [x] A conformance matrix maps every rejection and scenario gate to tests CORE-039 will implement; extended corpus and journeys are assigned to CORE-042.
