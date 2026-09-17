@@ -163,6 +163,22 @@ field at a time, so rejection-code precedence is not part of the protocol:
 {"protocol_version":"1","type":"run_request","extra":true}
 ```
 
+The version rule applies after JSON type validation. A JSON integer other than
+`1` returns `unsupported_protocol_version`; a JSON string, floating-point
+number, or other non-integer value returns `invalid_schema`. The unknown
+`extra` field in the example also returns `invalid_schema`. These are separate
+single-mutation cases in the validator suite, so Serde's diagnostic wording is
+never a public result contract.
+
+The runner supplies two trusted inputs that are deliberately outside the wire
+request: the adapter capability declaration and the names of requested
+resource metrics. Capabilities identify supported scenario ids and whether the
+adapter exposes streaming unfiltered listing with an observable examined-row
+count. Requested metric names identify the metrics that must be reported on
+`sample.completed`. Profile collection, profile persistence, cache preparation,
+and real ready barriers remain runner responsibilities. The validator checks
+only the declared references and the event fields defined here.
+
 ### Event Schema v1
 
 Every event contains every field in this table. Use an empty object or array,
@@ -262,6 +278,16 @@ shown row, which isolates the count failure:
 
 A trace validator rejects it with `output_row_count_mismatch`. CORE-039 golden
 traces must contain every row claimed by an output.
+
+Event framing and lexical errors have stable ownership. A request must contain
+one UTF-8 JSON object and exactly one terminating newline. Event input is a
+non-empty sequence of UTF-8 lines, each with one JSON object and one
+terminating newline. Truncation, invalid UTF-8, and invalid JSON syntax return
+`malformed_json`. An otherwise valid JSON object on adapter stdout whose
+`type` is not `run_event`, and a plain-text stdout diagnostic, return
+`unexpected_stdout`. An unknown phase returns `invalid_phase`; a row with an
+unsafe identity, wrong kind, invalid metadata, or an incorrect requested-field
+projection returns `invalid_row`.
 
 ### Clock and Digest Rules
 
@@ -428,6 +454,42 @@ Each row in the table expands to `action.started`, the listed milestones, and
 each named milestone appears exactly once. `row.first` precedes every other
 browse output when it is required.
 
+The exact action and request interpretation is:
+
+| Scenario | Initial request settings | Action order | Allowed optional phases and output scopes |
+|---|---|---|---|
+| `browse.fast.first` | `flat-10k-v1`, `identity,kind`, provider order, no filter, cold/controlled cache triple supplied by the runner | `open` | `row.first` is required; viewport, page, and listing outputs use `viewport`, `page`, and `membership` scopes |
+| `browse.fast.scale` | `flat-100k-v1`, `identity,kind`, provider order, no filter, runner-declared cache triple | `open` | `row.first` is optional; viewport, page, and listing outputs use `viewport`, `page`, and `membership` scopes |
+| `browse.metadata.first` | `flat-10k-v1`, all four fields, provider order, no filter, runner-declared cache triple | `open` | `row.first` is optional; viewport, page, and listing outputs use `viewport`, `page`, and `metadata` scopes |
+| `browse.next` | `flat-10k-v1`, `identity,kind`, provider order, no filter, runner-declared cache triple | `open`, then `page-0002` through `page-0040` | `open` must commit page 1 before page 2 starts. Each page action commits one `page` output; page 40 also commits the final `membership` listing proof. `row.first` is optional only on `open`. |
+| `view.sort.name` | `flat-10k-v1`, `identity,kind`, ascending name, no filter, warm semantic snapshot | `sort-name` | `transform.completed` uses `ordered`; `view.committed` uses `viewport` |
+| `view.filter.common` | `flat-10k-v1`, `identity,kind`, ascending name, `name_contains` filter, warm semantic snapshot | `filter-name` | `transform.completed` uses `ordered`; `view.committed` uses `viewport` |
+| `browse.refresh` | `flat-10k-v1`, `identity,kind`, ascending name, no filter, warm semantic snapshot | `refresh` | A new `listing.completed` uses `membership`, followed by `transform.completed` with `ordered` and `view.committed` with `viewport` |
+
+The request fields do not change during a sample. Action ids carry the
+scenario's semantic changes: `sort-name` selects ascending name order,
+`filter-name` selects the case-sensitive `file-0001` filter, and
+`clear-filter` restores the unfiltered ascending name view. The reference
+journey starts with `flat-10k-v1`, `identity,kind`, provider order, no filter,
+and a warm process with an empty semantic cache. Its actions are exactly
+`open`, `page-0002` through `page-0040`, `sort-name`, `filter-name`,
+`clear-filter`, and `refresh`; the same action-specific changes apply without
+adding wire fields. A successful action has one `action.started` and one
+`action.completed`, with its listed milestones between them. No phase is
+optional when it is named as a required milestone.
+
+Counts reset to zero at every `action.started`. Within an action they are
+cumulative and describe new work, not rows repeated in a proof. Sample phases
+report totals across completed actions. For example, in `browse.next`,
+`page-0040` has 16 page rows, `continuation: "end"`, and action counts
+`examined=16`, `accepted=16`, `emitted=16`, `visible=16`. Its
+`listing.completed` event repeats all 10,000 chain rows with
+`scope="membership"` and `row_count=10000`, but its counts remain 16 because
+the proof does not emit a second copy of those rows. The final sample totals
+are `examined=10000`, `accepted=10000`, `emitted=10000`, and `visible=10000`
+when every page reports those four counts. The page 40 proof is therefore both
+complete and non-inflating.
+
 Provider enumeration order is observed, not prescribed. For provider-order
 scenarios, page and viewport digests must match their event rows but do not
 have golden values. The validator accumulates page identities and checks the
@@ -465,6 +527,17 @@ viewport digests match. The validator rejects stale action ids, a commit after
 its action completed, a missing page, or an output from a superseded action.
 These are public input/event/view milestones. They do not claim a physical
 frame commit.
+
+Correlation, framing, sequence, timestamp monotonicity, row validity, output
+integrity, and terminal status remain mandatory for every trace, including
+`not_supported`, `error`, and `cancelled` results. A non-success result may
+omit success-only milestones, so their absence alone does not produce
+`missing_required_phase`. A declared capability failure has precedence when a
+trace reports success: if the capability declaration does not include the
+requested scenario, the normative direct `sample.completed` success example
+returns `unsupported_reported_as_success`, even though it also omits every
+success milestone. For a supported scenario, the same omission returns
+`missing_required_phase`.
 
 The following tables describe the later suite. They are not protocol v1
 requirements unless a version 1 scenario above names them.
@@ -715,6 +788,12 @@ the end of the source. It must instead preserve continuation, reach completion,
 and match the filtered digest. A snapshot-only sort or group starts timing
 after its complete input snapshot barrier and reports transform latency. It
 cannot claim a streaming first-page result.
+
+The unfiltered cap is owned by the streaming, provider-order first-page
+scenario only. It is not applied to filtered or snapshot-only work, even when
+those traces expose an examined count. CORE-042 owns the sparse fixture and its
+end-to-end continuation proof. Version 1 therefore adds no unsupported sparse
+scenario merely to exercise that future case.
 
 Performance regression gates run on a reference machine. Begin with:
 
