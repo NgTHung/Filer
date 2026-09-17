@@ -1,4 +1,21 @@
-use std::path::Path;
+//! # Operation actor
+//!
+//! The operation actor owns admission and cancellation state, then dispatches
+//! accepted commands to focused transfer and mutation handlers. Command types
+//! remain re-exported here so existing callers keep a stable import path.
+//!
+//! ```
+//! use filer_core::model::session::SessionId;
+//! use filer_core::modules::operations::operator::OpsCommand;
+//! use filer_core::OperationId;
+//!
+//! let command = OpsCommand::CancelOperation {
+//!     session: SessionId(1),
+//!     operation: OperationId(2),
+//! };
+//! assert!(matches!(command, OpsCommand::CancelOperation { .. }));
+//! ```
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,7 +33,6 @@ use crate::{CoreError, FsProvider};
 
 pub use super::command::{OperationEventMode, OpsCommand};
 pub(crate) use super::support::TrashFn;
-use super::support::invalidate_parent_cache;
 
 pub struct Operator {
     commands: Receiver<OpsCommand>,
@@ -93,11 +109,6 @@ impl Operator {
     pub(crate) fn with_work_tracker(mut self, work: WorkTracker) -> Self {
         self.work = work;
         self
-    }
-
-    #[allow(dead_code)]
-    fn invalidate_parent(&self, path: &Path) {
-        invalidate_parent_cache(&self.cache, path);
     }
 
     pub(super) fn arm_operation(

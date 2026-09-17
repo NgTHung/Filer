@@ -6,9 +6,7 @@ use crate::errors::CoreError;
 use crate::services::mime::{MimeCategory, MimeInfo};
 #[cfg(feature = "metadata-archive")]
 use crate::services::preview::provider::ArchivePreviewEntry;
-use crate::services::preview::provider::{
-    PreviewData, PreviewOptions, PreviewProvider,
-};
+use crate::services::preview::provider::{PreviewData, PreviewOptions, PreviewProvider};
 
 pub struct ArchiveProvider;
 

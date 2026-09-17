@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use crate::ArchiveFs;
 
 use crate::{
-    Capabilities, CoreError, ErrorCode, FsProvider, NodeEntry, ProviderCx,
-    ProviderProfile, ProviderProfileId, ProviderRef, ProviderRegistry,
+    Capabilities, CoreError, ErrorCode, FsProvider, NodeEntry, ProviderCx, ProviderProfile,
+    ProviderProfileId, ProviderRef, ProviderRegistry,
 };
 
 fn profile() -> ProviderProfile {

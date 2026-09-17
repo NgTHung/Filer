@@ -441,9 +441,10 @@ mod navigation_flow_tests {
                 message,
                 ..
             } = &event
-                && ev_session == &session {
-                    panic!("Unexpected error for session after NavigateUp: {}", message);
-                }
+                && ev_session == &session
+            {
+                panic!("Unexpected error for session after NavigateUp: {}", message);
+            }
         }
     }
 
@@ -806,10 +807,11 @@ mod navigation_flow_tests {
                     );
                     dir_loaded = true;
                 }
-                Ok(Ok(Event::CurrentNavigateState { state, session: s })) if s == session
-                    && state.can_forward => {
-                        can_forward = true;
-                    }
+                Ok(Ok(Event::CurrentNavigateState { state, session: s }))
+                    if s == session && state.can_forward =>
+                {
+                    can_forward = true;
+                }
                 _ => {}
             }
             if can_forward && dir_loaded {

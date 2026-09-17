@@ -141,16 +141,17 @@ impl Previewer {
         };
 
         if let Ok(cache) = self.cache.lock()
-            && let Some(preview) = cache.get(&path) {
-                let event = Event::PreviewReady {
-                    location,
-                    preview,
-                    session,
-                    request,
-                };
-                send_or_warn(&self.events, event, "previewer: cache hit");
-                return;
-            }
+            && let Some(preview) = cache.get(&path)
+        {
+            let event = Event::PreviewReady {
+                location,
+                preview,
+                session,
+                request,
+            };
+            send_or_warn(&self.events, event, "previewer: cache hit");
+            return;
+        }
 
         let cancel = self.arm_cancel(session);
         let events = self.events.clone();

@@ -359,17 +359,13 @@ fn noop_trash_fn() -> TrashFn {
 }
 
 /// A trash function that records calls for assertion.
-fn tracking_trash_fn() -> (
-    TrashFn,
-    Arc<Mutex<Vec<PathBuf>>>,
-) {
+fn tracking_trash_fn() -> (TrashFn, Arc<Mutex<Vec<PathBuf>>>) {
     let calls: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
     let calls_clone = calls.clone();
-    let f: TrashFn =
-        Arc::new(move |path: &Path| {
-            calls_clone.lock().unwrap().push(path.to_path_buf());
-            Ok(())
-        });
+    let f: TrashFn = Arc::new(move |path: &Path| {
+        calls_clone.lock().unwrap().push(path.to_path_buf());
+        Ok(())
+    });
     (f, calls)
 }
 
