@@ -1,7 +1,7 @@
 ---
 id: "CORE-039"
 title: "Implement benchmark protocol validation and flat fixtures"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Feature"
 parent: "core:CORE-029"
@@ -10,7 +10,7 @@ depends_on: ["core:CORE-030"]
 risk: "Medium"
 tags: ["core", "benchmark", "performance", "enhancement", "ready-for-agent"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: "2026-09-05"
+last_updated: 2026-09-17
 ---
 
 ## Summary
