@@ -3,6 +3,7 @@
 //! Framing enforces one newline-terminated request and one JSON object per
 //! event line before conversion applies schema and closed-value checks.
 
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use super::event::RawEvent;
@@ -17,7 +18,19 @@ pub fn parse_request_bytes(bytes: &[u8]) -> Result<Request, ProtocolError> {
 }
 
 pub fn parse_event_line(bytes: &[u8]) -> Result<Event, ProtocolError> {
-    let raw: RawEvent = parse_frame(bytes, FrameKind::Event)?;
+    let body = frame_body(bytes, FrameKind::Event)?;
+    let probe: EventTypeProbe = parse_json(body)?;
+    if probe
+        .message_type
+        .as_deref()
+        .is_some_and(|message_type| message_type != "run_event")
+    {
+        return Err(ProtocolError::new(
+            ErrorCode::UnexpectedStdout,
+            "standard output JSON object is not a run_event",
+        ));
+    }
+    let raw: RawEvent = parse_json(body)?;
     super::event::convert(raw)
 }
 
@@ -43,10 +56,20 @@ enum FrameKind {
     Event,
 }
 
+#[derive(Deserialize)]
+struct EventTypeProbe {
+    #[serde(rename = "type")]
+    message_type: Option<String>,
+}
+
 fn parse_frame<T>(bytes: &[u8], kind: FrameKind) -> Result<T, ProtocolError>
 where
     T: DeserializeOwned,
 {
+    parse_json(frame_body(bytes, kind)?)
+}
+
+fn frame_body(bytes: &[u8], kind: FrameKind) -> Result<&[u8], ProtocolError> {
     if std::str::from_utf8(bytes).is_err() {
         return Err(malformed("frame is not UTF-8"));
     }
@@ -71,6 +94,13 @@ where
             "standard output line is not a JSON event object",
         ));
     }
+    Ok(body)
+}
+
+fn parse_json<T>(body: &[u8]) -> Result<T, ProtocolError>
+where
+    T: DeserializeOwned,
+{
     serde_json::from_slice(body).map_err(|error| {
         let (code, message) = match error.classify() {
             serde_json::error::Category::Data => (

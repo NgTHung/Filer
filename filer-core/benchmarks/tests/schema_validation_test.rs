@@ -124,6 +124,16 @@ fn plain_stdout_is_not_treated_as_a_protocol_event() {
 }
 
 #[test]
+fn non_event_json_is_not_treated_as_a_protocol_event() {
+    let source = br#"{"type":"diagnostic","message":"adapter is warming up"}
+"#;
+
+    let error = filer_core_benchmarks::parse_event_line(source)
+        .expect_err("non-event JSON on stdout must fail");
+    assert_eq!(error.code(), ErrorCode::UnexpectedStdout);
+}
+
+#[test]
 fn protocol_error_keeps_location_context() {
     let error = ProtocolError::new(ErrorCode::InvalidSchema, "bad field")
         .with_line(3)
