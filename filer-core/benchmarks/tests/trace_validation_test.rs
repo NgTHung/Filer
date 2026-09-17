@@ -1156,6 +1156,38 @@ fn rejects_inflated_continuation_proof_counts() {
 }
 
 #[test]
+fn unavailable_first_page_gate_is_not_replaced_by_later_pages() {
+    let manifest = manifest("flat-10k-v1.json");
+    let scenario = "browse.next";
+    let request = request(
+        &manifest,
+        scenario,
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "uncontrolled", "empty"),
+    );
+    let mut trace = continuation_trace(&manifest, false);
+    for event in &mut trace.events {
+        let first_page_total = event["action_id"] == "open"
+            && matches!(
+                event["phase"].as_str(),
+                Some("page.committed" | "action.completed")
+            );
+        if first_page_total || event["phase"] == "sample.completed" {
+            event["counts"]["examined"] = json!({"unavailable":"not_observable"});
+        }
+    }
+
+    let sample = validate_trace(manifest, request, scenario, trace, true, true);
+
+    assert_eq!(
+        sample.structural_gates.first_page_examined,
+        GateResult::NotEvaluable
+    );
+}
+
+#[test]
 fn classifies_streaming_first_page_gate() {
     let flat_10k = manifest("flat-10k-v1.json");
     let request = request(

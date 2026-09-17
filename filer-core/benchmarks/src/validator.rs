@@ -973,7 +973,20 @@ impl SampleValidator<'_> {
     }
 
     fn observe_first_page_gate(&mut self) -> Result<(), ProtocolError> {
-        if self.state.gate != GateResult::NotEvaluable || !self.plan.first_page_gate {
+        let is_first_page = self
+            .state
+            .current_action
+            .as_ref()
+            .is_some_and(|action| {
+                matches!(
+                    action.plan.kind,
+                    ActionKind::Open { page_number: 1, .. }
+                )
+            });
+        if self.state.gate != GateResult::NotEvaluable
+            || !self.plan.first_page_gate
+            || !is_first_page
+        {
             return Ok(());
         }
         if !self.capabilities.streaming_unfiltered_listing {
