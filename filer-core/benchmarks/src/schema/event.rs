@@ -13,7 +13,7 @@ use super::{
     Continuation, Counts, Event, Kind, MetricValue, Output, OutputScope, Phase, Row, Status,
     StatusKind, UnavailableReason,
 };
-use crate::{ErrorCode, ErrorContext, ProtocolError};
+use crate::{ErrorCode, ProtocolError};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -30,7 +30,7 @@ pub(super) struct RawEvent {
     phase: String,
     action_id: Presence<String>,
     counts: RawCounts,
-    rows: Vec<serde_json::Value>,
+    rows: Vec<RawRow>,
     output: Presence<RawOutput>,
     metrics: StrictMap<RawMetricValue>,
     status: Presence<RawStatus>,
@@ -62,13 +62,13 @@ struct RawUnavailable {
 #[serde(deny_unknown_fields)]
 struct RawRow {
     #[serde(default)]
-    identity: Presence<String>,
+    identity: Presence<serde_json::Value>,
     #[serde(default)]
-    kind: Presence<String>,
+    kind: Presence<serde_json::Value>,
     #[serde(default)]
-    size_bytes: Presence<Option<u64>>,
+    size_bytes: Presence<serde_json::Value>,
     #[serde(default)]
-    modified_unix_ns: Presence<i64>,
+    modified_unix_ns: Presence<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -268,17 +268,7 @@ fn convert_metric(raw: RawMetricValue) -> Result<MetricValue, ProtocolError> {
     }
 }
 
-fn convert_row_value(value: serde_json::Value) -> Result<Row, ProtocolError> {
-    let raw: RawRow = serde_json::from_value(value).map_err(|error| {
-        ProtocolError::new(
-            ErrorCode::InvalidRow,
-            "row does not match the canonical shape",
-        )
-        .with_context(ErrorContext {
-            field: Some(error.to_string()),
-            ..ErrorContext::default()
-        })
-    })?;
+fn convert_row_value(raw: RawRow) -> Result<Row, ProtocolError> {
     let identity = match raw.identity {
         Presence::Missing => None,
         Presence::Null => {
@@ -287,7 +277,13 @@ fn convert_row_value(value: serde_json::Value) -> Result<Row, ProtocolError> {
                 "row identity must be a string",
             ));
         }
-        Presence::Value(value) => Some(value),
+        Presence::Value(serde_json::Value::String(value)) => Some(value),
+        Presence::Value(_) => {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidRow,
+                "row identity must be a string",
+            ));
+        }
     };
     let kind = match raw.kind {
         Presence::Missing => None,
@@ -297,7 +293,7 @@ fn convert_row_value(value: serde_json::Value) -> Result<Row, ProtocolError> {
                 "row kind must be a string",
             ));
         }
-        Presence::Value(value) => Some(match value.as_str() {
+        Presence::Value(serde_json::Value::String(value)) => Some(match value.as_str() {
             "file" => Kind::File,
             "directory" => Kind::Directory,
             _ => {
@@ -307,11 +303,30 @@ fn convert_row_value(value: serde_json::Value) -> Result<Row, ProtocolError> {
                 ));
             }
         }),
+        Presence::Value(_) => {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidRow,
+                "row kind must be a string",
+            ));
+        }
     };
     let size_bytes = match raw.size_bytes {
         Presence::Missing => None,
         Presence::Null => Some(None),
-        Presence::Value(value) => Some(value),
+        Presence::Value(serde_json::Value::Number(value)) => {
+            Some(Some(value.as_u64().ok_or_else(|| {
+                ProtocolError::new(
+                    ErrorCode::InvalidRow,
+                    "row size_bytes must be an unsigned integer or null",
+                )
+            })?))
+        }
+        Presence::Value(_) => {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidRow,
+                "row size_bytes must be an unsigned integer or null",
+            ));
+        }
     };
     let modified_unix_ns = match raw.modified_unix_ns {
         Presence::Missing => None,
@@ -321,7 +336,20 @@ fn convert_row_value(value: serde_json::Value) -> Result<Row, ProtocolError> {
                 "row modified_unix_ns must be an integer",
             ));
         }
-        Presence::Value(value) => Some(value),
+        Presence::Value(serde_json::Value::Number(value)) => {
+            Some(value.as_i64().ok_or_else(|| {
+                ProtocolError::new(
+                    ErrorCode::InvalidRow,
+                    "row modified_unix_ns must be an integer",
+                )
+            })?)
+        }
+        Presence::Value(_) => {
+            return Err(ProtocolError::new(
+                ErrorCode::InvalidRow,
+                "row modified_unix_ns must be an integer",
+            ));
+        }
     };
     if let Some(identity) = &identity {
         validate_identity(identity)?;

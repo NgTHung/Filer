@@ -107,6 +107,16 @@ fn duplicate_metric_names_are_rejected_without_map_loss() {
 }
 
 #[test]
+fn duplicate_row_fields_are_rejected_without_map_loss() {
+    let source = br#"{"protocol_version":1,"type":"run_event","run_id":"run-1","sample_id":"sample-1","process_id":"process-1","order_id":"order-1","sequence":0,"timestamp_ns":1,"phase":"page.committed","action_id":"open","counts":{"examined":1,"accepted":1,"emitted":1,"visible":1},"rows":[{"identity":"file-000000.dat","identity":"file-000001.dat","kind":"file"}],"output":{"scope":"page","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","row_count":1,"continuation":"more"},"metrics":{},"status":null}
+"#;
+
+    let error =
+        filer_core_benchmarks::parse_event_line(source).expect_err("duplicate row field must fail");
+    assert_eq!(error.code(), ErrorCode::InvalidSchema);
+}
+
+#[test]
 fn plain_stdout_is_not_treated_as_a_protocol_event() {
     let error = filer_core_benchmarks::parse_event_line(b"diagnostic on stdout\n")
         .expect_err("diagnostic must fail");
