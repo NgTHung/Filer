@@ -523,11 +523,6 @@ impl SampleValidator<'_> {
             })?;
         let missing_prior = action.plan.required[..position].iter().any(|required| {
             if matches!(action.plan.kind, ActionKind::Open { .. })
-                && phase == Phase::ListingCompleted
-            {
-                return false;
-            }
-            if matches!(action.plan.kind, ActionKind::Open { .. })
                 && matches!(
                     (phase, *required),
                     (Phase::ViewportCommitted, Phase::PageCommitted)

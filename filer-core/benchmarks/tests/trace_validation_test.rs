@@ -1095,6 +1095,33 @@ fn accepts_page_before_viewport_with_cumulative_counts() {
 }
 
 #[test]
+fn rejects_listing_before_required_row_first() {
+    let manifest = manifest("flat-10k-v1.json");
+    let scenario = "browse.fast.first";
+    let request = request(
+        &manifest,
+        scenario,
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "uncontrolled", "empty"),
+    );
+    let mut trace = fast_trace(&manifest, scenario, false, true);
+    let mut listing = trace.events.remove(5);
+    listing["counts"] = json!({"examined":0,"accepted":0,"emitted":0,"visible":0});
+    trace.events.insert(2, listing);
+
+    let error = run_lines(
+        &manifest,
+        &request,
+        scenario,
+        resequence(trace.lines()),
+    );
+
+    assert_eq!(error.code(), ErrorCode::InvalidPhase);
+}
+
+#[test]
 fn classifies_streaming_first_page_gate() {
     let flat_10k = manifest("flat-10k-v1.json");
     let request = request(
