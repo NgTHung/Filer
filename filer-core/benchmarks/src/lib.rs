@@ -13,10 +13,16 @@
 //! assert_eq!(ErrorCode::InvalidSchema.as_str(), "invalid_schema");
 //! ```
 
+mod canonical;
 mod error;
+mod manifests;
 mod schema;
 
+pub use canonical::{CanonicalRow, canonical_digest};
 pub use error::{ErrorCode, ErrorContext, ProtocolError};
+pub use manifests::{
+    ExpectedDigests, GeneratorParameters, ManifestError, ManifestErrorCode, ValidatedManifest,
+};
 pub use schema::{
     Adapter, CacheState, Clock, Continuation, Counts, Environment, Event, Field, FilesystemCache,
     Filter, FixtureReference, Group, Implementation, Kind, MetricValue, Output, OutputScope, Phase,
