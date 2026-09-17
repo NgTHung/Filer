@@ -9,7 +9,9 @@
 //! - `ops.create_file` — create a file in a direct-local Location
 //! - `ops.cancel` — cancel a specific active operation
 
+mod command;
 pub mod operator;
+mod support;
 pub mod target;
 
 use std::sync::Arc;

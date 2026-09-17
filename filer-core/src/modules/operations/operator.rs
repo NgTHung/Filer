@@ -21,82 +21,10 @@ use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::{CoreError, ErrorCode, ErrorTarget, FsProvider, ProviderCx};
 
+pub use super::command::{OperationEventMode, OpsCommand};
+pub(crate) use super::support::TrashFn;
+use super::support::*;
 use super::target::{affected_location, resolve_direct_target, resolve_direct_targets};
-
-pub(crate) type TrashFn = Arc<dyn Fn(&Path) -> Result<(), CoreError> + Send + Sync>;
-
-/// Build the provider context for an operation from its cancel token and an
-/// optional deadline. Every operator provider call goes through `cx.race`, so
-/// a cancel or breached deadline interrupts the in-flight call.
-fn operation_cx(cancel: &CancellationToken, deadline: Option<Instant>) -> ProviderCx<'_> {
-    let cx = ProviderCx::with_cancel(cancel);
-    match deadline {
-        Some(deadline) => cx.with_deadline(deadline),
-        None => cx,
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum OpsCommand {
-    Copy {
-        sources: Vec<LocationRef>,
-        destination: LocationRef,
-        event_mode: OperationEventMode,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    Move {
-        sources: Vec<LocationRef>,
-        destination: LocationRef,
-        event_mode: OperationEventMode,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    Delete {
-        targets: Vec<LocationRef>,
-        trash: bool,
-        event_mode: OperationEventMode,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    Rename {
-        source: LocationRef,
-        new_name: String,
-        event_mode: OperationEventMode,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    CreateFolder {
-        parent: LocationRef,
-        name: String,
-        event_mode: OperationEventMode,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    CreateFile {
-        parent: LocationRef,
-        name: String,
-        event_mode: OperationEventMode,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-    },
-    Cancel(SessionId),
-    CancelOperation {
-        session: SessionId,
-        operation: OperationId,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OperationEventMode {
-    Location,
-}
 
 pub struct Operator {
     commands: Receiver<OpsCommand>,
@@ -1137,84 +1065,6 @@ async fn copy_dir_recursive(
         }
     }
     Ok(())
-}
-
-fn operation_error(
-    err: CoreError,
-    session: SessionId,
-    request: RequestId,
-    operation: OperationId,
-) -> Event {
-    Event::from_operation_error(err, session, request, operation)
-}
-
-fn operation_complete_event(
-    _registry: &NodeRegistry,
-    kind: OperationKind,
-    operation: OperationId,
-    affected: Vec<LocationRef>,
-    session: SessionId,
-    _event_mode: OperationEventMode,
-) -> Result<Event, CoreError> {
-    Ok(Event::OperationComplete {
-        operation_id: operation,
-        operation: kind,
-        success: true,
-        affected,
-        session,
-    })
-}
-
-async fn emit_operation_progress(
-    events: &EventSink,
-    kind: OperationKind,
-    session: SessionId,
-    request: RequestId,
-    operation: OperationId,
-    snapshot: ProgressSnapshot,
-) {
-    send_or_warn_async(
-        events,
-        Event::ProgressUpdated {
-            scope: ProgressScope::operation(kind, session, request, operation),
-            snapshot,
-        },
-        "operator: progress",
-    )
-    .await;
-}
-
-fn is_cross_device(err: &CoreError) -> bool {
-    err.code() == ErrorCode::IoFailed
-        && (err.message.contains("cross-device")
-            || err.message.contains("os error 18")
-            || err.message.contains("os error 17"))
-}
-
-fn invalidate_parent_cache(cache: &Option<SharedDirCache>, path: &Path) {
-    if let (Some(parent), Some(c)) = (path.parent(), cache)
-        && let Ok(mut guard) = c.lock()
-    {
-        guard.invalidate(crate::Location::local(parent.to_path_buf()).id());
-    }
-}
-
-fn invalidate_subtree_cache(cache: &Option<SharedDirCache>, path: &Path) {
-    if let Some(c) = cache
-        && let Ok(mut guard) = c.lock()
-    {
-        guard.invalidate_local_subtree(path);
-    }
-}
-
-async fn remove_operation_if_current(
-    active_operation_ids: Arc<scc::HashMap<SessionId, OperationId, RandomState>>,
-    session: SessionId,
-    operation: OperationId,
-) {
-    let _ = active_operation_ids
-        .remove_if_async(&session, |current| *current == operation)
-        .await;
 }
 
 impl Actor for Operator {
