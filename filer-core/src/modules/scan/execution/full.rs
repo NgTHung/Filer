@@ -23,9 +23,8 @@ use crate::utils::channel::send_or_warn_async;
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
-use super::{
-    ScanEvents, cache_location, emit_scan_progress, is_latest, limited_entries, scan_target,
-};
+use super::cache::store_snapshot;
+use super::{ScanEvents, emit_scan_progress, is_latest, limited_entries, scan_target};
 
 pub(in crate::modules::scan) struct FullScan<'a> {
     pub provider: &'a dyn FsProvider,
@@ -112,15 +111,14 @@ pub(in crate::modules::scan) async fn scan_full(scan: FullScan<'_>) {
         }
     };
 
-    if !load_options.is_bounded()
-        && let Some(cache) = cache
-        && let Ok(mut cache) = cache.lock()
-        && parent_location_id.is_some()
-    {
-        cache.put(
-            cache_location(parent_location, path),
+    if !load_options.is_bounded() {
+        store_snapshot(
+            cache,
+            parent_location,
+            parent_location_id,
+            path,
             load_options.listing,
-            entries.clone(),
+            &entries,
         );
         tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
     }

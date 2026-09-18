@@ -18,7 +18,7 @@ use crate::actors::cancel::CancellationToken;
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::model::directory::{DirectoryLoadState, DirectoryPageResult};
-use crate::model::location::{Location, LocationId, LocationRef};
+use crate::model::location::{LocationId, LocationRef};
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
 };
@@ -31,9 +31,11 @@ use crate::vfs::provider::FsProvider;
 
 use super::paging::PagingSessions;
 
+mod cache;
 mod full;
 mod segmented;
 
+pub(super) use cache::{CacheScan, invalidate_cache, scan_cached, store_snapshot};
 pub(super) use full::{FullScan, scan_full};
 pub(super) use segmented::scan_segmented_location;
 
@@ -207,12 +209,4 @@ pub(super) fn limited_entries(
         grouped,
         DirectoryLoadState::from_counts(loaded_count, total_count),
     )
-}
-
-pub(super) fn cache_location(parent: &LocationRef, path: &Path) -> Location {
-    parent
-        .descriptor()
-        .cloned()
-        .map(Location::new)
-        .unwrap_or_else(|| Location::local(path.to_path_buf()))
 }

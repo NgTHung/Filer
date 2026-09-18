@@ -12,15 +12,16 @@ use crate::model::progress::{ProgressPhase, ProgressSnapshot, ProgressStatus, Pr
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::pipeline::{Pipeline, PipelineConfig, effective_listing};
+use crate::pipeline::PipelineConfig;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 use super::execution::{
-    FullScan, ScanEvents, ScanResources, ScanTarget, cache_location, emit_page_result,
-    emit_scan_progress, is_latest, scan_full, scan_segmented_location, scan_target,
+    CacheScan, FullScan, ScanEvents, ScanResources, ScanTarget, emit_page_result,
+    emit_scan_progress, invalidate_cache as invalidate_scan_cache, is_latest, scan_cached,
+    scan_full, scan_segmented_location, scan_target, store_snapshot,
 };
 use super::paging::{PageLoad, PagingSessions};
 
@@ -274,18 +275,19 @@ impl Scanner {
             parent_location_id,
         } = target;
         let path = path.as_path();
+        let cache_scan = CacheScan {
+            cache,
+            paging,
+            cancel,
+            events: scan_events,
+            path,
+            parent_location: &parent_location,
+            parent_location_id,
+            pipeline_config: &pipeline_config,
+            load_options: &load_options,
+        };
         if invalidate_cache {
-            paging.clear_session(session);
-            if let Some(cache) = cache
-                && let Ok(mut cache) = cache.lock()
-            {
-                tracing::debug!(path = %path.display(), "Invalidating directory cache before scan");
-                if let Some(location_id) = parent_location_id {
-                    cache.invalidate(location_id);
-                } else {
-                    cache.invalidate_local_subtree(path);
-                }
-            }
+            invalidate_scan_cache(&cache_scan);
         }
 
         emit_scan_progress(
@@ -319,128 +321,8 @@ impl Scanner {
             ),
         )
         .await;
-        let cache_listing = if load_options.is_paged() {
-            effective_listing(&pipeline_config, load_options.listing)
-        } else {
-            load_options.listing
-        };
         let cx = ProviderCx::with_cancel(cancel);
-        let cached_nodes = cache.and_then(|c| {
-            let mut cache = c.lock().ok()?;
-            let location_id = parent_location_id?;
-            cache.get(location_id, cache_listing)
-        });
-        if let Some(cached) = cached_nodes {
-            tracing::trace!(path = %path.display(), session = %session, "Directory scan served from cache");
-            if let Some(page_request) = load_options.page_request() {
-                match paging.load_cached(cached, path, session, page_request, &pipeline_config, &cx)
-                {
-                    Ok(PageLoad::Page(page)) => {
-                        emit_page_result(
-                            scan_events,
-                            path,
-                            parent_location.clone(),
-                            page,
-                            &pipeline_config,
-                            "scan page result (cached)",
-                        )
-                        .await;
-                    }
-                    Ok(PageLoad::Cancelled) => {
-                        emit_scan_progress(
-                            events,
-                            latest_scans,
-                            session,
-                            request,
-                            ProgressSnapshot::new(
-                                ProgressStatus::Cancelled,
-                                ProgressPhase::Loading,
-                                ProgressUnit::Entry,
-                                0,
-                                None,
-                                scan_target(path, Some(&parent_location)),
-                            ),
-                        )
-                        .await;
-                    }
-                    Err(e) => {
-                        if is_latest(latest_scans, session, request) {
-                            send_or_warn_async(
-                                events,
-                                Event::from_request_error(e, session, request),
-                                "scan cached page error",
-                            )
-                            .await;
-                        }
-                    }
-                }
-                return;
-            }
-
-            let pipeline = Pipeline::from_config(&pipeline_config);
-            let (groups, load) = pipeline
-                .execute_grouped(cached)
-                .limited(load_options.snapshot_limit());
-            emit_scan_progress(
-                events,
-                latest_scans,
-                session,
-                request,
-                ProgressSnapshot::new(
-                    ProgressStatus::Running,
-                    ProgressPhase::Processing,
-                    ProgressUnit::Entry,
-                    load.loaded_count,
-                    load.total_count,
-                    scan_target(path, Some(&parent_location)),
-                ),
-            )
-            .await;
-            if !is_latest(latest_scans, session, request) {
-                return;
-            }
-            emit_scan_progress(
-                events,
-                latest_scans,
-                session,
-                request,
-                ProgressSnapshot::new(
-                    ProgressStatus::Running,
-                    ProgressPhase::Emitting,
-                    ProgressUnit::Entry,
-                    load.loaded_count,
-                    load.total_count,
-                    scan_target(path, Some(&parent_location)),
-                ),
-            )
-            .await;
-            send_or_warn_async(
-                events,
-                Event::DirectoryLoaded {
-                    parent: parent_location.clone(),
-                    groups,
-                    load,
-                    session,
-                    request,
-                },
-                "scan location result (cached)",
-            )
-            .await;
-            emit_scan_progress(
-                events,
-                latest_scans,
-                session,
-                request,
-                ProgressSnapshot::new(
-                    ProgressStatus::Completed,
-                    ProgressPhase::Finalizing,
-                    ProgressUnit::Entry,
-                    load.loaded_count,
-                    load.total_count,
-                    scan_target(path, Some(&parent_location)),
-                ),
-            )
-            .await;
+        if scan_cached(&cache_scan).await {
             return;
         }
 
@@ -521,17 +403,14 @@ impl Scanner {
                 }
             };
 
-            if first_page
-                && page.state.complete
-                && pipeline_config == PipelineConfig::default()
-                && let Some(cache) = cache
-                && let Ok(mut c) = cache.lock()
-                && parent_location_id.is_some()
-            {
-                c.put(
-                    cache_location(&parent_location, path),
+            if first_page && page.state.complete && pipeline_config == PipelineConfig::default() {
+                store_snapshot(
+                    cache,
+                    &parent_location,
+                    parent_location_id,
+                    path,
                     load_options.listing,
-                    page.entries.clone(),
+                    &page.entries,
                 );
             }
 
