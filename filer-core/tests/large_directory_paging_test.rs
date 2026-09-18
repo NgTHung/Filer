@@ -10,6 +10,8 @@
 //! assert!(load.is_paged());
 //! ```
 
+mod support;
+
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -19,8 +21,8 @@ use async_trait::async_trait;
 use filer_core::modules::scan::ScanModule;
 use filer_core::{
     Capabilities, Command, CoreError, DirectoryLoadOptions, DirectoryStream, Event, FilerCore,
-    FsProvider, ListingBatch, ListingOptions, Location, LocationRef, NodeEntry,
-    NodeEntryCapabilities, NodeMeta, PipelineConfig, ProviderCx, ProviderPaging, RequestId,
+    FsProvider, ListingBatch, ListingOptions, Location, LocationRef, NodeEntry, NodeMeta,
+    PipelineConfig, ProviderCx, ProviderPaging, RequestId,
 };
 
 const ENTRY_COUNT: usize = 10_000;
@@ -41,23 +43,16 @@ impl CountingProvider {
             .map(|index| {
                 let name = format!("entry_{index:05}.dat");
                 let path = parent.join(&name);
-                NodeEntry {
-                    location: LocationRef::from_location(&Location::local(path)),
-                    display_path: None,
-                    capabilities: NodeEntryCapabilities {
-                        read: true,
-                        navigate: false,
-                    },
+                support::make_entry(
+                    path,
                     name,
-                    kind: filer_core::model::node::NodeKind::File {
+                    filer_core::model::node::NodeKind::File {
                         extension: Some("dat".to_string()),
                     },
-                    size: 0,
-                    modified: None,
-                    created: None,
-                    accessed: None,
-                    meta: NodeMeta::default(),
-                }
+                    0,
+                    None,
+                    NodeMeta::default(),
+                )
             })
             .collect();
 
