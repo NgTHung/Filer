@@ -12,45 +12,25 @@
 
 #![allow(dead_code)]
 
+pub(crate) mod nodes;
+pub(crate) mod provider;
 pub(crate) mod state;
+
+use filer_core as core;
+#[allow(unused_imports)]
+pub(crate) use nodes::make_entry;
 
 use std::path::PathBuf;
 use std::time::Duration;
 
 use flume::Receiver;
 
-use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
+use filer_core::model::node::NodeEntry;
 use filer_core::model::session::SessionId;
 use filer_core::{Event, Location, LocationRef};
 
 pub(crate) fn local_location(path: impl Into<PathBuf>) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
-}
-
-pub(crate) fn make_entry(
-    path: impl Into<PathBuf>,
-    name: impl Into<String>,
-    kind: NodeKind,
-    size: u64,
-    modified: Option<std::time::SystemTime>,
-    meta: NodeMeta,
-) -> NodeEntry {
-    let location = Location::local(path);
-    NodeEntry {
-        location: LocationRef::from_location(&location),
-        display_path: None,
-        capabilities: filer_core::NodeEntryCapabilities {
-            read: true,
-            navigate: matches!(kind, NodeKind::Directory { .. }),
-        },
-        name: name.into(),
-        kind,
-        size,
-        modified,
-        created: None,
-        accessed: None,
-        meta,
-    }
 }
 
 pub(crate) fn provider_entry(node: NodeEntry) -> NodeEntry {

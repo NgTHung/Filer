@@ -3,139 +3,27 @@
 //! These tests exercise the Scanner actor directly via its command channel,
 //! using a MockProvider to control filesystem responses.
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
-use async_trait::async_trait;
 use tokio::time::timeout;
 
 mod support;
 
-use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
+use filer_core::model::node::NodeEntry;
 use filer_core::model::registry::NodeRegistry;
 use filer_core::model::session;
 use filer_core::modules::scan::scanner::{ScanCommand, Scanner};
-use filer_core::{Actor, Capabilities, CoreError, Event, FsProvider, PipelineConfig, SortConfig};
+use filer_core::{Actor, Event, PipelineConfig, SortConfig};
 
-use support::{local_location, make_entry, provider_entry, wait_for_directory_entries};
+use support::provider::MemoryProvider as MockProvider;
+use support::{local_location, wait_for_directory_entries};
 
 fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> NodeEntry {
-    let extension = PathBuf::from(name)
-        .extension()
-        .map(|e| e.to_string_lossy().into_owned());
-    make_entry(
-        PathBuf::from(format!("{path}/{name}")),
-        name,
-        NodeKind::File { extension },
-        size,
-        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        NodeMeta {
-            hidden,
-            readonly: false,
-            permissions: None,
-            ..Default::default()
-        },
-    )
-}
-
-/// Scanner assertions use native entries throughout the provider boundary.
-#[derive(Clone)]
-struct MockProvider {
-    files: Arc<Mutex<Vec<NodeEntry>>>,
-    list_calls: Arc<Mutex<Vec<PathBuf>>>,
-    should_fail: Arc<Mutex<bool>>,
-}
-
-impl MockProvider {
-    fn new() -> Self {
-        Self {
-            files: Arc::new(Mutex::new(Vec::new())),
-            list_calls: Arc::new(Mutex::new(Vec::new())),
-            should_fail: Arc::new(Mutex::new(false)),
-        }
-    }
-
-    fn add_file(&self, node: NodeEntry) {
-        self.files.lock().unwrap().push(node);
-    }
-
-    fn get_list_calls(&self) -> Vec<PathBuf> {
-        self.list_calls.lock().unwrap().clone()
-    }
-
-    fn set_should_fail(&self, should_fail: bool) {
-        *self.should_fail.lock().unwrap() = should_fail;
-    }
-}
-
-#[async_trait]
-impl FsProvider for MockProvider {
-    fn scheme(&self) -> &'static str {
-        "mock"
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            read: true,
-            write: false,
-            watch: false,
-            search: false,
-        }
-    }
-
-    async fn list(
-        &self,
-        path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<filer_core::NodeEntry>, CoreError> {
-        if *self.should_fail.lock().unwrap() {
-            return Err(CoreError::not_found(path.to_path_buf()));
-        }
-        self.list_calls.lock().unwrap().push(path.to_path_buf());
-        Ok(self
-            .files
-            .lock()
-            .unwrap()
-            .iter()
-            .cloned()
-            .map(provider_entry)
-            .collect())
-    }
-
-    async fn read(
-        &self,
-        _path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<u8>, CoreError> {
-        Ok(vec![])
-    }
-
-    async fn read_range(
-        &self,
-        _path: &Path,
-        _start: u64,
-        _len: u64,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<u8>, CoreError> {
-        Ok(vec![])
-    }
-
-    async fn exists(
-        &self,
-        _path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<bool, CoreError> {
-        Ok(true)
-    }
-
-    async fn metadata(
-        &self,
-        _path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<filer_core::NodeEntry, CoreError> {
-        Err(CoreError::not_found(PathBuf::from("test")))
-    }
+    let mut entry = support::nodes::file(name, path, size);
+    entry.meta.hidden = hidden;
+    entry
 }
 
 #[tokio::test]
