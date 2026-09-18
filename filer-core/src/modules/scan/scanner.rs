@@ -8,7 +8,6 @@ use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::{LocationRef, LocationRoute};
-use crate::model::progress::{ProgressPhase, ProgressSnapshot, ProgressStatus, ProgressUnit};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -18,9 +17,7 @@ use crate::utils::channel::send_or_warn;
 use crate::vfs::provider::FsProvider;
 
 use super::execution::{
-    CacheScan, FullScan, PagedScan, ScanEvents, ScanResources, ScanTarget, emit_scan_progress,
-    invalidate_cache as invalidate_scan_cache, scan_cached, scan_full, scan_page,
-    scan_segmented_location, scan_target,
+    ScanEvents, ScanResources, ScanTarget, scan_directory, scan_segmented_location,
 };
 use super::paging::PagingSessions;
 
@@ -124,7 +121,7 @@ impl Scanner {
         let _ = self.latest_scans.insert_sync(session, request);
         let cancel = active_scans.arm(session);
         work.spawn(cancel.clone(), async move {
-            Self::scan_directory(
+            scan_directory(
                 ScanResources {
                     provider: &provider,
                     cancel: &cancel,
@@ -246,131 +243,6 @@ impl Scanner {
             .await;
             active_scans.remove_if_current(session, &cancel).await;
         });
-    }
-
-    async fn scan_directory(
-        resources: ScanResources<'_>,
-        scan_events: ScanEvents<'_>,
-        target: ScanTarget,
-        pipeline_config: PipelineConfig,
-        load_options: DirectoryLoadOptions,
-        invalidate_cache: bool,
-    ) {
-        let ScanResources {
-            provider,
-            cancel,
-            cache,
-            paging,
-        } = resources;
-        let ScanEvents {
-            events,
-            latest_scans,
-            session,
-            request,
-        } = scan_events;
-        let ScanTarget {
-            path,
-            parent_location,
-            parent_location_id,
-        } = target;
-        let path = path.as_path();
-        let cache_scan = CacheScan {
-            cache,
-            paging,
-            cancel,
-            events: scan_events,
-            path,
-            parent_location: &parent_location,
-            parent_location_id,
-            pipeline_config: &pipeline_config,
-            load_options: &load_options,
-        };
-        if invalidate_cache {
-            invalidate_scan_cache(&cache_scan);
-        }
-
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Started,
-                ProgressPhase::Loading,
-                ProgressUnit::Step,
-                0,
-                None,
-                scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Running,
-                ProgressPhase::CacheLookup,
-                ProgressUnit::Step,
-                0,
-                None,
-                scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-        if scan_cached(&cache_scan).await {
-            return;
-        }
-
-        tracing::trace!(path = %path.display(), session = %session, "Directory scan cache miss, listing provider");
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Running,
-                ProgressPhase::Loading,
-                ProgressUnit::Entry,
-                0,
-                None,
-                scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-
-        if let Some(page_request) = load_options.page_request() {
-            scan_page(PagedScan {
-                provider: provider.as_ref(),
-                cache,
-                paging,
-                cancel,
-                events: scan_events,
-                path,
-                parent_location: &parent_location,
-                parent_location_id,
-                pipeline_config: &pipeline_config,
-                listing: load_options.listing,
-                page_request,
-            })
-            .await;
-            return;
-        }
-
-        scan_full(FullScan {
-            provider: provider.as_ref(),
-            cancel,
-            cache,
-            events: scan_events,
-            path,
-            parent_location: &parent_location,
-            parent_location_id,
-            pipeline_config: &pipeline_config,
-            load_options: &load_options,
-        })
-        .await;
     }
 
     fn cancel_scan(&self, session: SessionId) {

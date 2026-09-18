@@ -17,7 +17,7 @@ use rapidhash::fast::RandomState;
 use crate::actors::cancel::CancellationToken;
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
-use crate::model::directory::{DirectoryLoadState, DirectoryPageResult};
+use crate::model::directory::{DirectoryLoadOptions, DirectoryLoadState, DirectoryPageResult};
 use crate::model::location::{LocationId, LocationRef};
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
@@ -60,6 +60,131 @@ pub(super) struct ScanResources<'a> {
     pub cancel: &'a CancellationToken,
     pub cache: Option<&'a SharedDirCache>,
     pub paging: &'a PagingSessions,
+}
+
+pub(super) async fn scan_directory(
+    resources: ScanResources<'_>,
+    scan_events: ScanEvents<'_>,
+    target: ScanTarget,
+    pipeline_config: PipelineConfig,
+    load_options: DirectoryLoadOptions,
+    refresh: bool,
+) {
+    let ScanResources {
+        provider,
+        cancel,
+        cache,
+        paging,
+    } = resources;
+    let ScanEvents {
+        events,
+        latest_scans,
+        session,
+        request,
+    } = scan_events;
+    let ScanTarget {
+        path,
+        parent_location,
+        parent_location_id,
+    } = target;
+    let path = path.as_path();
+    let cache_scan = CacheScan {
+        cache,
+        paging,
+        cancel,
+        events: scan_events,
+        path,
+        parent_location: &parent_location,
+        parent_location_id,
+        pipeline_config: &pipeline_config,
+        load_options: &load_options,
+    };
+    if refresh {
+        invalidate_cache(&cache_scan);
+    }
+
+    emit_scan_progress(
+        events,
+        latest_scans,
+        session,
+        request,
+        ProgressSnapshot::new(
+            ProgressStatus::Started,
+            ProgressPhase::Loading,
+            ProgressUnit::Step,
+            0,
+            None,
+            scan_target(path, Some(&parent_location)),
+        ),
+    )
+    .await;
+
+    emit_scan_progress(
+        events,
+        latest_scans,
+        session,
+        request,
+        ProgressSnapshot::new(
+            ProgressStatus::Running,
+            ProgressPhase::CacheLookup,
+            ProgressUnit::Step,
+            0,
+            None,
+            scan_target(path, Some(&parent_location)),
+        ),
+    )
+    .await;
+    if scan_cached(&cache_scan).await {
+        return;
+    }
+
+    tracing::trace!(path = %path.display(), session = %session, "Directory scan cache miss, listing provider");
+    emit_scan_progress(
+        events,
+        latest_scans,
+        session,
+        request,
+        ProgressSnapshot::new(
+            ProgressStatus::Running,
+            ProgressPhase::Loading,
+            ProgressUnit::Entry,
+            0,
+            None,
+            scan_target(path, Some(&parent_location)),
+        ),
+    )
+    .await;
+
+    if let Some(page_request) = load_options.page_request() {
+        scan_page(PagedScan {
+            provider: provider.as_ref(),
+            cache,
+            paging,
+            cancel,
+            events: scan_events,
+            path,
+            parent_location: &parent_location,
+            parent_location_id,
+            pipeline_config: &pipeline_config,
+            listing: load_options.listing,
+            page_request,
+        })
+        .await;
+        return;
+    }
+
+    scan_full(FullScan {
+        provider: provider.as_ref(),
+        cancel,
+        cache,
+        events: scan_events,
+        path,
+        parent_location: &parent_location,
+        parent_location_id,
+        pipeline_config: &pipeline_config,
+        load_options: &load_options,
+    })
+    .await;
 }
 
 pub(super) async fn emit_page_result(
