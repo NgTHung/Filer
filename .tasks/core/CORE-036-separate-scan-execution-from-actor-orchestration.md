@@ -1,7 +1,7 @@
 ---
 id: "CORE-036"
 title: "Separate scan execution from actor orchestration"
-status: In Progress
+status: Done
 priority: "Medium"
 type: "Refactor"
 parent: "core:CORE-019"
@@ -18,6 +18,6 @@ Split modules/scan/scanner.rs into actor orchestration and focused cache, paged,
 
 ## Acceptance Criteria
 
-- [ ] Scanner and extracted modules each remain under 700 lines, with shared progress/result emission and stable public imports.
-- [ ] Cache hits, segmented locations, sorted snapshots, streaming pages, stale-result suppression, and cancellation retain existing semantics.
-- [ ] Scanner cache, paging, streaming, and public large-directory tests pass, followed by cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core.
+- [x] Scanner and extracted modules each remain under 700 lines, with shared progress/result emission and stable public imports.
+- [x] Cache hits, segmented locations, sorted snapshots, streaming pages, stale-result suppression, and cancellation retain existing semantics.
+- [x] Scanner cache, paging, streaming, and public large-directory tests pass, followed by cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core.

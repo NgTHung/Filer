@@ -23,6 +23,6 @@ Keep mechanical moves separate from control-flow changes. Inspect the actual dif
 ## Acceptance Criteria
 
 - [ ] CORE-035 is Done: operation command, transfer, mutation, and shared support responsibilities are separated, with modules under 700 lines and no behavior change.
-- [ ] CORE-036 is Done: scanner orchestration and cache, paged, and full execution responsibilities are separated into modules under 700 lines.
+- [x] CORE-036 is Done: scanner orchestration and cache, paged, and full execution responsibilities are separated into modules under 700 lines.
 - [x] navigator.rs splits the NavState/NavigatorState machine into its own module from the actor; verified against navigation/state.rs on 2026-09-05.
 - [ ] The existing test suites for these modules pass unchanged.
