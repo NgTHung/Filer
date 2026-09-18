@@ -4,6 +4,8 @@
 //! flat pipeline contract. The comparison keeps filtering behavior independent
 //! from the paging route selected for a configuration.
 
+mod support;
+
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,7 +21,7 @@ use filer_core::pipeline::{
 use filer_core::{
     Capabilities, Command, CoreError, DirectoryLoadOptions, DirectoryPageState, DirectoryStream,
     Event, FilerCore, FsProvider, ListingBatch, ListingOptions, Location, LocationRef, NodeEntry,
-    NodeEntryCapabilities, NodeMeta, ProviderCx, ProviderPaging, RequestId,
+    NodeMeta, ProviderCx, ProviderPaging, RequestId,
 };
 
 const PAGE_SIZE: usize = 2;
@@ -141,27 +143,19 @@ impl FsProvider for FixtureProvider {
 }
 
 fn entry(name: &str, size: u64, hidden: bool, extension: Option<&str>) -> NodeEntry {
-    let location = Location::local(Path::new(ROOT).join(name));
-    NodeEntry {
-        location: LocationRef::from_location(&location),
-        display_path: None,
-        capabilities: NodeEntryCapabilities {
-            read: true,
-            navigate: false,
-        },
-        name: name.to_string(),
-        kind: NodeKind::File {
-            extension: extension.map(str::to_string),
+    support::make_entry(
+        Path::new(ROOT).join(name),
+        name,
+        NodeKind::File {
+            extension: extension.map(str::to_owned),
         },
         size,
-        modified: None,
-        created: None,
-        accessed: None,
-        meta: NodeMeta {
+        None,
+        NodeMeta {
             hidden,
             ..NodeMeta::default()
         },
-    }
+    )
 }
 
 fn row_keys(entries: &[NodeEntry]) -> Vec<RowKey> {

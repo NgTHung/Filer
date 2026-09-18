@@ -13,7 +13,8 @@ This fixture refactor adds no production behavior or test boundary.
 5. Share node construction with the internal harness and migrate internal scanner builders. Keep its paging and stream instrumentation explicit.
 6. Migrate internal search setup, retaining delay and failure injection locally.
 7. Migrate pipeline, query, and operator builders in separate commits.
-8. Compare test inventories, run full core tests and crate checks, and close the task.
+8. Migrate the equivalent node rows in pipeline paging and large-directory paging, one suite per commit. Keep provider instrumentation local.
+9. Compare test inventories, run full core tests and crate checks, and close the task.
 
 Commit each migration after its focused tests pass. Keep each stage below 700
 changed lines where practical. Existing tests establish the pre-refactor behavior;
@@ -151,4 +152,4 @@ The compiled default-feature list is also compared before and after migration.
 - Watcher and git TestWatchProvider doubles drive watch receivers, subscription readiness, and teardown. Keep these event controls.
 - VFS MockFs tests stored reads, metadata, and cancellation. NamedProvider exercises provider identities; OpenReaderCountingProvider checks reader routing. DefaultProvider tests default listing-stream fallback. Keep these contract-specific doubles.
 - Preview StubProvider and MockPreviewProvider implement preview generation rather than directory listings. HeaderRecordingProvider records bounded reads; NullProvider returns empty listings and path-specific metadata errors; RecordingProvider records preview reads. SequencedPreviewProvider and CleanupInterleavingProvider control cancellation ordering. Keep their distinct behavior.
-- Dir-cache and VFS fixture rows already delegate to the base node constructor. Pipeline paging and large-directory rows carry specialized display paths/capabilities or allocation-sensitive construction; retain those explicit fixtures.
+- Dir-cache and VFS fixture rows already delegate to the base node constructor. Stress node builders retain bounded modified timestamps (`size % 1_000_000`) and Path inputs. Pipeline paging and large-directory rows use the same identity/capability defaults with absent timestamps and explicit extensions; share their base construction too.
