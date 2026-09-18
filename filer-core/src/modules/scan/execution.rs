@@ -17,19 +17,23 @@ use rapidhash::fast::RandomState;
 use crate::actors::cancel::CancellationToken;
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
-use crate::model::directory::DirectoryPageResult;
+use crate::model::directory::{DirectoryLoadState, DirectoryPageResult};
 use crate::model::location::{LocationId, LocationRef};
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
 };
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::pipeline::{Pipeline, PipelineConfig};
+use crate::pipeline::{GroupedEntries, Pipeline, PipelineConfig};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn_async;
 use crate::vfs::provider::FsProvider;
 
 use super::paging::PagingSessions;
+
+mod segmented;
+
+pub(super) use segmented::scan_segmented_location;
 
 pub(super) struct ScanTarget {
     pub path: PathBuf,
@@ -167,4 +171,38 @@ pub(super) fn is_latest(
     latest_scans
         .read_sync(&session, |_, latest| *latest == request)
         .unwrap_or(false)
+}
+
+pub(super) fn limited_entries(
+    mut grouped: GroupedEntries,
+    limit: Option<usize>,
+) -> (GroupedEntries, DirectoryLoadState) {
+    let total_count = grouped.total_count;
+    let Some(limit) = limit else {
+        return (grouped, DirectoryLoadState::complete(total_count));
+    };
+
+    let mut remaining = limit;
+    let mut loaded_count = 0;
+    let mut groups = Vec::new();
+    for mut group in grouped.groups {
+        if remaining == 0 {
+            break;
+        }
+        if group.nodes.len() > remaining {
+            group.nodes.truncate(remaining);
+        }
+        let group_count = group.nodes.len();
+        if group_count > 0 {
+            loaded_count += group_count;
+            remaining -= group_count;
+            groups.push(group);
+        }
+    }
+    grouped.groups = groups;
+    grouped.total_count = loaded_count;
+    (
+        grouped,
+        DirectoryLoadState::from_counts(loaded_count, total_count),
+    )
 }

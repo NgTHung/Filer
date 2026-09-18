@@ -3,29 +3,26 @@ use rapidhash::fast::RandomState;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::actors::cancel::{CancelMap, CancellationToken};
+use crate::actors::cancel::CancelMap;
 use crate::actors::{Actor, WorkTracker};
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::errors::ErrorCode;
 use crate::model::directory::DirectoryLoadOptions;
-use crate::model::directory::DirectoryLoadState;
 use crate::model::location::{Location, LocationRef, LocationRoute};
 use crate::model::progress::{ProgressPhase, ProgressSnapshot, ProgressStatus, ProgressUnit};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::pipeline::GroupedEntries;
 use crate::pipeline::{Pipeline, PipelineConfig, effective_listing};
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
-use crate::vfs::segmented::SegmentedLocationResolver;
 
 use super::execution::{
     ScanEvents, ScanResources, ScanTarget, emit_page_result, emit_scan_progress, is_latest,
-    scan_target,
+    limited_entries, scan_segmented_location, scan_target,
 };
 use super::paging::{PageLoad, PagingSessions};
 
@@ -234,7 +231,7 @@ impl Scanner {
         let _ = self.latest_scans.insert_sync(session, request);
         let cancel = active_scans.arm(session);
         work.spawn(cancel.clone(), async move {
-            Self::scan_segmented_location(
+            scan_segmented_location(
                 &provider,
                 ScanEvents {
                     events: &events,
@@ -756,129 +753,6 @@ impl Scanner {
         .await;
     }
 
-    async fn scan_segmented_location(
-        provider: &Arc<dyn FsProvider>,
-        scan_events: ScanEvents<'_>,
-        descriptor: crate::LocationDescriptor,
-        parent: LocationRef,
-        pipeline_config: PipelineConfig,
-        load_options: DirectoryLoadOptions,
-        cancel: &CancellationToken,
-    ) {
-        let ScanEvents {
-            events,
-            latest_scans,
-            session,
-            request,
-        } = scan_events;
-        let target_path = descriptor.display_path();
-        let target = std::path::Path::new(&target_path);
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Started,
-                ProgressPhase::Loading,
-                ProgressUnit::Step,
-                0,
-                None,
-                scan_target(target, Some(&parent)),
-            ),
-        )
-        .await;
-
-        let cx = ProviderCx::with_cancel(cancel);
-        let entries = match cx
-            .race(
-                provider.scheme(),
-                SegmentedLocationResolver::new(provider.as_ref()).list(&descriptor, &cx),
-            )
-            .await
-        {
-            Ok(entries) => entries,
-            Err(e) if e.code() == ErrorCode::Cancelled => {
-                emit_scan_progress(
-                    events,
-                    latest_scans,
-                    session,
-                    request,
-                    ProgressSnapshot::new(
-                        ProgressStatus::Cancelled,
-                        ProgressPhase::Loading,
-                        ProgressUnit::Entry,
-                        0,
-                        None,
-                        scan_target(target, Some(&parent)),
-                    ),
-                )
-                .await;
-                return;
-            }
-            Err(e) => {
-                if is_latest(latest_scans, session, request) {
-                    emit_scan_progress(
-                        events,
-                        latest_scans,
-                        session,
-                        request,
-                        ProgressSnapshot::new(
-                            ProgressStatus::Failed,
-                            ProgressPhase::Loading,
-                            ProgressUnit::Entry,
-                            0,
-                            None,
-                            scan_target(target, Some(&parent)),
-                        ),
-                    )
-                    .await;
-                    send_or_warn_async(
-                        events,
-                        Event::from_request_error(e, session, request),
-                        "scan segmented error",
-                    )
-                    .await;
-                }
-                return;
-            }
-        };
-
-        if cancel.is_cancelled() || !is_latest(latest_scans, session, request) {
-            return;
-        }
-
-        let groups = Pipeline::from_config(&pipeline_config).execute_grouped(entries);
-        let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
-        send_or_warn_async(
-            events,
-            Event::DirectoryLoaded {
-                parent,
-                groups,
-                load,
-                session,
-                request,
-            },
-            "scan segmented result",
-        )
-        .await;
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Completed,
-                ProgressPhase::Finalizing,
-                ProgressUnit::Entry,
-                load.loaded_count,
-                load.total_count,
-                scan_target(target, None),
-            ),
-        )
-        .await;
-    }
-
     fn cancel_scan(&self, session: SessionId) {
         self.active_scans.cancel(session);
         self.paging.clear_session(session);
@@ -891,40 +765,6 @@ fn cache_location(parent: &LocationRef, path: &Path) -> Location {
         .cloned()
         .map(Location::new)
         .unwrap_or_else(|| Location::local(path.to_path_buf()))
-}
-
-fn limited_entries(
-    mut grouped: GroupedEntries,
-    limit: Option<usize>,
-) -> (GroupedEntries, DirectoryLoadState) {
-    let total_count = grouped.total_count;
-    let Some(limit) = limit else {
-        return (grouped, DirectoryLoadState::complete(total_count));
-    };
-
-    let mut remaining = limit;
-    let mut loaded_count = 0;
-    let mut groups = Vec::new();
-    for mut group in grouped.groups {
-        if remaining == 0 {
-            break;
-        }
-        if group.nodes.len() > remaining {
-            group.nodes.truncate(remaining);
-        }
-        let group_count = group.nodes.len();
-        if group_count > 0 {
-            loaded_count += group_count;
-            remaining -= group_count;
-            groups.push(group);
-        }
-    }
-    grouped.groups = groups;
-    grouped.total_count = loaded_count;
-    (
-        grouped,
-        DirectoryLoadState::from_counts(loaded_count, total_count),
-    )
 }
 
 impl Actor for Scanner {
