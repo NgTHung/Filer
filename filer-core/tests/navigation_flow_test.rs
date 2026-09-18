@@ -6,175 +6,37 @@
 //! The module stack used in every test:
 //!   ScanModule::new(MockProvider) + NavigationModule::new(scan.sender())
 
-use support::state::SharedLog;
-
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use async_trait::async_trait;
 use tokio::time::timeout;
 
 mod support;
 
 use filer_core::model::location::LocationRef;
-use filer_core::model::node::{NodeEntry, NodeKind, NodeMeta};
+use filer_core::model::node::NodeEntry;
 use filer_core::model::session::SessionId;
 use filer_core::modules::navigation::NavigationModule;
 use filer_core::modules::scan::ScanModule;
 use filer_core::services::dir_cache::DirCache;
-use filer_core::{Capabilities, Command, CoreError, Event, FilerCore, FsProvider, Location};
+use filer_core::{Command, Event, FilerCore, Location};
 
-use support::{local_location, make_entry, provider_entry, wait_for_directory_entries};
+use support::provider::MemoryProvider as MockProvider;
+use support::{local_location, wait_for_directory_entries};
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
 
-/// A simple in-memory filesystem provider for integration testing.
-///
-/// `files_by_path` maps a directory path to the entries it contains.
-/// By default, every path that isn't registered returns an empty listing so
-/// that navigation to an unknown path doesn't produce an error.
-/// Navigation assertions use native locations and entries.
-#[derive(Clone)]
-struct MockProvider {
-    /// directory path → children
-    files_by_path: SharedLog<(PathBuf, Vec<NodeEntry>)>,
-    /// Records every path that `list()` was called with
-    list_calls: Arc<Mutex<Vec<PathBuf>>>,
+// Navigation fixtures deliberately omit timestamps.
+fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
+    let mut entry = support::nodes::file(name, parent, size);
+    entry.modified = None;
+    entry
 }
 
-impl MockProvider {
-    fn new() -> Self {
-        Self {
-            files_by_path: Arc::new(Mutex::new(Vec::new())),
-            list_calls: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
-    /// Register the children for a given directory path.
-    fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
-        self.files_by_path
-            .lock()
-            .unwrap()
-            .push((dir.into(), children));
-    }
-
-    fn set_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
-        let dir = dir.into();
-        let mut files = self.files_by_path.lock().unwrap();
-        if let Some((_, existing)) = files.iter_mut().find(|(path, _)| *path == dir) {
-            *existing = children;
-        } else {
-            files.push((dir, children));
-        }
-    }
-
-    fn list_calls(&self) -> Vec<PathBuf> {
-        self.list_calls.lock().unwrap().clone()
-    }
-
-    fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
-        make_entry(
-            PathBuf::from(parent).join(name),
-            name,
-            NodeKind::File {
-                extension: Path::new(name)
-                    .extension()
-                    .map(|e| e.to_string_lossy().into_owned()),
-            },
-            size,
-            None,
-            NodeMeta {
-                hidden: false,
-                readonly: false,
-                permissions: None,
-                ..Default::default()
-            },
-        )
-    }
-
-    fn make_dir(name: &str, parent: &str) -> NodeEntry {
-        make_entry(
-            PathBuf::from(parent).join(name),
-            name,
-            NodeKind::Directory {
-                children_count: None,
-            },
-            0,
-            None,
-            NodeMeta {
-                hidden: false,
-                readonly: false,
-                permissions: None,
-                ..Default::default()
-            },
-        )
-    }
-}
-
-#[async_trait]
-impl FsProvider for MockProvider {
-    fn scheme(&self) -> &'static str {
-        "mock"
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            read: true,
-            write: false,
-            watch: false,
-            search: false,
-        }
-    }
-
-    async fn list(
-        &self,
-        path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<filer_core::NodeEntry>, CoreError> {
-        self.list_calls.lock().unwrap().push(path.to_path_buf());
-
-        let guard = self.files_by_path.lock().unwrap();
-        Ok(guard
-            .iter()
-            .find(|(p, _)| p == path)
-            .map(|(_, files)| files.iter().cloned().map(provider_entry).collect())
-            .unwrap_or_default())
-    }
-
-    async fn read(
-        &self,
-        _path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<u8>, CoreError> {
-        Ok(vec![])
-    }
-
-    async fn read_range(
-        &self,
-        _path: &Path,
-        _start: u64,
-        _len: u64,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<Vec<u8>, CoreError> {
-        Ok(vec![])
-    }
-
-    async fn exists(
-        &self,
-        _path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<bool, CoreError> {
-        Ok(true)
-    }
-
-    async fn metadata(
-        &self,
-        path: &Path,
-        _cx: &filer_core::ProviderCx<'_>,
-    ) -> Result<filer_core::NodeEntry, CoreError> {
-        Err(CoreError::not_found(path.to_path_buf()))
-    }
+fn make_dir(name: &str, parent: &str) -> NodeEntry {
+    let mut entry = support::nodes::directory(name, parent);
+    entry.modified = None;
+    entry
 }
 
 /// Build a wired-up FilerCore with Navigation + Scan modules backed by `provider`.
@@ -215,12 +77,12 @@ mod navigation_flow_tests {
     /// Navigate to a known directory and receive its native directory event.
     #[tokio::test]
     async fn test_navigate_emits_directory_loaded() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir(
             "/home/user/docs",
             vec![
-                MockProvider::make_file("readme.md", "/home/user/docs", 512),
-                MockProvider::make_file("notes.txt", "/home/user/docs", 128),
+                make_file("readme.md", "/home/user/docs", 512),
+                make_file("notes.txt", "/home/user/docs", 128),
             ],
         );
 
@@ -245,10 +107,10 @@ mod navigation_flow_tests {
 
     #[tokio::test]
     async fn test_location_navigate_emits_directory_loaded_and_state_location() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir(
             "/location/docs",
-            vec![MockProvider::make_file("readme.md", "/location/docs", 512)],
+            vec![make_file("readme.md", "/location/docs", 512)],
         );
 
         let core = build_core(provider);
@@ -312,7 +174,7 @@ mod navigation_flow_tests {
     /// (with 0 results — not an error).
     #[tokio::test]
     async fn test_navigate_to_empty_directory() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/empty", vec![]);
 
         let core = build_core(provider);
@@ -334,11 +196,8 @@ mod navigation_flow_tests {
     /// that issued the `Navigate` command.
     #[tokio::test]
     async fn test_navigate_event_carries_correct_session() {
-        let provider = MockProvider::new();
-        provider.add_dir(
-            "/data",
-            vec![MockProvider::make_file("f.bin", "/data", 1024)],
-        );
+        let provider = MockProvider::directories(false);
+        provider.add_dir("/data", vec![make_file("f.bin", "/data", 1024)]);
 
         let core = build_core(provider);
         let session = create_session(&core).await;
@@ -373,11 +232,11 @@ mod navigation_flow_tests {
     /// Navigate into a subdirectory, then `NavigateUp` and land back in the parent.
     #[tokio::test]
     async fn test_navigate_up_returns_to_parent() {
-        let provider = MockProvider::new();
-        provider.add_dir("/parent", vec![MockProvider::make_dir("child", "/parent")]);
+        let provider = MockProvider::directories(false);
+        provider.add_dir("/parent", vec![make_dir("child", "/parent")]);
         provider.add_dir(
             "/parent/child",
-            vec![MockProvider::make_file("inner.txt", "/parent/child", 64)],
+            vec![make_file("inner.txt", "/parent/child", 64)],
         );
 
         let core = build_core(provider);
@@ -410,7 +269,7 @@ mod navigation_flow_tests {
     /// `NavigateUp` preserves the session — subsequent commands work fine.
     #[tokio::test]
     async fn test_navigate_up_preserves_session() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/a/b", vec![]);
         provider.add_dir("/a", vec![]);
 
@@ -452,7 +311,7 @@ mod navigation_flow_tests {
     /// than crashing or silently doing nothing.
     #[tokio::test]
     async fn test_navigate_up_from_root_emits_error() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/", vec![]);
 
         let core = build_core(provider);
@@ -496,8 +355,8 @@ mod navigation_flow_tests {
     /// Refresh re-scans the current directory and emits a native directory event.
     #[tokio::test]
     async fn test_refresh_emits_directory_loaded() {
-        let provider = MockProvider::new();
-        provider.add_dir("/docs", vec![MockProvider::make_file("a.txt", "/docs", 10)]);
+        let provider = MockProvider::directories(false);
+        provider.add_dir("/docs", vec![make_file("a.txt", "/docs", 10)]);
 
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
@@ -527,11 +386,8 @@ mod navigation_flow_tests {
     /// (the refresh actually hits the filesystem layer again).
     #[tokio::test]
     async fn test_refresh_rescans_provider() {
-        let provider = MockProvider::new();
-        provider.add_dir(
-            "/work",
-            vec![MockProvider::make_file("todo.txt", "/work", 1)],
-        );
+        let provider = MockProvider::directories(false);
+        provider.add_dir("/work", vec![make_file("todo.txt", "/work", 1)]);
 
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
@@ -544,7 +400,7 @@ mod navigation_flow_tests {
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        let calls_after_nav = provider.list_calls().len();
+        let calls_after_nav = provider.get_list_calls().len();
 
         core.send(Command::Refresh {
             session,
@@ -553,7 +409,7 @@ mod navigation_flow_tests {
         .unwrap();
         wait_for_directory_loaded(&core, session).await;
 
-        let calls_after_refresh = provider.list_calls().len();
+        let calls_after_refresh = provider.get_list_calls().len();
         assert!(
             calls_after_refresh > calls_after_nav,
             "Refresh should trigger an additional provider list() call",
@@ -562,11 +418,8 @@ mod navigation_flow_tests {
 
     #[tokio::test]
     async fn test_refresh_bypasses_stale_directory_cache() {
-        let provider = MockProvider::new();
-        provider.add_dir(
-            "/fresh",
-            vec![MockProvider::make_file("before.txt", "/fresh", 1)],
-        );
+        let provider = MockProvider::directories(false);
+        provider.add_dir("/fresh", vec![make_file("before.txt", "/fresh", 1)]);
 
         let core = build_core(provider.clone());
         let session = create_session(&core).await;
@@ -583,8 +436,8 @@ mod navigation_flow_tests {
         provider.set_dir(
             "/fresh",
             vec![
-                MockProvider::make_file("before.txt", "/fresh", 1),
-                MockProvider::make_file("after.txt", "/fresh", 2),
+                make_file("before.txt", "/fresh", 1),
+                make_file("after.txt", "/fresh", 2),
             ],
         );
 
@@ -601,7 +454,7 @@ mod navigation_flow_tests {
             "Refresh should emit the provider listing after cache invalidation"
         );
         assert_eq!(
-            provider.list_calls().len(),
+            provider.get_list_calls().len(),
             2,
             "Refresh should bypass the stale cached listing"
         );
@@ -611,7 +464,7 @@ mod navigation_flow_tests {
     /// recoverable error, not crash.
     #[tokio::test]
     async fn test_refresh_without_current_dir_emits_error() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         let core = build_core(provider);
         let session = create_session(&core).await;
 
@@ -637,15 +490,9 @@ mod navigation_flow_tests {
     /// Navigate A → B, then NavigateBack and return to A.
     #[tokio::test]
     async fn test_navigate_back_returns_to_previous() {
-        let provider = MockProvider::new();
-        provider.add_dir(
-            "/dir_a",
-            vec![MockProvider::make_file("x.rs", "/dir_a", 200)],
-        );
-        provider.add_dir(
-            "/dir_b",
-            vec![MockProvider::make_file("y.rs", "/dir_b", 300)],
-        );
+        let provider = MockProvider::directories(false);
+        provider.add_dir("/dir_a", vec![make_file("x.rs", "/dir_a", 200)]);
+        provider.add_dir("/dir_b", vec![make_file("y.rs", "/dir_b", 300)]);
 
         let core = build_core(provider);
         let session = create_session(&core).await;
@@ -682,7 +529,7 @@ mod navigation_flow_tests {
     /// Navigate A → B → C, Navigate back twice → should land at A.
     #[tokio::test]
     async fn test_navigate_back_multiple_steps() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         for dir in &["/a", "/b", "/c"] {
             provider.add_dir(*dir, vec![]);
         }
@@ -720,7 +567,7 @@ mod navigation_flow_tests {
     /// NavigateBack when there is no history should emit a recoverable `Error`.
     #[tokio::test]
     async fn test_navigate_back_with_no_history_emits_error() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/only", vec![]);
 
         let core = build_core(provider);
@@ -756,7 +603,7 @@ mod navigation_flow_tests {
     /// Navigate A → B → back to A → the NavState snapshot should report `can_forward = true`.
     #[tokio::test]
     async fn test_navigate_back_then_forward() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/alpha", vec![]);
         provider.add_dir("/beta", vec![]);
 
@@ -828,14 +675,11 @@ mod navigation_flow_tests {
     /// Two independent sessions navigating different paths receive native events.
     #[tokio::test]
     async fn test_two_sessions_navigate_independently() {
-        let provider = MockProvider::new();
-        provider.add_dir("/s1", vec![MockProvider::make_file("a.txt", "/s1", 1)]);
+        let provider = MockProvider::directories(false);
+        provider.add_dir("/s1", vec![make_file("a.txt", "/s1", 1)]);
         provider.add_dir(
             "/s2",
-            vec![
-                MockProvider::make_file("b.txt", "/s2", 2),
-                MockProvider::make_file("c.txt", "/s2", 3),
-            ],
+            vec![make_file("b.txt", "/s2", 2), make_file("c.txt", "/s2", 3)],
         );
 
         let core = build_core(provider);
@@ -906,7 +750,7 @@ mod navigation_flow_tests {
     /// Destroying one session must not affect the other session's navigation.
     #[tokio::test]
     async fn test_destroy_one_session_does_not_break_other() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/stay", vec![]);
         provider.add_dir("/gone", vec![]);
 
@@ -962,7 +806,7 @@ mod navigation_flow_tests {
     /// with `current` set and `can_back = false` (first navigation).
     #[tokio::test]
     async fn test_navigate_emits_nav_state_snapshot() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/snap", vec![]);
 
         let core = build_core(provider);
@@ -1006,7 +850,7 @@ mod navigation_flow_tests {
     /// After navigating A → B, the snapshot should report `can_back = true`.
     #[tokio::test]
     async fn test_nav_state_can_back_after_second_navigate() {
-        let provider = MockProvider::new();
+        let provider = MockProvider::directories(false);
         provider.add_dir("/x", vec![]);
         provider.add_dir("/y", vec![]);
 

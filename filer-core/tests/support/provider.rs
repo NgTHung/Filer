@@ -56,6 +56,21 @@ impl MemoryProvider {
             .push((dir.into(), children));
     }
 
+    pub(crate) fn set_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
+        let dir = dir.into();
+        let mut directories = self
+            .directories
+            .as_ref()
+            .expect("directory provider")
+            .lock()
+            .unwrap();
+        if let Some((_, entries)) = directories.iter_mut().find(|(path, _)| *path == dir) {
+            *entries = children;
+        } else {
+            directories.push((dir, children));
+        }
+    }
+
     pub(crate) fn add_file(&self, node: NodeEntry) {
         self.files.lock().unwrap().push(node);
     }
