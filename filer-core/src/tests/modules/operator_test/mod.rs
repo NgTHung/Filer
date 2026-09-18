@@ -17,7 +17,7 @@ use crate::tests::fixtures::state::SharedLog;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use flume::Receiver;
@@ -30,7 +30,7 @@ use crate::model::capability::LocationCapabilityError;
 use crate::model::location::{
     Location, LocationDescriptor, LocationId, LocationRef, LocationSegment, ProviderRef,
 };
-use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
+use crate::model::node::NodeEntry;
 use crate::model::operation::{OperationId, OperationKind};
 use crate::model::progress::{ProgressKind, ProgressStatus, ProgressTarget};
 use crate::model::registry::NodeRegistry;
@@ -38,7 +38,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::operations::operator::{OperationEventMode, Operator, OpsCommand, TrashFn};
 use crate::services::dir_cache::{DirCache, SharedDirCache};
-use crate::tests::fixtures::{local_file_node, local_node_entry};
+use crate::tests::fixtures::{local_node_entry, nodes};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
@@ -156,40 +156,11 @@ impl MockOpsProvider {
     }
 
     fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
-        let path = PathBuf::from(parent).join(name);
-        let extension = path.extension().map(|e| e.to_string_lossy().to_string());
-        local_file_node(
-            path,
-            name,
-            NodeKind::File { extension },
-            size,
-            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-            NodeMeta {
-                hidden: false,
-                readonly: false,
-                permissions: None,
-                ..Default::default()
-            },
-        )
+        nodes::file(name, parent, size)
     }
 
     fn make_dir(name: &str, parent: &str) -> NodeEntry {
-        let path = PathBuf::from(parent).join(name);
-        local_file_node(
-            path,
-            name,
-            NodeKind::Directory {
-                children_count: None,
-            },
-            0,
-            Some(SystemTime::UNIX_EPOCH),
-            NodeMeta {
-                hidden: false,
-                readonly: false,
-                permissions: None,
-                ..Default::default()
-            },
-        )
+        nodes::directory(name, parent)
     }
 }
 
