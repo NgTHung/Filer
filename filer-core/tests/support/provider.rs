@@ -16,11 +16,14 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 
 use super::core::{Capabilities, CoreError, FsProvider, NodeEntry};
+use super::state::SharedLog;
 
 /// Scanner assertions use native entries throughout the provider boundary.
 #[derive(Clone)]
 pub(crate) struct MemoryProvider {
     files: Arc<Mutex<Vec<NodeEntry>>>,
+    directories: Option<SharedLog<(PathBuf, Vec<NodeEntry>)>>,
+    search: bool,
     list_calls: Arc<Mutex<Vec<PathBuf>>>,
     should_fail: Arc<Mutex<bool>>,
 }
@@ -29,9 +32,28 @@ impl MemoryProvider {
     pub(crate) fn new() -> Self {
         Self {
             files: Arc::new(Mutex::new(Vec::new())),
+            directories: None,
+            search: false,
             list_calls: Arc::new(Mutex::new(Vec::new())),
             should_fail: Arc::new(Mutex::new(false)),
         }
+    }
+
+    pub(crate) fn directories(search: bool) -> Self {
+        Self {
+            directories: Some(Arc::new(Mutex::new(Vec::new()))),
+            search,
+            ..Self::new()
+        }
+    }
+
+    pub(crate) fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
+        self.directories
+            .as_ref()
+            .expect("directory provider")
+            .lock()
+            .unwrap()
+            .push((dir.into(), children));
     }
 
     pub(crate) fn add_file(&self, node: NodeEntry) {
@@ -58,7 +80,7 @@ impl FsProvider for MemoryProvider {
             read: true,
             write: false,
             watch: false,
-            search: false,
+            search: self.search,
         }
     }
 
@@ -70,8 +92,22 @@ impl FsProvider for MemoryProvider {
         if *self.should_fail.lock().unwrap() {
             return Err(CoreError::not_found(path.to_path_buf()));
         }
+        if self.search {
+            // Search cancellation needs a scheduling point between in-memory directories.
+            tokio::task::yield_now().await;
+        }
         self.list_calls.lock().unwrap().push(path.to_path_buf());
-        Ok(self.files.lock().unwrap().clone())
+        if let Some(directories) = &self.directories {
+            Ok(directories
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(dir, _)| dir == path)
+                .map(|(_, entries)| entries.clone())
+                .unwrap_or_default())
+        } else {
+            Ok(self.files.lock().unwrap().clone())
+        }
     }
 
     async fn read(
@@ -102,9 +138,13 @@ impl FsProvider for MemoryProvider {
 
     async fn metadata(
         &self,
-        _path: &Path,
+        path: &Path,
         _cx: &super::core::ProviderCx<'_>,
     ) -> Result<super::core::NodeEntry, CoreError> {
-        Err(CoreError::not_found(PathBuf::from("test")))
+        Err(CoreError::not_found(if self.directories.is_some() {
+            path.to_path_buf()
+        } else {
+            PathBuf::from("test")
+        }))
     }
 }
