@@ -4,51 +4,18 @@
 //! options (case, hidden, depth, max), combined queries, and error cases.
 //! Also covers SearchQuery::matches and QueryFilter::matches.
 
-use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
-use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
+use crate::model::node::NodeEntry;
 use crate::model::query::{QueryFilter, SearchQuery};
-use crate::tests::fixtures::local_file_node;
+use crate::tests::fixtures::nodes;
 
 fn make_file(name: &str, size: u64) -> NodeEntry {
-    let path = PathBuf::from("/test").join(name);
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_string);
-    local_file_node(
-        path,
-        name,
-        NodeKind::File { extension: ext },
-        size,
-        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        NodeMeta {
-            hidden: false,
-            readonly: false,
-            permissions: None,
-            ..Default::default()
-        },
-    )
+    nodes::file(name, "/test", size)
 }
 
 fn make_dir(name: &str) -> NodeEntry {
-    let path = PathBuf::from("/test").join(name);
-    local_file_node(
-        path,
-        name,
-        NodeKind::Directory {
-            children_count: None,
-        },
-        0,
-        Some(SystemTime::UNIX_EPOCH),
-        NodeMeta {
-            hidden: false,
-            readonly: false,
-            permissions: None,
-            ..Default::default()
-        },
-    )
+    nodes::directory(name, "/test")
 }
 
 fn make_hidden(name: &str) -> NodeEntry {
