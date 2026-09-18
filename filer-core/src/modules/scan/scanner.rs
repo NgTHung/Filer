@@ -8,12 +8,10 @@ use crate::actors::{Actor, WorkTracker};
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::errors::ErrorCode;
+use crate::model::directory::DirectoryLoadOptions;
 use crate::model::directory::DirectoryLoadState;
-use crate::model::directory::{DirectoryLoadOptions, DirectoryPageResult};
 use crate::model::location::{Location, LocationRef, LocationRoute};
-use crate::model::progress::{
-    ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
-};
+use crate::model::progress::{ProgressPhase, ProgressSnapshot, ProgressStatus, ProgressUnit};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -25,7 +23,10 @@ use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 use crate::vfs::segmented::SegmentedLocationResolver;
 
-use super::execution::{ScanEvents, ScanResources, ScanTarget};
+use super::execution::{
+    ScanEvents, ScanResources, ScanTarget, emit_page_result, emit_scan_progress, is_latest,
+    scan_target,
+};
 use super::paging::{PageLoad, PagingSessions};
 
 /// Commands for scanner actor
@@ -292,7 +293,7 @@ impl Scanner {
             }
         }
 
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -303,12 +304,12 @@ impl Scanner {
                 ProgressUnit::Step,
                 0,
                 None,
-                Self::scan_target(path, Some(&parent_location)),
+                scan_target(path, Some(&parent_location)),
             ),
         )
         .await;
 
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -319,7 +320,7 @@ impl Scanner {
                 ProgressUnit::Step,
                 0,
                 None,
-                Self::scan_target(path, Some(&parent_location)),
+                scan_target(path, Some(&parent_location)),
             ),
         )
         .await;
@@ -340,7 +341,7 @@ impl Scanner {
                 match paging.load_cached(cached, path, session, page_request, &pipeline_config, &cx)
                 {
                     Ok(PageLoad::Page(page)) => {
-                        Self::emit_page_result(
+                        emit_page_result(
                             scan_events,
                             path,
                             parent_location.clone(),
@@ -351,7 +352,7 @@ impl Scanner {
                         .await;
                     }
                     Ok(PageLoad::Cancelled) => {
-                        Self::emit_scan_progress(
+                        emit_scan_progress(
                             events,
                             latest_scans,
                             session,
@@ -362,13 +363,13 @@ impl Scanner {
                                 ProgressUnit::Entry,
                                 0,
                                 None,
-                                Self::scan_target(path, Some(&parent_location)),
+                                scan_target(path, Some(&parent_location)),
                             ),
                         )
                         .await;
                     }
                     Err(e) => {
-                        if Self::is_latest(latest_scans, session, request) {
+                        if is_latest(latest_scans, session, request) {
                             send_or_warn_async(
                                 events,
                                 Event::from_request_error(e, session, request),
@@ -385,7 +386,7 @@ impl Scanner {
             let (groups, load) = pipeline
                 .execute_grouped(cached)
                 .limited(load_options.snapshot_limit());
-            Self::emit_scan_progress(
+            emit_scan_progress(
                 events,
                 latest_scans,
                 session,
@@ -396,14 +397,14 @@ impl Scanner {
                     ProgressUnit::Entry,
                     load.loaded_count,
                     load.total_count,
-                    Self::scan_target(path, Some(&parent_location)),
+                    scan_target(path, Some(&parent_location)),
                 ),
             )
             .await;
-            if !Self::is_latest(latest_scans, session, request) {
+            if !is_latest(latest_scans, session, request) {
                 return;
             }
-            Self::emit_scan_progress(
+            emit_scan_progress(
                 events,
                 latest_scans,
                 session,
@@ -414,7 +415,7 @@ impl Scanner {
                     ProgressUnit::Entry,
                     load.loaded_count,
                     load.total_count,
-                    Self::scan_target(path, Some(&parent_location)),
+                    scan_target(path, Some(&parent_location)),
                 ),
             )
             .await;
@@ -430,7 +431,7 @@ impl Scanner {
                 "scan location result (cached)",
             )
             .await;
-            Self::emit_scan_progress(
+            emit_scan_progress(
                 events,
                 latest_scans,
                 session,
@@ -441,7 +442,7 @@ impl Scanner {
                     ProgressUnit::Entry,
                     load.loaded_count,
                     load.total_count,
-                    Self::scan_target(path, Some(&parent_location)),
+                    scan_target(path, Some(&parent_location)),
                 ),
             )
             .await;
@@ -449,7 +450,7 @@ impl Scanner {
         }
 
         tracing::trace!(path = %path.display(), session = %session, "Directory scan cache miss, listing provider");
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -460,7 +461,7 @@ impl Scanner {
                 ProgressUnit::Entry,
                 0,
                 None,
-                Self::scan_target(path, Some(&parent_location)),
+                scan_target(path, Some(&parent_location)),
             ),
         )
         .await;
@@ -480,7 +481,7 @@ impl Scanner {
             {
                 Ok(PageLoad::Page(page)) => page,
                 Ok(PageLoad::Cancelled) => {
-                    Self::emit_scan_progress(
+                    emit_scan_progress(
                         events,
                         latest_scans,
                         session,
@@ -491,15 +492,15 @@ impl Scanner {
                             ProgressUnit::Entry,
                             0,
                             None,
-                            Self::scan_target(path, Some(&parent_location)),
+                            scan_target(path, Some(&parent_location)),
                         ),
                     )
                     .await;
                     return;
                 }
                 Err(e) => {
-                    if Self::is_latest(latest_scans, session, request) {
-                        Self::emit_scan_progress(
+                    if is_latest(latest_scans, session, request) {
+                        emit_scan_progress(
                             events,
                             latest_scans,
                             session,
@@ -510,7 +511,7 @@ impl Scanner {
                                 ProgressUnit::Entry,
                                 0,
                                 None,
-                                Self::scan_target(path, Some(&parent_location)),
+                                scan_target(path, Some(&parent_location)),
                             ),
                         )
                         .await;
@@ -540,7 +541,7 @@ impl Scanner {
             }
 
             if cancel.is_cancelled() {
-                Self::emit_scan_progress(
+                emit_scan_progress(
                     events,
                     latest_scans,
                     session,
@@ -551,14 +552,14 @@ impl Scanner {
                         ProgressUnit::Entry,
                         0,
                         None,
-                        Self::scan_target(path, Some(&parent_location)),
+                        scan_target(path, Some(&parent_location)),
                     ),
                 )
                 .await;
                 return;
             }
 
-            Self::emit_page_result(
+            emit_page_result(
                 scan_events,
                 path,
                 parent_location.clone(),
@@ -579,7 +580,7 @@ impl Scanner {
         {
             Ok(entries) => entries,
             Err(e) if e.code() == ErrorCode::Cancelled => {
-                Self::emit_scan_progress(
+                emit_scan_progress(
                     events,
                     latest_scans,
                     session,
@@ -590,15 +591,15 @@ impl Scanner {
                         ProgressUnit::Entry,
                         0,
                         None,
-                        Self::scan_target(path, Some(&parent_location)),
+                        scan_target(path, Some(&parent_location)),
                     ),
                 )
                 .await;
                 return;
             }
             Err(e) => {
-                if Self::is_latest(latest_scans, session, request) {
-                    Self::emit_scan_progress(
+                if is_latest(latest_scans, session, request) {
+                    emit_scan_progress(
                         events,
                         latest_scans,
                         session,
@@ -609,7 +610,7 @@ impl Scanner {
                             ProgressUnit::Entry,
                             0,
                             None,
-                            Self::scan_target(path, Some(&parent_location)),
+                            scan_target(path, Some(&parent_location)),
                         ),
                     )
                     .await;
@@ -638,7 +639,7 @@ impl Scanner {
         }
 
         if cancel.is_cancelled() {
-            Self::emit_scan_progress(
+            emit_scan_progress(
                 events,
                 latest_scans,
                 session,
@@ -649,14 +650,14 @@ impl Scanner {
                     ProgressUnit::Entry,
                     0,
                     None,
-                    Self::scan_target(path, Some(&parent_location)),
+                    scan_target(path, Some(&parent_location)),
                 ),
             )
             .await;
             return;
         }
 
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -667,13 +668,13 @@ impl Scanner {
                 ProgressUnit::Entry,
                 entries.len(),
                 Some(entries.len()),
-                Self::scan_target(path, Some(&parent_location)),
+                scan_target(path, Some(&parent_location)),
             ),
         )
         .await;
         let groups = Pipeline::from_config(&pipeline_config).execute_grouped(entries);
         let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -684,13 +685,13 @@ impl Scanner {
                 ProgressUnit::Entry,
                 load.loaded_count,
                 load.total_count,
-                Self::scan_target(path, Some(&parent_location)),
+                scan_target(path, Some(&parent_location)),
             ),
         )
         .await;
 
         if cancel.is_cancelled() {
-            Self::emit_scan_progress(
+            emit_scan_progress(
                 events,
                 latest_scans,
                 session,
@@ -701,17 +702,17 @@ impl Scanner {
                     ProgressUnit::Entry,
                     load.loaded_count,
                     load.total_count,
-                    Self::scan_target(path, Some(&parent_location)),
+                    scan_target(path, Some(&parent_location)),
                 ),
             )
             .await;
             return;
         }
-        if !Self::is_latest(latest_scans, session, request) {
+        if !is_latest(latest_scans, session, request) {
             return;
         }
 
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -722,7 +723,7 @@ impl Scanner {
                 ProgressUnit::Entry,
                 load.loaded_count,
                 load.total_count,
-                Self::scan_target(path, Some(&parent_location)),
+                scan_target(path, Some(&parent_location)),
             ),
         )
         .await;
@@ -738,7 +739,7 @@ impl Scanner {
             "scan location result",
         )
         .await;
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -749,7 +750,7 @@ impl Scanner {
                 ProgressUnit::Entry,
                 load.loaded_count,
                 load.total_count,
-                Self::scan_target(path, Some(&parent_location)),
+                scan_target(path, Some(&parent_location)),
             ),
         )
         .await;
@@ -772,7 +773,7 @@ impl Scanner {
         } = scan_events;
         let target_path = descriptor.display_path();
         let target = std::path::Path::new(&target_path);
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -783,7 +784,7 @@ impl Scanner {
                 ProgressUnit::Step,
                 0,
                 None,
-                Self::scan_target(target, Some(&parent)),
+                scan_target(target, Some(&parent)),
             ),
         )
         .await;
@@ -798,7 +799,7 @@ impl Scanner {
         {
             Ok(entries) => entries,
             Err(e) if e.code() == ErrorCode::Cancelled => {
-                Self::emit_scan_progress(
+                emit_scan_progress(
                     events,
                     latest_scans,
                     session,
@@ -809,15 +810,15 @@ impl Scanner {
                         ProgressUnit::Entry,
                         0,
                         None,
-                        Self::scan_target(target, Some(&parent)),
+                        scan_target(target, Some(&parent)),
                     ),
                 )
                 .await;
                 return;
             }
             Err(e) => {
-                if Self::is_latest(latest_scans, session, request) {
-                    Self::emit_scan_progress(
+                if is_latest(latest_scans, session, request) {
+                    emit_scan_progress(
                         events,
                         latest_scans,
                         session,
@@ -828,7 +829,7 @@ impl Scanner {
                             ProgressUnit::Entry,
                             0,
                             None,
-                            Self::scan_target(target, Some(&parent)),
+                            scan_target(target, Some(&parent)),
                         ),
                     )
                     .await;
@@ -843,7 +844,7 @@ impl Scanner {
             }
         };
 
-        if cancel.is_cancelled() || !Self::is_latest(latest_scans, session, request) {
+        if cancel.is_cancelled() || !is_latest(latest_scans, session, request) {
             return;
         }
 
@@ -861,7 +862,7 @@ impl Scanner {
             "scan segmented result",
         )
         .await;
-        Self::emit_scan_progress(
+        emit_scan_progress(
             events,
             latest_scans,
             session,
@@ -872,127 +873,10 @@ impl Scanner {
                 ProgressUnit::Entry,
                 load.loaded_count,
                 load.total_count,
-                Self::scan_target(target, None),
+                scan_target(target, None),
             ),
         )
         .await;
-    }
-
-    async fn emit_page_result(
-        scan_events: ScanEvents<'_>,
-        path: &Path,
-        parent_location: LocationRef,
-        page: DirectoryPageResult,
-        pipeline_config: &PipelineConfig,
-        context: &'static str,
-    ) {
-        let ScanEvents {
-            events,
-            latest_scans,
-            session,
-            request,
-        } = scan_events;
-        let page_state = page.state.clone();
-        Self::emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Running,
-                ProgressPhase::Processing,
-                ProgressUnit::Entry,
-                page_state.page_count,
-                page_state.total_count,
-                Self::scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-        if !Self::is_latest(latest_scans, session, request) {
-            return;
-        }
-
-        let groups = Pipeline::from_config(pipeline_config).execute_grouped(page.entries);
-        Self::emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Running,
-                ProgressPhase::Emitting,
-                ProgressUnit::Entry,
-                page_state.page_count,
-                page_state.total_count,
-                Self::scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-        send_or_warn_async(
-            events,
-            Event::DirectoryPageLoaded {
-                parent: parent_location.clone(),
-                groups,
-                page: page_state.clone(),
-                session,
-                request,
-            },
-            context,
-        )
-        .await;
-        Self::emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Completed,
-                ProgressPhase::Finalizing,
-                ProgressUnit::Entry,
-                page_state.page_count,
-                page_state.total_count,
-                Self::scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-    }
-
-    async fn emit_scan_progress(
-        events: &EventSink,
-        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
-        session: SessionId,
-        request: RequestId,
-        snapshot: ProgressSnapshot,
-    ) {
-        if !Self::is_latest(latest_scans, session, request) {
-            return;
-        }
-        send_or_warn_async(
-            events,
-            Event::ProgressUpdated {
-                scope: ProgressScope::scan(session, request),
-                snapshot,
-            },
-            "scan progress",
-        )
-        .await;
-    }
-
-    fn scan_target(path: &Path, location: Option<&LocationRef>) -> Option<ProgressTarget> {
-        location
-            .cloned()
-            .map(ProgressTarget::Location)
-            .or_else(|| Some(ProgressTarget::Path(path.to_path_buf())))
-    }
-
-    fn is_latest(
-        latest_scans: &scc::HashMap<SessionId, RequestId, RandomState>,
-        session: SessionId,
-        request: RequestId,
-    ) -> bool {
-        latest_scans
-            .read_sync(&session, |_, latest| *latest == request)
-            .unwrap_or(false)
     }
 
     fn cancel_scan(&self, session: SessionId) {
