@@ -1,14 +1,14 @@
 ---
 id: "CORE-037"
 title: "Consolidate reusable core test fixtures by suite"
-status: "To Do"
+status: In Progress
 priority: "Medium"
 type: "TestDebt"
 parent: "core:CORE-022"
 milestone: "0.3.1"
 risk: "Low"
 tags: ["core", "testing", "enhancement", "ready-for-agent"]
-last_updated: "2026-09-05"
+last_updated: 2026-09-18
 ---
 
 ## Summary
@@ -21,3 +21,7 @@ Build on tests/support/mod.rs. Inventory node builders and provider doubles in t
 - [ ] Equivalent provider setup uses shared configurable support; remaining specialized doubles and their behavioral differences are recorded.
 - [ ] Each commit migrates one test cluster within repository diff guidance, preserves assertions and test coverage, and passes that cluster.
 - [ ] The full filer-core test suite passes after consolidation.
+
+## Execution Plan
+
+See [fixture inventory and staged plan](../../docs/core-037-fixture-consolidation.md).
