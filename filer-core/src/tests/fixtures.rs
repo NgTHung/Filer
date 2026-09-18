@@ -13,6 +13,10 @@ use crate::model::node::NodeEntry;
 #[path = "../../tests/support/nodes.rs"]
 pub(crate) mod nodes;
 
+#[allow(dead_code)]
+#[path = "../../tests/support/provider.rs"]
+pub(crate) mod provider;
+
 pub(crate) use nodes::make_entry as local_file_node;
 
 pub(crate) fn local_node_entry(node: NodeEntry) -> NodeEntry {

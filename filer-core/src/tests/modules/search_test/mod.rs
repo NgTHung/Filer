@@ -14,7 +14,7 @@
 //!   - Errors: unresolvable root, unreadable directories
 //!   - Session: correct session on results
 
-use crate::tests::fixtures::state::SharedLog;
+use crate::tests::fixtures::{nodes, provider::MemoryProvider};
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -28,25 +28,20 @@ use crate::actors::Actor;
 use crate::api::events::Event;
 use crate::errors::{CoreError, ErrorCode, ErrorTarget};
 use crate::model::location::{Location, LocationRef};
-use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
+use crate::model::node::NodeEntry;
 use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::search::searcher::{SearchCommand, SearchEventMode, Searcher};
-use crate::tests::fixtures::{local_file_node, local_node_entry};
-use crate::utils;
 use crate::vfs::provider::{Capabilities, FsProvider};
 
 const TIMEOUT: Duration = Duration::from_millis(3000);
 
-/// Hierarchical mock filesystem for search testing.
-/// Maps directory paths to their children, supporting recursive traversal.
-/// Search tests use native entries throughout the provider boundary.
+/// Delays and failed paths stay local to search timeout and cancellation tests.
 #[derive(Clone)]
 struct MockProvider {
-    files_by_path: SharedLog<(PathBuf, Vec<NodeEntry>)>,
-    list_calls: Arc<Mutex<Vec<PathBuf>>>,
+    inner: MemoryProvider,
     fail_paths: Arc<Mutex<Vec<PathBuf>>>,
     delay_ms: Arc<Mutex<u64>>,
 }
@@ -54,18 +49,14 @@ struct MockProvider {
 impl MockProvider {
     fn new() -> Self {
         Self {
-            files_by_path: Arc::new(Mutex::new(Vec::new())),
-            list_calls: Arc::new(Mutex::new(Vec::new())),
+            inner: MemoryProvider::directories(true),
             fail_paths: Arc::new(Mutex::new(Vec::new())),
             delay_ms: Arc::new(Mutex::new(0)),
         }
     }
 
     fn add_dir(&self, dir: impl Into<PathBuf>, children: Vec<NodeEntry>) {
-        self.files_by_path
-            .lock()
-            .unwrap()
-            .push((dir.into(), children));
+        self.inner.add_dir(dir, children);
     }
 
     fn add_fail_path(&self, path: impl Into<PathBuf>) {
@@ -73,7 +64,7 @@ impl MockProvider {
     }
 
     fn list_calls(&self) -> Vec<PathBuf> {
-        self.list_calls.lock().unwrap().clone()
+        self.inner.get_list_calls()
     }
 
     fn set_delay_ms(&self, delay_ms: u64) {
@@ -81,20 +72,7 @@ impl MockProvider {
     }
 
     fn make_file(name: &str, parent: &str, size: u64) -> NodeEntry {
-        let extension = utils::get_extension(Path::new(name)).map(str::to_string);
-        local_file_node(
-            PathBuf::from(parent).join(name),
-            name,
-            NodeKind::File { extension },
-            size,
-            Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-            NodeMeta {
-                hidden: false,
-                readonly: false,
-                permissions: None,
-                ..Default::default()
-            },
-        )
+        nodes::file(name, parent, size)
     }
 
     fn make_hidden_file(name: &str, parent: &str, size: u64) -> NodeEntry {
@@ -104,21 +82,7 @@ impl MockProvider {
     }
 
     fn make_dir(name: &str, parent: &str) -> NodeEntry {
-        local_file_node(
-            PathBuf::from(parent).join(name),
-            name,
-            NodeKind::Directory {
-                children_count: None,
-            },
-            0,
-            Some(SystemTime::UNIX_EPOCH),
-            NodeMeta {
-                hidden: false,
-                readonly: false,
-                permissions: None,
-                ..Default::default()
-            },
-        )
+        nodes::directory(name, parent)
     }
 
     fn make_hidden_dir(name: &str, parent: &str) -> NodeEntry {
@@ -137,22 +101,17 @@ impl MockProvider {
 #[async_trait]
 impl FsProvider for MockProvider {
     fn scheme(&self) -> &'static str {
-        "mock"
+        self.inner.scheme()
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            read: true,
-            write: false,
-            watch: false,
-            search: true,
-        }
+        self.inner.capabilities()
     }
 
     async fn list(
         &self,
         path: &Path,
-        _cx: &crate::ProviderCx<'_>,
+        cx: &crate::ProviderCx<'_>,
     ) -> Result<Vec<crate::NodeEntry>, CoreError> {
         // Check if this path should fail
         if self.fail_paths.lock().unwrap().iter().any(|p| p == path) {
@@ -164,21 +123,7 @@ impl FsProvider for MockProvider {
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
         }
 
-        // Yield to the scheduler between directory listings so that
-        // cancellation tokens and actor commands are processed between
-        // BFS iterations. Without this, the pure-memory mock completes
-        // entire traversals in a single scheduling quantum, making
-        // cancellation tests unreliable.
-        tokio::task::yield_now().await;
-
-        self.list_calls.lock().unwrap().push(path.to_path_buf());
-
-        let guard = self.files_by_path.lock().unwrap();
-        Ok(guard
-            .iter()
-            .find(|(p, _)| p == path)
-            .map(|(_, files)| files.iter().cloned().map(local_node_entry).collect())
-            .unwrap_or_default())
+        self.inner.list(path, cx).await
     }
 
     async fn read(&self, _path: &Path, _cx: &crate::ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
