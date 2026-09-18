@@ -1,15 +1,13 @@
 use flume::Receiver;
 use rapidhash::fast::RandomState;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::actors::cancel::CancelMap;
 use crate::actors::{Actor, WorkTracker};
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
-use crate::errors::ErrorCode;
 use crate::model::directory::DirectoryLoadOptions;
-use crate::model::location::{Location, LocationRef, LocationRoute};
+use crate::model::location::{LocationRef, LocationRoute};
 use crate::model::progress::{ProgressPhase, ProgressSnapshot, ProgressStatus, ProgressUnit};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
@@ -21,8 +19,8 @@ use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
 use super::execution::{
-    ScanEvents, ScanResources, ScanTarget, emit_page_result, emit_scan_progress, is_latest,
-    limited_entries, scan_segmented_location, scan_target,
+    FullScan, ScanEvents, ScanResources, ScanTarget, cache_location, emit_page_result,
+    emit_scan_progress, is_latest, scan_full, scan_segmented_location, scan_target,
 };
 use super::paging::{PageLoad, PagingSessions};
 
@@ -568,188 +566,17 @@ impl Scanner {
             return;
         }
 
-        let entries = match cx
-            .race(
-                provider.scheme(),
-                provider.list_with_options(path, load_options.listing, &cx),
-            )
-            .await
-        {
-            Ok(entries) => entries,
-            Err(e) if e.code() == ErrorCode::Cancelled => {
-                emit_scan_progress(
-                    events,
-                    latest_scans,
-                    session,
-                    request,
-                    ProgressSnapshot::new(
-                        ProgressStatus::Cancelled,
-                        ProgressPhase::Loading,
-                        ProgressUnit::Entry,
-                        0,
-                        None,
-                        scan_target(path, Some(&parent_location)),
-                    ),
-                )
-                .await;
-                return;
-            }
-            Err(e) => {
-                if is_latest(latest_scans, session, request) {
-                    emit_scan_progress(
-                        events,
-                        latest_scans,
-                        session,
-                        request,
-                        ProgressSnapshot::new(
-                            ProgressStatus::Failed,
-                            ProgressPhase::Loading,
-                            ProgressUnit::Entry,
-                            0,
-                            None,
-                            scan_target(path, Some(&parent_location)),
-                        ),
-                    )
-                    .await;
-                    send_or_warn_async(
-                        events,
-                        Event::from_request_error(e, session, request),
-                        "scan error",
-                    )
-                    .await;
-                }
-                return;
-            }
-        };
-
-        if !load_options.is_bounded()
-            && let Some(cache) = cache
-            && let Ok(mut c) = cache.lock()
-            && parent_location_id.is_some()
-        {
-            c.put(
-                cache_location(&parent_location, path),
-                load_options.listing,
-                entries.clone(),
-            );
-            tracing::trace!(path = %path.display(), session = %session, count = entries.len(), "Directory scan cached provider listing");
-        }
-
-        if cancel.is_cancelled() {
-            emit_scan_progress(
-                events,
-                latest_scans,
-                session,
-                request,
-                ProgressSnapshot::new(
-                    ProgressStatus::Cancelled,
-                    ProgressPhase::Loading,
-                    ProgressUnit::Entry,
-                    0,
-                    None,
-                    scan_target(path, Some(&parent_location)),
-                ),
-            )
-            .await;
-            return;
-        }
-
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Running,
-                ProgressPhase::Registering,
-                ProgressUnit::Entry,
-                entries.len(),
-                Some(entries.len()),
-                scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-        let groups = Pipeline::from_config(&pipeline_config).execute_grouped(entries);
-        let (groups, load) = limited_entries(groups, load_options.snapshot_limit());
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Running,
-                ProgressPhase::Processing,
-                ProgressUnit::Entry,
-                load.loaded_count,
-                load.total_count,
-                scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-
-        if cancel.is_cancelled() {
-            emit_scan_progress(
-                events,
-                latest_scans,
-                session,
-                request,
-                ProgressSnapshot::new(
-                    ProgressStatus::Cancelled,
-                    ProgressPhase::Processing,
-                    ProgressUnit::Entry,
-                    load.loaded_count,
-                    load.total_count,
-                    scan_target(path, Some(&parent_location)),
-                ),
-            )
-            .await;
-            return;
-        }
-        if !is_latest(latest_scans, session, request) {
-            return;
-        }
-
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Running,
-                ProgressPhase::Emitting,
-                ProgressUnit::Entry,
-                load.loaded_count,
-                load.total_count,
-                scan_target(path, Some(&parent_location)),
-            ),
-        )
-        .await;
-        send_or_warn_async(
-            events,
-            Event::DirectoryLoaded {
-                parent: parent_location.clone(),
-                groups,
-                load,
-                session,
-                request,
-            },
-            "scan location result",
-        )
-        .await;
-        emit_scan_progress(
-            events,
-            latest_scans,
-            session,
-            request,
-            ProgressSnapshot::new(
-                ProgressStatus::Completed,
-                ProgressPhase::Finalizing,
-                ProgressUnit::Entry,
-                load.loaded_count,
-                load.total_count,
-                scan_target(path, Some(&parent_location)),
-            ),
-        )
+        scan_full(FullScan {
+            provider: provider.as_ref(),
+            cancel,
+            cache,
+            events: scan_events,
+            path,
+            parent_location: &parent_location,
+            parent_location_id,
+            pipeline_config: &pipeline_config,
+            load_options: &load_options,
+        })
         .await;
     }
 
@@ -757,14 +584,6 @@ impl Scanner {
         self.active_scans.cancel(session);
         self.paging.clear_session(session);
     }
-}
-
-fn cache_location(parent: &LocationRef, path: &Path) -> Location {
-    parent
-        .descriptor()
-        .cloned()
-        .map(Location::new)
-        .unwrap_or_else(|| Location::local(path.to_path_buf()))
 }
 
 impl Actor for Scanner {
