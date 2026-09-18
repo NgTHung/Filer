@@ -8,30 +8,14 @@ use crate::tests::fixtures::{local_file_node, local_node_entry};
 use crate::vfs::listing_stream::{DirectoryStream, ListingBatch};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions, ProviderPaging};
 use async_trait::async_trait;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{
-    path::{Path, PathBuf},
-    time::SystemTime,
-};
 
 fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> NodeEntry {
-    let path = PathBuf::from(format!("{path}/{name}"));
-    let extension = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_string);
-    local_file_node(
-        path,
-        name,
-        NodeKind::File { extension },
-        size,
-        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        NodeMeta {
-            hidden,
-            ..NodeMeta::default()
-        },
-    )
+    let mut entry = crate::tests::fixtures::nodes::file(name, path, size);
+    entry.meta.hidden = hidden;
+    entry
 }
 
 fn location_ref(path: impl Into<PathBuf>) -> LocationRef {
@@ -39,32 +23,17 @@ fn location_ref(path: impl Into<PathBuf>) -> LocationRef {
 }
 
 fn _make_file_with_ext(name: &str, path: &str, ext: Option<&str>, size: u64) -> NodeEntry {
-    local_file_node(
-        PathBuf::from(format!("{path}/{name}")),
-        name,
-        NodeKind::File {
-            extension: ext.map(|s| s.to_string()),
-        },
-        size,
-        Some(SystemTime::UNIX_EPOCH + Duration::from_secs(size)),
-        NodeMeta::default(),
-    )
+    let mut entry = make_file(name, path, size, false);
+    entry.kind = NodeKind::File {
+        extension: ext.map(str::to_owned),
+    };
+    entry
 }
 
 fn _make_dir(name: &str, full_path: &str, hidden: bool) -> NodeEntry {
-    local_file_node(
-        PathBuf::from(format!("{full_path}/{name}")),
-        name,
-        NodeKind::Directory {
-            children_count: None,
-        },
-        0,
-        Some(SystemTime::UNIX_EPOCH),
-        NodeMeta {
-            hidden,
-            ..NodeMeta::default()
-        },
-    )
+    let mut entry = crate::tests::fixtures::nodes::directory(name, full_path);
+    entry.meta.hidden = hidden;
+    entry
 }
 
 /// Mock filesystem provider for testing Scanner behavior.

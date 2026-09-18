@@ -7,38 +7,13 @@
 #[path = "../../tests/support/state.rs"]
 pub(crate) mod state;
 
-use std::path::PathBuf;
-use std::time::SystemTime;
+use crate as core;
+use crate::model::node::NodeEntry;
 
-use crate::model::location::Location;
-use crate::model::node::{NodeEntry, NodeKind, NodeMeta};
+#[path = "../../tests/support/nodes.rs"]
+pub(crate) mod nodes;
 
-pub(crate) fn local_file_node(
-    path: impl Into<PathBuf>,
-    name: impl Into<String>,
-    kind: NodeKind,
-    size: u64,
-    modified: Option<SystemTime>,
-    meta: NodeMeta,
-) -> NodeEntry {
-    let path = path.into();
-    let location = Location::local(path);
-    NodeEntry {
-        location: crate::model::location::LocationRef::from_location(&location),
-        display_path: None,
-        capabilities: crate::model::node::NodeEntryCapabilities {
-            read: true,
-            navigate: matches!(kind, NodeKind::Directory { .. }),
-        },
-        name: name.into(),
-        kind,
-        size,
-        modified,
-        created: None,
-        accessed: None,
-        meta,
-    }
-}
+pub(crate) use nodes::make_entry as local_file_node;
 
 pub(crate) fn local_node_entry(node: NodeEntry) -> NodeEntry {
     node
