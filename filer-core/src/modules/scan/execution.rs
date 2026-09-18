@@ -33,10 +33,12 @@ use super::paging::PagingSessions;
 
 mod cache;
 mod full;
+mod paged;
 mod segmented;
 
-pub(super) use cache::{CacheScan, invalidate_cache, scan_cached, store_snapshot};
+pub(super) use cache::{CacheScan, invalidate_cache, scan_cached};
 pub(super) use full::{FullScan, scan_full};
+pub(super) use paged::{PagedScan, scan_page};
 pub(super) use segmented::scan_segmented_location;
 
 pub(super) struct ScanTarget {
