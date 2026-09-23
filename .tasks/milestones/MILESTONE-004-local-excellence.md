@@ -9,7 +9,7 @@ depends_on: [MILESTONE-003]
 risk: Medium
 impact: "Makes local large-directory browsing and decoration UI feel reliable after core contract stabilization."
 tags: [local, excellence, draft]
-last_updated: 2026-09-05
+last_updated: 2026-09-23
 ---
 
 ## Summary
@@ -28,6 +28,8 @@ On 2026-09-05, the maintainer approved the backlog review's smaller benchmark re
 
 Later on 2026-09-05, the maintainer approved a bounded app-validation exception because benchmark evidence alone cannot reveal rendering and interaction problems. app:UI-011 stages a framework-free model, public-core bridge, provisional window, and asynchronous decorations through UI-012 to UI-015. The track depends on completed core contracts, not this milestone's completion or the deferred framework evaluation. Its results feed concrete core regression tasks.
 
+On 2026-09-23, the maintainer approved PIPELINE-008 and VFS-002 after a comparison with Filesmash, a native Win32 file manager. The CORE-021 baseline shows the sorted first page at about ten times the unsorted full walk, and metadata listings pay one blocking-pool hop per entry. Both tasks are candidates, not exit gates. CORE-041 now also records a Windows NTFS profile because every earlier baseline is Linux.
+
 ## Draft policy
 
 This milestone is a draft plan. You or any agent may modify it as much as needed (exit criteria, membership, priority, depends_on, title, or replacement by a better split) until work for 0.3.1 has started. Work has started when this milestone or any task with `milestone: "0.3.1"` first moves to `In Progress`. Until then, treat this file as editable intent, not a locked commitment. After work starts, change scope only deliberately and record why.
@@ -37,6 +39,7 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 - CORE-027 and children CORE-017, CORE-018, CORE-019, CORE-021, CORE-022, CORE-024, PIPELINE-003
 - CORE-028 (benchmark harness; gates the performance criteria below)
 - CORE-030, CORE-039, CORE-031 with CORE-040/CORE-041, and CORE-032 (initial comparative evidence and one browse journey)
+- PIPELINE-008 and VFS-002 (sorted first-page cost and batched local enumeration; neither gates this milestone)
 - SERVICES-001 and SERVICES-003 (optional dependency cleanup and a measured detector decision; neither gates this milestone)
 - app:UI-011 and children UI-012 through UI-015 (companion validation work, not a core exit gate)
 - Reproduced client races use concrete core bug tasks under the workflow in docs/task-tracking.md; REL-006 is retired
