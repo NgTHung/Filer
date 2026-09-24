@@ -9,7 +9,7 @@ depends_on: [MILESTONE-003]
 risk: Medium
 impact: "Makes local large-directory browsing and decoration UI feel reliable after core contract stabilization."
 tags: [local, excellence, draft]
-last_updated: 2026-09-23
+last_updated: 2026-09-24
 ---
 
 ## Summary
@@ -30,6 +30,8 @@ Later on 2026-09-05, the maintainer approved a bounded app-validation exception 
 
 On 2026-09-23, the maintainer approved PIPELINE-008 and VFS-002 after a comparison with Filesmash, a native Win32 file manager. The CORE-021 baseline shows the sorted first page at about ten times the unsorted full walk, and metadata listings pay one blocking-pool hop per entry. Both tasks are candidates, not exit gates. CORE-041 now also records a Windows NTFS profile because every earlier baseline is Linux.
 
+On 2026-09-24, the maintainer approved a backlog review that adds exit gates for a live mutation defect and the default browse path. The operation actor keeps one cancellation slot per Session, so a new mutation cancels the running one. A copy followed by a delete of its source can leave a partial copy and no source. OPS-004 replaces the slot with FIFO admission. OPS-005 must land with it, because a queue that continues after a failed copy would run the delete anyway. No current client sends mutations, but this milestone should not close with that behavior in core. PIPELINE-008 now gates because Explorer-style clients open folders sorted. PIPELINE-009 decides the default name order first, so PIPELINE-008 measures the comparator that ships. API-020 records the uncorrelated Handshake found in the same review and does not gate. The benchmark exit criterion is unchanged.
+
 ## Draft policy
 
 This milestone is a draft plan. You or any agent may modify it as much as needed (exit criteria, membership, priority, depends_on, title, or replacement by a better split) until work for 0.3.1 has started. Work has started when this milestone or any task with `milestone: "0.3.1"` first moves to `In Progress`. Until then, treat this file as editable intent, not a locked commitment. After work starts, change scope only deliberately and record why.
@@ -39,22 +41,26 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 - CORE-027 and children CORE-017, CORE-018, CORE-019, CORE-021, CORE-022, CORE-024, PIPELINE-003
 - CORE-028 (benchmark harness; gates the performance criteria below)
 - CORE-030, CORE-039, CORE-031 with CORE-040/CORE-041, and CORE-032 (initial comparative evidence and one browse journey)
-- PIPELINE-008 and VFS-002 (sorted first-page cost and batched local enumeration; neither gates this milestone)
+- PIPELINE-009 and PIPELINE-008 (default name order and sorted first-page cost; both gate this milestone)
+- VFS-002 (batched local enumeration; does not gate this milestone)
+- API-020 (correlated session handshake; does not gate this milestone)
 - SERVICES-001 and SERVICES-003 (optional dependency cleanup and a measured detector decision; neither gates this milestone)
 - app:UI-011 and children UI-012 through UI-015 (companion validation work, not a core exit gate)
 - Reproduced client races use concrete core bug tasks under the workflow in docs/task-tracking.md; REL-006 is retired
-- API-018, API-019, REL-007, OPS-004, OPS-005, REL-008, and REL-009 (accepted ADR-0001 follow-ups under CORE-027; refine before implementation, without adding new milestone exit gates)
+- API-018, API-019, REL-007, OPS-004, OPS-005, REL-008, and REL-009 (accepted ADR-0001 follow-ups under CORE-027; refine before implementation; OPS-004 and OPS-005 gate this milestone, and the others do not)
 
 ## Exit Criteria
 
 Required, not deferrable:
 
 - [x] CORE-017 and CORE-018 are Done: filter/hidden contracts are honest and paging sessions are bounded and documented.
-- [ ] CORE-021 is Done: the large-directory hot path sheds its per-row allocation overhead.
+- [x] CORE-021 is Done: the large-directory hot path sheds its per-row allocation overhead.
 - [x] PIPELINE-003 is Done: default large-directory paging emits the first page before end of directory and resumes continuations without a full rewalk while snapshot-only transforms remain correct.
 - [x] CORE-028 is Done: the benchmark harness exists, baseline numbers are recorded, and structural tests prove proportional first-page traversal and listing delivery independent of Git completion.
 - [ ] CORE-030, CORE-039, CORE-031, and CORE-032 are Done: correctness-checked Filer/std/Tokio baselines, raw reports, and one browse journey are recorded with separate engine, core, and reference-client results.
 - [x] MODULES-002 emits semantic row decorations without making listing wait for Git completion, proven by the CORE-028 ordering test and active-decoration comparison.
+- [ ] PIPELINE-009 and PIPELINE-008 are Done: the default name order is recorded, and the sorted first page on the 10,000-entry fixture meets the PIPELINE-008 bound or its report names the remaining cost.
+- [ ] OPS-004 and OPS-005 are Done: a new mutation never cancels an accepted one, and a failed mutation pauses the rest of its Session queue.
 
 Deferrable only with recorded rationale in this file:
 

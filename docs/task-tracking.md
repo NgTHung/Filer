@@ -412,10 +412,13 @@ comparative benchmark chain. Its milestone membership schedules feedback during
 When you resume another area, reactivate its parent and inspect the selected
 child's context and specification before implementation. An empty scoped queue
 calls for checking the other approved queue, refinement, or a progress report,
-not automatic expansion into unrelated work. CORE-021 and CORE-024 lead the core
-queue; staged remediation and
-the initial benchmark slice follow. Dependency cleanup is optional lower-priority
-work. Update this scope when the active milestone changes.
+not automatic expansion into unrelated work. The `ready` output sorts by
+priority and ID, not by this order. PIPELINE-009 and then PIPELINE-008 lead the
+core queue. The mutation-queue gate follows through CORE-035, REL-007, OPS-004,
+and OPS-005; triage REL-007, OPS-004, and OPS-005 before implementation. The
+initial benchmark slice and staged remediation follow. Dependency cleanup is
+optional lower-priority work. Update this scope when the active milestone
+changes.
 
 Use `show` when you need one task's full metadata and body sections:
 

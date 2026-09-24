@@ -5,16 +5,17 @@ status: "To Do"
 priority: "High"
 type: "Refactor"
 milestone: "0.3.1"
+depends_on: ["PIPELINE-009"]
 rules: ["PIPELINE-TRANSFORMS"]
 risk: "Low"
 impact: "Sorted listing is the default browse path and currently costs about ten times the unsorted full walk."
 tags: ["core", "performance", "pipeline", "enhancement", "ready-for-agent"]
-last_updated: "2026-09-23"
+last_updated: "2026-09-24"
 ---
 
 ## Summary
 
-The 2026-09-05 CORE-021 baseline records a sorted first page at 101 ms median with 509,092 allocations on 10,000 entries. The full unsorted snapshot of the same directory takes 9.4 ms with 100,380 allocations. The default name sort is a byte comparison, so comparator work alone does not explain the gap. Profile the sorted PageSelection path, attribute the cost to call sites, and remove it. Where a comparison needs derived data, such as group labels in pipeline/order.rs, derive it once per row instead of once per comparison. Natural and locale-aware comparison stays with PIPELINE-002. Preserve PIPELINE-003 lookahead, ordered continuation, and cancellation contracts.
+The 2026-09-05 CORE-021 baseline records a sorted first page at 101 ms median with 509,092 allocations on 10,000 entries. The full unsorted snapshot of the same directory takes 9.4 ms with 100,380 allocations. The default name sort is a byte comparison, so comparator work alone does not explain the gap. Profile the sorted PageSelection path, attribute the cost to call sites, and remove it. Where a comparison needs derived data, such as group labels in pipeline/order.rs, derive it once per row instead of once per comparison. PIPELINE-009 decides the default name order first, so this task measures the comparator that ships. If PIPELINE-009 assigns the new order to this task, land it as its own tested step before optimizing, so the before and after runs compare the same order. User-selectable and locale-aware modes stay with PIPELINE-002. Preserve PIPELINE-003 lookahead, ordered continuation, and cancellation contracts.
 
 ## Acceptance Criteria
 
