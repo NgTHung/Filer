@@ -25,6 +25,7 @@ follow-up task candidates so remediation can be triaged by priority.
 | `documentation.md` | CORE-012 | Comment-rule compliance, README/DESIGN accuracy vs code |
 | `VERDICT.md` | CORE-013 | Consolidated verdict and prioritized remediation backlog |
 | `task-state.md` | review only | Current `.tasks/` state against filer-core ambitions and milestone `0.3.0` |
+| `architecture-direction.md` | review only | Architecture direction and work ordering at milestone `0.3.1` |
 
 ## Severity scale
 
