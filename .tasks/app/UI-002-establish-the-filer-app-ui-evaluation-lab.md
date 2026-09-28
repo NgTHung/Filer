@@ -11,7 +11,7 @@ risk: "High"
 impact: "Makes framework results comparable and proves the app controller remains independent of renderer choice."
 tags: ["architecture", "testing", "benchmark", "performance", "workspace"]
 whitepaper: "docs/architecture/filer-app.md"
-last_updated: "2026-09-05"
+last_updated: "2026-09-23"
 ---
 
 ## Summary
@@ -26,6 +26,7 @@ The active UI-011 validation client is a smaller independent consumer and does n
 - [ ] Deterministic datasets cover 100, 10,000, 100,000, and 1,000,000 logical entries without requiring a real filesystem scan.
 - [ ] Shared scripts define navigation, page append, rapid scroll, sort and filter replacement, multi-selection, inline rename, search, preview arrival, operation progress, drag-and-drop, IME input, scale change, and error recovery.
 - [ ] The result schema records raw frame and input samples, startup, memory, idle wakeups, binary size, build time, exact dependency revision, build profile, operating system, display scale, and hardware.
+- [ ] A Windows cold-start script measures process launch to first painted row for a warm 10,000-entry directory and reports launch into an already resident process separately. UI-010 treats this as a scored criterion.
 - [ ] The lab detects full row materialization, full-array frame clones, duplicate page requests, stale-result acceptance, missing terminal events, and busy idle polling.
 - [ ] Candidate adapters can be built and removed independently without importing UI framework types into shared model, controller, persistence, or core-bridge contracts.
 - [ ] Tests prove the lab produces repeatable results before any candidate result is accepted.

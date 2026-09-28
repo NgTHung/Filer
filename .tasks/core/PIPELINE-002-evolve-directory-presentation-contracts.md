@@ -9,7 +9,7 @@ rules: ["PIPELINE-TRANSFORMS"]
 risk: "Medium"
 impact: "Changes sorting, grouping, and folder preference behavior across clients."
 tags: ["pipeline", "sorting", "grouping", "performance", "enhancement", "needs-triage"]
-last_updated: "2026-09-05"
+last_updated: "2026-09-24"
 ---
 
 ## Summary
@@ -19,6 +19,8 @@ Extend view-independent directory preferences and stable grouping behavior.
 PIPELINE-003 owns first-page streaming and proportional continuation cost. This epic may build presentation behavior on that paging contract, but it does not own provider continuation or paging session state.
 
 PIPELINE-007 specifies preference ownership and the first application slice, then creates bounded implementation stages. Comparison modes and project grouping follow as separate stages on the completed PIPELINE-003 paging contract.
+
+PIPELINE-009 decides the default name order in 0.3.1 because the sorted first-page work measures it. This epic keeps user-selectable and locale-aware comparison modes built on that default.
 
 ## Exit Criteria
 
