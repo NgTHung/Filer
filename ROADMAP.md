@@ -39,33 +39,7 @@ local directory, such as `C:\Windows\System32`, without blocking the client, and
 then apply git-style decorations asynchronously in a large repository without
 blocking directory loading.
 
-`0.2.3` hardens the additive provider-aware `Location` layer introduced in
-`0.2.2`. `LocationRef` now uses explicit id-only, descriptor-only, and full
-variants so empty references cannot be constructed, and `LocationDescriptor`
-separates the provider root from ordered `LocationSegment` layers.
-`LocationId` hashes canonical identity fields, including ordered segments, but
-not display-only text. `LocationRoute` now classifies descriptors as direct
-local paths, segmented locations, or unsupported provider routes, with registry
-caching for the derived route. Public commands, events, `FileNode`, and
-`FsProvider` still use their existing path/node surfaces until a later
-migration. The intent is for `Location` to become the bridge across local files,
-remote providers, virtual providers, extension-backed providers, and archives.
-The remaining core stabilization work is tracked in `.tasks/`.
-
-`0.2.4` made the Location/NodeId migration contract explicit and started the
-Location-first read/navigation core. The goal was not to remove `NodeId`.
-Instead, `Location` became the preferred transport identity for new read-side
-work, while `NodeId` remains a compatibility and cache handle for existing
-local-path flows.
-
-`0.3.0` is the public-contract cleanup boundary. The first cleanup pass removes
-the misleading generic public cancel command in favor of explicit
-`CancelSearch`, `CancelScan`, `CancelPreview`, and operation-id scoped
-`CancelOperation`. It also renames cancellation errors to `Cancelled` and adds a
-stable `TimedOut` code. API-006 removes the path- and NodeId-addressed command
-and event compatibility variants, so Location-native results are now the only
-public result surface. API-007 and API-017 have retired the remaining FileNode
-rows and NodeId-keyed internals. Provider-context timeout propagation is complete.
+[CHANGELOG.md](CHANGELOG.md) records what earlier milestones delivered.
 
 Milestone labels:
 
@@ -79,7 +53,7 @@ Milestone labels:
 
 ## Architecture Invariants
 
-These constraints are still the project contract.
+These constraints are the project contract. [Architecture invariants](docs/architecture/invariants.md) assigns the rule IDs that tasks reference.
 
 ### Core Is A Library
 
@@ -109,7 +83,7 @@ should not block on core work.
 ### The Pipeline Owns Directory Transformations
 
 Directory filtering, sorting, and grouping should flow through `Pipeline` and
-produce `GroupedNodes`. Actors should not apply ad hoc sort/group logic.
+produce `GroupedEntries`. Actors should not apply ad hoc sort/group logic.
 
 ### Extension Contracts Stay Wire-Safe
 

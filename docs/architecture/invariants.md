@@ -25,7 +25,7 @@ Navigation, search, preview, operations, and watcher flows should keep long-runn
 
 ## PIPELINE-TRANSFORMS
 
-Directory filtering, sorting, and grouping should flow through `Pipeline` and produce `GroupedNodes`.
+Directory filtering, sorting, and grouping should flow through `Pipeline` and produce `GroupedEntries`.
 
 ## WIRE-SAFE-EXTENSIONS
 
