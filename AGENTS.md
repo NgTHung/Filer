@@ -78,24 +78,14 @@ Rustdoc renders markdown, so doc comments (`///` and `//!`) may use it where it 
 
 ## Writing Style
 
-This applies to all documentation, code comments, and design documents.
+Read `docs/WRITING_GUIDE.md` before you write or edit any Markdown document. It owns the full rules and the review checklist. The rules agents break most often:
 
-Use clear, simple language. Write short, impactful sentences. Use active voice. Focus on practical, actionable information.
-
-Address the reader directly with "you" and "your". Support claims with data and examples when possible.
-
-Avoid these constructions:
-
-- Em dashes (use commas or periods)
-- "Not only this, but also this"
-- Metaphors and cliches
-- Generalizations
-- Setup language like "in conclusion"
-- Unnecessary adjectives and adverbs
-- Emojis, hashtags, markdown formatting in prose
-
-Avoid these words:
-comprehensive, delve, utilize, harness, realm, tapestry, unlock, revolutionary, groundbreaking, remarkable, pivotal
+- Open with the problem the thing solves, not with project status or milestone numbers.
+- Describe the system as it is, in the present tense. Keep "now", "still", "no longer", "removed by", and task IDs out of READMEs and reference docs.
+- Put status in `.tasks/` and the roadmap, history in commits and dated reviews. Link to them instead of restating them.
+- Give each fact one home and link to it.
+- Explain why before what, and back performance claims with numbers.
+- Use short, active sentences. No em dashes, no filler adjectives, no bold in prose.
 
 ## Task Tracking
 
