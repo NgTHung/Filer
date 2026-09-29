@@ -1,114 +1,31 @@
 # filer-app
 
-`filer-app` is the Iced desktop frontend for Filer. It is the user-facing file
-manager that consumes `filer-core` for navigation, search, preview generation,
-file operations, and filesystem events.
+`filer-app` is the Filer desktop client. It exists to make local file management feel fast and predictable: a large folder should appear at once and stay responsive while extra detail, such as Git status, fills in afterward. The app owns presentation and interaction. `filer-core` owns navigation, directory data, search, previews, and file operations, so the app never touches the file system directly.
 
-Active work: app:UI-011, a minimal validation client alongside core 0.3.1.
-It covers one window, Location-native browsing, paging, and asynchronous Git
-decorations with a provisional renderer. See the
-[validation scope](../docs/architecture/filer-app.md#active-validation-track).
-Implementation is tracked in UI-012 through UI-015. Full framework evaluation
-and the app rewrite remain deferred.
+## Build status
 
-The app target is simple: make local file management feel clean, fast, and
-predictable before expanding into more advanced workflows. The visual direction
-is inspired by Windows Explorer and Files Community: quiet surfaces, clear
-hierarchy, compact controls, and a polished details list. The workflow intent is
-closer to Xplorer: efficient navigation, quick access, useful context actions,
-and fast feedback while working with files.
-
-## Current Capabilities
-
-The list below describes the legacy app. Its source still uses retired core
-identities; it is not evidence of compatibility with the current core. The
-validation track creates an isolated entry point and records its launch command
-when that target exists.
-
-- Local folder navigation through the core navigation module.
-- Details-list file view with sortable columns.
-- Quick Access places, bookmarks, and recent folders.
-- Search with debounced input and streamed results.
-- Right-side Preview and Details panel.
-- Basic file operations: copy, cut, paste, rename, create folder, and delete.
-- Context-menu actions for selected files and folders.
-- Bottom status bar with item, selection, search, and sort state.
-- Light, dark, and automatic theme modes.
-
-## Extension Rendering Direction
-
-The app should render extension output that comes through core as structured
-semantic data. A git extension, for example, should not directly style Iced
-widgets. It should report states such as modified, added, untracked, ignored,
-or conflicted for visible files. The app can then render those states as badges,
-filename color tokens, tooltips, row decorations, or panel/status content using
-the active theme and layout.
-
-This keeps the desktop app aligned with future web clients: core and extensions
-agree on meaning, while each client owns presentation.
-
-The app may need a substantial refactor, but that should follow core contract
-stabilization. Bugs that reveal contract problems, such as stale search results,
-duplicate directory loads, preview races, or large-directory limits, should feed
-back into core first. Pure UI issues, such as context-menu placement or visual
-polish, can wait for the app refactor.
-
-For `0.2.0`, the app consumes the new core request IDs, operation IDs, and
-structured error categories. The broader app refactor remains deferred until the
-remaining core contracts are clearer.
-
-The next useful visible proof is not a full app rewrite. It is a large folder
-that appears quickly and remains responsive, followed by asynchronous semantic
-decorations such as git badges. The app should treat extension output as a late,
-optional enhancement over already usable directory data.
-
-## Design Goals
-
-- Look good enough to use daily while the larger feature roadmap is still in
-  progress.
-- Keep the first screen as the actual file manager, not a landing page or demo
-  shell.
-- Prefer a Files-style interface: simple, elegant, readable, and native-feeling.
-- Keep Xplorer-style intent: dense enough for work, fast to scan, and focused on
-  file-management actions.
-- Make right-click, preview, search, the topbar, the status bar, and Quick Access
-  feel complete before adding larger features.
-
-## Running
+The app does not compile against the current `filer-core` API. Its source uses path and `NodeId` addressing that core does not provide. Build the rest of the workspace with:
 
 ```bash
-cargo run -p filer-app
+cargo build --workspace --exclude filer-app
 ```
 
-## Building
+A minimal validation client that uses the current `Location` contracts replaces it first. Its scope is one window, folder browsing with paging, and asynchronous Git decorations. The [app architecture](../docs/architecture/filer-app.md#active-validation-track) defines that client, and `.tasks/app` tracks its progress.
 
-```bash
-cargo build -p filer-app
-cargo build -p filer-app --release
-```
+## Design direction
 
-## Testing
+The visual direction follows Windows Explorer and Files Community: quiet surfaces, clear hierarchy, compact controls, and a readable details list. The workflow follows Xplorer: quick navigation, useful context actions, and immediate feedback. The first screen is the file manager itself, not a landing page.
 
-```bash
-cargo test -p filer-app
-cargo check --workspace
-```
+The app renders extension output, but extensions never draw widgets. A Git extension reports that a file is modified, added, untracked, ignored, or conflicted. The app turns that state into a badge, a filename color, a tooltip, or a row decoration from the active theme. A web client can render the same state its own way.
 
-For core behavior, run:
+Decorations are late and optional. The app shows directory rows first and applies decorations when they arrive, so a slow `git status` never delays a listing.
 
-```bash
-cargo test -p filer-core --lib
-```
+## Where to report problems
 
-## Known Limitations
+A bug that shows a contract problem, such as stale search results, duplicate directory loads, preview races, or slow large folders, belongs in core. File it as a core task. A bug in layout or visual polish, such as context-menu placement, belongs to the app.
 
-- The app is currently local-first; remote providers in `filer-core` are not yet
-  surfaced as first-class UI locations.
-- The primary file view is details-list only. Tile/grid views are planned later.
-- Drag and drop is not complete yet.
-- Preview quality depends on the current core preview providers and available
-  feature flags.
-- Advanced workflows such as tabs, split panes, command palette, and operations
-  history are planned but not part of the initial polish pass.
-- Extension UI is not a plugin-rendered widget system yet. The intended model is
-  client-rendered semantic output from core-hosted extensions.
+## More detail
+
+- [App architecture](../docs/architecture/filer-app.md) defines ownership boundaries, state, and the framework adapter contract.
+- [ROADMAP.md](ROADMAP.md) lists the product features the app should reach.
+- [Core API reference](../docs/core-api.md) describes the commands and events the app consumes.

@@ -1,79 +1,25 @@
 # filer-ecosystem
 
-`filer-ecosystem` defines the shared data contracts for Filer extensions,
-packages, and profile synchronization.
+`filer-ecosystem` defines the data that Filer extensions, packages, and profile sync exchange. `filer-core`, `filer-app`, web clients, and package tools all read the same manifests and package metadata, so an extension declared once works in every client. The crate holds only serializable types and validation. It runs no extension code, loads no plugins, renders no UI, and touches no files, so any process can depend on it without pulling in a runtime.
 
-Current milestone: `0.2.0`.
+## What it contains
 
-The crate is runtime-free by design. It does not execute WASM, load native
-plugins, render UI, or perform file operations. Instead, it provides the
-wire-safe types that `filer-core`, `filer-app`, future web clients, and package
-tools can agree on.
+- `ExtensionManifest` declares an extension's runtime, permissions, commands, events, UI surfaces, previews, metadata providers, converters, themes, icon packs, file providers, and sync participation.
+- `validate_manifest` checks the schema version, required fields, identifiers, and that every contribution's permission is declared. `EcosystemRegistry` holds validated manifests and rejects duplicate extension ids and command keys.
+- `ExtensionPackage` describes a `.filerpack` archive with its files and signature. `validate_package` rejects unsafe or duplicate paths and malformed SHA-256 digests.
+- `ProfileOperation` and `ProfileState` describe profile changes for pack, unpack, and sync workflows.
 
-The intended extension model has two parts:
+Profile state covers extension and package state, provider profiles, and workspace state. App settings such as bookmarks, recent paths, theme, and layout stay in the app's own configuration, because they do not need to travel between machines or clients.
 
-- A declaration plane: manifests describe commands, providers, previews,
-  metadata, UI surfaces, permissions, packages, and profile participation.
-- A data plane: running extensions publish structured semantic output through
-  core, such as file decorations, status badges, action state, metadata updates,
-  preview payloads, panel data, and invalidation events.
+## Extension model
 
-Clients render that semantic output in their own UI. For example, a git
-extension reports that a file is modified or added; the desktop app or web
-client chooses how to display that state.
+An extension has two planes. The declaration plane is the manifest: what the extension offers and which permissions it needs. The data plane is what a running extension publishes through core, such as file decorations, status badges, action state, metadata updates, and preview payloads.
 
-The first runtime-facing slice should be git file decorations, not a complete
-marketplace or broad plugin host. That slice proves the model end to end:
-visible file context from core, semantic decoration output from an extension,
-and client-owned rendering.
+Extensions publish meaning, not widgets. A Git extension reports that a file is modified or added, and each client picks how to display it. Early UI output stays narrow: row decorations, status badges, command actions, previews, and metadata. Arbitrary tabs, popups, and layout control stay out, because each one would tie an extension to one client's UI.
 
-The `0.2.0` milestone keeps this crate as a contract layer while `filer-core`
-settles request IDs, operation IDs, and structured error categories. Live
-extension output envelopes and runtime hosting remain future work.
+The runtime is meant to be hybrid. Third-party extensions would run as sandboxed WASM, and built-in or explicitly trusted integrations as native modules. Until sandboxing, package installation, and permission enforcement exist, an in-process host is a trusted add-on model and makes no marketplace safety promise.
 
-The first host can be trusted and in-process. It should be described as a
-trusted core add-on model until sandboxing, package installation, marketplace
-trust, and permission enforcement actually exist.
-
-## Current Scope
-
-- Extension manifests with runtime, permissions, commands, UI contributions,
-  preview/metadata providers, converters, themes, icon packs, providers, and
-  sync participation.
-- Planned extension output contracts for semantic file decorations, status
-  badges, action state, panel data, metadata updates, and preview payloads.
-- Registry validation for schema version, identifiers, duplicate command keys,
-  and undeclared permissions.
-- `.filerpack` package metadata validation.
-- Local profile operation types for future sync and pack/unpack workflows.
-
-Local app settings such as bookmarks, recent paths, theme, layout, and sort
-preferences should stay in simple app-owned config for now. `filer-ecosystem`
-profile operations are reserved for extension/package state, provider profiles,
-workspace state, and future sync.
-
-## Runtime Direction
-
-The intended runtime model is hybrid:
-
-- WASM for portable, sandboxed third-party extensions.
-- Native trusted modules for built-ins and explicitly trusted integrations.
-
-Execution, sandboxing, and UI integration will be added in higher-level crates
-after this contract layer stabilizes.
-
-Extensions should not directly render app widgets. They should produce
-client-neutral data that `filer-core` can route and each client can visualize.
-
-The runtime should grow only after the contract layer proves one vertical slice.
-WASM hosting, package installation, marketplace behavior, and extension manager
-UI should not block the git decoration contract.
-
-Early UI output should stay narrow: file row decorations, status badges,
-context/command actions, preview payloads, and metadata payloads. Arbitrary
-tabs, popups, panels, and layout control should wait.
-
-## More Detail
+## More detail
 
 - [DESIGN.md](DESIGN.md) explains the architecture choices and tradeoffs.
-- [ROADMAP.md](ROADMAP.md) tracks the ecosystem checklist and next milestones.
+- [ROADMAP.md](ROADMAP.md) lists the ecosystem features and their order.
