@@ -36,7 +36,7 @@ unless you provide --log-dir. It continues after a failed command to expose
 independent failures, then exits with a nonzero status if any command failed.
 Use that exit status when you call it from CI.
 
-The initial minimal configuration failed because ZIP code and fixtures were
-compiled without their optional dependency. Keep dependency imports, parsing
-helpers, and format-specific tests behind the same feature gates. Public archive
-entry points retain structured unsupported errors when archive support is off.
+Keep each optional dependency's imports, parsing helpers, and format-specific
+tests behind the same feature gate. Otherwise the minimal configuration compiles
+code whose dependency is absent and fails. Public archive entry points still
+compile without archive features and return structured unsupported errors.
