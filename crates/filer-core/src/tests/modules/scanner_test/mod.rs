@@ -9,8 +9,10 @@ use crate::vfs::listing_stream::{DirectoryStream, ListingBatch};
 use crate::vfs::provider::{Capabilities, FsProvider, ListingOptions, ProviderPaging};
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::Notify;
 
 fn make_file(name: &str, path: &str, size: u64, hidden: bool) -> NodeEntry {
     let mut entry = crate::tests::fixtures::nodes::file(name, path, size);
@@ -49,6 +51,13 @@ struct MockProvider {
     native_paging: bool,
     streaming: bool,
     stream_stats: Arc<Mutex<StreamStats>>,
+    stream_control: Option<Arc<StreamControl>>,
+}
+
+#[derive(Default)]
+struct StreamControl {
+    stalled: Notify,
+    released: AtomicBool,
 }
 
 /// What a streaming walk has cost so far, so a test can prove a page did not
@@ -66,6 +75,15 @@ struct MockListingStream {
     files: Arc<Mutex<Vec<NodeEntry>>>,
     stats: Arc<Mutex<StreamStats>>,
     position: usize,
+    control: Option<Arc<StreamControl>>,
+}
+
+impl Drop for MockListingStream {
+    fn drop(&mut self) {
+        if let Some(control) = &self.control {
+            control.released.store(true, Ordering::SeqCst);
+        }
+    }
 }
 
 #[async_trait]
@@ -75,6 +93,12 @@ impl DirectoryStream for MockListingStream {
         max: usize,
         cx: &crate::ProviderCx<'_>,
     ) -> Result<ListingBatch, CoreError> {
+        if let Some(control) = &self.control
+            && self.position > 0
+        {
+            control.stalled.notify_one();
+            std::future::pending::<()>().await;
+        }
         if cx.is_cancelled() {
             return Err(CoreError::cancelled());
         }
@@ -115,6 +139,7 @@ impl MockProvider {
             native_paging: true,
             streaming: false,
             stream_stats: Arc::new(Mutex::new(StreamStats::default())),
+            stream_control: None,
         }
     }
 
@@ -205,6 +230,7 @@ impl FsProvider for MockProvider {
             files: self.files.clone(),
             stats: self.stream_stats.clone(),
             position: 0,
+            control: self.stream_control.clone(),
         })))
     }
 
@@ -338,4 +364,9 @@ mod streaming_paging_tests {
 #[cfg(test)]
 mod ordered_paging_tests {
     include!("ordered_paging_tests.rs");
+}
+
+#[cfg(test)]
+mod sorted_walk_cancellation {
+    include!("sorted_walk_cancellation.rs");
 }
