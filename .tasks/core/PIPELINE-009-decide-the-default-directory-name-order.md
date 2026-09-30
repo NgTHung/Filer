@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-009"
 title: "Decide the default directory name order"
-status: In Progress
+status: Done
 priority: "High"
 type: "Design"
 milestone: "0.3.1"
@@ -22,4 +22,4 @@ Name sort compares raw bytes in filer-core/src/pipeline/order.rs, so "Zeta" sort
 - [x] Example pairs in the ADR show the expected order for mixed case, numbered names, leading zeros, and non-ASCII names.
 - [x] The ADR states how ordered continuations and cursors stay stable under the chosen order, and whether each row derives its sort key once instead of per comparison.
 - [x] The ADR reports the chosen comparator's sort time on 10,000 generated names next to the current byte comparison on one named machine.
-- [ ] The ADR assigns implementation to PIPELINE-008 or a named follow-up task, leaves user-selectable and locale-aware modes with PIPELINE-002, and the maintainer accepts it.
+- [x] The ADR assigns implementation to PIPELINE-008 or a named follow-up task, leaves user-selectable and locale-aware modes with PIPELINE-002, and the maintainer accepts it.
