@@ -61,7 +61,7 @@ impl<'a> PageSelection<'a> {
             // Trimming at twice the window amortizes each sort over at least a
             // window's worth of new rows.
             flush_at: window.saturating_mul(2),
-            after: after.map(KeysetBoundary::new),
+            after: after.map(|row| KeysetBoundary::new(pipeline_config, row)),
             sorter: KeyedSort::default(),
             pipeline_config,
             pipeline: Pipeline::from_config(pipeline_config),

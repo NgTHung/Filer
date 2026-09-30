@@ -43,16 +43,6 @@ use std::cmp::Ordering;
 /// sorts them where digit characters sit.
 const NUMBER_MARKER: u8 = b'0';
 
-/// Compares two names by the full default name order.
-pub(crate) fn compare_names(left: &str, right: &str) -> Ordering {
-    if left == right {
-        return Ordering::Equal;
-    }
-    name_key(left)
-        .cmp(&name_key(right))
-        .then_with(|| break_main_key_tie(left, right))
-}
-
 /// Compares two names whose keys were already derived by [`push_name_key`].
 pub(crate) fn compare_keyed_names(
     left_key: &[u8],

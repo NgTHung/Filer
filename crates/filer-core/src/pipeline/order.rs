@@ -17,7 +17,7 @@ use std::cmp::Ordering;
 
 use crate::model::node::NodeEntry;
 use crate::pipeline::config::{GroupBy, PipelineConfig};
-use crate::pipeline::name_order::compare_names;
+use crate::pipeline::name_order::{compare_keyed_names, name_key};
 use crate::pipeline::sort::{SortField, SortOrder};
 use crate::utils;
 use crate::vfs::provider::{ListingDetail, ListingOptions};
@@ -29,20 +29,42 @@ pub(crate) enum GroupSortKey {
 }
 
 pub fn compare_nodes(config: &PipelineConfig, left: &NodeEntry, right: &NodeEntry) -> Ordering {
-    compare_nodes_with(config, left, right, || {
-        compare_names(&left.name, &right.name)
-    })
+    let by = group_by(config);
+    let (left_group, right_group) = (group_sort_key(by, left), group_sort_key(by, right));
+    let (left_name, right_name) = (name_key(&left.name), name_key(&right.name));
+    compare_keyed(
+        config,
+        left,
+        RowKey {
+            group: left_group.as_ref(),
+            name: &left_name,
+        },
+        right,
+        RowKey {
+            group: right_group.as_ref(),
+            name: &right_name,
+        },
+    )
 }
 
-/// Orders rows like [`compare_nodes`], taking the name order from `names` so
-/// bulk sorts can compare precomputed name keys. `names` runs at most once.
-pub(crate) fn compare_nodes_with(
+/// What a comparison derives from one row. Bulk sorts derive it once per row
+/// instead of twice per comparison.
+#[derive(Clone, Copy)]
+pub(crate) struct RowKey<'a> {
+    pub(crate) group: Option<&'a GroupSortKey>,
+    pub(crate) name: &'a [u8],
+}
+
+/// Orders rows like [`compare_nodes`] from keys derived by [`group_sort_key`]
+/// and [`crate::pipeline::name_order::push_name_key`].
+pub(crate) fn compare_keyed(
     config: &PipelineConfig,
     left: &NodeEntry,
+    left_key: RowKey<'_>,
     right: &NodeEntry,
-    names: impl FnOnce() -> Ordering,
+    right_key: RowKey<'_>,
 ) -> Ordering {
-    let group_order = group_sort_key(config, left).cmp(&group_sort_key(config, right));
+    let group_order = left_key.group.cmp(&right_key.group);
     if group_order != Ordering::Equal {
         return group_order;
     }
@@ -71,6 +93,7 @@ pub(crate) fn compare_nodes_with(
         SortOrder::Ascending => ordering,
         SortOrder::Descending => ordering.reverse(),
     };
+    let names = || compare_keyed_names(left_key.name, &left.name, right_key.name, &right.name);
 
     // Name sorts reverse the whole name order when descending, while every
     // other field breaks its ties by ascending name.
@@ -105,8 +128,12 @@ fn compare_locations(
     left.identity().0.cmp(&right.identity().0)
 }
 
-pub fn group_label(config: &PipelineConfig, node: &NodeEntry) -> String {
-    match config.group.map(|group| group.by).unwrap_or(GroupBy::None) {
+pub(crate) fn group_by(config: &PipelineConfig) -> GroupBy {
+    config.group.map(|group| group.by).unwrap_or(GroupBy::None)
+}
+
+pub(crate) fn group_label(by: GroupBy, node: &NodeEntry) -> String {
+    match by {
         GroupBy::None => String::new(),
         GroupBy::Extension | GroupBy::Type => {
             node.extension().unwrap_or("No extension").to_string()
@@ -125,14 +152,19 @@ pub fn group_label(config: &PipelineConfig, node: &NodeEntry) -> String {
     }
 }
 
-pub(crate) fn group_sort_key(config: &PipelineConfig, node: &NodeEntry) -> GroupSortKey {
-    match config.group.map(|group| group.by).unwrap_or(GroupBy::None) {
-        GroupBy::None => GroupSortKey::Label(String::new()),
+/// Where a row's group sorts, or `None` when rows are not grouped.
+pub(crate) fn group_sort_key(by: GroupBy, node: &NodeEntry) -> Option<GroupSortKey> {
+    match by {
+        GroupBy::None => None,
         GroupBy::Extension | GroupBy::Type | GroupBy::FirstLetter => {
-            GroupSortKey::Label(group_label(config, node))
+            Some(GroupSortKey::Label(group_label(by, node)))
         }
-        GroupBy::Date => GroupSortKey::Order(utils::time_group_opt(node.modified).sort_order()),
-        GroupBy::Size => GroupSortKey::Order(utils::size_group(node.size).sort_order()),
+        GroupBy::Date => Some(GroupSortKey::Order(
+            utils::time_group_opt(node.modified).sort_order(),
+        )),
+        GroupBy::Size => Some(GroupSortKey::Order(
+            utils::size_group(node.size).sort_order(),
+        )),
     }
 }
 

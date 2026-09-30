@@ -1,5 +1,9 @@
-use crate::pipeline::name_order::{compare_names, name_key};
+use crate::pipeline::name_order::{compare_keyed_names, name_key};
 use std::cmp::Ordering;
+
+fn compare_names(left: &str, right: &str) -> Ordering {
+    compare_keyed_names(&name_key(left), left, &name_key(right), right)
+}
 
 /// Which step of the name order decides an ADR 0002 example pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

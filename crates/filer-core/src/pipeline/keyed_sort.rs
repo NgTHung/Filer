@@ -1,10 +1,10 @@
 //! # Name-Keyed Row Sorting
 //!
-//! Sorting 10,000 rows makes about 140,000 comparisons, and deriving two name
-//! keys per comparison would dominate the sort. [`KeyedSort`] derives each
-//! row's key once per sort pass into one shared buffer and compares slices of
-//! it, and [`KeysetBoundary`] derives the boundary row's key once for a whole
-//! keyset rewalk. Both order rows exactly as
+//! Sorting 10,000 rows makes about 140,000 comparisons, and deriving group and
+//! name keys twice per comparison would dominate the sort. [`KeyedSort`]
+//! derives each row's keys once per sort pass, with name keys in one shared
+//! buffer, and [`KeysetBoundary`] derives the boundary row's keys once for a
+//! whole keyset rewalk. Both order rows exactly as
 //! [`compare_nodes`](super::compare_nodes) does.
 //!
 //! ```
@@ -34,8 +34,8 @@ use std::ops::Range;
 
 use crate::model::node::NodeEntry;
 use crate::pipeline::PipelineConfig;
-use crate::pipeline::name_order::{compare_keyed_names, name_key, push_name_key};
-use crate::pipeline::order::compare_nodes_with;
+use crate::pipeline::name_order::{name_key, push_name_key};
+use crate::pipeline::order::{GroupSortKey, RowKey, compare_keyed, group_by, group_sort_key};
 
 /// Sorts rows in `compare_nodes` order. Reusing one sorter across passes also
 /// reuses its buffers.
@@ -46,8 +46,18 @@ pub(crate) struct KeyedSort {
 }
 
 struct KeyedRow {
-    key: Range<usize>,
+    name: Range<usize>,
+    group: Option<GroupSortKey>,
     row: NodeEntry,
+}
+
+impl KeyedRow {
+    fn key<'a>(&'a self, names: &'a [u8]) -> RowKey<'a> {
+        RowKey {
+            group: self.group.as_ref(),
+            name: &names[self.name.clone()],
+        }
+    }
 }
 
 impl KeyedSort {
@@ -59,25 +69,26 @@ impl KeyedSort {
         self.keys
             .reserve(rows.iter().map(|row| row.name.len()).sum::<usize>());
         self.rows.reserve(rows.len());
+        let by = group_by(config);
         for row in rows.drain(..) {
             let start = self.keys.len();
             push_name_key(&row.name, &mut self.keys);
             self.rows.push(KeyedRow {
-                key: start..self.keys.len(),
+                name: start..self.keys.len(),
+                group: group_sort_key(by, &row),
                 row,
             });
         }
 
         let keys = &self.keys;
         self.rows.sort_unstable_by(|left, right| {
-            compare_nodes_with(config, &left.row, &right.row, || {
-                compare_keyed_names(
-                    &keys[left.key.clone()],
-                    &left.row.name,
-                    &keys[right.key.clone()],
-                    &right.row.name,
-                )
-            })
+            compare_keyed(
+                config,
+                &left.row,
+                left.key(keys),
+                &right.row,
+                right.key(keys),
+            )
         });
         rows.extend(self.rows.drain(..).map(|keyed| keyed.row));
     }
@@ -87,16 +98,17 @@ impl KeyedSort {
 /// once for the whole rewalk.
 pub(crate) struct KeysetBoundary {
     row: NodeEntry,
-    key: Vec<u8>,
+    group: Option<GroupSortKey>,
+    name: Vec<u8>,
     scratch: Vec<u8>,
 }
 
 impl KeysetBoundary {
-    pub(crate) fn new(row: NodeEntry) -> Self {
-        let key = name_key(&row.name);
+    pub(crate) fn new(config: &PipelineConfig, row: NodeEntry) -> Self {
         Self {
+            group: group_sort_key(group_by(config), &row),
+            name: name_key(&row.name),
             row,
-            key,
             scratch: Vec::new(),
         }
     }
@@ -104,12 +116,17 @@ impl KeysetBoundary {
     /// Whether `entry` sorts at or before the boundary, so an earlier page
     /// already returned it.
     pub(crate) fn covers(&mut self, config: &PipelineConfig, entry: &NodeEntry) -> bool {
-        let Self { row, key, scratch } = self;
-        compare_nodes_with(config, entry, row, || {
-            scratch.clear();
-            push_name_key(&entry.name, scratch);
-            compare_keyed_names(scratch, &entry.name, key, &row.name)
-        })
-        .is_le()
+        let group = group_sort_key(group_by(config), entry);
+        self.scratch.clear();
+        push_name_key(&entry.name, &mut self.scratch);
+        let entry_key = RowKey {
+            group: group.as_ref(),
+            name: &self.scratch,
+        };
+        let boundary_key = RowKey {
+            group: self.group.as_ref(),
+            name: &self.name,
+        };
+        compare_keyed(config, entry, entry_key, &self.row, boundary_key).is_le()
     }
 }

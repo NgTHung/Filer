@@ -18,20 +18,19 @@ mod ordered;
 mod selection;
 mod session;
 mod stream;
+mod walk;
 
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::errors::{CoreError, ErrorCode};
-use crate::model::directory::{
-    DEFAULT_DIRECTORY_PAGE_SIZE, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
-};
+use crate::model::directory::{DirectoryPageRequest, DirectoryPageResult, DirectoryPageState};
 use crate::model::node::NodeEntry;
 use crate::model::session::SessionId;
 use crate::pipeline::{PipelineConfig, effective_listing};
 use crate::vfs::context::ProviderCx;
-use crate::vfs::provider::{FsProvider, ProviderPaging, validate_page_limit};
+use crate::vfs::provider::{FsProvider, validate_page_limit};
 
 use ordered::RetainedPage;
 pub(crate) use selection::PageSelection;
@@ -40,6 +39,7 @@ use session::{
     PagingSession, PagingSessionStore, RetainedChain, next_cursor,
 };
 use stream::{StreamedPage, streams_pages, take_page};
+use walk::walk_into;
 
 #[derive(Clone)]
 pub struct PagingSessions {
@@ -342,58 +342,11 @@ impl PagingSessions {
             pipeline_config,
         );
 
-        match provider.paging() {
-            ProviderPaging::Fallback => {
-                let entries = match cx
-                    .race(
-                        provider.scheme(),
-                        provider.list_with_options(path, request.listing, cx),
-                    )
-                    .await
-                {
-                    Ok(entries) => entries,
-                    Err(e) if e.code() == ErrorCode::Cancelled => return Ok(PageLoad::Cancelled),
-                    Err(e) => return Err(e),
-                };
-                if !selection.extend(entries, cx) {
-                    return Ok(PageLoad::Cancelled);
-                }
-            }
-            ProviderPaging::Native => {
-                let mut provider_cursor = None;
-                loop {
-                    let raw_page = match cx
-                        .race(
-                            provider.scheme(),
-                            provider.list_page(
-                                path,
-                                DirectoryPageRequest {
-                                    listing: request.listing,
-                                    limit: DEFAULT_DIRECTORY_PAGE_SIZE,
-                                    cursor: provider_cursor,
-                                },
-                                cx,
-                            ),
-                        )
-                        .await
-                    {
-                        Ok(page) => page,
-                        Err(e) if e.code() == ErrorCode::Cancelled => {
-                            return Ok(PageLoad::Cancelled);
-                        }
-                        Err(e) => return Err(e),
-                    };
-                    let complete = raw_page.state.complete;
-                    provider_cursor = raw_page.state.next_cursor;
-                    let page_count = raw_page.entries.len();
-                    if !selection.extend(raw_page.entries, cx) {
-                        return Ok(PageLoad::Cancelled);
-                    }
-                    if complete || provider_cursor.is_none() || page_count == 0 {
-                        break;
-                    }
-                }
-            }
+        match walk_into(provider, path, request.listing, &mut selection, cx).await {
+            Ok(true) => {}
+            Ok(false) => return Ok(PageLoad::Cancelled),
+            Err(e) if e.code() == ErrorCode::Cancelled => return Ok(PageLoad::Cancelled),
+            Err(e) => return Err(e),
         }
 
         Ok(PageLoad::Page(self.finish_walked_page(

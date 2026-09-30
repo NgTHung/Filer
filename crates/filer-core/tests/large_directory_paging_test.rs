@@ -157,11 +157,15 @@ impl FsProvider for CountingProvider {
     }
 }
 
-#[tokio::test]
-async fn first_page_through_public_command_does_not_materialize_full_listing() {
-    let provider = Arc::new(CountingProvider::new(ENTRY_COUNT));
+async fn start_core(
+    provider: Arc<CountingProvider>,
+) -> (
+    FilerCore,
+    flume::Receiver<Event>,
+    filer_core::model::session::SessionId,
+) {
     let core = FilerCore::new();
-    core.load(ScanModule::new(provider.clone()));
+    core.load(ScanModule::new(provider));
     let events = core.event_receiver();
 
     core.send(Command::Handshake)
@@ -175,18 +179,26 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
             break session;
         }
     };
+    (core, events, session)
+}
 
+async fn first_page(
+    core: &FilerCore,
+    events: &flume::Receiver<Event>,
+    session: filer_core::model::session::SessionId,
+    pipeline: PipelineConfig,
+) -> filer_core::DirectoryPageState {
     let request = RequestId::new();
     core.send(Command::Scan {
         location: LocationRef::from_location(&Location::local("/benchmark")),
         session,
-        pipeline: PipelineConfig::default(),
+        pipeline,
         load: DirectoryLoadOptions::page(PAGE_SIZE),
         request,
     })
     .expect("scan command should be accepted");
 
-    let page = loop {
+    loop {
         let event = tokio::time::timeout(EVENT_TIMEOUT, events.recv_async())
             .await
             .expect("page event should arrive before timeout")
@@ -196,7 +208,7 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
                 page,
                 request: event_request,
                 ..
-            } if event_request == request => break page,
+            } if event_request == request => return page,
             Event::Error {
                 message,
                 request: Some(event_request),
@@ -204,7 +216,15 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
             } if event_request == request => panic!("scan failed: {message}"),
             _ => {}
         }
-    };
+    }
+}
+
+#[tokio::test]
+async fn first_page_through_public_command_does_not_materialize_full_listing() {
+    let provider = Arc::new(CountingProvider::new(ENTRY_COUNT));
+    let (core, events, session) = start_core(provider.clone()).await;
+
+    let page = first_page(&core, &events, session, PipelineConfig::default()).await;
 
     assert_eq!(page.page_count, PAGE_SIZE);
     assert!(!page.complete);
@@ -221,4 +241,31 @@ async fn first_page_through_public_command_does_not_materialize_full_listing() {
     core.shutdown()
         .await
         .expect("core should shut down after the paging proof");
+}
+
+#[tokio::test]
+async fn sorted_first_page_walks_the_listing_stream_once() {
+    let provider = Arc::new(CountingProvider::new(ENTRY_COUNT));
+    let (core, events, session) = start_core(provider.clone()).await;
+
+    let page = first_page(&core, &events, session, PipelineConfig::with_default_sort()).await;
+
+    assert_eq!(page.page_count, PAGE_SIZE);
+    assert_eq!(page.total_count, Some(ENTRY_COUNT));
+    assert!(page.next_cursor.is_some());
+    assert_eq!(
+        provider.full_list_calls.load(Ordering::Relaxed),
+        0,
+        "a sorted walk must not re-list the directory per provider page"
+    );
+    assert_eq!(
+        provider.stream_rows_yielded.load(Ordering::Relaxed),
+        ENTRY_COUNT,
+        "a sorted first page should read every row exactly once"
+    );
+    assert!(provider.stream_reached_end.load(Ordering::Relaxed));
+
+    core.shutdown()
+        .await
+        .expect("core should shut down after the sorted walk proof");
 }

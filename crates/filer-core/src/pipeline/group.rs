@@ -1,7 +1,7 @@
 use rapidhash::RapidHashMap;
 
 use crate::model::node::NodeEntry;
-use crate::pipeline::config::{GroupBy as ConfigGroupBy, GroupConfig, PipelineConfig};
+use crate::pipeline::config::GroupBy as ConfigGroupBy;
 use crate::pipeline::order::{GroupSortKey, group_label, group_sort_key};
 use crate::pipeline::{EntryGroup, GroupedEntries, PipelineData, Stage};
 
@@ -33,38 +33,25 @@ impl Stage for GroupBy {
             }
         };
 
-        let mut groups_map: RapidHashMap<String, (GroupSortKey, Vec<NodeEntry>)> =
+        let by = match self.field {
+            GroupField::Extension => ConfigGroupBy::Extension,
+            GroupField::Date => ConfigGroupBy::Date,
+            GroupField::Size => ConfigGroupBy::Size,
+            GroupField::FirstLetter => ConfigGroupBy::FirstLetter,
+        };
+        let mut groups_map: RapidHashMap<String, (Option<GroupSortKey>, Vec<NodeEntry>)> =
             RapidHashMap::default();
 
         for node in nodes {
-            let by = match self.field {
-                GroupField::Extension => ConfigGroupBy::Extension,
-                GroupField::Date => ConfigGroupBy::Date,
-                GroupField::Size => ConfigGroupBy::Size,
-                GroupField::FirstLetter => ConfigGroupBy::FirstLetter,
-            };
-            let key = group_label(
-                &PipelineConfig {
-                    group: Some(GroupConfig { by }),
-                    ..PipelineConfig::default()
-                },
-                &node,
-            );
-
-            let config = PipelineConfig {
-                group: Some(GroupConfig { by }),
-                ..PipelineConfig::default()
-            };
-            let sort_key = group_sort_key(&config, &node);
-
+            let label = group_label(by, &node);
             groups_map
-                .entry(key)
-                .or_insert_with(|| (sort_key, Vec::new()))
+                .entry(label)
+                .or_insert_with(|| (group_sort_key(by, &node), Vec::new()))
                 .1
                 .push(node);
         }
 
-        let mut groups: Vec<(GroupSortKey, EntryGroup)> = groups_map
+        let mut groups: Vec<(Option<GroupSortKey>, EntryGroup)> = groups_map
             .into_iter()
             .enumerate()
             .map(|(idx, (label, (sort_key, nodes)))| {

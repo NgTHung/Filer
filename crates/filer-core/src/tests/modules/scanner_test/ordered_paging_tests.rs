@@ -326,7 +326,10 @@ fn natural_names(count: usize) -> Vec<String> {
 }
 
 fn natural_provider(path: &str, count: usize) -> MockProvider {
-    let provider = MockProvider::new();
+    fill_natural(MockProvider::new(), path, count)
+}
+
+fn fill_natural(provider: MockProvider, path: &str, count: usize) -> MockProvider {
     for (size, name) in natural_names(count).iter().rev().enumerate() {
         provider.add_file(make_file(name, path, size as u64, false));
     }
@@ -334,11 +337,11 @@ fn natural_provider(path: &str, count: usize) -> MockProvider {
 }
 
 async fn walk_unretained_chain(
+    provider: &MockProvider,
     path: &str,
     pipeline: &PipelineConfig,
     limit: usize,
 ) -> Vec<String> {
-    let provider = natural_provider(path, 20);
     let sessions = crate::modules::scan::paging::PagingSessions::with_limits(8, 0);
     let owner = SessionId::new();
     let cx = crate::ProviderCx::none();
@@ -352,7 +355,7 @@ async fn walk_unretained_chain(
             cursor,
         };
         let PageLoad::Page(page) = sessions
-            .load_provider(&provider, Path::new(path), owner, request, pipeline, &cx)
+            .load_provider(provider, Path::new(path), owner, request, pipeline, &cx)
             .await
             .expect("page should load")
         else {
@@ -389,7 +392,8 @@ async fn test_ordered_pages_keep_natural_name_order_across_the_retained_tail() {
 
 #[tokio::test]
 async fn test_keyset_rewalk_keeps_natural_name_order_without_retention() {
-    let seen = walk_unretained_chain("/tmp/ordered-natural-keyset", &sorted_pipeline(), 7).await;
+    let path = "/tmp/ordered-natural-keyset";
+    let seen = walk_unretained_chain(&natural_provider(path, 20), path, &sorted_pipeline(), 7).await;
 
     assert_eq!(
         seen,
@@ -401,7 +405,8 @@ async fn test_keyset_rewalk_keeps_natural_name_order_without_retention() {
 #[tokio::test]
 async fn test_keyset_rewalk_reverses_natural_name_order_when_descending() {
     let pipeline = PipelineConfig::default().sort(SortField::Name, SortOrder::Descending, true);
-    let seen = walk_unretained_chain("/tmp/ordered-natural-descending", &pipeline, 7).await;
+    let path = "/tmp/ordered-natural-descending";
+    let seen = walk_unretained_chain(&natural_provider(path, 20), path, &pipeline, 7).await;
 
     let mut expected = natural_names(20);
     expected.reverse();
@@ -411,28 +416,85 @@ async fn test_keyset_rewalk_reverses_natural_name_order_when_descending() {
 #[tokio::test]
 async fn test_sorted_page_load_reports_cancellation() {
     let path = "/tmp/ordered-natural-cancel";
-    let provider = natural_provider(path, 20);
-    let sessions = crate::modules::scan::paging::PagingSessions::new();
-    let cancel = crate::CancelSignal::new();
-    cancel.cancel();
-    let cx = crate::ProviderCx::with_cancel(&cancel);
+    for provider in [MockProvider::new(), MockProvider::streaming()] {
+        let provider = fill_natural(provider, path, 20);
+        let sessions = crate::modules::scan::paging::PagingSessions::new();
+        let cancel = crate::CancelSignal::new();
+        cancel.cancel();
+        let cx = crate::ProviderCx::with_cancel(&cancel);
 
-    let load = sessions
-        .load_provider(
-            &provider,
-            Path::new(path),
-            SessionId::new(),
-            DirectoryPageRequest {
-                listing: ListingOptions::fast(),
-                limit: 7,
-                cursor: None,
-            },
-            &sorted_pipeline(),
-            &cx,
+        let load = sessions
+            .load_provider(
+                &provider,
+                Path::new(path),
+                SessionId::new(),
+                DirectoryPageRequest {
+                    listing: ListingOptions::fast(),
+                    limit: 7,
+                    cursor: None,
+                },
+                &sorted_pipeline(),
+                &cx,
+            )
+            .await
+            .expect("a cancelled load should not fail");
+
+        assert!(matches!(load, PageLoad::Cancelled));
+        assert_eq!(sessions.retained_rows(), 0);
+    }
+}
+
+#[tokio::test]
+async fn test_ordered_walk_reads_a_listing_stream_once_without_provider_pages() {
+    let path = "/tmp/ordered-stream-walk";
+    let provider = fill_natural(MockProvider::streaming(), path, 500);
+    let (cmd_tx, evt_rx) = spawn_scanner(provider.clone());
+
+    let session = SessionId::new();
+    request_page(
+        &cmd_tx,
+        path,
+        session,
+        sorted_pipeline(),
+        crate::DirectoryLoadOptions::page(10),
+    );
+    let (groups, page) = wait_for_page(&evt_rx, session).await;
+
+    let stats = provider.stream_stats();
+    assert_eq!(stats.rows_yielded, 1_000, "the walk should read each row once");
+    assert!(stats.reached_end);
+    assert!(provider.get_page_calls().is_empty());
+    assert!(provider.get_list_calls().is_empty());
+    assert_eq!(page.total_count, Some(1_000));
+    assert_eq!(page_names(&groups), natural_names(5));
+}
+
+#[tokio::test]
+async fn test_grouped_keyset_rewalk_matches_the_flat_pipeline() {
+    let path = "/tmp/ordered-grouped-keyset";
+    let names = [
+        "b10.rs", "B2.md", "a1.rs", "A10.md", "notes", "Notes2", "c01.rs", "c1.md", "z.txt",
+        "Y9.txt", "y10.txt", "readme",
+    ];
+    let pipeline = PipelineConfig::default()
+        .sort(SortField::Name, SortOrder::Ascending, true)
+        .group_by(crate::pipeline::GroupBy::Extension);
+    let expected: Vec<String> = crate::pipeline::Pipeline::from_config(&pipeline)
+        .execute_flat(
+            names
+                .iter()
+                .map(|name| make_file(name, path, 0, false))
+                .collect(),
         )
-        .await
-        .expect("a cancelled load should not fail");
+        .into_iter()
+        .map(|entry| entry.name)
+        .collect();
 
-    assert!(matches!(load, PageLoad::Cancelled));
-    assert_eq!(sessions.retained_rows(), 0);
+    for provider in [MockProvider::new(), MockProvider::streaming()] {
+        for name in names {
+            provider.add_file(make_file(name, path, 0, false));
+        }
+        let seen = walk_unretained_chain(&provider, path, &pipeline, 3).await;
+        assert_eq!(seen, expected);
+    }
 }
