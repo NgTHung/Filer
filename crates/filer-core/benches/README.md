@@ -1,6 +1,6 @@
 # filer-core Benchmarks
 
-These benchmarks tell you whether a change made directory listing or sorting slower. `large_directory` measures requests end to end through the public commands and events. `name_order` isolates the cost of comparing names, which every sorted listing pays once per comparison.
+These benchmarks tell you whether a change made directory listing or sorting slower. `large_directory` measures requests end to end through the public commands and events. `name_order` isolates the cost of sorting rows by name, which every sorted listing pays.
 
 Both report minimum, median, p95, maximum, and mean latency, plus the median allocation count and allocated bytes per sample.
 
@@ -40,15 +40,15 @@ It fails if a page reads more than its rows plus one lookahead. The decoration s
 
 ## Name order
 
-This benchmark sorts 10,000 generated `NodeEntry` rows by name with each candidate name order, next to a plain byte comparison and the shipped `compare_nodes`. It runs three corpora: mixed ASCII and non-ASCII names, screenshot names that share a 16-byte prefix, and mostly non-ASCII names.
+This benchmark sorts 10,000 generated `NodeEntry` rows in the default name order through the `SortBy` stage, which derives each row's name key once into a shared buffer, and through repeated `compare_nodes` calls, which derive two keys per comparison. A plain byte comparison of names gives the floor. It runs three corpora: mixed ASCII and non-ASCII names, screenshot names that share a 16-byte prefix, and mostly non-ASCII names.
 
 ```bash
 cargo bench -p filer-core --bench name_order
 ```
 
-Before it times anything, the runner fails if a candidate is not a strict total order on a set of edge-case names, or if two candidates sort a corpus differently. A comparator that is not total can make the standard library sort panic and can skip or repeat rows across keyset continuations. `FILER_BENCH_ENTRIES`, `FILER_BENCH_SAMPLES`, and `FILER_BENCH_WARMUP` change the profile.
+Before it times anything, the runner fails if `compare_nodes` is not a strict total order on a set of edge-case names, or if `SortBy` and `compare_nodes` sort a corpus differently. A comparator that is not total can make the standard library sort panic and can skip or repeat rows across keyset continuations. `FILER_BENCH_ENTRIES`, `FILER_BENCH_SAMPLES`, and `FILER_BENCH_WARMUP` change the profile.
 
-[ADR 0002](../../../docs/adr/0002-default-name-order.md) records the run that chose the default name order.
+[ADR 0002](../../../docs/adr/0002-default-name-order.md) records the prototype run that chose the default name order.
 
 ## Baselines
 
