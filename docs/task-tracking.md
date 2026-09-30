@@ -413,8 +413,9 @@ When you resume another area, reactivate its parent and inspect the selected
 child's context and specification before implementation. An empty scoped queue
 calls for checking the other approved queue, refinement, or a progress report,
 not automatic expansion into unrelated work. The `ready` output sorts by
-priority and ID, not by this order. PIPELINE-009 and then PIPELINE-008 lead the
-core queue. The mutation-queue gate follows through CORE-035, REL-007, OPS-004,
+priority and ID, not by this order. PIPELINE-009, PIPELINE-010, and then
+PIPELINE-008 lead the core queue. The mutation-queue gate follows through
+CORE-035, REL-007, OPS-004,
 and OPS-005; triage REL-007, OPS-004, and OPS-005 before implementation. The
 initial benchmark slice and staged remediation follow. Dependency cleanup is
 optional lower-priority work. Update this scope when the active milestone
