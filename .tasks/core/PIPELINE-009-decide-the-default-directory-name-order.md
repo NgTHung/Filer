@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-009"
 title: "Decide the default directory name order"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Design"
 milestone: "0.3.1"
@@ -9,7 +9,7 @@ rules: ["PIPELINE-TRANSFORMS"]
 risk: "Medium"
 impact: "Changes the order that every sorted listing and ordered continuation uses."
 tags: ["pipeline", "sorting", "paging", "bug", "ready-for-agent"]
-last_updated: "2026-09-24"
+last_updated: 2026-09-30
 ---
 
 ## Summary
