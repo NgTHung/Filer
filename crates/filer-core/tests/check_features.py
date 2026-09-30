@@ -9,8 +9,17 @@ import tomllib
 
 
 def main():
-    root = Path(__file__).resolve().parents[2]
-    manifest = tomllib.loads((root / "filer-core/Cargo.toml").read_text())
+    crate = Path(__file__).resolve().parents[1]
+    manifest = tomllib.loads((crate / "Cargo.toml").read_text())
+    # Cargo reports the workspace root, so logs land in the shared target directory wherever the crate lives.
+    located = subprocess.run(
+        ["cargo", "locate-project", "--workspace", "--message-format", "plain"],
+        cwd=crate,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    root = Path(located.stdout.strip()).parent
     matrix = {
         "minimal": ["--no-default-features"],
         "default": [],
