@@ -94,8 +94,8 @@ impl KeyedSort {
     }
 }
 
-/// The last row a keyset continuation returned, with its name key derived
-/// once for the whole rewalk.
+/// The last row a keyset continuation returned, with its group and name keys
+/// derived once for the whole rewalk.
 pub(crate) struct KeysetBoundary {
     row: NodeEntry,
     group: Option<GroupSortKey>,
