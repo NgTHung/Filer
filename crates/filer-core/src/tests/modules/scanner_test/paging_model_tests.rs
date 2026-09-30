@@ -58,3 +58,37 @@ fn selection_stops_after_periodic_cancellation_check() {
     assert!(!completed);
     assert!(selection.total_matches < 1_000);
 }
+
+fn natural_row(name: &str) -> NodeEntry {
+    local_file_node(
+        format!("/tmp/natural/{name}"),
+        name,
+        NodeKind::File {
+            extension: Some("txt".into()),
+        },
+        0,
+        None,
+        NodeMeta::default(),
+    )
+}
+
+#[test]
+fn selection_keeps_rows_after_the_keyset_boundary_in_natural_name_order() {
+    let config = PipelineConfig::default();
+    let names = ["file10.txt", "File2.txt", "file1.txt", "file2.txt", "file02.txt", "Zeta.txt"];
+    let mut selection =
+        PageSelection::with_lookahead(3, 0, Some(natural_row("File2.txt")), &config);
+
+    assert!(selection.extend(names.map(natural_row), &ProviderCx::none()));
+
+    let selected = selection.finish();
+    assert_eq!(selected.total_matches, names.len());
+    assert_eq!(
+        selected
+            .entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["file2.txt", "file02.txt", "file10.txt", "Zeta.txt"]
+    );
+}

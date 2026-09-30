@@ -17,6 +17,7 @@ use std::cmp::Ordering;
 
 use crate::model::node::NodeEntry;
 use crate::pipeline::config::{GroupBy, PipelineConfig};
+use crate::pipeline::name_order::compare_names;
 use crate::pipeline::sort::{SortField, SortOrder};
 use crate::utils;
 use crate::vfs::provider::{ListingDetail, ListingOptions};
@@ -28,6 +29,19 @@ pub(crate) enum GroupSortKey {
 }
 
 pub fn compare_nodes(config: &PipelineConfig, left: &NodeEntry, right: &NodeEntry) -> Ordering {
+    compare_nodes_with(config, left, right, || {
+        compare_names(&left.name, &right.name)
+    })
+}
+
+/// Orders rows like [`compare_nodes`], taking the name order from `names` so
+/// bulk sorts can compare precomputed name keys. `names` runs at most once.
+pub(crate) fn compare_nodes_with(
+    config: &PipelineConfig,
+    left: &NodeEntry,
+    right: &NodeEntry,
+    names: impl FnOnce() -> Ordering,
+) -> Ordering {
     let group_order = group_sort_key(config, left).cmp(&group_sort_key(config, right));
     if group_order != Ordering::Equal {
         return group_order;
@@ -47,20 +61,24 @@ pub fn compare_nodes(config: &PipelineConfig, left: &NodeEntry, right: &NodeEntr
     }
 
     let field_order = match field {
-        SortField::Name | SortField::Type => left.name.cmp(&right.name),
-        SortField::Size => left.size.cmp(&right.size),
-        SortField::Modified => left.modified.cmp(&right.modified),
-        SortField::Created => left.created.cmp(&right.created),
-        SortField::Extension => left.extension().cmp(&right.extension()),
+        SortField::Name | SortField::Type => None,
+        SortField::Size => Some(left.size.cmp(&right.size)),
+        SortField::Modified => Some(left.modified.cmp(&right.modified)),
+        SortField::Created => Some(left.created.cmp(&right.created)),
+        SortField::Extension => Some(left.extension().cmp(&right.extension())),
     };
-    let field_order = match order {
-        SortOrder::Ascending => field_order,
-        SortOrder::Descending => field_order.reverse(),
+    let directed = |ordering: Ordering| match order {
+        SortOrder::Ascending => ordering,
+        SortOrder::Descending => ordering.reverse(),
     };
 
-    field_order
-        .then_with(|| left.name.cmp(&right.name))
-        .then_with(|| compare_locations(&left.location, &right.location))
+    // Name sorts reverse the whole name order when descending, while every
+    // other field breaks its ties by ascending name.
+    let row_order = match field_order {
+        None => directed(names()),
+        Some(field_order) => directed(field_order).then_with(names),
+    };
+    row_order.then_with(|| compare_locations(&left.location, &right.location))
 }
 
 fn compare_locations(

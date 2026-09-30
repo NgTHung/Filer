@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::node::NodeEntry;
-use crate::pipeline::{PipelineConfig, PipelineData, SortConfig, Stage, compare_nodes};
+use crate::pipeline::{KeyedSort, PipelineConfig, PipelineData, SortConfig, Stage};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -44,19 +44,20 @@ impl SortBy {
         Self { config }
     }
 
-    fn sort_nodes(&self, mut nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
-        nodes.sort_by(|a, b| compare_nodes(&self.config, a, b));
+    fn sort_nodes(&self, sorter: &mut KeyedSort, mut nodes: Vec<NodeEntry>) -> Vec<NodeEntry> {
+        sorter.sort(&self.config, &mut nodes);
         nodes
     }
 }
 
 impl Stage for SortBy {
     fn process(&self, input: PipelineData) -> PipelineData {
+        let mut sorter = KeyedSort::default();
         match input {
-            PipelineData::Flat(nodes) => PipelineData::Flat(self.sort_nodes(nodes)),
+            PipelineData::Flat(nodes) => PipelineData::Flat(self.sort_nodes(&mut sorter, nodes)),
             PipelineData::Grouped(mut grouped) => {
                 for group in &mut grouped.groups {
-                    group.nodes = self.sort_nodes(std::mem::take(&mut group.nodes));
+                    group.nodes = self.sort_nodes(&mut sorter, std::mem::take(&mut group.nodes));
                 }
                 PipelineData::Grouped(grouped)
             }

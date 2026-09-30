@@ -1,6 +1,8 @@
 pub mod config;
 pub mod filter;
 pub mod group;
+mod keyed_sort;
+pub(crate) mod name_order;
 mod order;
 pub mod sort;
 
@@ -12,6 +14,7 @@ use crate::model::query::QueryFilter;
 pub use config::{
     FilterConfig, GroupBy, GroupConfig, PipelineConfig, PipelinePagingMode, SortConfig,
 };
+pub(crate) use keyed_sort::{KeyedSort, KeysetBoundary};
 pub use order::compare_nodes;
 pub(crate) use order::effective_listing;
 

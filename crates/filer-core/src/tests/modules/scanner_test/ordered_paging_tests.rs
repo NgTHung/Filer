@@ -316,3 +316,123 @@ async fn test_snapshot_only_filter_pages_through_a_full_walk_in_comparator_order
     expected.sort();
     assert_eq!(names, expected[..10]);
 }
+
+/// Names whose natural order differs from byte order in case and digit runs,
+/// listed in natural order.
+fn natural_names(count: usize) -> Vec<String> {
+    (0..count)
+        .flat_map(|index| [format!("File{index}.txt"), format!("file{index}.txt")])
+        .collect()
+}
+
+fn natural_provider(path: &str, count: usize) -> MockProvider {
+    let provider = MockProvider::new();
+    for (size, name) in natural_names(count).iter().rev().enumerate() {
+        provider.add_file(make_file(name, path, size as u64, false));
+    }
+    provider
+}
+
+async fn walk_unretained_chain(
+    path: &str,
+    pipeline: &PipelineConfig,
+    limit: usize,
+) -> Vec<String> {
+    let provider = natural_provider(path, 20);
+    let sessions = crate::modules::scan::paging::PagingSessions::with_limits(8, 0);
+    let owner = SessionId::new();
+    let cx = crate::ProviderCx::none();
+
+    let mut seen = Vec::new();
+    let mut cursor = None;
+    loop {
+        let request = DirectoryPageRequest {
+            listing: ListingOptions::fast(),
+            limit,
+            cursor,
+        };
+        let PageLoad::Page(page) = sessions
+            .load_provider(&provider, Path::new(path), owner, request, pipeline, &cx)
+            .await
+            .expect("page should load")
+        else {
+            panic!("page load was cancelled");
+        };
+        seen.extend(page.entries.iter().map(|entry| entry.name.clone()));
+        match page.state.next_cursor {
+            Some(next) => cursor = Some(next),
+            None => return seen,
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_ordered_pages_keep_natural_name_order_across_the_retained_tail() {
+    let path = "/tmp/ordered-natural-retained";
+    let (cmd_tx, evt_rx) = spawn_scanner(natural_provider(path, 20));
+
+    let session = SessionId::new();
+    let mut seen: Vec<String> = Vec::new();
+    let mut load = crate::DirectoryLoadOptions::page(7);
+    loop {
+        request_page(&cmd_tx, path, session, sorted_pipeline(), load);
+        let (groups, page) = wait_for_page(&evt_rx, session).await;
+        seen.extend(page_names(&groups));
+        match page.next_cursor {
+            Some(cursor) => load = crate::DirectoryLoadOptions::page_after(7, cursor),
+            None => break,
+        }
+    }
+
+    assert_eq!(seen, natural_names(20));
+}
+
+#[tokio::test]
+async fn test_keyset_rewalk_keeps_natural_name_order_without_retention() {
+    let seen = walk_unretained_chain("/tmp/ordered-natural-keyset", &sorted_pipeline(), 7).await;
+
+    assert_eq!(
+        seen,
+        natural_names(20),
+        "a keyset rewalk must resume after the boundary in natural name order"
+    );
+}
+
+#[tokio::test]
+async fn test_keyset_rewalk_reverses_natural_name_order_when_descending() {
+    let pipeline = PipelineConfig::default().sort(SortField::Name, SortOrder::Descending, true);
+    let seen = walk_unretained_chain("/tmp/ordered-natural-descending", &pipeline, 7).await;
+
+    let mut expected = natural_names(20);
+    expected.reverse();
+    assert_eq!(seen, expected);
+}
+
+#[tokio::test]
+async fn test_sorted_page_load_reports_cancellation() {
+    let path = "/tmp/ordered-natural-cancel";
+    let provider = natural_provider(path, 20);
+    let sessions = crate::modules::scan::paging::PagingSessions::new();
+    let cancel = crate::CancelSignal::new();
+    cancel.cancel();
+    let cx = crate::ProviderCx::with_cancel(&cancel);
+
+    let load = sessions
+        .load_provider(
+            &provider,
+            Path::new(path),
+            SessionId::new(),
+            DirectoryPageRequest {
+                listing: ListingOptions::fast(),
+                limit: 7,
+                cursor: None,
+            },
+            &sorted_pipeline(),
+            &cx,
+        )
+        .await
+        .expect("a cancelled load should not fail");
+
+    assert!(matches!(load, PageLoad::Cancelled));
+    assert_eq!(sessions.retained_rows(), 0);
+}

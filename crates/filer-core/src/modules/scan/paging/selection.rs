@@ -12,7 +12,7 @@
 
 use crate::model::directory::DEFAULT_DIRECTORY_PAGE_SIZE;
 use crate::model::node::NodeEntry;
-use crate::pipeline::{Pipeline, PipelineConfig, compare_nodes};
+use crate::pipeline::{KeyedSort, KeysetBoundary, Pipeline, PipelineConfig};
 use crate::vfs::context::ProviderCx;
 
 const CANCELLATION_CHECK_INTERVAL: usize = 256;
@@ -34,7 +34,8 @@ pub(crate) struct PageSelection<'a> {
     retains: bool,
     window: usize,
     flush_at: usize,
-    after: Option<NodeEntry>,
+    after: Option<KeysetBoundary>,
+    sorter: KeyedSort,
     pipeline_config: &'a PipelineConfig,
     pipeline: Pipeline,
 }
@@ -60,7 +61,8 @@ impl<'a> PageSelection<'a> {
             // Trimming at twice the window amortizes each sort over at least a
             // window's worth of new rows.
             flush_at: window.saturating_mul(2),
-            after,
+            after: after.map(KeysetBoundary::new),
+            sorter: KeyedSort::default(),
             pipeline_config,
             pipeline: Pipeline::from_config(pipeline_config),
         }
@@ -83,8 +85,8 @@ impl<'a> PageSelection<'a> {
             self.total_matches += 1;
             if self
                 .after
-                .as_ref()
-                .is_some_and(|after| compare_nodes(self.pipeline_config, &entry, after).is_le())
+                .as_mut()
+                .is_some_and(|after| after.covers(self.pipeline_config, &entry))
             {
                 continue;
             }
@@ -98,8 +100,7 @@ impl<'a> PageSelection<'a> {
 
     /// Order the buffer and drop everything past the window.
     fn trim(&mut self) {
-        self.buffer
-            .sort_unstable_by(|left, right| compare_nodes(self.pipeline_config, left, right));
+        self.sorter.sort(self.pipeline_config, &mut self.buffer);
         if self.buffer.len() > self.window {
             self.buffer.truncate(self.window);
             self.overflowed = true;

@@ -51,6 +51,10 @@ impl FixtureProvider {
             entry("report-a.rs", 40, false, Some("rs")),
             entry("report-ab.rs", 50, false, Some("rs")),
             entry("README", 60, false, None),
+            entry("Report-10.rs", 70, false, Some("rs")),
+            entry("report-9.rs", 80, false, Some("rs")),
+            entry("Notes2.md", 90, false, Some("md")),
+            entry("notes02.md", 100, false, Some("md")),
         ];
         Self {
             entries: entries.into(),
@@ -342,4 +346,47 @@ async fn paged_sorted_grouped_output_matches_flat_pipeline() {
     core.shutdown()
         .await
         .expect("core should shut down after grouped parity check");
+}
+
+#[tokio::test]
+async fn paged_sorted_pages_match_flat_pipeline_in_both_directions() {
+    let provider = FixtureProvider::new();
+    let flat_entries = provider.entries.to_vec();
+    let (core, events, session) = start_core(provider).await;
+
+    for order in [SortOrder::Ascending, SortOrder::Descending] {
+        let config = PipelineConfig::default().sort(SortField::Name, order, true);
+        let expected = Pipeline::from_config(&config).execute_flat(flat_entries.clone());
+        let actual = load_all_pages(&core, &events, session, config).await;
+        assert_eq!(row_keys(&actual), row_keys(&expected), "{order:?} pages");
+    }
+
+    let names: Vec<String> = Pipeline::from_config(&PipelineConfig::default().sort(
+        SortField::Name,
+        SortOrder::Ascending,
+        true,
+    ))
+    .execute_flat(flat_entries)
+    .into_iter()
+    .map(|entry| entry.name)
+    .collect();
+    assert_eq!(
+        names,
+        vec![
+            ".hidden.rs",
+            "cache.tmp",
+            "notes.md",
+            "Notes2.md",
+            "notes02.md",
+            "README",
+            "report-9.rs",
+            "Report-10.rs",
+            "report-a.rs",
+            "report-ab.rs",
+            "visible.rs",
+        ]
+    );
+    core.shutdown()
+        .await
+        .expect("core should shut down after sorted parity checks");
 }
