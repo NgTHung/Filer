@@ -73,5 +73,9 @@ stats_alloc = "0.1.10"
 name = "large_directory"
 harness = false
 
+[[bench]]
+name = "name_order"
+harness = false
+
 [target.'cfg(unix)'.dependencies]
 users = "0.11"
