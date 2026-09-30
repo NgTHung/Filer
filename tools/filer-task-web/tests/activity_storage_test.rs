@@ -1,10 +1,13 @@
 use filer_task_web::storage::{ActivityFilter, NewActivity, Storage};
+use tempfile::TempDir;
 
-async fn open_storage() -> Storage {
-    let temp = tempfile::tempdir().expect("temp dir created");
-    Storage::open(temp.path().join("state.sqlite3"))
+// The caller keeps the directory alive, because each new pooled connection opens the database path again.
+async fn open_storage() -> (Storage, TempDir) {
+    let database = tempfile::tempdir().expect("database directory created");
+    let storage = Storage::open(database.path().join("state.sqlite3"))
         .await
-        .expect("storage opens")
+        .expect("storage opens");
+    (storage, database)
 }
 
 async fn record(
@@ -29,7 +32,7 @@ async fn record(
 
 #[tokio::test]
 async fn recording_a_committed_write_absorbs_a_storage_failure() {
-    let storage = open_storage().await;
+    let (storage, _database) = open_storage().await;
     storage.close().await;
 
     storage
@@ -54,7 +57,7 @@ async fn recording_a_committed_write_absorbs_a_storage_failure() {
 
 #[tokio::test]
 async fn list_activity_returns_newest_first() {
-    let storage = open_storage().await;
+    let (storage, _database) = open_storage().await;
     record(&storage, 1, "alpha", Some("core:CORE-001"), "task.create").await;
     record(&storage, 1, "alpha", Some("core:CORE-002"), "task.create").await;
     record(&storage, 1, "alpha", Some("core:CORE-003"), "task.create").await;
@@ -81,7 +84,7 @@ async fn list_activity_returns_newest_first() {
 
 #[tokio::test]
 async fn list_activity_filters_by_project() {
-    let storage = open_storage().await;
+    let (storage, _database) = open_storage().await;
     record(&storage, 1, "alpha", Some("core:CORE-001"), "task.create").await;
     record(&storage, 1, "beta", Some("web:WEB-001"), "task.create").await;
 
@@ -101,7 +104,7 @@ async fn list_activity_filters_by_project() {
 
 #[tokio::test]
 async fn list_activity_filters_by_task_id() {
-    let storage = open_storage().await;
+    let (storage, _database) = open_storage().await;
     record(&storage, 1, "alpha", Some("core:CORE-001"), "task.create").await;
     record(&storage, 1, "alpha", Some("core:CORE-001"), "task.done").await;
     record(&storage, 1, "alpha", Some("core:CORE-002"), "task.create").await;
@@ -125,7 +128,7 @@ async fn list_activity_filters_by_task_id() {
 
 #[tokio::test]
 async fn list_activity_paginates_with_limit_and_offset() {
-    let storage = open_storage().await;
+    let (storage, _database) = open_storage().await;
     for index in 0..5 {
         record(
             &storage,
@@ -158,7 +161,7 @@ async fn list_activity_paginates_with_limit_and_offset() {
 
 #[tokio::test]
 async fn recorded_activity_captures_actor_and_action() {
-    let storage = open_storage().await;
+    let (storage, _database) = open_storage().await;
     storage
         .record_activity(NewActivity {
             user_id: 7,
