@@ -1,7 +1,7 @@
 ---
 id: "PIPELINE-010"
 title: "Ship the natural default directory name order"
-status: "To Do"
+status: Done
 priority: "High"
 type: "Bug"
 milestone: "0.3.1"
@@ -10,7 +10,7 @@ rules: ["PIPELINE-TRANSFORMS"]
 risk: "Medium"
 impact: "Changes the order of every sorted listing and ordered continuation."
 tags: ["pipeline", "sorting", "paging", "bug", "ready-for-agent"]
-last_updated: "2026-09-30"
+last_updated: 2026-09-30
 ---
 
 ## Summary
@@ -19,9 +19,9 @@ Name sort compares raw bytes in crates/filer-core/src/pipeline/order.rs. ADR 000
 
 ## Acceptance Criteria
 
-- [ ] A new module under crates/filer-core/src/pipeline/ defines the name key, and tests cover every example pair in ADR 0002, including mixed case, digit runs, leading zeros, digit runs longer than 20 digits, and non-ASCII names.
-- [ ] A test proves the name order is a strict total order over every triple of an edge-case set that includes U+0130, the Kelvin sign, ß, and the empty name.
-- [ ] SortBy and PageSelection derive each row's name key once per sort pass into one shared buffer, and keyset continuations derive the boundary row's key once.
-- [ ] Tests prove descending Name is the exact reverse of ascending Name, and equal Size, Modified, Created, and Extension values fall back to ascending name order.
-- [ ] Regression tests prove flat and paged parity, grouped output, lookahead, continuation, and cancellation hold under the new order.
-- [ ] The name_order benchmark measures the shipped key path instead of its prototype candidates and reports no per-row key allocations, and a same-machine large_directory run records sorted first-page time and allocations before and after the change.
+- [x] A new module under crates/filer-core/src/pipeline/ defines the name key, and tests cover every example pair in ADR 0002, including mixed case, digit runs, leading zeros, digit runs longer than 20 digits, and non-ASCII names.
+- [x] A test proves the name order is a strict total order over every triple of an edge-case set that includes U+0130, the Kelvin sign, ß, and the empty name.
+- [x] SortBy and PageSelection derive each row's name key once per sort pass into one shared buffer, and keyset continuations derive the boundary row's key once.
+- [x] Tests prove descending Name is the exact reverse of ascending Name, and equal Size, Modified, Created, and Extension values fall back to ascending name order.
+- [x] Regression tests prove flat and paged parity, grouped output, lookahead, continuation, and cancellation hold under the new order.
+- [x] The name_order benchmark measures the shipped key path instead of its prototype candidates and reports no per-row key allocations, and a same-machine large_directory run records sorted first-page time and allocations before and after the change.
