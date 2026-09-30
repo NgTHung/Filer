@@ -9,9 +9,53 @@
 //! entries in 8 ms. Providers without a stream fall back to their own pages or
 //! one full listing.
 //!
-//! ```ignore
-//! let mut selection = PageSelection::with_lookahead(limit, lookahead, None, &config);
-//! let complete = walk_into(provider, path, listing, &mut selection, &cx).await?;
+//! Request a sorted page through the public scan command:
+//!
+//! ```
+//! use filer_core::{
+//!     Command, DirectoryLoadOptions, Event, FilerCore, Location, LocationRef,
+//!     PipelineConfig, RequestId,
+//! };
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # tokio::runtime::Runtime::new()?.block_on(async {
+//! # tokio::time::timeout(std::time::Duration::from_secs(5), async {
+//! # let directory = tempfile::tempdir()?;
+//! # std::fs::write(directory.path().join("file10.txt"), "")?;
+//! # std::fs::write(directory.path().join("file2.txt"), "")?;
+//! let core = FilerCore::with_defaults();
+//! let events = core.event_receiver();
+//! core.send(Command::Handshake)?;
+//! let session = loop {
+//!     if let Event::SessionCreated(session) = events.recv_async().await? {
+//!         break session;
+//!     }
+//! };
+//! let request = RequestId::new();
+//! core.send(Command::Scan {
+//!     location: LocationRef::from_location(&Location::local(directory.path())),
+//!     session,
+//!     pipeline: PipelineConfig::with_default_sort(),
+//!     load: DirectoryLoadOptions::page(1),
+//!     request,
+//! })?;
+//! loop {
+//!     match events.recv_async().await? {
+//!         Event::DirectoryPageLoaded { groups, request: loaded, .. } if loaded == request => {
+//!             assert_eq!(groups.groups[0].nodes[0].name, "file2.txt");
+//!             break;
+//!         }
+//!         Event::Error { message, request: Some(failed), .. } if failed == request => {
+//!             return Err(message.into());
+//!         }
+//!         _ => {}
+//!     }
+//! }
+//! core.shutdown().await?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! # }).await?
+//! # })
+//! # }
 //! ```
 
 use std::path::Path;
