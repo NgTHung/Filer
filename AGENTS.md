@@ -3,7 +3,7 @@
 Filer are file explorer fast alternative with some sprinkle of dev enviroment improvement. 
 This is a current WIP project. Proposed sweeping changes that improve long-term maintainability is encouraged.
 The project focus is filer-core. The approved exception is the minimal app-validation track under app:UI-011, which exercises public core contracts in a real window. Framework evaluation, the full app rewrite, task-web features, and ecosystem expansion remain deferred.
-Workspace crates live directly under the repository root. Read the root Cargo.toml before assuming crate paths.
+Product crates live under `crates/` and repository tooling lives under `tools/`. Read the root Cargo.toml before assuming crate paths.
 
 ## Core Priority
 ---

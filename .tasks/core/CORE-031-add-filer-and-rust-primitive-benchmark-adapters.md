@@ -16,7 +16,7 @@ last_updated: "2026-09-05"
 
 ## Summary
 
-Establish the first comparison through CORE-040 (isolated runner and Filer adapter), then CORE-041 (std::fs/Tokio adapters and reports). Consume CORE-039 protocol validation and flat fixtures. Keep benchmark dependencies under filer-core/benchmarks and outside production and normal development builds.
+Establish the first comparison through CORE-040 (isolated runner and Filer adapter), then CORE-041 (std::fs/Tokio adapters and reports). Consume CORE-039 protocol validation and flat fixtures. Keep benchmark dependencies under crates/filer-core/benchmarks and outside production and normal development builds.
 
 ## Acceptance Criteria
 

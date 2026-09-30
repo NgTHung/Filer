@@ -48,7 +48,7 @@ cargo bench -p filer-core --bench name_order
 
 Before it times anything, the runner fails if a candidate is not a strict total order on a set of edge-case names, or if two candidates sort a corpus differently. A comparator that is not total can make the standard library sort panic and can skip or repeat rows across keyset continuations. `FILER_BENCH_ENTRIES`, `FILER_BENCH_SAMPLES`, and `FILER_BENCH_WARMUP` change the profile.
 
-[ADR 0002](../../docs/adr/0002-default-name-order.md) records the run that chose the default name order.
+[ADR 0002](../../../docs/adr/0002-default-name-order.md) records the run that chose the default name order.
 
 ## Baselines
 

@@ -6,7 +6,7 @@
 
 Core owns sessions and command routing, navigation, directory scanning, search, file watching, previews, metadata, and file operations. It reaches files through provider contracts. It applies filters, sorting, and grouping in one pipeline. It correlates every result with the request that caused it, drops stale results, and invalidates caches after writes.
 
-Core does not render anything and depends on no UI framework. Extensions add providers, previews, metadata, and semantic output such as Git status through core-owned contracts, and each client decides how to show that output. The full rule set lives in [architecture invariants](../docs/architecture/invariants.md).
+Core does not render anything and depends on no UI framework. Extensions add providers, previews, metadata, and semantic output such as Git status through core-owned contracts, and each client decides how to show that output. The full rule set lives in [architecture invariants](../../docs/architecture/invariants.md).
 
 ## How a request flows
 
@@ -91,13 +91,13 @@ Run it with `cargo run -p filer-core --example navigate -- <directory>`.
 
 ```bash
 cargo test -p filer-core
-python3 filer-core/tests/check_features.py
+python3 crates/filer-core/tests/check_features.py
 ```
 
 The second command checks every feature combination. See [tests/README.md](tests/README.md) for its options and [benches/README.md](benches/README.md) for performance measurement.
 
 ## More detail
 
-- [Core API reference](../docs/core-api.md) covers commands, paging and cursors, cache invalidation, progress, and errors.
-- [CHANGELOG.md](../CHANGELOG.md) records removed contracts and how to migrate from them.
-- [CONTEXT.md](../CONTEXT.md) defines the domain terms.
+- [Core API reference](../../docs/core-api.md) covers commands, paging and cursors, cache invalidation, progress, and errors.
+- [CHANGELOG.md](../../CHANGELOG.md) records removed contracts and how to migrate from them.
+- [CONTEXT.md](../../CONTEXT.md) defines the domain terms.

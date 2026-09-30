@@ -6,7 +6,7 @@
 import { ApiError } from "../api/client.js";
 
 // Codes the /tasks list endpoint returns when a filter value itself is invalid,
-// mapped to the filter-menu field that caused them (see filer-task-web/src/error.rs).
+// mapped to the filter-menu field that caused them (see tools/filer-task-web/src/error.rs).
 export const REJECTABLE_CODES = {
   tag_rejected: "tag",
   ambiguous_reference: "parent",

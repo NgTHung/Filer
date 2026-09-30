@@ -9,11 +9,11 @@ not measure an adapter.
 Run these commands from the repository root:
 
 ```bash
-cargo fmt --manifest-path filer-core/benchmarks/Cargo.toml --all -- --check
-cargo check --manifest-path filer-core/benchmarks/Cargo.toml --locked --all-targets
-cargo clippy --manifest-path filer-core/benchmarks/Cargo.toml --locked --all-targets -- -D warnings
-cargo test --manifest-path filer-core/benchmarks/Cargo.toml --locked --all-targets
-cargo test --manifest-path filer-core/benchmarks/Cargo.toml --locked --doc
+cargo fmt --manifest-path crates/filer-core/benchmarks/Cargo.toml --all -- --check
+cargo check --manifest-path crates/filer-core/benchmarks/Cargo.toml --locked --all-targets
+cargo clippy --manifest-path crates/filer-core/benchmarks/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path crates/filer-core/benchmarks/Cargo.toml --locked --all-targets
+cargo test --manifest-path crates/filer-core/benchmarks/Cargo.toml --locked --doc
 ```
 
 The all-targets command includes the real flat-100k fixture preparation test.

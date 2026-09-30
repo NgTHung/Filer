@@ -892,7 +892,7 @@ results when a dependency, fixture, protocol, or machine profile changes.
 ## Implementation Boundary
 
 Place the comparison runner and adapters in an isolated benchmark package under
-`filer-core/benchmarks/`. Keep its dependencies out of Filer-core production
+`crates/filer-core/benchmarks/`. Keep its dependencies out of Filer-core production
 and normal dev dependency graphs.
 
 The 0.3.1 stages are:

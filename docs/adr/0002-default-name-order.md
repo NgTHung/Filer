@@ -14,7 +14,7 @@ Each step runs only when the previous step ties.
 1. Main key. Each character compares by its `char::to_lowercase` form. A run of ASCII digits compares as one number by value, without parsing, so leading zeros are ignored and runs of any length order correctly.
 2. Leading zeros. Aligned digit runs with fewer leading zeros sort first.
 3. Raw bytes. Names that differ only in case get a fixed order, uppercase first.
-4. Location. The existing tie-breaker in [`order.rs`](../../filer-core/src/pipeline/order.rs) stays last, because a provider can report two rows with the same name, such as duplicate archive members.
+4. Location. The existing tie-breaker in [`order.rs`](../../crates/filer-core/src/pipeline/order.rs) stays last, because a provider can report two rows with the same name, such as duplicate archive members.
 
 A digit run sorts where digit characters sit, so space, `-`, and `.` sort before numbers, and `_` and letters sort after them. We lowercase instead of uppercase because only `İ` (U+0130) lowercases to two characters, while 102 characters uppercase to several, and no character lowercases to a digit.
 
@@ -47,13 +47,13 @@ A 10,000-row sort makes about 140,000 comparisons, so `SortBy` and `PageSelectio
 
 ## Cursors and continuations
 
-A keyset rewalk keeps only rows that sort after the last row returned ([`selection.rs:87`](../../filer-core/src/modules/scan/paging/selection.rs)), using the comparison that sorted the page ([`selection.rs:102`](../../filer-core/src/modules/scan/paging/selection.rs)). Rows are neither skipped nor repeated only if distinct rows never compare equal and the order is transitive. The steps end in raw bytes and location, so distinct rows always differ. The rewalk derives the boundary row's key once. Since Rust 1.81, the standard sorts may panic on a comparator that is not a total order, so the implementation must test every triple of an edge-case name set.
+A keyset rewalk keeps only rows that sort after the last row returned ([`selection.rs:87`](../../crates/filer-core/src/modules/scan/paging/selection.rs)), using the comparison that sorted the page ([`selection.rs:102`](../../crates/filer-core/src/modules/scan/paging/selection.rs)). Rows are neither skipped nor repeated only if distinct rows never compare equal and the order is transitive. The steps end in raw bytes and location, so distinct rows always differ. The rewalk derives the boundary row's key once. Since Rust 1.81, the standard sorts may panic on a comparator that is not a total order, so the implementation must test every triple of an edge-case name set.
 
-[Directory cursors](../../CONTEXT.md) live in memory and are single-use, so the new order invalidates no state across restarts. A later comparison mode must travel in `PipelineConfig`, because the continuation check rejects a cursor whose stored pipeline differs from the request ([`paging/mod.rs:484`](../../filer-core/src/modules/scan/paging/mod.rs)).
+[Directory cursors](../../CONTEXT.md) live in memory and are single-use, so the new order invalidates no state across restarts. A later comparison mode must travel in `PipelineConfig`, because the continuation check rejects a cursor whose stored pipeline differs from the request ([`paging/mod.rs:484`](../../crates/filer-core/src/modules/scan/paging/mod.rs)).
 
 ## Cost
 
-The [`name_order` benchmark](../../filer-core/benches/README.md) sorts 10,000 generated `NodeEntry` rows after proving each candidate is a total order and all candidates agree. The run used revision `43550a0`, 100 samples, 5 warmups, an Intel Core i7-11800H on Linux 6.12.107, and rustc 1.98.1 (`cargo bench -q -p filer-core --bench name_order`).
+The [`name_order` benchmark](../../crates/filer-core/benches/README.md) sorts 10,000 generated `NodeEntry` rows after proving each candidate is a total order and all candidates agree. The run used revision `43550a0`, 100 samples, 5 warmups, an Intel Core i7-11800H on Linux 6.12.107, and rustc 1.98.1 (`cargo bench -q -p filer-core --bench name_order`).
 
 | Candidate, median ms | Mixed | Shared prefix | Non-ASCII | Allocations |
 |---|---:|---:|---:|---:|

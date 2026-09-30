@@ -10,7 +10,7 @@ The app does not compile against the current `filer-core` API. Its source uses p
 cargo build --workspace --exclude filer-app
 ```
 
-A minimal validation client that uses the current `Location` contracts replaces it first. Its scope is one window, folder browsing with paging, and asynchronous Git decorations. The [app architecture](../docs/architecture/filer-app.md#active-validation-track) defines that client, and `.tasks/app` tracks its progress.
+A minimal validation client that uses the current `Location` contracts replaces it first. Its scope is one window, folder browsing with paging, and asynchronous Git decorations. The [app architecture](../../docs/architecture/filer-app.md#active-validation-track) defines that client, and `.tasks/app` tracks its progress.
 
 ## Design direction
 
@@ -26,6 +26,6 @@ A bug that shows a contract problem, such as stale search results, duplicate dir
 
 ## More detail
 
-- [App architecture](../docs/architecture/filer-app.md) defines ownership boundaries, state, and the framework adapter contract.
+- [App architecture](../../docs/architecture/filer-app.md) defines ownership boundaries, state, and the framework adapter contract.
 - [ROADMAP.md](ROADMAP.md) lists the product features the app should reach.
-- [Core API reference](../docs/core-api.md) describes the commands and events the app consumes.
+- [Core API reference](../../docs/core-api.md) describes the commands and events the app consumes.

@@ -68,4 +68,4 @@ Deferrable only with recorded rationale in this file:
 
 ## Reconciliation evidence
 
-On 2026-09-05, `cargo test -q -p filer-core --test large_directory_paging_test` and `cargo test -q -p filer-core decoration --lib` passed. The baseline in filer-core/benches/baselines/2026-09-04-linux-i7-11800h-btrfs.md records first and next pages, snapshot-only sorting, and active Git overhead. The portable decoration gate proves independent event delivery; it does not promise zero CPU contention. CORE-017, CORE-018, PIPELINE-003, and CORE-028 have completed task criteria and committed implementation evidence.
+On 2026-09-05, `cargo test -q -p filer-core --test large_directory_paging_test` and `cargo test -q -p filer-core decoration --lib` passed. The baseline in crates/filer-core/benches/baselines/2026-09-04-linux-i7-11800h-btrfs.md records first and next pages, snapshot-only sorting, and active Git overhead. The portable decoration gate proves independent event delivery; it does not promise zero CPU contention. CORE-017, CORE-018, PIPELINE-003, and CORE-028 have completed task criteria and committed implementation evidence.

@@ -3,11 +3,11 @@
 Run the feature matrix from any directory with Python 3.11 or newer:
 
 ```bash
-python3 filer-core/tests/check_features.py
+python3 crates/filer-core/tests/check_features.py
 ```
 
 Use the script's absolute path when you run it outside the repository root.
-The script reads filer-core/Cargo.toml, so new feature names enter the matrix
+The script reads the crate's Cargo.toml, so new feature names enter the matrix
 automatically. It checks minimal and default builds, every non-default feature
 with defaults disabled, defaults with preview-code or preview, and all features.
 
@@ -26,9 +26,9 @@ evidence; they are evidence of one run, not a new minimum supported version.
 You can inspect or narrow the matrix:
 
 ```bash
-python3 filer-core/tests/check_features.py --list
-python3 filer-core/tests/check_features.py --case minimal --phase check
-python3 filer-core/tests/check_features.py --case preview-code --phase test --phase clippy
+python3 crates/filer-core/tests/check_features.py --list
+python3 crates/filer-core/tests/check_features.py --case minimal --phase check
+python3 crates/filer-core/tests/check_features.py --case preview-code --phase test --phase clippy
 ```
 
 The script prints each command and its result. Logs go to target/feature-matrix

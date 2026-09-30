@@ -5,7 +5,7 @@ engineering roadmap for `filer-core` and broader crate milestones; this document
 tracks the final product shape of the user-facing app.
 
 Active work is app:UI-011 and its staged validation tasks alongside core 0.3.1.
-See [the validation scope](../docs/architecture/filer-app.md#active-validation-track).
+See [the validation scope](../../docs/architecture/filer-app.md#active-validation-track).
 The checklist below records the legacy baseline and longer-term product scope;
 `.tasks/app` owns current status. Full framework evaluation remains deferred.
 

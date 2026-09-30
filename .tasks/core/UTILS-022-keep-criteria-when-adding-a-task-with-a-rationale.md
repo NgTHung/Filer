@@ -12,7 +12,7 @@ last_updated: "2026-09-23"
 
 ## Summary
 
-render_new_task in taskroot/src/lifecycle.rs returns right after writing the Rationale section, so the criteria heading and every --criterion or --checked-criterion item are never written. This affects every task type and import through NewTask. Since add reports success, the task is left on disk and fails validation with a missing criteria section. Render the criteria section before Rationale, matching the section order of existing tasks, and keep Blocked Reason placement unchanged.
+render_new_task in tools/taskroot/src/lifecycle.rs returns right after writing the Rationale section, so the criteria heading and every --criterion or --checked-criterion item are never written. This affects every task type and import through NewTask. Since add reports success, the task is left on disk and fails validation with a missing criteria section. Render the criteria section before Rationale, matching the section order of existing tasks, and keep Blocked Reason placement unchanged.
 
 ## Acceptance Criteria
 

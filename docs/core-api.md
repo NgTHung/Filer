@@ -1,6 +1,6 @@
 # Core API Reference
 
-This page describes how `filer-core` behaves at its public boundary: which commands exist, how directory pages and cursors work, when caches drop entries, and how errors reach a client. Read the [crate README](../filer-core/README.md) first for the overall model. Use this page when you build a client or change a contract.
+This page describes how `filer-core` behaves at its public boundary: which commands exist, how directory pages and cursors work, when caches drop entries, and how errors reach a client. Read the [crate README](../crates/filer-core/README.md) first for the overall model. Use this page when you build a client or change a contract.
 
 ## Commands
 

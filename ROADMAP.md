@@ -1,8 +1,8 @@
 # Filer Core Roadmap
 
 This roadmap tracks the core engine and shared project architecture. The desktop
-app roadmap lives in `filer-app/ROADMAP.md`; the extension and sync contract
-roadmap lives in `filer-ecosystem/ROADMAP.md`.
+app roadmap lives in `crates/filer-app/ROADMAP.md`; the extension and sync contract
+roadmap lives in `crates/filer-ecosystem/ROADMAP.md`.
 
 Current milestone: `0.3.1`, Local excellence. Core contract stabilization in
 `0.3.0` is complete. Use the scoped queue in
