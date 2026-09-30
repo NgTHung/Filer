@@ -11,8 +11,9 @@
 //! assert!(DirectoryLoadOptions::page(256).is_paged());
 //! ```
 
+mod support;
+
 use std::alloc::System;
-use std::error::Error;
 use std::fs::{self, File};
 use std::future::Future;
 use std::io;
@@ -32,6 +33,7 @@ use filer_core::{
     Event, FilerCore, LocalFs, Location, LocationRef, PipelineConfig, RequestId,
 };
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
+use support::{BenchResult, CountSummary, Summary, millis, read_positive_usize};
 use tempfile::TempDir;
 use tokio::sync::Notify;
 
@@ -43,8 +45,6 @@ const DEFAULT_PAGE_SIZE: usize = 256;
 const DEFAULT_SAMPLES: usize = 20;
 const DEFAULT_WARMUP: usize = 3;
 const EVENT_TIMEOUT: Duration = Duration::from_secs(30);
-
-type BenchResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[derive(Clone, Copy)]
 enum Scenario {
@@ -453,55 +453,6 @@ async fn measure(operation: impl Future<Output = BenchResult<usize>>) -> BenchRe
     })
 }
 
-struct Summary {
-    min: Duration,
-    median: Duration,
-    p95: Duration,
-    max: Duration,
-    mean: Duration,
-}
-
-impl Summary {
-    fn from_samples(samples: &mut [Duration]) -> BenchResult<Self> {
-        if samples.is_empty() {
-            return Err(io::Error::other("benchmark produced no samples").into());
-        }
-        samples.sort_unstable();
-        let median = samples[samples.len() / 2];
-        let p95_index = ((samples.len() * 95).div_ceil(100)).saturating_sub(1);
-        let total_nanos = samples
-            .iter()
-            .map(Duration::as_nanos)
-            .fold(0u128, u128::saturating_add);
-        let mean_nanos = total_nanos / samples.len() as u128;
-        let mean_nanos = u64::try_from(mean_nanos)
-            .map_err(|_| io::Error::other("mean duration exceeded u64 nanoseconds"))?;
-        Ok(Self {
-            min: samples[0],
-            median,
-            p95: samples[p95_index],
-            max: samples[samples.len() - 1],
-            mean: Duration::from_nanos(mean_nanos),
-        })
-    }
-}
-
-struct CountSummary {
-    median: usize,
-}
-
-impl CountSummary {
-    fn from_samples(samples: &mut [usize]) -> BenchResult<Self> {
-        if samples.is_empty() {
-            return Err(io::Error::other("benchmark produced no allocation samples").into());
-        }
-        samples.sort_unstable();
-        Ok(Self {
-            median: samples[samples.len() / 2],
-        })
-    }
-}
-
 #[tokio::main]
 async fn main() -> BenchResult<()> {
     let settings = Settings::from_environment()?;
@@ -592,17 +543,6 @@ fn initialize_git_repository(path: &Path) -> BenchResult<()> {
     .into())
 }
 
-fn read_positive_usize(name: &str, default: usize) -> BenchResult<usize> {
-    let Ok(value) = std::env::var(name) else {
-        return Ok(default);
-    };
-    let parsed = value.parse::<usize>()?;
-    if parsed == 0 {
-        return Err(io::Error::other(format!("{name} must be greater than zero")).into());
-    }
-    Ok(parsed)
-}
-
 fn print_profile(settings: &Settings, fixture_path: &Path, fixture_duration: Duration) {
     let logical_cpus = std::thread::available_parallelism()
         .map(|value| value.get().to_string())
@@ -620,8 +560,4 @@ fn print_profile(settings: &Settings, fixture_path: &Path, fixture_duration: Dur
         fixture_path.parent().unwrap_or(fixture_path).display(),
         millis(fixture_duration),
     );
-}
-
-fn millis(duration: Duration) -> f64 {
-    duration.as_secs_f64() * 1_000.0
 }
