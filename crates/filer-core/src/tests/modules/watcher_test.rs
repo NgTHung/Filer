@@ -311,6 +311,10 @@ async fn test_watch_location_segmented_route_emits_request_error() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_watch_command() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -360,6 +364,10 @@ async fn test_watch_command() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_unwatch_command() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -413,6 +421,10 @@ async fn test_unwatch_command() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_fs_changed_create() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -457,6 +469,10 @@ async fn test_fs_changed_create() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_fs_changed_modify() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -507,6 +523,10 @@ async fn test_fs_changed_modify() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_fs_changed_delete() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -557,6 +577,10 @@ async fn test_fs_changed_delete() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_debouncing_rapid_changes() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -663,6 +687,10 @@ async fn test_unwatch_session() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_multiple_sessions_watching_same_path() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();
@@ -723,6 +751,10 @@ async fn test_multiple_sessions_watching_same_path() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "FSEvents reports /private paths the watcher drops; core:REL-013"
+)]
 async fn test_watch_subdirectories() {
     let (cmd_tx, cmd_rx) = flume::unbounded();
     let (evt_tx, evt_rx) = flume::unbounded();

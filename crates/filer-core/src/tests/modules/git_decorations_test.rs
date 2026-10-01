@@ -4,10 +4,6 @@ use std::time::Duration;
 use std::{fs, process::Command as ProcessCommand};
 
 #[cfg(unix)]
-use std::ffi::OsString;
-#[cfg(unix)]
-use std::os::unix::ffi::OsStringExt;
-#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
@@ -655,9 +651,13 @@ async fn git_cli_preserves_repository_path_whitespace() {
     assert_eq!(result.decorations[0].state, FileDecorationState::Untracked);
 }
 
-#[cfg(unix)]
+// Apple filesystems reject names that are not UTF-8, so the case cannot arise there.
+#[cfg(all(unix, not(target_vendor = "apple")))]
 #[tokio::test]
 async fn git_cli_preserves_non_utf8_filenames() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
     let temp = TempDir::new().unwrap();
     run_git(temp.path(), ["init", "-q"]);
     let name = OsString::from_vec(b"non_utf8_\xff.txt".to_vec());

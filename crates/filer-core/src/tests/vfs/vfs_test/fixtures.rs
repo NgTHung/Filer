@@ -486,6 +486,10 @@ async fn test_local_fs_exists_directory() {
 }
 
 #[tokio::test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "metadata canonicalizes /var to /private/var; core:VFS-003"
+)]
 async fn test_local_fs_metadata() {
     let (fs, dir) = local_fs();
 
