@@ -1,7 +1,7 @@
 ---
 id: "VFS-002"
 title: "Enumerate local directory pages in one blocking task"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Refactor"
 milestone: "0.3.1"
@@ -9,7 +9,7 @@ rules: ["PROVIDER-ACCESS", "ACTOR-LONG-WORK"]
 risk: "Medium"
 impact: "Removes per-entry blocking-pool hops from metadata listings and prepares a native Windows enumeration path."
 tags: ["core", "performance", "vfs", "enhancement", "ready-for-agent"]
-last_updated: "2026-09-23"
+last_updated: 2026-10-01
 ---
 
 ## Summary
