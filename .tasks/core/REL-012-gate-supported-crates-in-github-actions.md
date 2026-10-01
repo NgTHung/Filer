@@ -1,7 +1,7 @@
 ---
 id: "REL-012"
 title: "Gate supported crates in GitHub Actions"
-status: In Progress
+status: Done
 priority: "High"
 type: "TestDebt"
 risk: "Low"
@@ -16,10 +16,10 @@ The repository has no checked-in CI, so its tests have only run on maintainers' 
 
 ## Acceptance Criteria
 
-- [ ] Pushes to main and pull requests run Clippy with warnings denied and tests with --locked for the root workspace except filer-app on Linux, Windows, and macOS.
+- [x] Pushes to main and pull requests run Clippy with warnings denied and tests with --locked for the root workspace except filer-app on Linux, Windows, and macOS.
 - [x] The workflow runs the filer-core feature checker's minimal and default cases, rustfmt, the benchmark protocol package checks, and taskroot validate.
 - [x] The filer-app exclusion is explained in the workflow and points at UI-012.
-- [ ] A first run on GitHub passes, or each platform failure it exposes is fixed or tracked in its own task.
+- [x] A first run on GitHub passes, or each platform failure it exposes is fixed or tracked in its own task.
 
 ## Rationale
 
