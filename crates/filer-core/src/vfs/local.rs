@@ -4,17 +4,18 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::errors::CoreError;
-use crate::model::directory::{
-    DirectoryCursor, DirectoryPageRequest, DirectoryPageResult, DirectoryPageState,
-};
+use crate::model::directory::{DirectoryPageRequest, DirectoryPageResult};
 use crate::model::node::NodeEntry;
 use crate::vfs::context::ProviderCx;
 use crate::vfs::listing_stream::DirectoryStream;
-use crate::vfs::local_listing::{LocalListingStream, read_entry};
+use crate::vfs::local_listing::{LocalListingStream, list_all, list_offset_page};
 use crate::vfs::provider::{
     Capabilities, FsProvider, ListingDetail, ListingOptions, ProviderPaging, ReadSeek,
     parse_offset_cursor, validate_page_limit,
 };
+
+/// Scheme of local filesystem locations.
+pub(crate) const LOCAL_SCHEME: &str = "file";
 
 /// Local filesystem provider
 pub struct LocalFs {}
@@ -41,7 +42,7 @@ impl Default for LocalFs {
 #[async_trait]
 impl FsProvider for LocalFs {
     fn scheme(&self) -> &'static str {
-        "file"
+        LOCAL_SCHEME
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -73,22 +74,7 @@ impl FsProvider for LocalFs {
     /// Fields that require stat (`size`, timestamps, permissions) are
     /// left at zero/default. Use `list_with_meta` when those fields are needed.
     async fn list(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<NodeEntry>, CoreError> {
-        Self::check_cancel(cx)?;
-        let mut dir = tokio::fs::read_dir(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let mut res = Vec::new();
-        while let Some(entry) = dir
-            .next_entry()
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
-        {
-            Self::check_cancel(cx)?;
-            if let Some(entry) = read_entry(entry, ListingDetail::Fast).await {
-                res.push(entry);
-            }
-        }
-        Ok(res)
+        list_all(path, ListingDetail::Fast, cx).await
     }
 
     async fn list_with_options(
@@ -97,10 +83,7 @@ impl FsProvider for LocalFs {
         options: ListingOptions,
         cx: &ProviderCx<'_>,
     ) -> Result<Vec<NodeEntry>, CoreError> {
-        match options.detail {
-            ListingDetail::Fast => self.list(path, cx).await,
-            ListingDetail::Metadata => self.list_with_meta(path, cx).await,
-        }
+        list_all(path, options.detail, cx).await
     }
 
     async fn list_page(
@@ -112,45 +95,7 @@ impl FsProvider for LocalFs {
         Self::check_cancel(cx)?;
         validate_page_limit(request.limit)?;
         let start = parse_offset_cursor(request.cursor.as_ref())?;
-        let mut dir = tokio::fs::read_dir(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let mut seen = 0usize;
-        let mut entries = Vec::new();
-        let mut has_more = false;
-
-        while let Some(entry) = dir
-            .next_entry()
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
-        {
-            Self::check_cancel(cx)?;
-            if seen < start {
-                seen += 1;
-                continue;
-            }
-
-            if entries.len() >= request.limit {
-                has_more = true;
-                break;
-            }
-
-            if let Some(entry) = read_entry(entry, request.listing.detail).await {
-                entries.push(entry);
-            }
-            seen += 1;
-        }
-
-        let state = if has_more {
-            DirectoryPageState::partial(
-                entries.len(),
-                None,
-                DirectoryCursor((start + entries.len()).to_string()),
-            )
-        } else {
-            DirectoryPageState::complete(entries.len(), None)
-        };
-        Ok(DirectoryPageResult { entries, state })
+        list_offset_page(path, request.listing.detail, start, request.limit, cx).await
     }
 
     async fn read(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
@@ -304,21 +249,6 @@ impl LocalFs {
         path: &Path,
         cx: &ProviderCx<'_>,
     ) -> Result<Vec<NodeEntry>, CoreError> {
-        Self::check_cancel(cx)?;
-        let mut dir = tokio::fs::read_dir(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let mut res = Vec::new();
-        while let Some(entry) = dir
-            .next_entry()
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?
-        {
-            Self::check_cancel(cx)?;
-            if let Some(entry) = read_entry(entry, ListingDetail::Metadata).await {
-                res.push(entry);
-            }
-        }
-        Ok(res)
+        list_all(path, ListingDetail::Metadata, cx).await
     }
 }
