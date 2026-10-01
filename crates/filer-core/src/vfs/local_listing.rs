@@ -42,9 +42,7 @@ use std::time::Instant;
 
 use crate::errors::CoreError;
 use crate::model::cancel::CancelSignal;
-use crate::model::directory::{
-    DEFAULT_DIRECTORY_PAGE_SIZE, DirectoryCursor, DirectoryPageResult, DirectoryPageState,
-};
+use crate::model::directory::{DirectoryCursor, DirectoryPageResult, DirectoryPageState};
 use crate::model::node::NodeEntry;
 use crate::vfs::context::ProviderCx;
 use crate::vfs::listing_stream::{DirectoryStream, ListingBatch};
@@ -93,7 +91,12 @@ pub(crate) struct BatchRead {
     pub(crate) end_of_directory: bool,
 }
 
-/// Read up to `max` rows from `dir` on the calling thread.
+/// The most rows a batch reserves up front, because a caller-supplied size can
+/// far exceed what the directory holds.
+const MAX_PREALLOCATED_ROWS: usize = 4_096;
+
+/// Read up to `max` rows from `dir` on the calling thread, or every remaining
+/// row when `max` is `None`.
 ///
 /// Callers run this inside a blocking task, which is why it polls `stop`
 /// before every entry.
@@ -101,12 +104,12 @@ pub(crate) fn read_batch(
     dir: &mut ReadDir,
     path: &Path,
     detail: ListingDetail,
-    max: usize,
+    max: Option<usize>,
     stop: &ListingStop,
 ) -> Result<BatchRead, CoreError> {
-    let mut entries = Vec::with_capacity(max.min(DEFAULT_DIRECTORY_PAGE_SIZE));
+    let mut entries = Vec::with_capacity(max.map_or(0, |max| max.min(MAX_PREALLOCATED_ROWS)));
     let mut consumed = 0;
-    while entries.len() < max {
+    while max.is_none_or(|max| entries.len() < max) {
         stop.check()?;
         let Some(next) = dir.next() else {
             return Ok(BatchRead {
@@ -175,7 +178,7 @@ pub(crate) async fn list_all(
     let path = path.to_path_buf();
     run_blocking(move || {
         let mut dir = open_dir(&path)?;
-        Ok(read_batch(&mut dir, &path, detail, usize::MAX, &stop)?.entries)
+        Ok(read_batch(&mut dir, &path, detail, None, &stop)?.entries)
     })
     .await
 }
@@ -201,7 +204,7 @@ pub(crate) async fn list_offset_page(
             stop.check()?;
             skipped.map_err(io_error)?;
         }
-        let batch = read_batch(&mut dir, &path, detail, limit, &stop)?;
+        let batch = read_batch(&mut dir, &path, detail, Some(limit), &stop)?;
         // One raw entry past the page proves a continuation exists.
         let has_more =
             !batch.end_of_directory && dir.next().transpose().map_err(io_error)?.is_some();
@@ -273,7 +276,7 @@ impl DirectoryStream for LocalListingStream {
         let path = Arc::clone(&self.path);
         let detail = self.detail;
         let (dir, batch) = run_blocking(move || {
-            let batch = read_batch(&mut dir, &path, detail, max, &stop)?;
+            let batch = read_batch(&mut dir, &path, detail, Some(max), &stop)?;
             Ok((dir, batch))
         })
         .await?;

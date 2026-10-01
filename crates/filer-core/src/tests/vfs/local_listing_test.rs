@@ -383,8 +383,13 @@ fn test_local_listing_batch_stops_on_cancellation_inside_the_blocking_read() {
     let stop = ListingStop::new(&ProviderCx::with_cancel(&cancel));
     let mut read_dir = std::fs::read_dir(dir.path()).unwrap();
 
-    let Err(error) = read_batch(&mut read_dir, dir.path(), ListingDetail::Metadata, 4, &stop)
-    else {
+    let Err(error) = read_batch(
+        &mut read_dir,
+        dir.path(),
+        ListingDetail::Metadata,
+        Some(4),
+        &stop,
+    ) else {
         panic!("a cancelled batch should stop");
     };
 
@@ -397,8 +402,13 @@ fn test_local_listing_batch_stops_at_the_deadline_inside_the_blocking_read() {
     let stop = ListingStop::new(&ProviderCx::none().with_deadline(Instant::now()));
     let mut read_dir = std::fs::read_dir(dir.path()).unwrap();
 
-    let Err(error) = read_batch(&mut read_dir, dir.path(), ListingDetail::Metadata, 4, &stop)
-    else {
+    let Err(error) = read_batch(
+        &mut read_dir,
+        dir.path(),
+        ListingDetail::Metadata,
+        Some(4),
+        &stop,
+    ) else {
         panic!("a batch past its deadline should stop");
     };
 
