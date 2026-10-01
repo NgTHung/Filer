@@ -19,7 +19,7 @@ LocalFs lists through tokio::fs::read_dir. Metadata listings call DirEntry::meta
 ## Acceptance Criteria
 
 - [x] Fast and Metadata page listings enumerate and read metadata for one page inside one blocking task with no per-entry blocking hop.
-- [ ] Tests prove row kind, size, timestamps, hidden state, and symlink or junction classification match current behavior on Linux and Windows, including cancellation and cursor continuation.
+- [x] Tests prove row kind, size, timestamps, hidden state, and symlink or junction classification match current behavior on Linux and Windows, including cancellation and cursor continuation.
 - [ ] Same-machine before/after runs on Windows NTFS and Linux record Metadata first-page time and allocations.
 - [ ] A native Windows enumeration path and its dependency land only when the Windows benchmark shows a gain over std enumeration in one blocking task; otherwise the measured result is recorded and no dependency is added.
 
