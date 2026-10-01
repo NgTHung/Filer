@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Incremental artifacts only bloat the cache on one-shot CI builds.
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      # Windows checkouts default to CRLF, which changes fixture bytes and hashes.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # filer-app targets core APIs that no longer exist and stays out of the
+      # gate until UI-012 gives the app isolated validation targets.
+      - name: Clippy
+        run: cargo clippy --locked --workspace --exclude filer-app --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --locked --workspace --exclude filer-app --all-features
+
+  features:
+    name: filer-core feature cases
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # The test matrix already covers all features, so this job checks the
+      # builds it does not: no optional features, and the default set.
+      - name: Feature checker
+        run: python3 crates/filer-core/tests/check_features.py --case minimal --case default
+
+  repository:
+    name: Format, tasks, and benchmark protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BENCHMARKS: crates/filer-core/benchmarks/Cargo.toml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            crates/filer-core/benchmarks
+      - name: Rustfmt
+        run: cargo fmt --all --check
+      - name: Validate tasks
+        run: cargo run --locked -p taskroot -- validate
+      # The benchmark protocol package has its own workspace and lockfile.
+      - name: Benchmark protocol format
+        run: cargo fmt --manifest-path "$BENCHMARKS" --all --check
+      - name: Benchmark protocol clippy
+        run: cargo clippy --manifest-path "$BENCHMARKS" --locked --all-targets -- -D warnings
+      - name: Benchmark protocol tests
+        run: |
+          cargo test --manifest-path "$BENCHMARKS" --locked --all-targets
+          cargo test --manifest-path "$BENCHMARKS" --locked --doc
