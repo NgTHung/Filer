@@ -268,23 +268,26 @@ fn meta_for_path(meta: &Metadata, name: &str) -> NodeMeta {
     #[cfg(windows)]
     let permissions = None;
 
-    #[cfg(unix)]
-    let hidden = name.starts_with('.');
-
-    #[cfg(windows)]
-    let hidden = {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0000_0002;
-        meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
-    };
-
     NodeMeta {
-        hidden,
+        hidden: is_hidden_entry(meta, name),
         readonly: meta.permissions().readonly(),
         permissions,
         owner: None,
         group: None,
     }
+}
+
+/// Windows hides entries by attribute, while Unix hides them by name.
+#[cfg(windows)]
+fn is_hidden_entry(meta: &Metadata, _name: &str) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0000_0002;
+    meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0
+}
+
+#[cfg(not(windows))]
+fn is_hidden_entry(_meta: &Metadata, name: &str) -> bool {
+    is_hidden_name(name)
 }
 
 #[cfg(unix)]
