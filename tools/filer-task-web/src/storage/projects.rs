@@ -110,15 +110,16 @@ fn encode_path(path: &std::path::Path) -> Vec<u8> {
 fn decode_path(bytes: Vec<u8>) -> Result<PathBuf, StorageError> {
     use std::os::windows::ffi::OsStringExt;
 
-    if !bytes.len().is_multiple_of(2) {
+    let (units, remainder) = bytes.as_chunks::<2>();
+    if !remainder.is_empty() {
         return Err(StorageError::InvalidData {
             operation: "decode project registration root",
             message: "Windows path data contains an incomplete UTF-16 code unit".to_string(),
         });
     }
-    let wide = bytes
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+    let wide = units
+        .iter()
+        .map(|&unit| u16::from_le_bytes(unit))
         .collect::<Vec<_>>();
     Ok(PathBuf::from(OsString::from_wide(&wide)))
 }
