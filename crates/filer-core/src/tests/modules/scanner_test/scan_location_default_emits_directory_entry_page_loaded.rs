@@ -521,15 +521,18 @@
 
         assert!(state.complete);
         assert_eq!(snapshot_names, paged_names);
+        // Path equality treats both Windows separators alike, while display
+        // strings keep whichever separator each join produced.
         assert_eq!(
-            snapshot_names,
-            vec![
+            snapshot_names.iter().map(PathBuf::from).collect::<Vec<_>>(),
+            [
                 "/tmp/shared-order/Makefile",
                 "/tmp/shared-order/a/same.rs",
                 "/tmp/shared-order/b/same.rs",
                 "/tmp/shared-order/a.txt",
                 "/tmp/shared-order/z.txt"
             ]
+            .map(PathBuf::from)
         );
     }
 

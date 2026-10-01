@@ -630,6 +630,8 @@ async fn git_cli_accepts_a_repository_opened_through_a_symlink() {
     assert_eq!(result.decorations[0].state, FileDecorationState::Untracked);
 }
 
+// Win32 strips trailing spaces from names, so Windows cannot create this path.
+#[cfg(not(windows))]
 #[tokio::test]
 async fn git_cli_preserves_repository_path_whitespace() {
     let temp = TempDir::new().unwrap();
