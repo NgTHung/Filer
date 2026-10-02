@@ -6,11 +6,13 @@
 
 use std::collections::BTreeMap;
 
+mod encode;
 mod event;
 mod framing;
 mod request;
 mod validation;
 
+pub use encode::{encode_event_line, encode_request_line};
 pub use framing::{parse_event_line, parse_event_lines, parse_request_bytes};
 pub(crate) use validation::{is_valid_digest, is_valid_identifier};
 
@@ -81,6 +83,23 @@ pub enum ProcessCache {
     Warm,
 }
 
+impl ProcessCache {
+    pub const ALL: [Self; 2] = [Self::Cold, Self::Warm];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cold => "cold",
+            Self::Warm => "warm",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FilesystemCache {
     ControlledCold,
@@ -89,11 +108,53 @@ pub enum FilesystemCache {
     Uncontrolled,
 }
 
+impl FilesystemCache {
+    pub const ALL: [Self; 4] = [
+        Self::ControlledCold,
+        Self::FreshCopy,
+        Self::Warm,
+        Self::Uncontrolled,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ControlledCold => "controlled_cold",
+            Self::FreshCopy => "fresh_copy",
+            Self::Warm => "warm",
+            Self::Uncontrolled => "uncontrolled",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SemanticCache {
     Empty,
     Reset,
     Reused,
+}
+
+impl SemanticCache {
+    pub const ALL: [Self; 3] = [Self::Empty, Self::Reset, Self::Reused];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Empty => "empty",
+            Self::Reset => "reset",
+            Self::Reused => "reused",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -122,15 +183,10 @@ impl Field {
     }
 
     fn parse(value: &str) -> Result<Self, crate::ProtocolError> {
-        match value {
-            "identity" => Ok(Self::Identity),
-            "kind" => Ok(Self::Kind),
-            "size_bytes" => Ok(Self::SizeBytes),
-            "modified_unix_ns" => Ok(Self::ModifiedUnixNs),
-            _ => Err(validation::schema_error(
-                "requested_fields contains an unknown field",
-            )),
-        }
+        Self::ALL
+            .into_iter()
+            .find(|field| field.as_str() == value)
+            .ok_or_else(|| validation::schema_error("requested_fields contains an unknown field"))
     }
 }
 
@@ -190,6 +246,19 @@ pub enum Phase {
 }
 
 impl Phase {
+    pub const ALL: [Self; 10] = [
+        Self::SampleStarted,
+        Self::ActionStarted,
+        Self::RowFirst,
+        Self::ViewportCommitted,
+        Self::PageCommitted,
+        Self::ListingCompleted,
+        Self::TransformCompleted,
+        Self::ViewCommitted,
+        Self::ActionCompleted,
+        Self::SampleCompleted,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::SampleStarted => "sample.started",
@@ -203,6 +272,12 @@ impl Phase {
             Self::ActionCompleted => "action.completed",
             Self::SampleCompleted => "sample.completed",
         }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
     }
 }
 
@@ -228,6 +303,30 @@ pub enum UnavailableReason {
     PlatformUnavailable,
 }
 
+impl UnavailableReason {
+    pub const ALL: [Self; 4] = [
+        Self::Unsupported,
+        Self::PermissionDenied,
+        Self::NotObservable,
+        Self::PlatformUnavailable,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unsupported => "unsupported",
+            Self::PermissionDenied => "permission_denied",
+            Self::NotObservable => "not_observable",
+            Self::PlatformUnavailable => "platform_unavailable",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Row {
     pub identity: Option<String>,
@@ -240,6 +339,23 @@ pub struct Row {
 pub enum Kind {
     File,
     Directory,
+}
+
+impl Kind {
+    pub const ALL: [Self; 2] = [Self::File, Self::Directory];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::File => "file",
+            Self::Directory => "directory",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -259,11 +375,55 @@ pub enum OutputScope {
     Viewport,
 }
 
+impl OutputScope {
+    pub const ALL: [Self; 5] = [
+        Self::Membership,
+        Self::Metadata,
+        Self::Ordered,
+        Self::Page,
+        Self::Viewport,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Membership => "membership",
+            Self::Metadata => "metadata",
+            Self::Ordered => "ordered",
+            Self::Page => "page",
+            Self::Viewport => "viewport",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Continuation {
     More,
     End,
     NotApplicable,
+}
+
+impl Continuation {
+    pub const ALL: [Self; 3] = [Self::More, Self::End, Self::NotApplicable];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::More => "more",
+            Self::End => "end",
+            Self::NotApplicable => "not_applicable",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -279,4 +439,28 @@ pub enum StatusKind {
     NotSupported,
     Error,
     Cancelled,
+}
+
+impl StatusKind {
+    pub const ALL: [Self; 4] = [
+        Self::Success,
+        Self::NotSupported,
+        Self::Error,
+        Self::Cancelled,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::NotSupported => "not_supported",
+            Self::Error => "error",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|variant| variant.as_str() == value)
+    }
 }

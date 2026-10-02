@@ -293,16 +293,11 @@ fn convert_row_value(raw: RawRow) -> Result<Row, ProtocolError> {
                 "row kind must be a string",
             ));
         }
-        Presence::Value(serde_json::Value::String(value)) => Some(match value.as_str() {
-            "file" => Kind::File,
-            "directory" => Kind::Directory,
-            _ => {
-                return Err(ProtocolError::new(
-                    ErrorCode::InvalidRow,
-                    "row kind must be file or directory",
-                ));
-            }
-        }),
+        Presence::Value(serde_json::Value::String(value)) => {
+            Some(Kind::from_wire(&value).ok_or_else(|| {
+                ProtocolError::new(ErrorCode::InvalidRow, "row kind must be file or directory")
+            })?)
+        }
         Presence::Value(_) => {
             return Err(ProtocolError::new(
                 ErrorCode::InvalidRow,
@@ -374,21 +369,11 @@ fn convert_row_value(raw: RawRow) -> Result<Row, ProtocolError> {
 }
 
 fn convert_output(raw: RawOutput) -> Result<Output, ProtocolError> {
-    let scope = match raw.scope.as_str() {
-        "membership" => OutputScope::Membership,
-        "metadata" => OutputScope::Metadata,
-        "ordered" => OutputScope::Ordered,
-        "page" => OutputScope::Page,
-        "viewport" => OutputScope::Viewport,
-        _ => return Err(schema_error("output scope is not recognized")),
-    };
+    let scope = OutputScope::from_wire(&raw.scope)
+        .ok_or_else(|| schema_error("output scope is not recognized"))?;
     validate_digest(&raw.digest).map_err(|error| error.with_field("output.digest"))?;
-    let continuation = match raw.continuation.as_str() {
-        "more" => Continuation::More,
-        "end" => Continuation::End,
-        "not_applicable" => Continuation::NotApplicable,
-        _ => return Err(schema_error("output continuation is not recognized")),
-    };
+    let continuation = Continuation::from_wire(&raw.continuation)
+        .ok_or_else(|| schema_error("output continuation is not recognized"))?;
     Ok(Output {
         scope,
         digest: raw.digest,
@@ -398,13 +383,8 @@ fn convert_output(raw: RawOutput) -> Result<Output, ProtocolError> {
 }
 
 fn convert_status(raw: RawStatus) -> Result<Status, ProtocolError> {
-    let kind = match raw.kind.as_str() {
-        "success" => StatusKind::Success,
-        "not_supported" => StatusKind::NotSupported,
-        "error" => StatusKind::Error,
-        "cancelled" => StatusKind::Cancelled,
-        _ => return Err(schema_error("status kind is not recognized")),
-    };
+    let kind = StatusKind::from_wire(&raw.kind)
+        .ok_or_else(|| schema_error("status kind is not recognized"))?;
     let code = nullable_value(raw.code, "status.code")?;
     let message = nullable_value(raw.message, "status.message")?;
     match kind {
@@ -428,32 +408,13 @@ fn convert_status(raw: RawStatus) -> Result<Status, ProtocolError> {
 }
 
 fn parse_phase(value: &str) -> Result<Phase, ProtocolError> {
-    match value {
-        "sample.started" => Ok(Phase::SampleStarted),
-        "action.started" => Ok(Phase::ActionStarted),
-        "row.first" => Ok(Phase::RowFirst),
-        "viewport.committed" => Ok(Phase::ViewportCommitted),
-        "page.committed" => Ok(Phase::PageCommitted),
-        "listing.completed" => Ok(Phase::ListingCompleted),
-        "transform.completed" => Ok(Phase::TransformCompleted),
-        "view.committed" => Ok(Phase::ViewCommitted),
-        "action.completed" => Ok(Phase::ActionCompleted),
-        "sample.completed" => Ok(Phase::SampleCompleted),
-        _ => Err(ProtocolError::new(
-            ErrorCode::InvalidPhase,
-            "phase is not recognized",
-        )),
-    }
+    Phase::from_wire(value)
+        .ok_or_else(|| ProtocolError::new(ErrorCode::InvalidPhase, "phase is not recognized"))
 }
 
 fn parse_unavailable(value: &str) -> Result<UnavailableReason, ProtocolError> {
-    match value {
-        "unsupported" => Ok(UnavailableReason::Unsupported),
-        "permission_denied" => Ok(UnavailableReason::PermissionDenied),
-        "not_observable" => Ok(UnavailableReason::NotObservable),
-        "platform_unavailable" => Ok(UnavailableReason::PlatformUnavailable),
-        _ => Err(schema_error("unavailable reason is not recognized")),
-    }
+    UnavailableReason::from_wire(value)
+        .ok_or_else(|| schema_error("unavailable reason is not recognized"))
 }
 
 fn required_nullable<T>(value: Presence<T>, field: &str) -> Result<Option<T>, ProtocolError> {

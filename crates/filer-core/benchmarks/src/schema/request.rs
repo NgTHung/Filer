@@ -296,27 +296,12 @@ fn parse_filter(raw: RawFilter) -> Result<Filter, ProtocolError> {
 }
 
 fn parse_cache(raw: RawCacheState) -> Result<CacheState, ProtocolError> {
-    let process = match raw.process.as_str() {
-        "cold" => ProcessCache::Cold,
-        "warm" => ProcessCache::Warm,
-        _ => return Err(schema_error("cache.process is not recognized")),
-    };
-    let filesystem = match raw.filesystem.as_str() {
-        "controlled_cold" => FilesystemCache::ControlledCold,
-        "fresh_copy" => FilesystemCache::FreshCopy,
-        "warm" => FilesystemCache::Warm,
-        "uncontrolled" => FilesystemCache::Uncontrolled,
-        _ => return Err(schema_error("cache.filesystem is not recognized")),
-    };
-    let semantic = match raw.semantic.as_str() {
-        "empty" => SemanticCache::Empty,
-        "reset" => SemanticCache::Reset,
-        "reused" => SemanticCache::Reused,
-        _ => return Err(schema_error("cache.semantic is not recognized")),
-    };
     Ok(CacheState {
-        process,
-        filesystem,
-        semantic,
+        process: ProcessCache::from_wire(&raw.process)
+            .ok_or_else(|| schema_error("cache.process is not recognized"))?,
+        filesystem: FilesystemCache::from_wire(&raw.filesystem)
+            .ok_or_else(|| schema_error("cache.filesystem is not recognized"))?,
+        semantic: SemanticCache::from_wire(&raw.semantic)
+            .ok_or_else(|| schema_error("cache.semantic is not recognized"))?,
     })
 }

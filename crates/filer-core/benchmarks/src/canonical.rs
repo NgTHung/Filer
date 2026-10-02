@@ -34,10 +34,7 @@ impl CanonicalRow {
     pub fn value(&self, field: Field) -> String {
         match field {
             Field::Identity => self.identity.clone(),
-            Field::Kind => match self.kind {
-                Kind::File => "file".to_string(),
-                Kind::Directory => "directory".to_string(),
-            },
+            Field::Kind => self.kind.as_str().to_string(),
             Field::SizeBytes => self
                 .size_bytes
                 .map_or_else(|| "~".to_string(), |value| value.to_string()),
@@ -74,13 +71,7 @@ fn write_row(hasher: &mut Sha256, fields: &[Field], row: &CanonicalRow) {
     for field in fields {
         match field {
             Field::Identity => write_token(hasher, &row.identity),
-            Field::Kind => write_token(
-                hasher,
-                match row.kind {
-                    Kind::File => "file",
-                    Kind::Directory => "directory",
-                },
-            ),
+            Field::Kind => write_token(hasher, row.kind.as_str()),
             Field::SizeBytes => match row.size_bytes {
                 Some(value) => write_token(hasher, &value.to_string()),
                 None => write_token(hasher, "~"),

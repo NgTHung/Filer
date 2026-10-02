@@ -33,7 +33,8 @@ pub use schema::{
     Adapter, CacheState, Clock, Continuation, Counts, Environment, Event, Field, FilesystemCache,
     Filter, FixtureReference, Group, Implementation, Kind, MetricValue, Output, OutputScope, Phase,
     ProcessCache, Request, Row, SemanticCache, Sort, Status, StatusKind, UnavailableReason,
-    parse_event_line, parse_event_lines, parse_request_bytes,
+    encode_event_line, encode_request_line, parse_event_line, parse_event_lines,
+    parse_request_bytes,
 };
 pub use validator::{
     DeclaredCapabilities, GateResult, RunValidator, SampleValidator, StructuralGates,
