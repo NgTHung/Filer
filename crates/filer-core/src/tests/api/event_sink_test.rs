@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::actors::WorkTracker;
-use crate::api::event_sink::{DEFAULT_EVENT_CHANNEL_CAPACITY, EventSink};
+use crate::api::event_sink::{DEFAULT_EVENT_CHANNEL_CAPACITY, EventSendError, EventSink};
 use crate::api::events::Event;
 use crate::model::progress::{
     ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressUnit,
@@ -164,4 +164,88 @@ async fn shutdown_cancels_a_hub_blocked_by_a_full_client_queue() {
         .await
         .expect("shutdown should cancel the blocked event hub")
         .unwrap();
+}
+
+#[tokio::test]
+async fn small_queue_retains_errors_and_all_terminal_progress_states() {
+    let tracker = WorkTracker::new();
+    let (sink, receiver) = EventSink::for_runtime_with_capacity(tracker.clone(), 1);
+    let session = SessionId::new();
+    let request = RequestId::new();
+    let scope = ProgressScope::scan(session, request);
+    let producer = tokio::spawn(async move {
+        for status in [
+            ProgressStatus::Completed,
+            ProgressStatus::Cancelled,
+            ProgressStatus::Failed,
+        ] {
+            sink.send_async(progress(&scope, status, 100))
+                .await
+                .unwrap();
+        }
+        sink.send_async(Event::from_request_error(
+            crate::CoreError::invalid_input("retained error"),
+            session,
+            request,
+        ))
+        .await
+        .unwrap();
+    });
+    for expected in [
+        ProgressStatus::Completed,
+        ProgressStatus::Cancelled,
+        ProgressStatus::Failed,
+    ] {
+        let event = tokio::time::timeout(Duration::from_secs(1), receiver.recv_async())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(event, Event::ProgressUpdated { snapshot, .. } if snapshot.status == expected)
+        );
+    }
+    let event = tokio::time::timeout(Duration::from_secs(1), receiver.recv_async())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(event, Event::Error { session: actual, request: Some(actual_request), .. }
+        if actual == session && actual_request == request)
+    );
+    producer.await.unwrap();
+    tracker.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn shutdown_and_disconnection_release_senders_waiting_for_capacity() {
+    for disconnect in [false, true] {
+        let tracker = WorkTracker::new();
+        let (sink, receiver) = EventSink::for_runtime_with_capacity(tracker.clone(), 1);
+        let mut producer = tokio::spawn(async move {
+            for value in 0..10 {
+                sink.send_async(Event::SessionCreated(SessionId(value)))
+                    .await?;
+            }
+            Ok::<(), EventSendError>(())
+        });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut producer)
+                .await
+                .is_err()
+        );
+        if disconnect {
+            drop(receiver);
+        } else {
+            tokio::time::timeout(Duration::from_secs(1), tracker.shutdown())
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        let result = tokio::time::timeout(Duration::from_secs(1), producer)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(result, Err(EventSendError::Closed));
+        tracker.shutdown().await.unwrap();
+    }
 }

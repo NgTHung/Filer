@@ -5,11 +5,23 @@
 //! updates share a bounded set of per-scope slots, so a slow client cannot turn
 //! many concurrent scans into unbounded memory growth.
 //!
-//! ```ignore
-//! let (events, receiver) = EventSink::for_runtime(work_tracker);
-//! events.send(Event::SessionCreated(session))?;
+//! Runtime tasks await capacity so the executor can run the event consumer.
+//!
+//! ```
+//! use filer_core::api::event_sink::EventSink;
+//! use filer_core::model::session::SessionId;
+//! use filer_core::Event;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let (sender, receiver) = flume::bounded(1);
+//! let events = EventSink::from(sender);
+//! events.send_async(Event::SessionCreated(SessionId::new())).await?;
 //! let next = receiver.recv_async().await?;
-//! # let _ = next;
+//! assert!(matches!(next, Event::SessionCreated(_)));
+//! # Ok(())
+//! # }
+//! # tokio::runtime::Builder::new_current_thread().build()?.block_on(example())?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -135,6 +147,9 @@ impl EventSink {
         )
     }
 
+    /// Blocks the calling thread until a lossless event has queue capacity.
+    ///
+    /// Use [`Self::send_async`] in runtime tasks so the consumer can drain the queue.
     pub fn send(&self, event: Event) -> Result<(), EventSendError> {
         match &self.inner {
             EventSinkInner::Direct(sender) => {
@@ -167,6 +182,7 @@ impl EventSink {
         }
     }
 
+    /// Await lossless capacity or coalesce intermediate progress without blocking a thread.
     pub async fn send_async(&self, event: Event) -> Result<(), EventSendError> {
         match &self.inner {
             EventSinkInner::Direct(sender) => sender
