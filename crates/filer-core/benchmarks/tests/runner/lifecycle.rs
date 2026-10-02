@@ -19,6 +19,33 @@ fn accepts_a_valid_trace_and_stores_timing_with_its_identity() {
         "accepted samples do not retain their trace"
     );
     assert_eq!(record.diagnostics.exit_code, Some(0));
+    let raw = raw_record(&record);
+    assert_eq!(raw["schema"], "filer-benchmark-raw-sample-v1");
+    assert_eq!(
+        raw["request"]["cache"],
+        json!({"process": "cold", "filesystem": "warm", "semantic": "empty"})
+    );
+    assert_eq!(raw["fixture"]["id"], "flat-10k-v1");
+    assert_eq!(raw["fixture"]["digest"], setup.manifest.manifest_digest());
+    assert_eq!(
+        raw["profiles"]["machine"]["digest"],
+        raw["request"]["environment"]["machine_profile_digest"]
+    );
+    assert_eq!(
+        raw["profiles"]["filesystem"]["entries"],
+        json!([{"name": "filesystem", "value": "ext4"}])
+    );
+    assert_eq!(raw["profiles"]["build"]["id"], "filer-core-release");
+    assert_eq!(
+        raw["profiles"]["adapter"]["capabilities"]["scenarios"],
+        json!([SCENARIO])
+    );
+    assert_eq!(raw["outcome"]["result"], "accepted");
+    assert_eq!(raw["outcome"]["timing_eligible"], true);
+    assert_eq!(raw["outcome"]["timeline"][5]["phase"], "listing.completed");
+    assert_eq!(raw["outcome"]["timeline"][5]["output"]["row_count"], 10_000);
+    assert!(raw["outcome"]["timeline"][5].get("rows").is_none());
+    assert!(raw["diagnostics"].get("stdout_lines").is_none());
 }
 
 #[test]
@@ -38,20 +65,25 @@ fn rejects_wrong_counts_with_raw_diagnostics() {
 
     assert_eq!(rejection_code(&record), "invalid_counts");
     assert!(!record.outcome.timing_eligible());
-    let SampleOutcome::Rejected(failure) = &record.outcome else {
-        panic!("sample should be rejected");
-    };
-    assert_eq!(failure.context.sequence, Some(4));
-    assert_eq!(failure.context.action.as_deref(), Some("open"));
+    let raw = raw_record(&record);
+    assert_eq!(raw["outcome"]["result"], "rejected");
+    assert_eq!(raw["outcome"]["code"], "invalid_counts");
+    assert_eq!(raw["outcome"]["context"]["sequence"], 4);
+    assert_eq!(raw["outcome"]["context"]["action"], "open");
     assert!(
-        record
-            .diagnostics
-            .stderr
-            .contains("replay saw a short page")
+        raw["diagnostics"]["stderr"]
+            .as_str()
+            .is_some_and(|stderr| stderr.contains("replay saw a short page"))
     );
-    let stdout = &record.diagnostics.stdout_lines;
+    let stdout = raw["diagnostics"]["stdout_lines"]
+        .as_array()
+        .expect("rejected samples keep stdout");
     assert_eq!(stdout.len(), 5, "the runner stops at the rejected event");
-    assert!(String::from_utf8_lossy(&stdout[4]).contains("page.committed"));
+    assert!(
+        stdout[4]
+            .as_str()
+            .is_some_and(|line| line.contains("page.committed"))
+    );
 }
 
 #[test]
@@ -65,6 +97,10 @@ fn rejects_wrong_digests() {
     let record = setup.replay("wrong-digest", &trace.lines(), &[]);
 
     assert_eq!(rejection_code(&record), "output_digest_mismatch");
+    assert_eq!(
+        raw_record(&record)["outcome"]["code"],
+        "output_digest_mismatch"
+    );
 }
 
 #[test]
@@ -140,16 +176,14 @@ fn records_requested_metrics_that_the_adapter_cannot_observe() {
     let record = runner.run_sample(sample_spec()).expect("runner completes");
 
     assert!(record.outcome.timing_eligible());
-    let SampleOutcome::Accepted(sample) = &record.outcome else {
-        panic!("sample should be accepted");
-    };
+    let raw = raw_record(&record);
     assert_eq!(
-        sample.metrics.get("cpu_time_ns"),
-        Some(&MetricValue::Observed(1_500))
+        raw["outcome"]["metrics"],
+        json!({"allocation_count": {"unavailable": "unsupported"}, "cpu_time_ns": 1_500})
     );
     assert_eq!(
-        sample.metrics.get("allocation_count"),
-        Some(&MetricValue::Unavailable(UnavailableReason::Unsupported))
+        raw["requested_metrics"],
+        json!(["allocation_count", "cpu_time_ns"])
     );
 }
 
@@ -166,12 +200,9 @@ fn rejects_a_trace_that_omits_a_requested_metric() {
     let record = runner.run_sample(sample_spec()).expect("runner completes");
 
     assert_eq!(rejection_code(&record), "invalid_schema");
-    let SampleOutcome::Rejected(failure) = &record.outcome else {
-        panic!("sample should be rejected");
-    };
     assert_eq!(
-        failure.context.field.as_deref(),
-        Some("metrics.allocation_count")
+        raw_record(&record)["outcome"]["context"]["field"],
+        "metrics.allocation_count"
     );
 }
 
@@ -200,6 +231,7 @@ fn records_an_adapter_that_cannot_start() {
 
     assert_eq!(rejection_code(&record), "adapter_spawn_failed");
     assert!(record.diagnostics.exit_status.is_none());
+    assert_eq!(raw_record(&record)["outcome"]["result"], "rejected");
 }
 
 #[test]
@@ -216,8 +248,30 @@ fn keeps_not_supported_results_out_of_timing_and_refuses_reused_samples() {
 
     assert!(matches!(record.outcome, SampleOutcome::Accepted(_)));
     assert!(!record.outcome.timing_eligible());
+    assert_eq!(raw_record(&record)["outcome"]["timing_eligible"], false);
     match reused {
         Err(RunnerError::Request(error)) => assert_eq!(error.code(), ErrorCode::DuplicateSample),
         other => panic!("reused sample should be refused, got {other:?}"),
     }
+}
+
+#[test]
+fn never_overwrites_an_existing_raw_result() {
+    let setup = RunnerSetup::new();
+    let path = setup.write_trace("valid", &valid_trace(&setup).lines());
+    let first = setup
+        .runner(replay_adapter(&path, &[]), &[], LONG_TIMEOUT)
+        .run_sample(sample_spec())
+        .expect("first run completes");
+    let original = std::fs::read(&first.path).expect("raw record exists");
+
+    let second = setup
+        .runner(replay_adapter(&path, &[]), &[], LONG_TIMEOUT)
+        .run_sample(sample_spec());
+
+    assert!(matches!(second, Err(RunnerError::Results { .. })));
+    assert_eq!(
+        std::fs::read(&first.path).expect("raw record exists"),
+        original
+    );
 }

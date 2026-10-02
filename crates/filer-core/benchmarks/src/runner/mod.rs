@@ -7,7 +7,8 @@
 //! a failed sample can be diagnosed without being rerun.
 //!
 //! Each sample runs in a fresh process because the protocol identifies a
-//! sample by its process and a cold start must not inherit earlier work.
+//! sample by its process and a cold start must not inherit earlier work. The
+//! runner writes one raw JSON record per sample and never overwrites one.
 //!
 //! An adapter is invoked as `<program> <args>... --fixture-root <path>`
 //! followed by one `--metric <name>` pair per requested metric. These are
@@ -27,12 +28,13 @@
 //!     order_id: "round-01-position-01".to_string(),
 //!     scenario_id: "browse.fast.first".to_string(),
 //! })?;
-//! println!("timing eligible: {}", record.outcome.timing_eligible());
+//! println!("{} timing eligible: {}", record.path.display(), record.outcome.timing_eligible());
 //! # Ok(())
 //! # }
 //! ```
 
 use std::fmt;
+use std::io;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -49,6 +51,7 @@ use crate::validator::{DeclaredCapabilities, RunValidator, ValidatedSample};
 use crate::{ErrorCode, ErrorContext, ProtocolError};
 
 mod process;
+mod record;
 
 use process::{AdapterRun, RunFailure};
 
@@ -77,6 +80,7 @@ pub struct RunPlan {
     pub cache: CacheState,
     pub requested_metrics: Vec<String>,
     pub timeout: Duration,
+    pub results_dir: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,6 +93,7 @@ pub struct SampleSpec {
 
 #[derive(Clone, Debug)]
 pub struct SampleRecord {
+    pub path: PathBuf,
     pub outcome: SampleOutcome,
     pub diagnostics: AdapterDiagnostics,
 }
@@ -164,6 +169,7 @@ pub struct AdapterDiagnostics {
 pub enum RunnerError {
     Plan(String),
     Request(ProtocolError),
+    Results { path: PathBuf, source: io::Error },
 }
 
 impl fmt::Display for RunnerError {
@@ -171,6 +177,9 @@ impl fmt::Display for RunnerError {
         match self {
             Self::Plan(message) => write!(formatter, "invalid run plan: {message}"),
             Self::Request(error) => write!(formatter, "request rejected: {error}"),
+            Self::Results { path, source } => {
+                write!(formatter, "cannot store {}: {source}", path.display())
+            }
         }
     }
 }
@@ -209,10 +218,10 @@ impl<'fixture> Runner<'fixture> {
         })
     }
 
-    /// Run one sample in a new adapter process.
+    /// Run one sample in a new adapter process and store its raw record.
     ///
     /// Adapter failures produce a rejected record. An error means the runner
-    /// itself could not form the request.
+    /// itself could not form the request or store the result.
     pub fn run_sample(&mut self, spec: SampleSpec) -> Result<SampleRecord, RunnerError> {
         let request = self.request(&spec)?;
         let request_line = encode_request_line(&request);
@@ -221,9 +230,11 @@ impl<'fixture> Runner<'fixture> {
             .validator
             .start_sample(&request_line)
             .map_err(RunnerError::Request)?;
+        let started = record::unix_now_ns();
         let run = process::run_adapter(command, &request_line, self.plan.timeout, |line| {
             sample.ingest_line(line)
         });
+        let finished = record::unix_now_ns();
         let AdapterRun {
             failure,
             mut diagnostics,
@@ -247,7 +258,17 @@ impl<'fixture> Runner<'fixture> {
         if matches!(outcome, SampleOutcome::Accepted(_)) {
             diagnostics.stdout_lines.clear();
         }
+        let value = record::raw_record(&record::RecordInput {
+            plan: &self.plan,
+            fixture: self.fixture,
+            request: &request,
+            wall_clock: (started, finished),
+            outcome: &outcome,
+            diagnostics: &diagnostics,
+        });
+        let path = record::write_new(&self.plan.results_dir, &request, &value)?;
         Ok(SampleRecord {
+            path,
             outcome,
             diagnostics,
         })

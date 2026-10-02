@@ -6,9 +6,8 @@ use std::time::Duration;
 
 pub(super) use filer_core_benchmarks::{
     Adapter, AdapterSpec, CacheState, DeclaredCapabilities, ErrorCode, FilesystemCache,
-    Implementation, MetricValue, PreparedFixture, ProcessCache, ProfileRecord, RunPlan, Runner,
-    RunnerError, SampleOutcome, SampleRecord, SampleSpec, SemanticCache, UnavailableReason,
-    ValidatedManifest, prepare_fixture,
+    Implementation, PreparedFixture, ProcessCache, ProfileRecord, RunPlan, Runner, RunnerError,
+    SampleOutcome, SampleRecord, SampleSpec, SemanticCache, ValidatedManifest, prepare_fixture,
 };
 pub(super) use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -34,6 +33,10 @@ impl RunnerSetup {
             manifest,
             fixture,
         }
+    }
+
+    pub(super) fn results_dir(&self) -> PathBuf {
+        self.directory.path().join("results")
     }
 
     pub(super) fn write_trace(&self, name: &str, lines: &[Vec<u8>]) -> PathBuf {
@@ -68,6 +71,7 @@ impl RunnerSetup {
             },
             requested_metrics: metrics.iter().map(|name| name.to_string()).collect(),
             timeout,
+            results_dir: self.results_dir(),
         }
     }
 
@@ -85,7 +89,7 @@ impl RunnerSetup {
         .expect("runner plan should be valid")
     }
 
-    /// Replays `lines` through a fresh runner.
+    /// Replays `lines` through a fresh runner whose results live under `name`.
     pub(super) fn replay(
         &self,
         name: &str,
@@ -93,7 +97,8 @@ impl RunnerSetup {
         extra_args: &[&str],
     ) -> SampleRecord {
         let trace = self.write_trace(name, lines);
-        let plan = self.plan(replay_adapter(&trace, extra_args), &[], LONG_TIMEOUT);
+        let mut plan = self.plan(replay_adapter(&trace, extra_args), &[], LONG_TIMEOUT);
+        plan.results_dir = self.results_dir().join(name);
         Runner::new(plan, self.manifest.clone(), &self.fixture)
             .expect("runner plan should be valid")
             .run_sample(sample_spec())
@@ -142,6 +147,11 @@ pub(super) fn mutate_phase(
         .find(|event| event["phase"] == phase)
         .expect("trace contains the phase");
     mutation(event);
+}
+
+pub(super) fn raw_record(record: &SampleRecord) -> Value {
+    let bytes = fs::read(&record.path).expect("raw record should exist");
+    serde_json::from_slice(&bytes).expect("raw record is JSON")
 }
 
 pub(super) fn rejection_code(record: &SampleRecord) -> &str {

@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-mod encode;
+pub(crate) mod encode;
 mod event;
 mod framing;
 mod request;

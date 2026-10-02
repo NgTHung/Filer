@@ -14,6 +14,10 @@ use super::{
 
 /// Encode one newline-terminated request frame.
 pub fn encode_request_line(request: &Request) -> Vec<u8> {
+    line(&request_value(request))
+}
+
+pub(crate) fn request_value(request: &Request) -> Value {
     let (sort_field, sort_direction) = match request.sort {
         Sort::ProviderOrder => ("provider_order", "none"),
         Sort::NameAscending => ("name", "ascending"),
@@ -25,7 +29,7 @@ pub fn encode_request_line(request: &Request) -> Vec<u8> {
             case_sensitive,
         } => json!({"kind": "name_contains", "value": value, "case_sensitive": case_sensitive}),
     };
-    let value = json!({
+    json!({
         "protocol_version": PROTOCOL_VERSION,
         "type": "run_request",
         "run_id": request.run_id,
@@ -69,8 +73,7 @@ pub fn encode_request_line(request: &Request) -> Vec<u8> {
         "group": {"kind": "none"},
         "search": {"kind": "none"},
         "clock": {"kind": "process_monotonic", "unit": "nanosecond"},
-    });
-    line(&value)
+    })
 }
 
 /// Encode one newline-terminated event frame.
@@ -86,29 +89,29 @@ pub fn encode_event_line(event: &Event) -> Vec<u8> {
         "timestamp_ns": event.timestamp_ns,
         "phase": event.phase.as_str(),
         "action_id": event.action_id,
-        "counts": counts(&event.counts),
+        "counts": counts_value(&event.counts),
         "rows": event.rows.iter().map(row).collect::<Vec<_>>(),
-        "output": event.output.as_ref().map(output),
+        "output": event.output.as_ref().map(output_value),
         "metrics": event
             .metrics
             .iter()
-            .map(|(name, value)| (name.clone(), metric(value)))
+            .map(|(name, value)| (name.clone(), metric_value(value)))
             .collect::<Map<_, _>>(),
-        "status": event.status.as_ref().map(status),
+        "status": event.status.as_ref().map(status_value),
     });
     line(&value)
 }
 
-fn counts(counts: &Counts) -> Value {
+pub(crate) fn counts_value(counts: &Counts) -> Value {
     json!({
-        "examined": metric(&counts.examined),
-        "accepted": metric(&counts.accepted),
-        "emitted": metric(&counts.emitted),
-        "visible": metric(&counts.visible),
+        "examined": metric_value(&counts.examined),
+        "accepted": metric_value(&counts.accepted),
+        "emitted": metric_value(&counts.emitted),
+        "visible": metric_value(&counts.visible),
     })
 }
 
-fn metric(value: &MetricValue) -> Value {
+pub(crate) fn metric_value(value: &MetricValue) -> Value {
     match value {
         MetricValue::Observed(value) => json!(value),
         MetricValue::Unavailable(reason) => json!({"unavailable": reason.as_str()}),
@@ -135,7 +138,7 @@ fn row(row: &Row) -> Value {
     Value::Object(value)
 }
 
-fn output(output: &Output) -> Value {
+pub(crate) fn output_value(output: &Output) -> Value {
     json!({
         "scope": output.scope.as_str(),
         "digest": output.digest,
@@ -144,7 +147,7 @@ fn output(output: &Output) -> Value {
     })
 }
 
-fn status(status: &Status) -> Value {
+pub(crate) fn status_value(status: &Status) -> Value {
     json!({"kind": status.kind.as_str(), "code": status.code, "message": status.message})
 }
 

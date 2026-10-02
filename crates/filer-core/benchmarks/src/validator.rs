@@ -63,6 +63,17 @@ pub enum GateResult {
     NotApplicable,
 }
 
+impl GateResult {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+            Self::NotEvaluable => "not_evaluable",
+            Self::NotApplicable => "not_applicable",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StructuralGates {
     pub first_page_examined: GateResult,
