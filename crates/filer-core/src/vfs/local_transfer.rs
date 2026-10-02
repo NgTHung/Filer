@@ -5,12 +5,13 @@
 //!
 //! ```
 //! use filer_core::{FsProvider, LocalFs, ProviderCx, ErrorCode};
-//! # async fn example() -> Result<(), filer_core::CoreError> {
-//! let directory = tempfile::tempdir().unwrap();
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let directory = tempfile::tempdir()?;
 //! let file = directory.path().join("source.txt");
-//! std::fs::write(&file, b"preserve me").unwrap();
-//! let error = LocalFs::new().preflight_transfer(&file, &file, &ProviderCx::none()).await.unwrap_err();
-//! assert_eq!(error.code(), ErrorCode::InputInvalid);
+//! std::fs::write(&file, b"preserve me")?;
+//! let result = LocalFs::new().preflight_transfer(&file, &file, &ProviderCx::none()).await;
+//! assert!(matches!(result, Err(error) if error.code() == ErrorCode::InputInvalid));
 //! # Ok(())
 //! # }
 //! ```

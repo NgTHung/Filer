@@ -1,8 +1,8 @@
 //! # Transfer preflight
 //!
 //! Validate every target before a batch writes anything, so a later invalid
-//! source cannot leave earlier destinations changed. Copy and Move share this
-//! boundary with command admission.
+//! source cannot leave earlier destinations changed. Copy and Move use the same
+//! checks so provider limitations produce consistent errors.
 //!
 //! ```
 //! use filer_core::modules::operations::preflight::check_transfer;
