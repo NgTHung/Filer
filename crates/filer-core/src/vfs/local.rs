@@ -212,6 +212,21 @@ impl FsProvider for LocalFs {
             .map_err(|e| CoreError::from_io_error(e, src.to_path_buf()))
     }
 
+    async fn preflight_transfer(
+        &self,
+        src: &Path,
+        dst: &Path,
+        cx: &ProviderCx<'_>,
+    ) -> Result<(), CoreError> {
+        Self::check_cancel(cx)?;
+        let src = src.to_path_buf();
+        let dst = dst.to_path_buf();
+        tokio::task::spawn_blocking(move || super::local_transfer::check(&src, &dst))
+            .await
+            .map_err(|error| CoreError::actor("transfer preflight", error.to_string()))??;
+        Self::check_cancel(cx)
+    }
+
     async fn rename(&self, src: &Path, dst: &Path, cx: &ProviderCx<'_>) -> Result<(), CoreError> {
         Self::check_cancel(cx)?;
         tokio::fs::rename(src, dst)

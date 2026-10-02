@@ -3,6 +3,7 @@ pub mod context;
 pub mod listing_stream;
 pub mod local;
 pub mod local_listing;
+mod local_transfer;
 pub mod local_watch;
 pub mod provider;
 pub mod registry;

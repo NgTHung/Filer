@@ -12,6 +12,7 @@
 mod command;
 mod mutation;
 pub mod operator;
+pub mod preflight;
 mod support;
 pub mod target;
 mod transfer;

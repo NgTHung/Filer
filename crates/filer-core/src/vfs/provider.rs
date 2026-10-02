@@ -211,6 +211,24 @@ pub trait FsProvider: Send + Sync {
     ) -> Result<(), CoreError> {
         Err(CoreError::permission_denied(path.to_path_buf()))
     }
+
+    /// Reject self transfers and directory descendants using filesystem identity.
+    ///
+    /// `dst` is the final target, including the source name. Providers must check
+    /// aliases and existing ancestors of missing targets before permitting writes.
+    /// This check does not reserve targets against concurrent filesystem changes.
+    async fn preflight_transfer(
+        &self,
+        _src: &Path,
+        _dst: &Path,
+        _cx: &ProviderCx<'_>,
+    ) -> Result<(), CoreError> {
+        Err(CoreError::unsupported_operation(format!(
+            "Provider {} cannot verify transfer identity and ancestry",
+            self.scheme()
+        )))
+    }
+
     async fn copy(&self, _src: &Path, dst: &Path, _cx: &ProviderCx<'_>) -> Result<(), CoreError> {
         Err(CoreError::permission_denied(dst.to_path_buf()))
     }

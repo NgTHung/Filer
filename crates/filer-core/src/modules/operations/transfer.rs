@@ -101,6 +101,19 @@ impl Operator {
 
         work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
+            if let Err(error) =
+                super::preflight::check_transfer(fs.as_ref(), &src_paths, &dst_path, &cx).await
+            {
+                send_or_warn_async(
+                    &events,
+                    operation_error(error, session, request, operation),
+                    "operator: copy preflight",
+                )
+                .await;
+                active.remove_if_current(session, &cancel).await;
+                remove_operation_if_current(active_operation_ids, session, operation).await;
+                return;
+            }
             let mut affected = Vec::new();
             let mut items_done = 0usize;
 
@@ -297,6 +310,19 @@ impl Operator {
 
         work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
+            if let Err(error) =
+                super::preflight::check_transfer(fs.as_ref(), &src_paths, &dst_path, &cx).await
+            {
+                send_or_warn_async(
+                    &events,
+                    operation_error(error, session, request, operation),
+                    "operator: move preflight",
+                )
+                .await;
+                active.remove_if_current(session, &cancel).await;
+                remove_operation_if_current(active_operation_ids, session, operation).await;
+                return;
+            }
             let mut affected = Vec::new();
 
             for src_path in src_paths {

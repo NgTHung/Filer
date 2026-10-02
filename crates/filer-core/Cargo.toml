@@ -10,6 +10,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = {workspace = true}
 async-trait = "0.1.89"
+same-file = "1.0.6"
 chrono = "0.4"
 scc = "3.4.15"
 serde = { workspace = true }

@@ -273,6 +273,15 @@ impl FsProvider for MockOpsProvider {
         Ok(())
     }
 
+    async fn preflight_transfer(
+        &self,
+        _src: &Path,
+        _dst: &Path,
+        _cx: &crate::ProviderCx<'_>,
+    ) -> Result<(), CoreError> {
+        Ok(())
+    }
+
     async fn rename(
         &self,
         src: &Path,

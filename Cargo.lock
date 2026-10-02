@@ -1623,6 +1623,7 @@ dependencies = [
  "notify-debouncer-full",
  "rapidhash",
  "regex",
+ "same-file",
  "scc",
  "serde",
  "serde_json",
