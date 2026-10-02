@@ -13,6 +13,7 @@
 //! assert_eq!(ErrorCode::InvalidSchema.as_str(), "invalid_schema");
 //! ```
 
+mod adapter;
 mod canonical;
 mod error;
 mod fixtures;
@@ -23,6 +24,9 @@ mod scenarios;
 mod schema;
 mod validator;
 
+pub use adapter::{
+    AdapterArgs, AdapterTrace, Milestone, ResourceMeter, ResourceReport, requested_metric_values,
+};
 pub use canonical::{CanonicalRow, canonical_digest};
 pub use error::{ErrorCode, ErrorContext, ProtocolError};
 pub use fixtures::{

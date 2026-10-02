@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 
 use crate::canonical::CanonicalRow;
 use crate::scenarios::ActionPlan;
-use crate::schema::{Event, MetricValue, OutputScope, Phase, Status};
+use crate::schema::{Event, MetricValue, Phase, Status};
 use crate::{ErrorCode, ProtocolError};
 
 #[derive(Clone, Debug)]
@@ -203,14 +203,4 @@ pub(super) fn check_visible_prefix(action: &ActionState) -> Result<(), ProtocolE
         ));
     }
     Ok(())
-}
-
-pub(super) fn scope_name(scope: OutputScope) -> &'static str {
-    match scope {
-        OutputScope::Membership => "membership",
-        OutputScope::Metadata => "metadata",
-        OutputScope::Ordered => "ordered",
-        OutputScope::Page => "page",
-        OutputScope::Viewport => "viewport",
-    }
 }

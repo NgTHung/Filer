@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use super::trace_state::{ActionState, check_visible_prefix, scope_name};
+use super::trace_state::{ActionState, check_visible_prefix};
 use super::{GateResult, SampleValidator};
 use crate::canonical::{CanonicalRow, canonical_digest};
 use crate::scenarios::{ActionKind, ListingKind};
@@ -119,7 +119,7 @@ impl SampleValidator<'_> {
             ],
             _ => self.request.requested_fields.clone(),
         };
-        let calculated = canonical_digest(scope_name(scope), &fields, rows);
+        let calculated = canonical_digest(scope.as_str(), &fields, rows);
         if calculated != output.digest {
             return Err(ProtocolError::new(
                 ErrorCode::OutputDigestMismatch,
