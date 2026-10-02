@@ -120,3 +120,26 @@ async fn copy_rejects_own_parent_without_truncation() {
     ));
     assert_eq!(std::fs::read(source).unwrap(), CONTENT);
 }
+
+#[tokio::test]
+async fn transfers_reject_descendants_before_creating_destinations() {
+    if isolated_case("transfers_reject_descendants_before_creating_destinations")
+        .await
+        .is_some()
+    {
+        return;
+    }
+    let root = std::path::PathBuf::from(std::env::var_os("FILER_TRANSFER_ROOT").unwrap());
+    for moving in [false, true] {
+        let source = root.join(if moving { "move" } else { "copy" });
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("file.txt"), CONTENT).unwrap();
+        let destination = source.join("missing/nested");
+        assert!(matches!(
+            transfer(&[&source], &destination, moving).await,
+            Event::Error { .. }
+        ));
+        assert!(!source.join("missing").exists());
+        assert_eq!(std::fs::read(source.join("file.txt")).unwrap(), CONTENT);
+    }
+}

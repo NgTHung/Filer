@@ -25,11 +25,51 @@ pub(super) fn check(src: &Path, dst: &Path) -> Result<(), CoreError> {
     let source = Handle::from_path(src)
         .map_err(|error| CoreError::from_io_error(error, src.to_path_buf()))?;
     match Handle::from_path(dst) {
-        Ok(target) if source == target => Err(CoreError::invalid_input(
-            "Transfer source and destination identify the same filesystem object",
-        )),
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(CoreError::from_io_error(error, dst.to_path_buf())),
+        Ok(target) if source == target => {
+            return Err(CoreError::invalid_input(
+                "Transfer source and destination identify the same filesystem object",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(CoreError::from_io_error(error, dst.to_path_buf())),
     }
+
+    let metadata = std::fs::metadata(src)
+        .map_err(|error| CoreError::from_io_error(error, src.to_path_buf()))?;
+    if metadata.is_dir() {
+        // Resolve aliases before walking parents; missing suffixes cannot hide ancestry.
+        let mut ancestor = std::path::absolute(dst)
+            .map_err(|error| CoreError::from_io_error(error, dst.to_path_buf()))?;
+        loop {
+            match std::fs::canonicalize(&ancestor) {
+                Ok(existing) => {
+                    for parent in existing.ancestors() {
+                        let handle = Handle::from_path(parent).map_err(|error| {
+                            CoreError::from_io_error(error, parent.to_path_buf())
+                        })?;
+                        if source == handle {
+                            return Err(CoreError::invalid_input(
+                                "A directory cannot be transferred into itself or a descendant",
+                            ));
+                        }
+                    }
+                    break;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    // A dangling symlink cannot be treated as a missing directory.
+                    match std::fs::symlink_metadata(&ancestor) {
+                        Ok(_) => return Err(CoreError::from_io_error(error, ancestor)),
+                        Err(missing) if missing.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(error) => return Err(CoreError::from_io_error(error, ancestor)),
+                    }
+                    if !ancestor.pop() {
+                        return Err(CoreError::from_io_error(error, dst.to_path_buf()));
+                    }
+                }
+                Err(error) => return Err(CoreError::from_io_error(error, ancestor)),
+            }
+        }
+    }
+    Ok(())
 }
