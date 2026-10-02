@@ -315,6 +315,30 @@ row order and hash exactly the requested fields. This encoding makes provider
 enumeration order irrelevant to membership while preserving order where a
 scenario requires it.
 
+### Adapter Invocation
+
+The runner starts one adapter process per sample, so a cold sample never
+inherits work from an earlier one. It invokes
+`<program> <configured args> --fixture-root <path>` followed by one
+`--metric <name>` pair per requested metric. These arguments carry trusted
+inputs outside the wire request. The adapter reads the request until stdin
+closes and exits after writing `sample.completed`.
+
+The runner validates each stdout line as it arrives. A rejected line stops and
+reaps the adapter at once instead of waiting for it to finish. Process
+failures that are not protocol errors use these runner codes:
+
+| Code | Cause |
+|---|---|
+| `adapter_spawn_failed` | The adapter program could not start |
+| `adapter_timeout` | The sample missed its deadline; the runner killed the adapter |
+| `adapter_exit_status` | A valid trace ended with an unsuccessful exit |
+| `adapter_io` | The request or a stdout line could not be transferred |
+
+An adapter reports every requested metric. A metric it cannot measure at all
+is `unsupported`; one it measures but cannot read in this run is
+`not_observable` or `platform_unavailable`.
+
 ## Correctness Before Timing
 
 Every timed sample must prove semantic equivalence.
@@ -888,6 +912,17 @@ Store:
 
 Keep machine-specific baselines in named directories. Do not overwrite old
 results when a dependency, fixture, protocol, or machine profile changes.
+
+A raw sample record uses schema `filer-benchmark-raw-sample-v1` and lives at
+`<results>/<run_id>/<sample_id>.json`. It contains the exact request, the
+requested metric names, the fixture id and digest, and the full machine,
+filesystem, build, and adapter records behind the request's identifiers. The
+outcome is either accepted, with terminal status, timing eligibility,
+structural gates, metrics, and the row-free event timeline, or rejected, with
+the stable code, message, and location. Diagnostics hold the exit status and
+stderr; a rejected record also keeps the raw stdout lines. Rows are omitted
+from accepted records because their digests already prove them. Runner
+wall-clock bounds appear only in the record, never in event timestamps.
 
 ## Implementation Boundary
 
