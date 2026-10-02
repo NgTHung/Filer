@@ -18,7 +18,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::modules::scan::scanner::ScanCommand;
 use crate::pipeline::PipelineConfig;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::{CoreError, Event};
 
 pub use super::state::{NavState, NavigatorState};
@@ -94,17 +94,32 @@ impl Navigator {
         }
     }
 
-    fn emit_snapshot(&self, session: SessionId) {
-        self.sessions.read_sync(&session, |_, state| {
-            send_or_warn(
+    async fn emit_snapshot(&self, session: SessionId) {
+        let event = self
+            .sessions
+            .read_sync(&session, |_, state| Event::CurrentNavigateState {
+                session,
+                state: state.snapshot(),
+            });
+        if let Some(event) = event {
+            send_or_warn_async(&self.events, event, "emit nav snapshot").await;
+        }
+    }
+
+    async fn emit_navigation_error(
+        &self,
+        error: Option<CoreError>,
+        session: SessionId,
+        request: RequestId,
+    ) {
+        if let Some(error) = error {
+            send_or_warn_async(
                 &self.events,
-                Event::CurrentNavigateState {
-                    session,
-                    state: state.snapshot(),
-                },
-                "emit nav snapshot",
-            );
-        });
+                Event::from_request_error(error, session, request),
+                "navigation unavailable",
+            )
+            .await;
+        }
     }
 
     async fn handle_command(&self, command: NavCommand) {
@@ -118,11 +133,12 @@ impl Navigator {
                 let location = match self.register.resolve_location_ref(&location) {
                     Ok(location) => location,
                     Err(error) => {
-                        send_or_warn(
+                        send_or_warn_async(
                             &self.events,
                             Event::from_request_error(error, session, request),
                             "navigate resolve",
-                        );
+                        )
+                        .await;
                         return;
                     }
                 };
@@ -131,11 +147,12 @@ impl Navigator {
                     let Err(error) = route.require_direct_path() else {
                         return;
                     };
-                    send_or_warn(
+                    send_or_warn_async(
                         &self.events,
                         Event::from_request_error(error, session, request),
                         "navigate route",
-                    );
+                    )
+                    .await;
                     return;
                 }
 
@@ -157,11 +174,12 @@ impl Navigator {
                         );
                     })
                     .await;
-                self.emit_snapshot(session);
+                self.emit_snapshot(session).await;
             }
             NavCommand::Back(session, request) => {
                 self.get_or_init(session).await;
-                self.sessions
+                let error = self
+                    .sessions
                     .update_async(&session, |_, state| {
                         if state.can_back() {
                             let _ = state.back(1);
@@ -171,24 +189,22 @@ impl Navigator {
                                 self.scanner_tx.clone(),
                                 request,
                             );
+                            None
                         } else {
-                            send_or_warn(
-                                &self.events,
-                                Event::from_request_error(
-                                    CoreError::navigation_unavailable("Can't go back: no history"),
-                                    session,
-                                    request,
-                                ),
-                                "emit back error",
-                            );
+                            Some(CoreError::navigation_unavailable(
+                                "Can't go back: no history",
+                            ))
                         }
                     })
-                    .await;
-                self.emit_snapshot(session);
+                    .await
+                    .flatten();
+                self.emit_navigation_error(error, session, request).await;
+                self.emit_snapshot(session).await;
             }
             NavCommand::Forward(session, request) => {
                 self.get_or_init(session).await;
-                self.sessions
+                let error = self
+                    .sessions
                     .update_async(&session, |_, state| {
                         if state.can_forward() {
                             let _ = state.forward();
@@ -198,26 +214,22 @@ impl Navigator {
                                 self.scanner_tx.clone(),
                                 request,
                             );
+                            None
                         } else {
-                            send_or_warn(
-                                &self.events,
-                                Event::from_request_error(
-                                    CoreError::navigation_unavailable(
-                                        "Can't go forward: no forward history",
-                                    ),
-                                    session,
-                                    request,
-                                ),
-                                "emit forward error",
-                            );
+                            Some(CoreError::navigation_unavailable(
+                                "Can't go forward: no forward history",
+                            ))
                         }
                     })
-                    .await;
-                self.emit_snapshot(session);
+                    .await
+                    .flatten();
+                self.emit_navigation_error(error, session, request).await;
+                self.emit_snapshot(session).await;
             }
             NavCommand::Up(session, request) => {
                 self.get_or_init(session).await;
-                self.sessions
+                let error = self
+                    .sessions
                     .update_async(&session, |_, state| {
                         if let Some(location) = Self::parent_entry(state, &self.register) {
                             state.navigate_location(location);
@@ -227,26 +239,22 @@ impl Navigator {
                                 self.scanner_tx.clone(),
                                 request,
                             );
+                            None
                         } else {
-                            send_or_warn(
-                                &self.events,
-                                Event::from_request_error(
-                                    CoreError::navigation_unavailable(
-                                        "Can't go up: no parent directory",
-                                    ),
-                                    session,
-                                    request,
-                                ),
-                                "emit up error",
-                            );
+                            Some(CoreError::navigation_unavailable(
+                                "Can't go up: no parent directory",
+                            ))
                         }
                     })
-                    .await;
-                self.emit_snapshot(session);
+                    .await
+                    .flatten();
+                self.emit_navigation_error(error, session, request).await;
+                self.emit_snapshot(session).await;
             }
             NavCommand::Refresh(session, request) => {
                 self.get_or_init(session).await;
-                self.sessions
+                let error = self
+                    .sessions
                     .read_async(&session, |_key, state| {
                         if state.current.is_some() {
                             Self::trigger_current_refresh_scan(
@@ -255,21 +263,16 @@ impl Navigator {
                                 self.scanner_tx.clone(),
                                 request,
                             );
+                            None
                         } else {
-                            send_or_warn(
-                                &self.events,
-                                Event::from_request_error(
-                                    CoreError::navigation_unavailable(
-                                        "Can't refresh: no current directory",
-                                    ),
-                                    session,
-                                    request,
-                                ),
-                                "emit refresh error",
-                            );
+                            Some(CoreError::navigation_unavailable(
+                                "Can't refresh: no current directory",
+                            ))
                         }
                     })
-                    .await;
+                    .await
+                    .flatten();
+                self.emit_navigation_error(error, session, request).await;
             }
             NavCommand::SetPipeline { session, config } => {
                 self.get_or_init(session).await;
@@ -278,7 +281,7 @@ impl Navigator {
                         state.pipeline_config = config;
                     })
                     .await;
-                self.emit_snapshot(session);
+                self.emit_snapshot(session).await;
             }
             NavCommand::SetSelected { session, locations } => {
                 self.get_or_init(session).await;
@@ -298,22 +301,11 @@ impl Navigator {
                         }
                     })
                     .await;
-                self.emit_snapshot(session);
+                self.emit_snapshot(session).await;
             }
             NavCommand::GetState(session) => {
                 self.get_or_init(session).await;
-                self.sessions
-                    .read_async(&session, |_key, state| {
-                        send_or_warn(
-                            &self.events,
-                            Event::CurrentNavigateState {
-                                session,
-                                state: state.snapshot(),
-                            },
-                            "emit nav state",
-                        );
-                    })
-                    .await;
+                self.emit_snapshot(session).await;
             }
             NavCommand::Invalidate(location_ref) => {
                 let Ok(location) = self.register.resolve_location_ref(&location_ref) else {
