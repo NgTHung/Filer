@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 
 pub(super) use filer_core_benchmarks::{
-    CanonicalRow, DeclaredCapabilities, ErrorCode, Field, GateResult, Kind, RunValidator,
-    ValidatedManifest, canonical_digest,
+    CanonicalRow, DeclaredCapabilities, ErrorCode, Field, GateResult, Kind, MetricValue, Phase,
+    RunValidator, UnavailableReason, ValidatedManifest, canonical_digest,
 };
 pub(super) use serde_json::{Map, Value, json};
 

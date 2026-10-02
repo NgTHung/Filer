@@ -4,18 +4,21 @@
 //! identities once, while `SampleValidator` owns one event state machine until
 //! explicit EOF finalization.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::manifests::ValidatedManifest;
 use crate::scenarios::{ActionKind, ScenarioPlan, validate_request};
 use crate::schema::{
-    Event, Filter, Phase, Request, Status, StatusKind, is_valid_identifier, parse_event_line,
-    parse_request_bytes,
+    Event, Filter, MetricValue, Phase, Request, Status, StatusKind, is_valid_identifier,
+    parse_event_line, parse_request_bytes,
 };
 use crate::{ErrorCode, ProtocolError};
 
 mod output_validation;
+mod timeline;
 mod trace_state;
+
+pub use timeline::TimelineEntry;
 
 use trace_state::{ActionState, CountsState, TraceState};
 
@@ -71,6 +74,10 @@ pub struct ValidatedSample {
     pub status: Status,
     pub structural_gates: StructuralGates,
     pub event_count: usize,
+    /// Accepted events in sequence order, without rows.
+    pub timeline: Vec<TimelineEntry>,
+    /// Resource metrics reported on `sample.completed`.
+    pub metrics: BTreeMap<String, MetricValue>,
 }
 
 pub struct RunValidator {
@@ -129,6 +136,8 @@ impl RunValidator {
             request,
             plan,
             state: TraceState::new(gate),
+            timeline: Vec::new(),
+            metrics: BTreeMap::new(),
         })
     }
 
@@ -144,21 +153,24 @@ pub struct SampleValidator<'validator> {
     request: Request,
     plan: ScenarioPlan,
     state: TraceState,
+    timeline: Vec<TimelineEntry>,
+    metrics: BTreeMap<String, MetricValue>,
 }
 
 impl SampleValidator<'_> {
     pub fn ingest_line(&mut self, line: &[u8]) -> Result<(), ProtocolError> {
         let event = parse_event_line(line).map_err(|error| error.with_line(self.state.line + 1))?;
-        let action = event.action_id.clone();
-        let sequence = event.sequence;
+        let entry = TimelineEntry::from_event(&event);
         self.state.line += 1;
         self.ingest_event(event).map_err(|error| {
-            let error = error.with_sequence(sequence);
-            match action {
-                Some(action) => error.with_action(action),
+            let error = error.with_sequence(entry.sequence);
+            match &entry.action_id {
+                Some(action) => error.with_action(action.clone()),
                 None => error,
             }
-        })
+        })?;
+        self.timeline.push(entry);
+        Ok(())
     }
 
     pub fn finish(self) -> Result<ValidatedSample, ProtocolError> {
@@ -190,6 +202,8 @@ impl SampleValidator<'_> {
                 first_page_examined: self.state.gate,
             },
             event_count: self.state.events,
+            timeline: self.timeline,
+            metrics: self.metrics,
         })
     }
 
@@ -323,6 +337,7 @@ impl SampleValidator<'_> {
         }
         self.state.terminal_status = Some(status);
         self.state.completed = true;
+        self.metrics = event.metrics;
         Ok(())
     }
 

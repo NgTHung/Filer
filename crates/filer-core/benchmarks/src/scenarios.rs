@@ -39,7 +39,7 @@ pub(crate) struct ActionPlan {
     pub(crate) optional: Vec<Phase>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ScenarioKind {
     FastFirst,
     FastScale,
@@ -49,6 +49,73 @@ pub(crate) enum ScenarioKind {
     NameFilter,
     Refresh,
     ReferenceJourney,
+}
+
+/// The request fields a version 1 scenario fixes, independent of cache state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RequestSettings {
+    pub(crate) fixture_id: &'static str,
+    pub(crate) requested_fields: Vec<Field>,
+    pub(crate) sort: Sort,
+    pub(crate) filter: Filter,
+}
+
+impl ScenarioKind {
+    pub(crate) fn from_id(scenario_id: &str) -> Option<Self> {
+        Some(match scenario_id {
+            "browse.fast.first" => Self::FastFirst,
+            "browse.fast.scale" => Self::FastScale,
+            "browse.metadata.first" => Self::MetadataFirst,
+            "browse.next" => Self::Continuation,
+            "view.sort.name" => Self::NameSort,
+            "view.filter.common" => Self::NameFilter,
+            "browse.refresh" => Self::Refresh,
+            "journey.browse-reference" => Self::ReferenceJourney,
+            _ => return None,
+        })
+    }
+
+    fn plan(self) -> ScenarioPlan {
+        let (actions, first_page_gate) = match self {
+            Self::FastFirst => (vec![open_action(1, true, ListingKind::Membership)], true),
+            Self::FastScale => (vec![open_action(1, false, ListingKind::Membership)], true),
+            Self::MetadataFirst => (vec![open_action(1, false, ListingKind::Metadata)], true),
+            Self::Continuation => (continuation_actions(false), true),
+            Self::NameSort => (vec![transform_action("sort-name")], false),
+            Self::NameFilter => (vec![transform_action("filter-name")], false),
+            Self::Refresh => (vec![refresh_action("refresh")], false),
+            Self::ReferenceJourney => (continuation_actions(true), true),
+        };
+        ScenarioPlan {
+            kind: self,
+            actions,
+            first_page_gate,
+        }
+    }
+
+    pub(crate) fn request_settings(self) -> RequestSettings {
+        RequestSettings {
+            fixture_id: match self {
+                Self::FastScale => "flat-100k-v1",
+                _ => "flat-10k-v1",
+            },
+            requested_fields: match self {
+                Self::MetadataFirst => Field::ALL.to_vec(),
+                _ => vec![Field::Identity, Field::Kind],
+            },
+            sort: match self {
+                Self::NameSort | Self::NameFilter | Self::Refresh => Sort::NameAscending,
+                _ => Sort::ProviderOrder,
+            },
+            filter: match self {
+                Self::NameFilter => Filter::NameContains {
+                    value: "file-0001".to_string(),
+                    case_sensitive: true,
+                },
+                _ => Filter::None,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -74,107 +141,34 @@ pub(crate) fn validate_request(
             "version 1 scenarios require viewport_size 40 and page_size 256",
         ));
     }
-    let plan = match request.scenario_id.as_str() {
-        "browse.fast.first" => ScenarioPlan {
-            kind: ScenarioKind::FastFirst,
-            actions: vec![open_action(1, true, ListingKind::Membership)],
-            first_page_gate: true,
-        },
-        "browse.fast.scale" => ScenarioPlan {
-            kind: ScenarioKind::FastScale,
-            actions: vec![open_action(1, false, ListingKind::Membership)],
-            first_page_gate: true,
-        },
-        "browse.metadata.first" => ScenarioPlan {
-            kind: ScenarioKind::MetadataFirst,
-            actions: vec![open_action(1, false, ListingKind::Metadata)],
-            first_page_gate: true,
-        },
-        "browse.next" => ScenarioPlan {
-            kind: ScenarioKind::Continuation,
-            actions: continuation_actions(false),
-            first_page_gate: true,
-        },
-        "view.sort.name" => ScenarioPlan {
-            kind: ScenarioKind::NameSort,
-            actions: vec![transform_action("sort-name", Phase::TransformCompleted)],
-            first_page_gate: false,
-        },
-        "view.filter.common" => ScenarioPlan {
-            kind: ScenarioKind::NameFilter,
-            actions: vec![transform_action("filter-name", Phase::TransformCompleted)],
-            first_page_gate: false,
-        },
-        "browse.refresh" => ScenarioPlan {
-            kind: ScenarioKind::Refresh,
-            actions: vec![refresh_action("refresh")],
-            first_page_gate: false,
-        },
-        "journey.browse-reference" => ScenarioPlan {
-            kind: ScenarioKind::ReferenceJourney,
-            actions: continuation_actions(true),
-            first_page_gate: true,
-        },
-        _ => {
-            return Err(ProtocolError::new(
-                ErrorCode::InvalidScenarioConfiguration,
-                "scenario_id is not a version 1 scenario",
-            ));
-        }
-    };
+    let kind = ScenarioKind::from_id(&request.scenario_id).ok_or_else(|| {
+        ProtocolError::new(
+            ErrorCode::InvalidScenarioConfiguration,
+            "scenario_id is not a version 1 scenario",
+        )
+    })?;
+    let plan = kind.plan();
     validate_request_shape(request, &plan.kind)?;
     Ok(plan)
 }
 
 fn validate_request_shape(request: &Request, kind: &ScenarioKind) -> Result<(), ProtocolError> {
-    let expected_fixture = match kind {
-        ScenarioKind::FastScale => "flat-100k-v1",
-        _ => "flat-10k-v1",
+    let settings = kind.request_settings();
+    let mismatch = if request.fixture.id != settings.fixture_id {
+        Some("fixture")
+    } else if request.requested_fields != settings.requested_fields {
+        Some("requested_fields")
+    } else if request.sort != settings.sort {
+        Some("sort")
+    } else if request.filter != settings.filter {
+        Some("filter")
+    } else {
+        None
     };
-    if request.fixture.id != expected_fixture {
+    if let Some(field) = mismatch {
         return Err(ProtocolError::new(
             ErrorCode::InvalidScenarioConfiguration,
-            "fixture does not match the scenario",
-        ));
-    }
-    let expected_fields = match kind {
-        ScenarioKind::MetadataFirst => vec![
-            Field::Identity,
-            Field::Kind,
-            Field::SizeBytes,
-            Field::ModifiedUnixNs,
-        ],
-        _ => vec![Field::Identity, Field::Kind],
-    };
-    if request.requested_fields != expected_fields {
-        return Err(ProtocolError::new(
-            ErrorCode::InvalidScenarioConfiguration,
-            "requested_fields do not match the scenario",
-        ));
-    }
-    let expected_sort = match kind {
-        ScenarioKind::NameSort | ScenarioKind::NameFilter | ScenarioKind::Refresh => {
-            Sort::NameAscending
-        }
-        _ => Sort::ProviderOrder,
-    };
-    if request.sort != expected_sort {
-        return Err(ProtocolError::new(
-            ErrorCode::InvalidScenarioConfiguration,
-            "sort does not match the scenario",
-        ));
-    }
-    let expected_filter = match kind {
-        ScenarioKind::NameFilter => Filter::NameContains {
-            value: "file-0001".to_string(),
-            case_sensitive: true,
-        },
-        _ => Filter::None,
-    };
-    if request.filter != expected_filter {
-        return Err(ProtocolError::new(
-            ErrorCode::InvalidScenarioConfiguration,
-            "filter does not match the scenario",
+            format!("{field} does not match the scenario"),
         ));
     }
     match kind {
@@ -249,7 +243,7 @@ fn continuation_actions(journey: bool) -> Vec<ActionPlan> {
     }
     if journey {
         actions.extend([
-            transform_action("sort-name", Phase::TransformCompleted),
+            transform_action("sort-name"),
             ActionPlan {
                 id: "filter-name".to_string(),
                 kind: ActionKind::FilterName,
@@ -268,7 +262,7 @@ fn continuation_actions(journey: bool) -> Vec<ActionPlan> {
     actions
 }
 
-fn transform_action(id: &str, _phase: Phase) -> ActionPlan {
+fn transform_action(id: &str) -> ActionPlan {
     ActionPlan {
         id: id.to_string(),
         kind: if id == "filter-name" {

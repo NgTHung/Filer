@@ -17,6 +17,7 @@ mod canonical;
 mod error;
 mod fixtures;
 mod manifests;
+mod profile;
 mod scenarios;
 mod schema;
 mod validator;
@@ -29,6 +30,7 @@ pub use fixtures::{
 pub use manifests::{
     ExpectedDigests, GeneratorParameters, ManifestError, ManifestErrorCode, ValidatedManifest,
 };
+pub use profile::ProfileRecord;
 pub use schema::{
     Adapter, CacheState, Clock, Continuation, Counts, Environment, Event, Field, FilesystemCache,
     Filter, FixtureReference, Group, Implementation, Kind, MetricValue, Output, OutputScope, Phase,
@@ -38,5 +40,5 @@ pub use schema::{
 };
 pub use validator::{
     DeclaredCapabilities, GateResult, RunValidator, SampleValidator, StructuralGates,
-    ValidatedSample,
+    TimelineEntry, ValidatedSample,
 };

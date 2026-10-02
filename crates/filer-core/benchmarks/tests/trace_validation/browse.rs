@@ -516,3 +516,68 @@ fn classifies_streaming_first_page_gate() {
         GateResult::NotEvaluable
     );
 }
+
+#[test]
+fn exposes_the_accepted_events_as_a_row_free_timeline() {
+    let flat_10k = manifest("flat-10k-v1.json");
+    let request_10k = request(
+        &flat_10k,
+        "browse.fast.first",
+        &["identity", "kind"],
+        ("provider_order", "none"),
+        json!({"kind":"none"}),
+        ("cold", "warm", "empty"),
+    );
+    let mut trace = fast_trace(&flat_10k, "browse.fast.first", false, true);
+    let completed = trace.events.last_mut().expect("terminal event");
+    completed["metrics"] = json!({"cpu_time_ns": {"unavailable": "unsupported"}});
+    let mut validator = RunValidator::new(
+        flat_10k,
+        capabilities("browse.fast.first", true, true),
+        vec!["cpu_time_ns".to_string()],
+    )
+    .expect("validator context should be valid");
+    let mut sample = validator
+        .start_sample(&request_10k)
+        .expect("request should be accepted");
+    for line in trace.lines() {
+        sample.ingest_line(&line).expect("trace should be accepted");
+    }
+    let sample = sample.finish().expect("EOF should finalize the sample");
+
+    let phases = sample
+        .timeline
+        .iter()
+        .map(|entry| entry.phase)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        phases,
+        vec![
+            Phase::SampleStarted,
+            Phase::ActionStarted,
+            Phase::RowFirst,
+            Phase::ViewportCommitted,
+            Phase::PageCommitted,
+            Phase::ListingCompleted,
+            Phase::ActionCompleted,
+            Phase::SampleCompleted,
+        ]
+    );
+    assert!(
+        sample
+            .timeline
+            .iter()
+            .enumerate()
+            .all(|(index, entry)| entry.sequence == index as u64)
+    );
+    let listing = &sample.timeline[5];
+    assert_eq!(listing.action_id.as_deref(), Some("open"));
+    assert_eq!(
+        listing.output.as_ref().map(|output| output.row_count),
+        Some(10_000)
+    );
+    assert_eq!(
+        sample.metrics.get("cpu_time_ns"),
+        Some(&MetricValue::Unavailable(UnavailableReason::Unsupported))
+    );
+}
