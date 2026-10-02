@@ -8,9 +8,9 @@ parent: "core:CORE-027"
 milestone: "0.3.1"
 rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "High"
-tags: ["cancellation", "preview", "search", "navigation", "bug", "needs-triage"]
+tags: ["cancellation", "preview", "search", "navigation", "bug", "ready-for-agent"]
 whitepaper: "docs/adr/0001-core-runtime-lifecycle.md"
-last_updated: "2026-09-05"
+last_updated: "2026-10-02"
 ---
 
 ## Summary
@@ -24,3 +24,6 @@ Apply ADR-0001 newest-intent behavior only to reads that replace the same view r
 - [ ] Explicit cancellation and Session closure still stop the intended read work without cancelling accepted mutations.
 - [ ] Public-interface tests cover preview/metadata overlap, query replacement, valid continuation sequencing, late results, and cross-Session isolation using event barriers.
 - [ ] cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
+
+- [ ] First hold LoadMetadata behind a provider barrier and start LoadPreview in the same Session, then reverse the order; each independent metadata request completes without cancelling the preview.
+- [ ] Use existing purpose and Request identities for one-view clients; add multi-view identity only when public regression evidence requires it.

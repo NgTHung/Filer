@@ -4,10 +4,12 @@ title: "Show non-UTF-8 file names instead of empty names"
 status: "To Do"
 priority: "Medium"
 type: "Bug"
+milestone: "0.3.1"
+parent: "core:CORE-027"
 risk: "Low"
 impact: "Files whose names are not valid UTF-8 list with an empty name, sort first, and escape hidden-file filtering."
 tags: ["bug", "local", "model", "ready-for-agent"]
-last_updated: "2026-09-30"
+last_updated: "2026-10-02"
 ---
 
 ## Summary

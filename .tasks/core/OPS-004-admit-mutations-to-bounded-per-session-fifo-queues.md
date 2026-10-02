@@ -9,9 +9,9 @@ milestone: "0.3.1"
 depends_on: ["core:CORE-035", "core:REL-007"]
 rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "High"
-tags: ["operations", "queue", "cancellation", "bug", "needs-triage"]
+tags: ["operations", "queue", "cancellation", "bug", "ready-for-agent"]
 whitepaper: "docs/adr/0001-core-runtime-lifecycle.md"
-last_updated: "2026-09-05"
+last_updated: "2026-10-02"
 ---
 
 ## Summary
@@ -25,3 +25,6 @@ Replace the single per-Session mutation cancellation slot with bounded FIFO admi
 - [ ] Public tests distinguish accepted, rejected, queued, running, and terminal outcomes; execution rechecks state that can change while a command waits.
 - [ ] Individual queued and running operations remain explicitly cancellable, and cancellation, recovery, and closure controls remain serviceable when admission is full.
 - [ ] Barrier-based tests cover copy followed by create, FIFO order, capacity exhaustion/recovery, cancellation, and cross-Session progress; cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
+
+- [ ] Land and test the bounded queue state machine before actor integration; use provider barriers to hold the first copy while the second mutation is submitted.
+- [ ] Record the chosen default capacity and whether running and paused work consume it; request submission, admission, and terminal outcomes remain distinct in wire-facing contracts.

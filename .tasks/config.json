@@ -23,6 +23,9 @@
     "app": {
       "prefixes": ["UI", "EXPL", "SETS", "SRCH", "MEDIA", "NAV", "PERF", "A11Y"]
     },
+    "tui": {
+      "prefixes": ["TUI"]
+    },
     "ecosystem": {
       "prefixes": ["PLUG", "EXT", "THEME", "PROFILE", "PROVIDER"]
     },

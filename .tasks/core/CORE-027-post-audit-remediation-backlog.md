@@ -8,7 +8,7 @@ milestone: "0.3.1"
 risk: Medium
 impact: "Owns CORE-004 audit remediations planned for 0.3.1 local excellence after 0.3.0 contracts."
 tags: [core, audit, remediation]
-last_updated: 2026-09-05
+last_updated: "2026-10-02"
 ---
 
 ## Summary
@@ -28,3 +28,5 @@ membership does not add new release gates by itself.
 - [ ] CORE-017, CORE-018, CORE-019, CORE-021, CORE-022, CORE-024, and PIPELINE-003 are Done or explicitly Deferred with rationale.
 - [x] No child of this epic is required to close MILESTONE-003 / 0.3.0; that milestone is Done and these children belong to 0.3.1.
 - [ ] API-018, API-019, REL-007, OPS-004, OPS-005, REL-008, and REL-009 deliver the accepted runtime decisions with public-interface regression evidence.
+
+- [ ] REL-014, REL-015, PIPELINE-011, CORE-046, OPS-006, VFS-004, and CORE-045 close the finite executor, transfer, listing, cache, archive, and filename defects with regression evidence; VFS-003 retains its existing ownership.
