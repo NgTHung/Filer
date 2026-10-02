@@ -9,14 +9,14 @@ depends_on: [MILESTONE-003]
 risk: Medium
 impact: "Makes local large-directory browsing and decoration UI feel reliable after core contract stabilization."
 tags: [local, excellence, draft]
-last_updated: 2026-09-24
+last_updated: "2026-10-02"
 ---
 
 ## Summary
 
 Local file-manager excellence after 0.3.0 contract stabilization. Prove System32-scale browsing and git decoration delivery through public core contracts, measured by a benchmark harness instead of asserted. Core work is CORE-027 audit remediations, PIPELINE-003 scalable page delivery, and CORE-028 benchmarks.
 
-Scope note: every exit criterion here remains a core-side contract gate. app:UI-011 and its children are an approved companion track during 0.3.1, providing real-window feedback without making the app or framework selection a core release gate. App polish and open-in-terminal/editor helpers remain later work.
+Scope note: every exit criterion here remains a core-side contract gate. app:UI-011 and its children are an approved companion track during 0.3.1, providing real-window feedback without making the app or framework selection a core release gate. The Linux terminal client under tui:TUI-001 is also a companion track. Client completion remains independent of core exit criteria. App polish and open-in-terminal/editor helpers remain later work.
 
 ## Scope change rationale
 
@@ -32,6 +32,8 @@ On 2026-09-23, the maintainer approved PIPELINE-008 and VFS-002 after a comparis
 
 On 2026-09-24, the maintainer approved a backlog review that adds exit gates for a live mutation defect and the default browse path. The operation actor keeps one cancellation slot per Session, so a new mutation cancels the running one. A copy followed by a delete of its source can leave a partial copy and no source. OPS-004 replaces the slot with FIFO admission. OPS-005 must land with it, because a queue that continues after a failed copy would run the delete anyway. No current client sends mutations, but this milestone should not close with that behavior in core. PIPELINE-008 now gates because Explorer-style clients open folders sorted. PIPELINE-009 decides the default name order first, so PIPELINE-008 measures the comparator that ships. API-020 records the uncorrelated Handshake found in the same review and does not gate. The benchmark exit criterion is unchanged.
 
+On 2026-10-02, the maintainer approved a Linux TUI domain and a staged client-readiness plan. tui:TUI-001 uses Ratatui and TachyonFX, proves browsing before mutations, and supplies feedback alongside core work. REL-014/015, PIPELINE-011, CORE-046, OPS-006, and VFS-004 record finite audit defects; CORE-045 joins local stabilization. PROTOCOL-001 stages built-in remote browsing independently of extensions after the local browsing proof, followed by a local-Windows/remote-Linux GUI proof. These companion and follow-on tracks add no core exit gate.
+
 ## Draft policy
 
 This milestone is a draft plan. You or any agent may modify it as much as needed (exit criteria, membership, priority, depends_on, title, or replacement by a better split) until work for 0.3.1 has started. Work has started when this milestone or any task with `milestone: "0.3.1"` first moves to `In Progress`. Until then, treat this file as editable intent, not a locked commitment. After work starts, change scope only deliberately and record why.
@@ -46,6 +48,8 @@ This milestone is a draft plan. You or any agent may modify it as much as needed
 - API-020 (correlated session handshake; does not gate this milestone)
 - SERVICES-001 and SERVICES-003 (optional dependency cleanup and a measured detector decision; neither gates this milestone)
 - app:UI-011 and children UI-012 through UI-015 (companion validation work, not a core exit gate)
+- tui:TUI-001 and children TUI-002 through TUI-006 (companion terminal browsing and gated local mutations, not a core exit gate)
+- REL-014, REL-015, PIPELINE-011, CORE-046, OPS-006, VFS-004, and CORE-045 (finite client-readiness fixes under CORE-027, not additional milestone exit gates)
 - Reproduced client races use concrete core bug tasks under the workflow in docs/task-tracking.md; REL-006 is retired
 - API-018, API-019, REL-007, OPS-004, OPS-005, REL-008, and REL-009 (accepted ADR-0001 follow-ups under CORE-027; refine before implementation; OPS-004 and OPS-005 gate this milestone, and the others do not)
 

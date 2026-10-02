@@ -10,7 +10,7 @@ rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "High"
 tags: ["sessions", "validation", "providers", "enhancement", "needs-triage"]
 whitepaper: "docs/adr/0001-core-runtime-lifecycle.md"
-last_updated: "2026-09-05"
+last_updated: "2026-10-02"
 ---
 
 ## Summary
@@ -22,6 +22,10 @@ Retain the deferred authorization branch of ADR-0001. Current SessionPolicy take
 - [ ] A refined contract covers direct, queued, segmented, and extension-originated access and rechecks authority where queued execution can observe changed state.
 - [ ] Public tests prove denied actions cannot reach the prohibited filesystem work and allowed native actions preserve the OS permission model.
 - [ ] Restricted-client transport is gated on enforced authorization; input validation is not presented as authorization.
+
+## Transport scope
+
+The first PROTOCOL-004 host authenticates an OS user and binds one Session to its connection. That ownership check prevents Session impersonation but grants no restricted-root or per-command policy guarantee. A restricted remote client remains gated on this task; authentication and provider-aware authorization have separate owners.
 
 ## Rationale
 

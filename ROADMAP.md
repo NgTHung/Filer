@@ -27,12 +27,15 @@ scanning, search, operations, sessions, provider access, cache correctness, and
 event routing. Clients render extension output; extensions should not depend on
 desktop-only UI code.
 
-The current priority is local performance and reliability through the public
-core contracts. Finish the remaining allocation and maintenance work, then
-record comparable flat-directory baselines and one browse journey. The semantic
-extension plane follows in 0.4.0. The small app:UI-011 validation client supplies
-real-window feedback alongside core work. Full framework evaluation, task-web
-features, and broader benchmark adapters remain later work.
+The current priority is local performance and reliability through public core
+contracts. The Linux terminal client and minimal desktop validation supply
+interaction feedback alongside core fixes and comparative browse measurements.
+Linux browsing precedes local mutation controls; a built-in browsing protocol
+then connects the Windows GUI to a separate Linux machine while Windows files
+remain available through embedded local core. Remote mutations follow explicit
+disconnect and recovery contracts. The [active task order](docs/task-tracking.md#agent-workflow)
+owns execution scope. The semantic extension plane, full framework evaluation,
+task-web features, and broader benchmark adapters remain separate later work.
 
 The proof target for this phase is practical: Filer should load a very large
 local directory, such as `C:\Windows\System32`, without blocking the client, and

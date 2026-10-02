@@ -9,12 +9,12 @@ depends_on: [MILESTONE-005]
 risk: High
 impact: "Grows advanced local file-manager workflows and first-class archive or remote provider surfaces."
 tags: [power, providers, operations, draft]
-last_updated: 2026-08-31
+last_updated: "2026-10-02"
 ---
 
 ## Summary
 
-Power file-manager workflows: persistent presentation preferences, professional operations, search roots, session restore, archives as folders, and at most one carefully chosen remote provider. Multi-client transport (PROTOCOL-001), sync/backup, WASM hosting, and marketplace stay later than 0.5.0.
+Power file-manager workflows: persistent presentation preferences, professional operations, search roots, session restore, archives as folders, and at most one carefully chosen remote provider. Independent clients sharing one core runtime, sync/backup, WASM hosting, and marketplace stay later than 0.5.0. PROTOCOL-001 owns the separate built-in browsing connection track after local client validation; that initial per-connection host is independent of this milestone.
 
 Split expectation: this spans two themes, power-local (PIPELINE-002, OPS-002, SEARCH-001, NAV-001) and providers (archives, one remote provider). When this milestone becomes next in line, split it along that seam unless the combined scope has shrunk; power-local lands first because the provider half depends on its presentation and search contracts.
 

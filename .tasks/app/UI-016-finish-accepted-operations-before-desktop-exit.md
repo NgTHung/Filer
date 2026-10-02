@@ -5,12 +5,12 @@ status: "Deferred"
 priority: "High"
 type: "Feature"
 milestone: "0.5.0"
-depends_on: ["core:REL-008", "app:UI-010"]
+depends_on: ["core:REL-008", "app:UI-010", "app:UI-017", "core:PROTOCOL-007"]
 rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "High"
 tags: ["operations", "sessions", "errors", "enhancement", "needs-triage"]
 whitepaper: "docs/adr/0001-core-runtime-lifecycle.md"
-last_updated: "2026-09-05"
+last_updated: "2026-10-02"
 ---
 
 ## Summary
@@ -23,6 +23,8 @@ Implement the desktop exit behavior accepted in ADR-0001 after Core supplies gra
 - [ ] Finish-and-quit keeps the process, Core, and event consumer alive until accepted operations and cleanup complete; cancellation is explicit and never implied by a timeout.
 - [ ] Failure interrupts exit and retains or reopens an operations window with partial outcomes and retry, continue, and cancel-remainder controls.
 - [ ] Controller/bridge tests cover closure during queued work and failure recovery, and a real-window smoke run verifies the exit behavior without moving UI state into Core.
+
+- [ ] Local Windows and remote Linux operation state stays scoped to its host and owning Session; a lost remote reply shows uncertain status and follows the reviewed PROTOCOL-007 recovery contract instead of replaying the mutation.
 
 ## Rationale
 

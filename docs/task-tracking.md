@@ -389,9 +389,9 @@ cargo run -p taskroot -- ready --tag ready-for-agent --format json
 Use `ready` to select executable work. A ready task is `To Do`, is not a milestone, has no child tasks, has only `Done` dependencies, and has only `To Do` or `In Progress` ancestors. Results sort by priority and then qualified identity.
 
 For Filer, the primary execution scope is domain `core`, milestone `0.3.1`.
-The approved companion track is app:UI-011 and its children, which validate
-public core contracts in a real desktop window. Both queues below are active;
-core remains the priority and the app track can proceed alongside it. Use these
+The approved companion tracks are tui:TUI-001 for the Linux terminal client and
+app:UI-011 for public-core validation in a desktop window. Core remains the
+priority; both clients can provide feedback alongside it. Use these
 scopes unless the user selects a named task or another scope. A ready result
 establishes lifecycle eligibility, while
 `ready-for-agent` records that the task is specified. Milestone dependencies
@@ -400,6 +400,7 @@ explicit dependencies on the preceding milestone.
 
 ```bash
 cargo run -p taskroot -- ready --domain core --milestone 0.3.1 --tag ready-for-agent --format json
+cargo run -p taskroot -- ready --domain tui --milestone 0.3.1 --tag ready-for-agent --format json
 cargo run -p taskroot -- ready --domain app --milestone 0.3.1 --tag ready-for-agent --format json
 cargo run -p taskroot -- list --domain core --milestone 0.3.1 --tag needs-triage --format json
 ```
@@ -408,18 +409,38 @@ Treat the unfiltered queue as a project inventory. UI-001 framework evaluation
 and task-web epics remain Deferred; their existing children are retained.
 UI-011 uses a provisional renderer and is independent of UI-001 and the
 comparative benchmark chain. Its milestone membership schedules feedback during
-0.3.1 without adding an app release gate to the core milestone.
+0.3.1 without adding an app release gate to the core milestone. The terminal
+client's [task map](../.tasks/tui/TUI-001-build-a-linux-terminal-file-manager-over-public-core-contracts.md)
+owns its renderer choices and staged browsing/mutation criteria. Neither client
+is a core release gate.
 When you resume another area, reactivate its parent and inspect the selected
 child's context and specification before implementation. An empty scoped queue
 calls for checking the other approved queue, refinement, or a progress report,
 not automatic expansion into unrelated work. The `ready` output sorts by
-priority and ID, not by this order. PIPELINE-009, PIPELINE-010, and then
-PIPELINE-008 lead the core queue. The mutation-queue gate follows through
-CORE-035, REL-007, OPS-004,
-and OPS-005; triage REL-007, OPS-004, and OPS-005 before implementation. The
-initial benchmark slice and staged remediation follow. Dependency cleanup is
-optional lower-priority work. Update this scope when the active milestone
-changes.
+priority and ID, not by this order:
+
+1. REL-015 transfer preflight and REL-014 asynchronous lossless delivery address
+   data loss and executor progress first. REL-007 follows for correlated command
+   rejection and native-value validation.
+2. CORE-045, VFS-003, PIPELINE-011, CORE-046, and REL-009 establish browsing
+   correctness. TUI-002 through TUI-005 and UI-012 through UI-015 can proceed as
+   their dependencies permit. CORE-041 and CORE-032 provide performance evidence
+   alongside client work; VFS-002 retains its in-progress ownership.
+3. OPS-004, OPS-005, and REL-008 establish mutation ordering, recovery, and
+   closure. OPS-006 completes directory move fallback; TUI-006 exposes local
+   operations only after these guarantees. VFS-004 fixes empty ZIP browsing.
+4. The milestone-free [transport program](../.tasks/core/PROTOCOL-001-define-versioned-core-transport.md)
+   follows usable terminal browsing. PROTOCOL-002 specifies built-in browsing,
+   PROTOCOL-003 through PROTOCOL-006 implement and verify it, and UI-017 proves
+   local Windows plus remote Linux browsing. These are named follow-on scopes,
+   not additions to the default 0.3.1 queue.
+5. PROTOCOL-007 specifies remote mutations before implementation tickets are
+   added. PROTOCOL-008 retains preview and semantic-output transport. REL-010,
+   REL-011, UI-016, and full framework evaluation retain their deferred status.
+
+CORE-035 and the default name-order/sorted-page tasks are Done. Remaining
+maintenance and dependency cleanup follow the client-readiness work. Update this
+scope when the active milestone changes.
 
 Use `show` when you need one task's full metadata and body sections:
 
