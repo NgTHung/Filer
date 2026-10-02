@@ -143,3 +143,27 @@ async fn transfers_reject_descendants_before_creating_destinations() {
         assert_eq!(std::fs::read(source.join("file.txt")).unwrap(), CONTENT);
     }
 }
+
+#[tokio::test]
+async fn transfers_reject_descendants_after_missing_parent_components() {
+    if isolated_case("transfers_reject_descendants_after_missing_parent_components")
+        .await
+        .is_some()
+    {
+        return;
+    }
+    let root = std::path::PathBuf::from(std::env::var_os("FILER_TRANSFER_ROOT").unwrap());
+    let source = root.join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("file.txt"), CONTENT).unwrap();
+    let destination = root.join("missing/../source/nested");
+    for moving in [false, true] {
+        assert!(matches!(
+            transfer(&[&source], &destination, moving).await,
+            Event::Error { .. }
+        ));
+        assert!(!root.join("missing").exists());
+        assert!(!source.join("nested").exists());
+        assert_eq!(std::fs::read(source.join("file.txt")).unwrap(), CONTENT);
+    }
+}

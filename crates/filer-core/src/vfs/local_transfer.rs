@@ -15,7 +15,7 @@
 //! # }
 //! ```
 
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use same_file::Handle;
 
@@ -38,38 +38,48 @@ pub(super) fn check(src: &Path, dst: &Path) -> Result<(), CoreError> {
     let metadata = std::fs::metadata(src)
         .map_err(|error| CoreError::from_io_error(error, src.to_path_buf()))?;
     if metadata.is_dir() {
-        // Resolve aliases before walking parents; missing suffixes cannot hide ancestry.
-        let mut ancestor = std::path::absolute(dst)
-            .map_err(|error| CoreError::from_io_error(error, dst.to_path_buf()))?;
-        loop {
-            match std::fs::canonicalize(&ancestor) {
-                Ok(existing) => {
-                    for parent in existing.ancestors() {
-                        let handle = Handle::from_path(parent).map_err(|error| {
-                            CoreError::from_io_error(error, parent.to_path_buf())
-                        })?;
-                        if source == handle {
-                            return Err(CoreError::invalid_input(
-                                "A directory cannot be transferred into itself or a descendant",
-                            ));
-                        }
-                    }
-                    break;
+        let target = resolve_target(dst)?;
+        for parent in target.ancestors() {
+            match Handle::from_path(parent) {
+                Ok(handle) if source == handle => {
+                    return Err(CoreError::invalid_input(
+                        "A directory cannot be transferred into itself or a descendant",
+                    ));
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    // A dangling symlink cannot be treated as a missing directory.
-                    match std::fs::symlink_metadata(&ancestor) {
-                        Ok(_) => return Err(CoreError::from_io_error(error, ancestor)),
-                        Err(missing) if missing.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(error) => return Err(CoreError::from_io_error(error, ancestor)),
-                    }
-                    if !ancestor.pop() {
-                        return Err(CoreError::from_io_error(error, dst.to_path_buf()));
-                    }
-                }
-                Err(error) => return Err(CoreError::from_io_error(error, ancestor)),
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(CoreError::from_io_error(error, parent.to_path_buf())),
             }
         }
     }
     Ok(())
+}
+
+fn resolve_target(path: &Path) -> Result<PathBuf, CoreError> {
+    let absolute = std::path::absolute(path)
+        .map_err(|error| CoreError::from_io_error(error, path.to_path_buf()))?;
+    let mut resolved = PathBuf::new();
+    // Resolve symlinks before applying parent components, including after missing suffixes.
+    for component in absolute.components() {
+        if component == Component::ParentDir {
+            resolved.pop();
+            continue;
+        }
+        resolved.push(component.as_os_str());
+        if !matches!(component, Component::Normal(_)) {
+            continue;
+        }
+        match std::fs::canonicalize(&resolved) {
+            Ok(existing) => resolved = existing,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                match std::fs::symlink_metadata(&resolved) {
+                    Ok(_) => return Err(CoreError::from_io_error(error, resolved)),
+                    Err(missing) if missing.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(CoreError::from_io_error(error, resolved)),
+                }
+            }
+            Err(error) => return Err(CoreError::from_io_error(error, resolved)),
+        }
+    }
+    Ok(resolved)
 }
