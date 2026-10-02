@@ -1,7 +1,7 @@
 ---
 id: "REL-015"
 title: "Reject destructive self and descendant transfers before writing"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Bug"
 parent: "core:CORE-027"
@@ -9,7 +9,7 @@ milestone: "0.3.1"
 rules: ["PROVIDER-ACCESS", "SESSION-BOUNDARY"]
 risk: "High"
 tags: ["operations", "validation", "bug", "ready-for-agent"]
-last_updated: "2026-10-02"
+last_updated: 2026-10-02
 ---
 
 ## Summary
