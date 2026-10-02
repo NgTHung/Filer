@@ -1,7 +1,7 @@
 ---
 id: "CORE-040"
 title: "Add isolated benchmark runner and Filer adapter"
-status: In Progress
+status: Done
 priority: "High"
 type: "Feature"
 parent: "core:CORE-031"
@@ -19,6 +19,6 @@ Implement one runner for the validated protocol and a public-command Filer adapt
 
 ## Acceptance Criteria
 
-- [ ] The runner validates output before accepting timings and records failures with raw diagnostics.
-- [ ] The Filer adapter reports page, completion, emitted-row counts, and observable work metrics without private core hooks or fabricated row-arrival timing.
-- [ ] Tests cover wrong counts/digests, duplicate events, cancellation cleanup, and unsupported metrics; the isolated benchmark tests pass.
+- [x] The runner validates output before accepting timings and records failures with raw diagnostics.
+- [x] The Filer adapter reports page, completion, emitted-row counts, and observable work metrics without private core hooks or fabricated row-arrival timing.
+- [x] Tests cover wrong counts/digests, duplicate events, cancellation cleanup, and unsupported metrics; the isolated benchmark tests pass.
