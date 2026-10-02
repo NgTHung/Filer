@@ -25,6 +25,9 @@
 //!   and `Arc<dyn Any>` payload for commands not in the core enum.
 
 use rapidhash::fast::RandomState;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use crate::actors::ActorSystem;
 use crate::api::commands::Command;
@@ -49,7 +52,12 @@ pub struct HandlerContext {
 /// Receives the full `Command` enum (the handler pattern-matches the variant
 /// it cares about) and a `HandlerContext` for emitting events or querying
 /// sessions/registry.
-type HandlerFn = Box<dyn Fn(Command, &HandlerContext) + Send + Sync>;
+type HandlerFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+
+enum HandlerFn {
+    Sync(Box<dyn Fn(Command, &HandlerContext) + Send + Sync>),
+    Async(Box<dyn for<'a> Fn(Command, &'a HandlerContext) -> HandlerFuture<'a> + Send + Sync>),
+}
 
 /// A cleanup hook called when a session is destroyed.
 ///
@@ -68,7 +76,7 @@ type DestroyHookFn = Box<dyn Fn(SessionId, &HandlerContext) + Send + Sync>;
 /// the string key, then looks up and invokes the registered handler.
 /// If no handler is found, the command is logged and dropped.
 pub struct HandlerRegistry {
-    handlers: scc::HashMap<String, HandlerFn, RandomState>,
+    handlers: scc::HashMap<String, Arc<HandlerFn>, RandomState>,
     destroy_hooks: std::sync::Mutex<Vec<DestroyHookFn>>,
 }
 
@@ -98,7 +106,25 @@ impl HandlerRegistry {
         let key = key.into();
         // Remove existing (if any), then insert
         let _ = self.handlers.remove_sync(&key);
-        let _ = self.handlers.insert_sync(key, Box::new(handler));
+        let _ = self
+            .handlers
+            .insert_sync(key, Arc::new(HandlerFn::Sync(Box::new(handler))));
+    }
+
+    /// Register a handler that awaits capacity when delivering lossless events.
+    pub fn on_async(
+        &self,
+        key: impl Into<String>,
+        handler: impl for<'a> Fn(Command, &'a HandlerContext) -> HandlerFuture<'a>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        let key = key.into();
+        let _ = self.handlers.remove_sync(&key);
+        let _ = self
+            .handlers
+            .insert_sync(key, Arc::new(HandlerFn::Async(Box::new(handler))));
     }
 
     /// Register a cleanup hook called when a session is destroyed.
@@ -115,13 +141,20 @@ impl HandlerRegistry {
     /// Dispatch a command to its registered handler.
     ///
     /// Returns `true` if a handler was found, `false` otherwise.
-    pub fn dispatch(&self, command: Command, ctx: &HandlerContext) -> bool {
+    pub async fn dispatch(&self, command: Command, ctx: &HandlerContext) -> bool {
         let key = command.key().to_string();
-        self.handlers
-            .read_sync(&key, |_, handler| {
-                handler(command, ctx);
-            })
-            .is_some()
+        // Await delivery after releasing the registry guard so registration can proceed.
+        let Some(handler) = self
+            .handlers
+            .read_sync(&key, |_, handler| Arc::clone(handler))
+        else {
+            return false;
+        };
+        match handler.as_ref() {
+            HandlerFn::Sync(handler) => handler(command, ctx),
+            HandlerFn::Async(handler) => handler(command, ctx).await,
+        }
+        true
     }
 
     /// Run all session-destroy hooks for the given session.

@@ -21,7 +21,7 @@ use crate::modules::scan::ScanModule;
 use crate::modules::search::SearchModule;
 use crate::modules::watch::WatchModule;
 use crate::services::dir_cache::DirCache;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::send_or_warn_async;
 use crate::vfs::local::LocalFs;
 use crate::vfs::local_watch::LocalWatchProvider;
 
@@ -102,24 +102,30 @@ impl FilerCore {
             registry: registry.clone(),
         };
 
-        handlers.on("session.handshake", |_cmd, ctx| {
-            let session = ctx.sessions.create_session(ctx.events.clone());
-            send_or_warn(
-                &ctx.events,
-                Event::SessionCreated(session),
-                "emit SessionCreated",
-            );
+        handlers.on_async("session.handshake", |_cmd, ctx| {
+            Box::pin(async move {
+                let session = ctx.sessions.create_session(ctx.events.clone());
+                send_or_warn_async(
+                    &ctx.events,
+                    Event::SessionCreated(session),
+                    "emit SessionCreated",
+                )
+                .await;
+            })
         });
 
-        handlers.on("session.destroy", |cmd, ctx| {
-            if let Command::DestroySession(session_id) = cmd {
-                ctx.sessions.remove(session_id);
-                send_or_warn(
-                    &ctx.events,
-                    Event::SessionDestroyed(session_id),
-                    "emit SessionDestroyed",
-                );
-            }
+        handlers.on_async("session.destroy", |cmd, ctx| {
+            Box::pin(async move {
+                if let Command::DestroySession(session_id) = cmd {
+                    ctx.sessions.remove(session_id);
+                    send_or_warn_async(
+                        &ctx.events,
+                        Event::SessionDestroyed(session_id),
+                        "emit SessionDestroyed",
+                    )
+                    .await;
+                }
+            })
         });
 
         let router = CommandRouter::new(command_rx, handlers.clone(), ctx);

@@ -32,7 +32,7 @@ use crate::actors::Actor;
 use crate::api::commands::Command;
 use crate::api::module::{HandlerContext, HandlerRegistry};
 use crate::errors::CoreError;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::send_or_warn_async;
 
 /// Command Router actor — generic dispatcher backed by [`HandlerRegistry`].
 pub struct CommandRouter {
@@ -61,13 +61,13 @@ impl CommandRouter {
     ///
     /// Session validation is the only cross-cutting concern the Router
     /// handles directly. Everything else is delegated to the registry.
-    fn route(&self, command: Command) {
+    async fn route(&self, command: Command) {
         let request = command.request_id();
         let operation = command.operation_id();
         if let Some(session) = command.session_id()
             && !self.ctx.sessions.exists(session)
         {
-            send_or_warn(
+            send_or_warn_async(
                 &self.ctx.events,
                 {
                     let error = CoreError::unknown_session(session);
@@ -84,7 +84,8 @@ impl CommandRouter {
                     event
                 },
                 "unknown session error",
-            );
+            )
+            .await;
             return;
         }
 
@@ -109,7 +110,7 @@ impl CommandRouter {
 
         // Dispatch to registered handler
         let key = command.key().to_string();
-        if !self.handlers.dispatch(command, &self.ctx) {
+        if !self.handlers.dispatch(command, &self.ctx).await {
             tracing::warn!(key = %key, "no handler registered for command");
         }
 
@@ -123,7 +124,7 @@ impl CommandRouter {
 impl Actor for CommandRouter {
     async fn run(self) {
         while let Ok(command) = self.commands.recv_async().await {
-            self.route(command);
+            self.route(command).await;
         }
     }
     fn name(&self) -> &'static str {
