@@ -31,7 +31,7 @@ use crate::model::progress::{
 };
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::utils::channel::{send_or_warn, send_or_warn_async};
+use crate::utils::channel::send_or_warn_async;
 use crate::{CoreError, ErrorTarget};
 
 use super::command::OperationEventMode;
@@ -43,7 +43,7 @@ use super::support::{
 use super::target::{affected_location, resolve_direct_target};
 
 impl Operator {
-    pub(super) fn delete(
+    pub(super) async fn delete(
         &self,
         targets: Vec<LocationRef>,
         trash: bool,
@@ -62,11 +62,12 @@ impl Operator {
             ) {
                 Ok(path) => path,
                 Err(error) => {
-                    send_or_warn(
+                    send_or_warn_async(
                         &self.events,
                         operation_error(error, session, request, operation),
                         "operator: delete resolve",
-                    );
+                    )
+                    .await;
                     return;
                 }
             };
@@ -200,7 +201,7 @@ impl Operator {
         });
     }
 
-    pub(super) fn rename(
+    pub(super) async fn rename(
         &self,
         source: LocationRef,
         new_name: String,
@@ -217,17 +218,18 @@ impl Operator {
         ) {
             Ok(path) => path,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
                     "operator: rename resolve",
-                );
+                )
+                .await;
                 return;
             }
         };
 
         let Some(parent) = src_path.parent() else {
-            send_or_warn(
+            send_or_warn_async(
                 &self.events,
                 Event::from_operation_error(
                     CoreError::invalid_path(format!("Cannot get parent of {}", src_path.display())),
@@ -236,7 +238,8 @@ impl Operator {
                     operation,
                 ),
                 "operator: rename parent",
-            );
+            )
+            .await;
             return;
         };
 
@@ -336,7 +339,7 @@ impl Operator {
         });
     }
 
-    pub(super) fn create_file(
+    pub(super) async fn create_file(
         &self,
         parent: LocationRef,
         name: String,
@@ -353,11 +356,12 @@ impl Operator {
         ) {
             Ok(path) => path,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
                     "operator: create_file resolve",
-                );
+                )
+                .await;
                 return;
             }
         };
@@ -452,7 +456,7 @@ impl Operator {
         });
     }
 
-    pub(super) fn create_folder(
+    pub(super) async fn create_folder(
         &self,
         parent: LocationRef,
         name: String,
@@ -469,11 +473,12 @@ impl Operator {
         ) {
             Ok(path) => path,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
                     "operator: create_folder resolve",
-                );
+                )
+                .await;
                 return;
             }
         };

@@ -13,7 +13,7 @@ use crate::api::events::Event;
 use crate::api::module::{Module, ModuleContext};
 use crate::errors::CoreError;
 use crate::model::query::SearchQuery;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::provider::FsProvider;
 use searcher::{SearchCommand, SearchEventMode};
 
@@ -33,31 +33,34 @@ impl Module for SearchModule {
         let (search_tx, search_rx) = flume::unbounded::<SearchCommand>();
 
         let tx = search_tx.clone();
-        ctx.handlers.on("search", move |cmd, ctx| {
-            if let Command::Search {
-                query,
-                root,
-                session,
-                request,
-            } = cmd
-            {
-                match SearchQuery::parse(&query) {
-                    Ok(query) => {
-                        send_or_warn(
-                            &tx,
-                            SearchCommand::Search {
-                                query,
-                                root,
-                                event_mode: SearchEventMode::Location,
-                                session,
-                                request,
-                            },
-                            "search",
-                        );
+        ctx.handlers.on_async("search", move |cmd, ctx| {
+            let tx = tx.clone();
+            Box::pin(async move {
+                if let Command::Search {
+                    query,
+                    root,
+                    session,
+                    request,
+                } = cmd
+                {
+                    match SearchQuery::parse(&query) {
+                        Ok(query) => {
+                            send_or_warn(
+                                &tx,
+                                SearchCommand::Search {
+                                    query,
+                                    root,
+                                    event_mode: SearchEventMode::Location,
+                                    session,
+                                    request,
+                                },
+                                "search",
+                            );
+                        }
+                        Err(error) => emit_query_error(ctx, session, request, error).await,
                     }
-                    Err(error) => emit_query_error(ctx, session, request, error),
                 }
-            }
+            })
         });
 
         let tx = search_tx.clone();
@@ -87,13 +90,13 @@ impl Module for SearchModule {
     }
 }
 
-fn emit_query_error(
+async fn emit_query_error(
     ctx: &crate::api::module::HandlerContext,
     session: crate::model::session::SessionId,
     request: crate::model::request::RequestId,
     error: crate::model::query::QueryParseError,
 ) {
-    send_or_warn(
+    send_or_warn_async(
         &ctx.events,
         Event::from_request_error(
             CoreError::invalid_input(format!("Invalid search query: {error}")),
@@ -101,5 +104,6 @@ fn emit_query_error(
             request,
         ),
         "search query parse",
-    );
+    )
+    .await;
 }

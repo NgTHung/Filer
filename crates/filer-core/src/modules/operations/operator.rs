@@ -157,14 +157,17 @@ impl Actor for Operator {
                     session,
                     request,
                     operation,
-                }) => self.copy(
-                    sources,
-                    destination,
-                    session,
-                    request,
-                    operation,
-                    event_mode,
-                ),
+                }) => {
+                    self.copy(
+                        sources,
+                        destination,
+                        session,
+                        request,
+                        operation,
+                        event_mode,
+                    )
+                    .await
+                }
                 Ok(OpsCommand::Move {
                     sources,
                     destination,
@@ -172,14 +175,17 @@ impl Actor for Operator {
                     session,
                     request,
                     operation,
-                }) => self.moves(
-                    sources,
-                    destination,
-                    session,
-                    request,
-                    operation,
-                    event_mode,
-                ),
+                }) => {
+                    self.moves(
+                        sources,
+                        destination,
+                        session,
+                        request,
+                        operation,
+                        event_mode,
+                    )
+                    .await
+                }
                 Ok(OpsCommand::Delete {
                     targets,
                     trash,
@@ -187,7 +193,10 @@ impl Actor for Operator {
                     session,
                     request,
                     operation,
-                }) => self.delete(targets, trash, session, request, operation, event_mode),
+                }) => {
+                    self.delete(targets, trash, session, request, operation, event_mode)
+                        .await
+                }
                 Ok(OpsCommand::Rename {
                     source,
                     new_name,
@@ -195,7 +204,10 @@ impl Actor for Operator {
                     session,
                     request,
                     operation,
-                }) => self.rename(source, new_name, session, request, operation, event_mode),
+                }) => {
+                    self.rename(source, new_name, session, request, operation, event_mode)
+                        .await
+                }
                 Ok(OpsCommand::CreateFile {
                     parent,
                     name,
@@ -203,7 +215,10 @@ impl Actor for Operator {
                     session,
                     request,
                     operation,
-                }) => self.create_file(parent, name, session, request, operation, event_mode),
+                }) => {
+                    self.create_file(parent, name, session, request, operation, event_mode)
+                        .await
+                }
                 Ok(OpsCommand::CreateFolder {
                     parent,
                     name,
@@ -211,7 +226,10 @@ impl Actor for Operator {
                     session,
                     request,
                     operation,
-                }) => self.create_folder(parent, name, session, request, operation, event_mode),
+                }) => {
+                    self.create_folder(parent, name, session, request, operation, event_mode)
+                        .await
+                }
             }
         }
     }

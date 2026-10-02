@@ -128,7 +128,8 @@ impl Watcher {
         let location = match self.registry.resolve_location_ref(&location_ref) {
             Ok(location) => location,
             Err(error) => {
-                self.emit_watch_error(error, session_id, request, "watch location resolve error");
+                self.emit_watch_error(error, session_id, request, "watch location resolve error")
+                    .await;
                 return;
             }
         };
@@ -136,7 +137,8 @@ impl Watcher {
         let path = match location.route().require_direct_path() {
             Ok(path) => path.to_path_buf(),
             Err(error) => {
-                self.emit_watch_error(error, session_id, request, "watch location route error");
+                self.emit_watch_error(error, session_id, request, "watch location route error")
+                    .await;
                 return;
             }
         };
@@ -172,12 +174,13 @@ impl Watcher {
                 );
             }
             Err(error) => {
-                self.emit_watch_error(error, session_id, request, "watch location provider error");
+                self.emit_watch_error(error, session_id, request, "watch location provider error")
+                    .await;
             }
         }
     }
 
-    fn emit_watch_error(
+    async fn emit_watch_error(
         &self,
         error: crate::CoreError,
         session_id: SessionId,
@@ -188,7 +191,7 @@ impl Watcher {
             Some(request) => Event::from_request_error(error, session_id, request),
             None => Event::from_error(error, session_id),
         };
-        send_or_warn(&self.events, event, label);
+        send_or_warn_async(&self.events, event, label).await;
     }
 
     async fn handle_unwatch(&mut self, location_ref: LocationRef, scope: UnwatchScope) {

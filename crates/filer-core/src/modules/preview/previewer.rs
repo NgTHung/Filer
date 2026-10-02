@@ -15,7 +15,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::mime::{MAGIC_BYTE_WINDOW, MimeDetector};
 use crate::services::preview::PreviewCache;
-use crate::utils::channel::{send_or_warn, send_or_warn_async};
+use crate::utils::channel::send_or_warn_async;
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
@@ -125,7 +125,7 @@ impl Previewer {
         self
     }
 
-    fn dispatch_preview(
+    async fn dispatch_preview(
         &self,
         location_ref: LocationRef,
         options: Option<PreviewOptions>,
@@ -134,22 +134,22 @@ impl Previewer {
         request: RequestId,
     ) {
         self.mark_latest(session, request);
-        let Some((location, path)) =
-            self.resolve_location_path(&location_ref, session, request, "previewer: resolve")
+        let Some((location, path)) = self
+            .resolve_location_path(&location_ref, session, request, "previewer: resolve")
+            .await
         else {
             return;
         };
 
-        if let Ok(cache) = self.cache.lock()
-            && let Some(preview) = cache.get(&path)
-        {
+        let cached = self.cache.lock().ok().and_then(|cache| cache.get(&path));
+        if let Some(preview) = cached {
             let event = Event::PreviewReady {
                 location,
                 preview,
                 session,
                 request,
             };
-            send_or_warn(&self.events, event, "previewer: cache hit");
+            send_or_warn_async(&self.events, event, "previewer: cache hit").await;
             return;
         }
 
@@ -209,7 +209,7 @@ impl Previewer {
         });
     }
 
-    fn resolve_location_path(
+    async fn resolve_location_path(
         &self,
         location_ref: &LocationRef,
         session: SessionId,
@@ -219,11 +219,12 @@ impl Previewer {
         let location = match self.registry.resolve_location_ref(location_ref) {
             Ok(location) => location,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     Event::from_request_error(error, session, request),
                     context,
-                );
+                )
+                .await;
                 return None;
             }
         };
@@ -232,18 +233,21 @@ impl Previewer {
             LocationRoute::DirectPath { path } => Some((location_ref, path)),
             route @ (LocationRoute::Segmented { .. }
             | LocationRoute::UnsupportedProvider { .. }) => {
-                let error = route.require_direct_path().unwrap_err();
-                send_or_warn(
+                let Err(error) = route.require_direct_path() else {
+                    return None;
+                };
+                send_or_warn_async(
                     &self.events,
                     Event::from_request_error(error, session, request),
                     context,
-                );
+                )
+                .await;
                 None
             }
         }
     }
 
-    fn dispatch_metadata(
+    async fn dispatch_metadata(
         &self,
         location_ref: LocationRef,
         _event_mode: PreviewEventMode,
@@ -251,12 +255,15 @@ impl Previewer {
         request: RequestId,
     ) {
         self.mark_latest(session, request);
-        let Some((location, path)) = self.resolve_location_path(
-            &location_ref,
-            session,
-            request,
-            "previewer: resolve metadata",
-        ) else {
+        let Some((location, path)) = self
+            .resolve_location_path(
+                &location_ref,
+                session,
+                request,
+                "previewer: resolve metadata",
+            )
+            .await
+        else {
             return;
         };
 
@@ -304,7 +311,7 @@ impl Previewer {
         });
     }
 
-    fn dispatch_extended_metadata(
+    async fn dispatch_extended_metadata(
         &self,
         location_ref: LocationRef,
         _event_mode: PreviewEventMode,
@@ -312,12 +319,15 @@ impl Previewer {
         request: RequestId,
     ) {
         self.mark_latest(session, request);
-        let Some((location, path)) = self.resolve_location_path(
-            &location_ref,
-            session,
-            request,
-            "previewer: resolve extended metadata",
-        ) else {
+        let Some((location, path)) = self
+            .resolve_location_path(
+                &location_ref,
+                session,
+                request,
+                "previewer: resolve extended metadata",
+            )
+            .await
+        else {
             return;
         };
 
@@ -423,7 +433,8 @@ impl Actor for Previewer {
                     session,
                     request,
                 }) => {
-                    self.dispatch_preview(location, options, event_mode, session, request);
+                    self.dispatch_preview(location, options, event_mode, session, request)
+                        .await;
                 }
                 Ok(PreviewCommand::LoadMetadata {
                     location,
@@ -431,7 +442,8 @@ impl Actor for Previewer {
                     session,
                     request,
                 }) => {
-                    self.dispatch_metadata(location, event_mode, session, request);
+                    self.dispatch_metadata(location, event_mode, session, request)
+                        .await;
                 }
                 Ok(PreviewCommand::LoadExtendedMetadata {
                     location,
@@ -439,7 +451,8 @@ impl Actor for Previewer {
                     session,
                     request,
                 }) => {
-                    self.dispatch_extended_metadata(location, event_mode, session, request);
+                    self.dispatch_extended_metadata(location, event_mode, session, request)
+                        .await;
                 }
                 Ok(PreviewCommand::Cancel(session)) => {
                     self.cancel(session);

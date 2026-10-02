@@ -19,7 +19,7 @@ use crate::modules::git_decorations::backend::{GitRepository, GitStatusBackend, 
 use crate::modules::git_decorations::{
     FileDecorationInvalidation, GitDecorationTarget, MAX_VISIBLE_DECORATIONS,
 };
-use crate::utils::channel::{send_or_warn, send_or_warn_async};
+use crate::utils::channel::send_or_warn_async;
 use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 
 /// Commands consumed by the Git decoration actor.
@@ -104,7 +104,7 @@ impl GitDecorationsActor {
         self
     }
 
-    fn dispatch_status(
+    async fn dispatch_status(
         &mut self,
         parent_ref: LocationRef,
         visible: Vec<LocationRef>,
@@ -118,13 +118,14 @@ impl GitDecorationsActor {
                 )),
                 session,
                 request,
-            );
+            )
+            .await;
             return;
         }
         let parent = match self.registry.resolve_location_ref(&parent_ref) {
             Ok(location) => location,
             Err(error) => {
-                self.emit_error(error, session, request);
+                self.emit_error(error, session, request).await;
                 return;
             }
         };
@@ -133,7 +134,7 @@ impl GitDecorationsActor {
             route => match route.require_direct_path() {
                 Ok(path) => path.to_path_buf(),
                 Err(error) => {
-                    self.emit_error(error, session, request);
+                    self.emit_error(error, session, request).await;
                     return;
                 }
             },
@@ -143,14 +144,14 @@ impl GitDecorationsActor {
             let location = match self.registry.resolve_location_ref(&location_ref) {
                 Ok(location) => location,
                 Err(error) => {
-                    self.emit_error(error, session, request);
+                    self.emit_error(error, session, request).await;
                     return;
                 }
             };
             let path = match location.route().require_direct_path() {
                 Ok(path) => path.to_path_buf(),
                 Err(error) => {
-                    self.emit_error(error, session, request);
+                    self.emit_error(error, session, request).await;
                     return;
                 }
             };
@@ -187,16 +188,18 @@ impl GitDecorationsActor {
             active.remove_if_current(session, &worker_cancel).await;
         });
         if !spawned {
-            self.emit_error(CoreError::cancelled(), session, request);
+            self.emit_error(CoreError::cancelled(), session, request)
+                .await;
         }
     }
 
-    fn emit_error(&self, error: CoreError, session: SessionId, request: RequestId) {
-        send_or_warn(
+    async fn emit_error(&self, error: CoreError, session: SessionId, request: RequestId) {
+        send_or_warn_async(
             &self.events,
             Event::from_request_error(error, session, request),
             "git decoration error",
-        );
+        )
+        .await;
     }
 
     async fn apply_result(&mut self, worker: WorkerResult) {
@@ -374,7 +377,7 @@ impl Actor for GitDecorationsActor {
                 command = self.commands.recv_async() => {
                     match command {
                         Ok(GitDecorationCommand::Status { parent, visible, session, request }) => {
-                            self.dispatch_status(parent, visible, session, request);
+                            self.dispatch_status(parent, visible, session, request).await;
                         }
                         Ok(GitDecorationCommand::SessionDestroyed(session)) => {
                             self.destroy_session(session).await;

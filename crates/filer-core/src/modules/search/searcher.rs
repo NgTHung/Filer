@@ -17,7 +17,7 @@ use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::utils::channel::{send_or_warn, send_or_warn_async};
+use crate::utils::channel::send_or_warn_async;
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
@@ -257,11 +257,12 @@ impl Actor for Searcher {
                     let location = match self.registry.resolve_location_ref(&root) {
                         Ok(location) => location,
                         Err(error) => {
-                            send_or_warn(
+                            send_or_warn_async(
                                 &self.events,
                                 Event::from_request_error(error, session, request),
                                 "search resolve error",
-                            );
+                            )
+                            .await;
                             continue;
                         }
                     };
@@ -271,11 +272,12 @@ impl Actor for Searcher {
                         LocationRoute::Segmented { .. }
                         | LocationRoute::UnsupportedProvider { .. } => {
                             let error = route.require_direct_path().unwrap_err();
-                            send_or_warn(
+                            send_or_warn_async(
                                 &self.events,
                                 Event::from_request_error(error, session, request),
                                 "search route error",
-                            );
+                            )
+                            .await;
                             continue;
                         }
                     };

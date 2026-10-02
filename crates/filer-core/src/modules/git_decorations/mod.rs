@@ -38,7 +38,7 @@ use crate::api::commands::Command;
 use crate::api::module::{Module, ModuleContext};
 use crate::model::location::LocationRef;
 use crate::model::request::RequestId;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::local_watch::LocalWatchProvider;
 use crate::vfs::watch::WatchProvider;
 
@@ -152,56 +152,60 @@ impl Module for GitDecorationsModule {
         };
 
         let command_tx = self.command_tx.clone();
-        ctx.handlers.on("git.status", move |command, context| {
-            let Command::Extension {
-                key,
-                payload,
-                session,
-            } = command
-            else {
-                return;
-            };
-            if key != "git.status" {
-                return;
-            }
-            let Some(request) = payload.as_ref().downcast_ref::<GitDecorationRequest>() else {
-                send_or_warn(
-                    &context.events,
-                    crate::Event::from_error(
-                        crate::CoreError::invalid_input(
-                            "git.status payload must be GitDecorationRequest",
-                        ),
+        ctx.handlers
+            .on_async("git.status", move |command, context| {
+                let command_tx = command_tx.clone();
+                Box::pin(async move {
+                    let Command::Extension {
+                        key,
+                        payload,
                         session,
-                    ),
-                    "git decoration payload error",
-                );
-                return;
-            };
-            if request.visible.len() > MAX_VISIBLE_DECORATIONS {
-                send_or_warn(
-                    &context.events,
-                    crate::Event::from_request_error(
-                        crate::CoreError::invalid_input(format!(
+                    } = command
+                    else {
+                        return;
+                    };
+                    if key != "git.status" {
+                        return;
+                    }
+                    let Some(request) = payload.as_ref().downcast_ref::<GitDecorationRequest>()
+                    else {
+                        send_or_warn_async(
+                            &context.events,
+                            crate::Event::from_error(
+                                crate::CoreError::invalid_input(
+                                    "git.status payload must be GitDecorationRequest",
+                                ),
+                                session,
+                            ),
+                            "git decoration payload error",
+                        )
+                        .await;
+                        return;
+                    };
+                    if request.visible.len() > MAX_VISIBLE_DECORATIONS {
+                        let error = crate::CoreError::invalid_input(format!(
                             "git.status accepts at most {MAX_VISIBLE_DECORATIONS} visible locations"
-                        )),
-                        session,
-                        request.request,
-                    ),
-                    "git decoration request limit error",
-                );
-                return;
-            }
-            send_or_warn(
-                &command_tx,
-                GitDecorationCommand::Status {
-                    parent: request.parent.clone(),
-                    visible: request.visible.clone(),
-                    session,
-                    request: request.request,
-                },
-                "git status",
-            );
-        });
+                        ));
+                        send_or_warn_async(
+                            &context.events,
+                            crate::Event::from_request_error(error, session, request.request),
+                            "git decoration request limit error",
+                        )
+                        .await;
+                        return;
+                    }
+                    send_or_warn(
+                        &command_tx,
+                        GitDecorationCommand::Status {
+                            parent: request.parent.clone(),
+                            visible: request.visible.clone(),
+                            session,
+                            request: request.request,
+                        },
+                        "git status",
+                    );
+                })
+            });
 
         let command_tx = self.command_tx.clone();
         ctx.handlers.on_session_destroy(move |session, _context| {

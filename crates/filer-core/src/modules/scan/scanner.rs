@@ -13,7 +13,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
 use crate::services::dir_cache::SharedDirCache;
-use crate::utils::channel::send_or_warn;
+use crate::utils::channel::send_or_warn_async;
 use crate::vfs::provider::FsProvider;
 
 use super::execution::{
@@ -144,7 +144,7 @@ impl Scanner {
         });
     }
 
-    fn dispatch_location_scan(
+    async fn dispatch_location_scan(
         &self,
         location_ref: LocationRef,
         session: SessionId,
@@ -156,11 +156,12 @@ impl Scanner {
         let location = match self.registry.resolve_location_ref(&location_ref) {
             Ok(location) => location,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events_sender,
                     Event::from_request_error(error, session, request),
                     "scan resolve",
-                );
+                )
+                .await;
                 return;
             }
         };
@@ -183,11 +184,12 @@ impl Scanner {
                     Ok(_) => return,
                     Err(error) => error,
                 };
-                send_or_warn(
+                send_or_warn_async(
                     &self.events_sender,
                     Event::from_request_error(error, session, request),
                     "scan route",
-                );
+                )
+                .await;
                 return;
             }
         };
@@ -262,7 +264,8 @@ impl Actor for Scanner {
                     load,
                     request,
                 }) => {
-                    self.dispatch_location_scan(location, session, pipeline, load, false, request);
+                    self.dispatch_location_scan(location, session, pipeline, load, false, request)
+                        .await;
                 }
                 Ok(ScanCommand::RefreshLocation {
                     location,
@@ -271,7 +274,8 @@ impl Actor for Scanner {
                     load,
                     request,
                 }) => {
-                    self.dispatch_location_scan(location, session, pipeline, load, true, request);
+                    self.dispatch_location_scan(location, session, pipeline, load, true, request)
+                        .await;
                 }
                 Ok(ScanCommand::Cancel(session)) => {
                     self.cancel_scan(session);

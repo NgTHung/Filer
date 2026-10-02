@@ -34,7 +34,7 @@ use crate::model::progress::{
 };
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::utils::channel::{send_or_warn, send_or_warn_async};
+use crate::utils::channel::send_or_warn_async;
 use crate::{CoreError, ErrorCode, FsProvider, ProviderCx};
 
 use super::command::OperationEventMode;
@@ -46,7 +46,7 @@ use super::support::{
 use super::target::{affected_location, resolve_direct_target, resolve_direct_targets};
 
 impl Operator {
-    pub(super) fn copy(
+    pub(super) async fn copy(
         &self,
         sources: Vec<LocationRef>,
         dest: LocationRef,
@@ -63,11 +63,12 @@ impl Operator {
         ) {
             Ok(path) => path,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
                     "operator: copy resolve dest",
-                );
+                )
+                .await;
                 return;
             }
         };
@@ -80,11 +81,12 @@ impl Operator {
         ) {
             Ok(paths) => paths,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
                     "operator: copy resolve src",
-                );
+                )
+                .await;
                 return;
             }
         };
@@ -255,7 +257,7 @@ impl Operator {
         });
     }
 
-    pub(super) fn moves(
+    pub(super) async fn moves(
         &self,
         sources: Vec<LocationRef>,
         dest: LocationRef,
@@ -272,11 +274,12 @@ impl Operator {
         ) {
             Ok(path) => path,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
                     "operator: move resolve dest",
-                );
+                )
+                .await;
                 return;
             }
         };
@@ -289,11 +292,12 @@ impl Operator {
         ) {
             Ok(paths) => paths,
             Err(error) => {
-                send_or_warn(
+                send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
                     "operator: move resolve src",
-                );
+                )
+                .await;
                 return;
             }
         };
