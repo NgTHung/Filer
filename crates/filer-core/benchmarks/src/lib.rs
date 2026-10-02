@@ -18,6 +18,7 @@ mod error;
 mod fixtures;
 mod manifests;
 mod profile;
+mod runner;
 mod scenarios;
 mod schema;
 mod validator;
@@ -31,6 +32,10 @@ pub use manifests::{
     ExpectedDigests, GeneratorParameters, ManifestError, ManifestErrorCode, ValidatedManifest,
 };
 pub use profile::ProfileRecord;
+pub use runner::{
+    AdapterDiagnostics, AdapterSpec, FailureCode, RunPlan, Runner, RunnerError, SampleFailure,
+    SampleOutcome, SampleRecord, SampleSpec,
+};
 pub use schema::{
     Adapter, CacheState, Clock, Continuation, Counts, Environment, Event, Field, FilesystemCache,
     Filter, FixtureReference, Group, Implementation, Kind, MetricValue, Output, OutputScope, Phase,

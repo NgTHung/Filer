@@ -141,6 +141,10 @@ impl RunValidator {
         })
     }
 
+    pub fn manifest(&self) -> &ValidatedManifest {
+        &self.manifest
+    }
+
     pub fn accepted_sample_count(&self) -> usize {
         self.accepted_samples.len()
     }
