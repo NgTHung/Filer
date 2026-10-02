@@ -1,7 +1,7 @@
 ---
 id: "REL-014"
 title: "Keep lossless event delivery asynchronous on runtime tasks"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Bug"
 parent: "core:CORE-027"
@@ -9,7 +9,7 @@ milestone: "0.3.1"
 rules: ["ACTOR-LONG-WORK", "SESSION-BOUNDARY"]
 risk: "High"
 tags: ["async", "events", "bug", "ready-for-agent"]
-last_updated: "2026-10-02"
+last_updated: 2026-10-02
 ---
 
 ## Summary
