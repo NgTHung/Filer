@@ -1,7 +1,7 @@
 ---
 id: "CORE-040"
 title: "Add isolated benchmark runner and Filer adapter"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Feature"
 parent: "core:CORE-031"
@@ -10,7 +10,7 @@ depends_on: ["core:CORE-039"]
 risk: "Medium"
 tags: ["core", "benchmark", "performance", "enhancement", "ready-for-agent"]
 whitepaper: "docs/benchmarks/comparative-performance.md"
-last_updated: "2026-09-05"
+last_updated: 2026-10-02
 ---
 
 ## Summary
