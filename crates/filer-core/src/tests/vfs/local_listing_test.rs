@@ -437,30 +437,45 @@ async fn test_local_listing_stream_reports_a_deadline_that_passed_before_the_bat
     assert_eq!(batch.entries.len(), 3);
 }
 
-#[tokio::test]
-async fn test_local_listing_stream_refuses_to_resume_after_an_abandoned_batch() {
-    let fs = LocalFs::new();
-    let dir = populated_directory(2_000);
-    let mut stream = fs
-        .open_listing(dir.path(), ListingOptions::metadata(), &ProviderCx::none())
-        .await
-        .unwrap()
-        .expect("the local provider should expose a listing stream");
+#[test]
+fn test_local_listing_stream_refuses_to_resume_after_an_abandoned_batch() {
+    // A zero timeout fires only on a later timer tick, and a read that finishes
+    // first would win the race, so the only blocking thread stays held until
+    // the batch is dropped.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .max_blocking_threads(1)
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let fs = LocalFs::new();
+        let dir = populated_directory(3);
+        let mut stream = fs
+            .open_listing(dir.path(), ListingOptions::metadata(), &ProviderCx::none())
+            .await
+            .unwrap()
+            .expect("the local provider should expose a listing stream");
 
-    // A zero timeout polls the batch once and drops it while its blocking read
-    // holds the directory handle, as a cancelled caller's race would.
-    let abandoned = tokio::time::timeout(
-        std::time::Duration::ZERO,
-        stream.next_batch(2_000, &ProviderCx::none()),
-    )
-    .await;
-    assert!(abandoned.is_err(), "the batch should still be reading");
+        let (release, gate) = std::sync::mpsc::channel::<()>();
+        let held = tokio::task::spawn_blocking(move || gate.recv());
 
-    let error = stream
-        .next_batch(1, &ProviderCx::none())
-        .await
-        .expect_err("rows of the abandoned batch are gone, so resuming would skip them");
-    assert_eq!(error.code(), ErrorCode::IoFailed);
+        // The batch takes the directory handle before its read waits behind
+        // the gate, as a cancelled caller's race would leave it.
+        let abandoned = tokio::time::timeout(
+            std::time::Duration::ZERO,
+            stream.next_batch(3, &ProviderCx::none()),
+        )
+        .await;
+        assert!(abandoned.is_err(), "the batch should still be queued");
+        release.send(()).unwrap();
+        held.await.unwrap().unwrap();
+
+        let error = stream
+            .next_batch(1, &ProviderCx::none())
+            .await
+            .expect_err("rows of the abandoned batch are gone, so resuming would skip them");
+        assert_eq!(error.code(), ErrorCode::IoFailed);
+    });
 }
 
 #[tokio::test]
