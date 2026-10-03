@@ -18,7 +18,7 @@ Extensions report meaning, not pixels. A Git extension reports that a file is mo
 | [`filer-app`](crates/filer-app/README.md) | Desktop client built on Iced |
 | [`filer-ecosystem`](crates/filer-ecosystem/README.md) | Serializable contracts for extensions, packages, and profile sync |
 | [`taskroot`](tools/taskroot/README.md) | Markdown task tracker used to plan this repository |
-| `filer-task-web` | Localhost web board for `taskroot` projects |
+| [`filer-task-web`](tools/filer-task-web/README.md) | Localhost web board for `taskroot` projects |
 
 ## Build and run
 
