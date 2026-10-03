@@ -1,7 +1,7 @@
 ---
 id: "VFS-002"
 title: "Enumerate local directory pages in one blocking task"
-status: In Progress
+status: Done
 priority: "High"
 type: "Refactor"
 milestone: "0.3.1"
@@ -9,7 +9,7 @@ rules: ["PROVIDER-ACCESS", "ACTOR-LONG-WORK"]
 risk: "Medium"
 impact: "Removes per-entry blocking-pool hops from metadata listings and prepares a native Windows enumeration path."
 tags: ["core", "performance", "vfs", "enhancement", "ready-for-agent"]
-last_updated: 2026-10-01
+last_updated: 2026-10-03
 ---
 
 ## Summary
@@ -20,8 +20,8 @@ LocalFs lists through tokio::fs::read_dir. Metadata listings call DirEntry::meta
 
 - [x] Fast and Metadata page listings enumerate and read metadata for one page inside one blocking task with no per-entry blocking hop.
 - [x] Tests prove row kind, size, timestamps, hidden state, and symlink or junction classification match current behavior on Linux and Windows, including cancellation and cursor continuation.
-- [ ] Same-machine before/after runs on Windows NTFS and Linux record Metadata first-page time and allocations.
-- [ ] A native Windows enumeration path and its dependency land only when the Windows benchmark shows a gain over std enumeration in one blocking task; otherwise the measured result is recorded and no dependency is added.
+- [x] Same-machine before/after runs on Windows NTFS and Linux record Metadata first-page time and allocations.
+- [x] A native Windows enumeration path and its dependency land only when the Windows benchmark shows a gain over std enumeration in one blocking task; otherwise the measured result is recorded and no dependency is added.
 
 ## Rationale
 
