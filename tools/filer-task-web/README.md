@@ -8,11 +8,16 @@
 cargo run -p filer-task-web
 ```
 
-The server listens on `http://127.0.0.1:7878` and keeps its state in `filer-task-web.sqlite3` in the working directory. It binds the loopback address only, so other machines on your network cannot reach it. Pass `--port` and `--database` to change either default:
+By default the server listens on `http://127.0.0.1:7878` and keeps its state in `filer-task-web.sqlite3` in the working directory. The loopback default keeps the board on your machine. Pass `--host`, `--port`, or `--database` to change a default:
 
 ```bash
 cargo run -p filer-task-web -- --port 8080 --database ~/filer-task-web.sqlite3
+cargo run -p filer-task-web -- --host 0.0.0.0
 ```
+
+`--host` takes an IP address such as `::1` or `0.0.0.0`, not a hostname. `--port 0` lets the OS pick a free port, and the startup line prints the address the server bound.
+
+A non-loopback host lets other machines reach the board. Anyone who reaches it can pick a username, change tasks, and register or create a project at any path the server process can write. Listen on a shared address only on a network you trust.
 
 The server reads the page, stylesheet, and scripts from this crate's `static/` directory, at the path recorded when the binary was compiled. Run it from a checkout of this repository. A binary copied to another machine starts, but answers every page request with 404.
 

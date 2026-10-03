@@ -1,8 +1,9 @@
-//! Serves the filer-task web interface on localhost only.
+//! Serves the filer-task web interface.
 //!
-//! Binds `127.0.0.1` so the task board is never exposed to the network. Pass
-//! `--port <port>` to change the port and `--database <path>` to select the
-//! SQLite file. Project registrations are loaded from that database.
+//! Binds `127.0.0.1` by default so the task board stays off the network unless
+//! `--host <address>` names another interface. Pass `--port <port>` to change
+//! the port and `--database <path>` to select the SQLite file. Project
+//! registrations are loaded from that database.
 //!
 //! Two recovery subcommands help someone who lost every cookie regain their
 //! identity without a pairing PIN: `session-mint <username>` prints a fresh
@@ -12,7 +13,11 @@
 //! falling back to defaults, so a typo like `--databse` cannot hit the wrong
 //! database.
 
-use std::{net::SocketAddr, path::PathBuf};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+    str::FromStr,
+};
 
 use axum::http::{HeaderValue, header};
 use filer_task_web::{
@@ -70,9 +75,13 @@ async fn serve(options: ServeOptions) -> Result<(), Box<dyn std::error::Error>> 
             HeaderValue::from_static("no-cache"),
         ));
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], options.port));
+    let addr = SocketAddr::new(options.host, options.port);
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("filer-task-web listening on http://{addr}");
+    // Port 0 lets the OS pick a free port, so announce the address actually bound.
+    println!(
+        "filer-task-web listening on http://{}",
+        listener.local_addr()?
+    );
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -108,13 +117,16 @@ enum Command {
 }
 
 struct ServeOptions {
+    host: IpAddr,
     port: u16,
     database: PathBuf,
 }
 
+const DEFAULT_DATABASE: &str = "filer-task-web.sqlite3";
+
 const USAGE: &str = "\
 usage:
-  filer-task-web [--port <port>] [--database <path>]
+  filer-task-web [--host <address>] [--port <port>] [--database <path>]
   filer-task-web session-mint <username> [--database <path>]
   filer-task-web session-clear <username> [--database <path>]";
 
@@ -130,44 +142,42 @@ fn parse_args() -> Result<Command, String> {
 }
 
 fn parse_serve(args: &[String]) -> Result<Command, String> {
+    let mut host = IpAddr::V4(Ipv4Addr::LOCALHOST);
     let mut port = 7878;
-    let mut database = PathBuf::from("filer-task-web.sqlite3");
+    let mut database = PathBuf::from(DEFAULT_DATABASE);
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--host" => {
+                host = parsed_flag_value(args, index, "--host")?;
+                index += 2;
+            }
             "--port" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--port requires a value".to_string())?;
-                port = value
-                    .parse()
-                    .map_err(|_| format!("invalid --port value {value:?}"))?;
+                port = parsed_flag_value(args, index, "--port")?;
                 index += 2;
             }
             "--database" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--database requires a value".to_string())?;
-                database = PathBuf::from(value);
+                database = PathBuf::from(flag_value(args, index, "--database")?);
                 index += 2;
             }
             other => return Err(format!("unexpected argument {other:?}")),
         }
     }
-    Ok(Command::Serve(ServeOptions { port, database }))
+    Ok(Command::Serve(ServeOptions {
+        host,
+        port,
+        database,
+    }))
 }
 
 fn parse_session_subcommand(args: &[String]) -> Result<(String, PathBuf), String> {
-    let mut database = PathBuf::from("filer-task-web.sqlite3");
+    let mut database = PathBuf::from(DEFAULT_DATABASE);
     let mut username = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--database" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--database requires a value".to_string())?;
-                database = PathBuf::from(value);
+                database = PathBuf::from(flag_value(args, index, "--database")?);
                 index += 2;
             }
             flag if flag.starts_with('-') => return Err(format!("unexpected flag {flag:?}")),
@@ -182,4 +192,17 @@ fn parse_session_subcommand(args: &[String]) -> Result<(String, PathBuf), String
     }
     let username = username.ok_or_else(|| "missing username".to_string())?;
     Ok((username, database))
+}
+
+fn flag_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
+    args.get(index + 1)
+        .map(String::as_str)
+        .ok_or_else(|| format!("{flag} requires a value"))
+}
+
+fn parsed_flag_value<T: FromStr>(args: &[String], index: usize, flag: &str) -> Result<T, String> {
+    let value = flag_value(args, index, flag)?;
+    value
+        .parse()
+        .map_err(|_| format!("invalid {flag} value {value:?}"))
 }

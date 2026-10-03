@@ -3,20 +3,12 @@
 //! user, and `session-clear` revokes every cookie of a user and prints how many
 //! it removed. Each test runs the real binary against its own temp database.
 
-use std::process::{Command, Output};
+mod cli;
 
+use std::process::Output;
+
+use cli::run;
 use filer_task_web::storage::Storage;
-
-fn binary() -> &'static str {
-    env!("CARGO_BIN_EXE_filer-task-web")
-}
-
-fn run(args: &[&str]) -> Output {
-    Command::new(binary())
-        .args(args)
-        .output()
-        .expect("CLI process spawns")
-}
 
 fn run_ok(args: &[&str]) -> Output {
     let output = run(args);
