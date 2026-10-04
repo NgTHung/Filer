@@ -11,6 +11,8 @@ import { MilestonesScreen } from "./screens/Milestones.js";
 import { NewTaskScreen } from "./screens/NewTask.js";
 import { SettingsScreen } from "./screens/Settings.js";
 import { TaskDrawer } from "./components/TaskDrawer.js";
+import { AccessBanner } from "./components/AccessBanner.js";
+import { ACTIONS, can } from "./lib/access.js";
 import { isPaletteShortcut } from "./lib/palette.js";
 import { loadIdentity, useIdentityStore } from "./store/identity.js";
 
@@ -104,7 +106,14 @@ function App() {
   // Settings is the only screen that works without a project, and it is where
   // the first one gets registered, so an empty registry lands there instead of
   // on a dead end. A broken project needs the same escape.
-  const active = project ? screen : "settings";
+  const canWrite = can(
+    project?.my_role ?? null,
+    identityStore.identity?.is_admin === true,
+    ACTIONS.WRITE_TASKS,
+  );
+  // New task is a write screen; a user who cannot write, or has just lost the
+  // role, lands on Ready instead.
+  const active = !project ? "settings" : screen === "new-task" && !canWrite ? "ready" : screen;
 
   return html`
     <div class="app-shell">
@@ -114,6 +123,9 @@ function App() {
         onSwitchProject=${() => setPaletteOpen(true)}
       />
       <main class="app-main">
+        ${project && !project.broken && active !== "settings"
+          ? html`<${AccessBanner} project=${project} />`
+          : null}
         ${project && project.broken && active !== "settings"
           ? html`<${BrokenScreen}
               project=${project}
@@ -125,6 +137,7 @@ function App() {
       <${TaskDrawer}
         projectName=${project?.name}
         taskId=${selectedTaskId}
+        canWrite=${canWrite}
         onClose=${() => setSelectedTaskId(null)}
         onSelect=${setSelectedTaskId}
       />

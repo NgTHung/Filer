@@ -2,7 +2,7 @@ import { html } from "../../vendor/preact-htm.js";
 
 // Each row carries its own content hash, so a toggle targets the exact source
 // line the drawer rendered rather than whatever now sits at that index.
-export function DrawerCriteria({ heading, criteria, refusal, pendingIndex, onToggle }) {
+export function DrawerCriteria({ heading, criteria, refusal, pendingIndex, readOnly, onToggle }) {
   const highlighted = new Set(refusal ? refusal.indexes : []);
 
   return html`
@@ -22,7 +22,7 @@ export function DrawerCriteria({ heading, criteria, refusal, pendingIndex, onTog
                       <input
                         type="checkbox"
                         checked=${item.checked}
-                        disabled=${pendingIndex !== null}
+                        disabled=${readOnly || pendingIndex !== null}
                         onChange=${(event) => onToggle(index, event.currentTarget.checked)}
                       />
                       <span>${item.text}</span>

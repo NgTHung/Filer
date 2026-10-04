@@ -11,7 +11,7 @@ import { DrawerRelations } from "./DrawerRelations.js";
 // The drawer owns its own reads: relationship chips reselect by setting one id,
 // and every write path refreshes through the same request, so callers never
 // hold a view that the drawer has already moved past.
-export function TaskDrawer({ projectName, taskId, onClose, onSelect }) {
+export function TaskDrawer({ projectName, taskId, canWrite, onClose, onSelect }) {
   const api = useMemo(() => projectScoped(projectName), [projectName]);
   const [context, setContext] = useState(null);
   const [error, setError] = useState(null);
@@ -215,6 +215,7 @@ export function TaskDrawer({ projectName, taskId, onClose, onSelect }) {
             ? html`<p class="muted-note">Loading ${taskId}…</p>`
             : html`<${DrawerBody}
                 context=${context}
+                canWrite=${canWrite}
                 notice=${notice}
                 refusal=${refusal}
                 pendingAction=${pendingAction}
@@ -240,6 +241,7 @@ export function TaskDrawer({ projectName, taskId, onClose, onSelect }) {
 
 function DrawerBody({
   context,
+  canWrite,
   notice,
   refusal,
   pendingAction,
@@ -259,7 +261,7 @@ function DrawerBody({
 }) {
   const { task, sections, criteria, criteria_heading } = context.detail;
 
-  if (draft) {
+  if (draft && canWrite) {
     return html`
       <header class="drawer-header">
         <span class="drawer-id">${task.qualified_id}</span>
@@ -287,10 +289,14 @@ function DrawerBody({
       <button class="drawer-close" onClick=${onClose} title="Close">×</button>
     </header>
     <h3 class="drawer-title">${task.title}</h3>
-    <div class="drawer-action-row">
-      <${DrawerActions} pendingAction=${pendingAction} onRun=${onRun} />
-      <button class="drawer-edit-open" onClick=${onEdit}>Edit</button>
-    </div>
+    ${canWrite
+      ? html`
+          <div class="drawer-action-row">
+            <${DrawerActions} pendingAction=${pendingAction} onRun=${onRun} />
+            <button class="drawer-edit-open" onClick=${onEdit}>Edit</button>
+          </div>
+        `
+      : null}
     ${refusal
       ? html`
           <p class="drawer-refusal" role="alert">
@@ -326,6 +332,7 @@ function DrawerBody({
       criteria=${criteria}
       refusal=${refusal}
       pendingIndex=${pendingCriterion}
+      readOnly=${!canWrite}
       onToggle=${onToggle}
     />
     ${context.warnings.length > 0

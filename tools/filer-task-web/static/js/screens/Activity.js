@@ -1,6 +1,7 @@
 import { html, useEffect, useMemo, useState } from "../../vendor/preact-htm.js";
 import { getActivity } from "../api/client.js";
 import { Header } from "../components/Header.js";
+import { activityLabel } from "../lib/activity.js";
 
 function formatTime(unixSeconds) {
   return new Date(unixSeconds * 1000).toLocaleString();
@@ -50,7 +51,7 @@ export function ActivityScreen({ projectName, onSelectTask }) {
                     <tr key=${row.id}>
                       <td>${formatTime(row.created_at)}</td>
                       <td>${row.username}</td>
-                      <td>${row.action}</td>
+                      <td>${activityLabel(row.action)}</td>
                       <td>
                         ${row.task_id
                           ? html`

@@ -1,5 +1,7 @@
 import { html, useEffect, useState } from "../../vendor/preact-htm.js";
 import { projectScoped } from "../api/client.js";
+import { ACTIONS, can } from "../lib/access.js";
+import { useIdentityStore } from "../store/identity.js";
 import { activeProject, setActiveProject, useProjectStore } from "../store/project.js";
 import { IdentityFooter } from "./IdentityFooter.js";
 
@@ -28,6 +30,9 @@ function summarize(tasks) {
 export function Sidebar({ screen, onSelectScreen, onSwitchProject }) {
   const store = useProjectStore();
   const project = activeProject();
+  const identity = useIdentityStore().identity;
+  const canWrite = can(project?.my_role ?? null, identity?.is_admin === true, ACTIONS.WRITE_TASKS);
+  const navItems = NAV_ITEMS.filter((item) => item.id !== "new-task" || canWrite);
   const [tasks, setTasks] = useState([]);
   const [readyCount, setReadyCount] = useState(0);
   const [milestoneCount, setMilestoneCount] = useState(0);
@@ -80,7 +85,7 @@ export function Sidebar({ screen, onSelectScreen, onSwitchProject }) {
       </button>
       <div class="sidebar-scroll">
         <nav class="nav-list">
-          ${NAV_ITEMS.map(
+          ${navItems.map(
             (item) => html`
               <button
                 class="nav-item ${screen === item.id ? "active" : ""}"

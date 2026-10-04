@@ -2,6 +2,7 @@ import { html, useEffect, useRef, useState } from "../../vendor/preact-htm.js";
 import { moveSelection, paletteRows } from "../lib/palette.js";
 import { openProject } from "../lib/projectOpen.js";
 import { fieldError } from "../lib/rejection.js";
+import { useIdentityStore } from "../store/identity.js";
 import { setActiveProject, useProjectStore } from "../store/project.js";
 import { ProjectCreateDialog } from "./ProjectCreateDialog.js";
 
@@ -17,7 +18,9 @@ export function CommandPalette({ onClose }) {
   const [creating, setCreating] = useState(null);
   const inputRef = useRef(null);
 
-  const rows = paletteRows(store.projects, query);
+  const identity = useIdentityStore().identity;
+  const canCreate = identity?.is_admin === true;
+  const rows = paletteRows(store.projects, query, { canCreate });
 
   useEffect(() => {
     if (inputRef.current) {
@@ -82,7 +85,11 @@ export function CommandPalette({ onClose }) {
           }}
         />
         ${rows.length === 0
-          ? html`<p class="muted-note">Type a project name to switch to it, or to create it.</p>`
+          ? html`<p class="muted-note">
+              ${canCreate
+                ? "Type a project name to switch to it, or to create it."
+                : "Type a project name to switch to it."}
+            </p>`
           : html`
               <ul class="switcher-list">
                 ${rows.map(

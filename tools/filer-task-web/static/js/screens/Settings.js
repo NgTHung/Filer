@@ -1,6 +1,8 @@
 import { html, useEffect, useMemo, useRef, useState } from "../../vendor/preact-htm.js";
 import { listSessions, projectScoped } from "../api/client.js";
+import { AccessRequests } from "../components/AccessRequests.js";
 import { Header } from "../components/Header.js";
+import { MemberList } from "../components/MemberList.js";
 import { PolicyDomains } from "../components/PolicyDomains.js";
 import { PolicyTags } from "../components/PolicyTags.js";
 import { PolicyTaskTypes } from "../components/PolicyTaskTypes.js";
@@ -8,14 +10,18 @@ import { ProjectCreateDialog } from "../components/ProjectCreateDialog.js";
 import { ProjectOpenDialog } from "../components/ProjectOpenDialog.js";
 import { RejectionNotice } from "../components/RejectionNotice.js";
 import { SessionList } from "../components/SessionList.js";
+import { ACTIONS, can } from "../lib/access.js";
 import { sectionForOperation } from "../lib/policyOps.js";
 import { policyRejection, sectionRejection } from "../lib/policyRejection.js";
 import { openProject } from "../lib/projectOpen.js";
 import { fieldError } from "../lib/rejection.js";
 import { sessionRequestFailed, sessionRequestSucceeded } from "../lib/sessions.js";
-import { loadProjects } from "../store/project.js";
+import { useIdentityStore } from "../store/identity.js";
+import { activeProject, loadProjects, useProjectStore } from "../store/project.js";
 
 export function SettingsScreen({ projectName }) {
+  const identityStore = useIdentityStore();
+  useProjectStore();
   const api = useMemo(() => (projectName ? projectScoped(projectName) : null), [projectName]);
   const [policy, setPolicy] = useState(null);
   const [rejection, setRejection] = useState(null);
@@ -24,9 +30,17 @@ export function SettingsScreen({ projectName }) {
   const [sessionBusy, setSessionBusy] = useState(false);
   const [armed, setArmed] = useState(null);
   const [dialog, setDialog] = useState(null);
+  const [memberReload, setMemberReload] = useState(0);
   // A response that outlives a project switch would repaint this screen with
   // the policy of the project the user has already left.
   const guardRef = useRef({ cancelled: false });
+
+  const project = activeProject();
+  const role = project && project.name === projectName ? project.my_role ?? null : null;
+  const isAdmin = identityStore.identity?.is_admin === true;
+  const canRegister = can(role, isAdmin, ACTIONS.REGISTER_PROJECTS);
+  const canEditPolicy = can(role, isAdmin, ACTIONS.EDIT_POLICY);
+  const canManageMembers = can(role, isAdmin, ACTIONS.MANAGE_MEMBERS);
 
   async function load(guard = guardRef.current) {
     if (!api) {
@@ -66,6 +80,7 @@ export function SettingsScreen({ projectName }) {
   }
 
   async function refresh() {
+    setMemberReload((count) => count + 1);
     await Promise.all([load(), loadSessions()]);
   }
 
@@ -130,12 +145,16 @@ export function SettingsScreen({ projectName }) {
     <section class="screen">
       <${Header} title="Settings" onRefresh=${refresh} />
       <h3 class="settings-heading">Projects</h3>
-      <div class="settings-actions">
-        <button type="button" onClick=${() => setDialog("open")}>Open a project…</button>
-        <button type="button" onClick=${() => setDialog("create")}>Create a project…</button>
-      </div>
+      ${canRegister
+        ? html`
+            <div class="settings-actions">
+              <button type="button" onClick=${() => setDialog("open")}>Open a project…</button>
+              <button type="button" onClick=${() => setDialog("create")}>Create a project…</button>
+            </div>
+          `
+        : html`<p class="muted-note">Only server admins can register projects.</p>`}
       <${RejectionNotice} rejection=${sectionRejection(rejection, "policy")} />
-      ${policy
+      ${policy && canEditPolicy
         ? html`
             <${PolicyDomains}
               policy=${policy}
@@ -152,6 +171,29 @@ export function SettingsScreen({ projectName }) {
               busy=${busy}
             />
             <${PolicyTags} policy=${policy} rejection=${rejection} onSubmit=${submit} busy=${busy} />
+          `
+        : null}
+      ${policy && !canEditPolicy
+        ? html`<p class="muted-note">Only project owners can change domains, task types, and tags.</p>`
+        : null}
+      ${projectName
+        ? html`
+            <h3 class="settings-heading">Members</h3>
+            <${MemberList}
+              projectName=${projectName}
+              canManage=${canManageMembers}
+              reloadKey=${memberReload}
+            />
+          `
+        : null}
+      ${projectName && canManageMembers
+        ? html`
+            <h3 class="settings-heading">Access requests</h3>
+            <${AccessRequests}
+              projectName=${projectName}
+              reloadKey=${memberReload}
+              onApproved=${() => setMemberReload((count) => count + 1)}
+            />
           `
         : null}
       <h3 class="settings-heading">Active sessions</h3>
