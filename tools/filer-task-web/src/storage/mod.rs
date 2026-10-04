@@ -39,7 +39,9 @@ mod projects;
 
 pub use activity::{ActivityFilter, ActivityRecord, NewActivity};
 pub use identities::{IdentitySession, ResolvedSession, SessionSummary, StoredIdentity};
-pub use membership::Role;
+pub use membership::{
+    AccessRequestRecord, GrantOutcome, MemberRecord, ProjectAccess, RemovedMember, Role,
+};
 pub use pairing::{PairingPin, RedeemOutcome};
 pub use projects::ProjectRegistration;
 
@@ -120,6 +122,9 @@ pub enum StorageError {
         operation: &'static str,
         message: String,
     },
+    LastOwner,
+    AlreadyMember,
+    ProjectNotRegistered(String),
     UsernameTaken,
     IdentityNotFound(i64),
 }
@@ -150,6 +155,11 @@ impl fmt::Display for StorageError {
             Self::Internal { operation, message } => {
                 write!(formatter, "failed to {operation}: {message}")
             }
+            Self::LastOwner => write!(formatter, "a project must keep at least one owner"),
+            Self::AlreadyMember => write!(formatter, "user is already a project member"),
+            Self::ProjectNotRegistered(name) => {
+                write!(formatter, "project {name:?} is not registered")
+            }
             Self::UsernameTaken => write!(formatter, "username is already in use"),
             Self::IdentityNotFound(user_id) => {
                 write!(formatter, "identity {user_id} does not exist")
@@ -166,6 +176,9 @@ impl Error for StorageError {
             Self::Operation { source, .. } => Some(source),
             Self::InvalidData { .. }
             | Self::Internal { .. }
+            | Self::LastOwner
+            | Self::AlreadyMember
+            | Self::ProjectNotRegistered(_)
             | Self::UsernameTaken
             | Self::IdentityNotFound(_) => None,
         }
