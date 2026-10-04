@@ -33,6 +33,7 @@ pub(crate) struct IdentityRequest {
 #[derive(Serialize)]
 pub(crate) struct IdentityResponse {
     username: String,
+    is_admin: bool,
 }
 
 #[derive(Deserialize)]
@@ -50,6 +51,7 @@ pub(crate) struct PairingPinResponse {
 pub(crate) async fn get_identity(actor: Actor) -> Json<IdentityResponse> {
     Json(IdentityResponse {
         username: actor.username,
+        is_admin: actor.is_admin,
     })
 }
 
@@ -65,12 +67,14 @@ pub(crate) async fn put_identity(
         Some(actor) => rename_or_recover(&state, &headers, actor, &username, &device_label).await?,
         None => create(&state, &username, &device_label).await?,
     };
+    let is_admin = state.storage().is_admin(identity.user_id).await?;
     let mut response_headers = HeaderMap::new();
     response_headers.insert(SET_COOKIE, identity_cookie(&token)?);
     Ok((
         response_headers,
         Json(IdentityResponse {
             username: identity.username,
+            is_admin,
         }),
     ))
 }
@@ -109,12 +113,14 @@ pub(crate) async fn pair_identity(
         RedeemOutcome::Consumed => return Err(WebError::PairingPinConsumed),
         RedeemOutcome::Locked => return Err(WebError::PairingPinLocked),
     };
+    let is_admin = state.storage().is_admin(session.identity.user_id).await?;
     let mut response_headers = HeaderMap::new();
     response_headers.insert(SET_COOKIE, identity_cookie(&session.session_token)?);
     Ok((
         response_headers,
         Json(IdentityResponse {
             username: session.identity.username,
+            is_admin,
         }),
     ))
 }

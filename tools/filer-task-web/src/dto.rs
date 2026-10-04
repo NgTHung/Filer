@@ -15,7 +15,7 @@ use taskroot::{
     },
 };
 
-use crate::storage::ActivityRecord;
+use crate::storage::{ActivityRecord, ProjectAccess};
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterProjectRequest {
@@ -236,6 +236,8 @@ pub struct ProjectSummary {
     pub broken: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub issues: Vec<ValidationIssue>,
+    // Always serialized, so the browser can tell "no role" from an older server.
+    pub my_role: Option<ProjectAccess>,
 }
 
 #[derive(Debug, Serialize)]

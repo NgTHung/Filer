@@ -3,9 +3,12 @@
 //! List and detail endpoints validate the selected repository per request so
 //! external CLI and git edits are visible without serving cached task data.
 
+use std::collections::HashMap;
+
 use axum::{
     Json,
     extract::{Path, Query, State},
+    http::HeaderMap,
 };
 use serde::Deserialize;
 use taskroot::{
@@ -19,7 +22,10 @@ use taskroot::{
     validate::{TaskFilter, filter_tasks},
 };
 
-use crate::{app::AppState, dto::ProjectSummary, error::WebError, routes::blocking};
+use crate::{
+    app::AppState, dto::ProjectSummary, error::WebError, identity::resolve_optional,
+    routes::blocking, storage::ProjectAccess,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct TaskQuery {
@@ -41,10 +47,36 @@ pub struct ReadyQuery {
 
 pub(crate) async fn list_projects(
     State(state): State<AppState>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<ProjectSummary>>, WebError> {
     let registry = state.registry.clone();
-    let projects = blocking(move || registry.summaries()).await?;
+    let mut projects = blocking(move || registry.summaries()).await?;
+    let access = project_access(&state, &headers).await;
+    for project in &mut projects {
+        project.my_role = access.get(&project.name).copied();
+    }
     Ok(Json(projects))
+}
+
+// Reads stay open, so a failed session or role lookup leaves every role
+// unknown instead of failing the project list.
+async fn project_access(state: &AppState, headers: &HeaderMap) -> HashMap<String, ProjectAccess> {
+    let actor = match resolve_optional(headers, state).await {
+        Ok(Some(actor)) => actor,
+        Ok(None) => return HashMap::new(),
+        Err(error) => {
+            tracing::warn!(?error, "could not resolve the session for project roles");
+            return HashMap::new();
+        }
+    };
+    state
+        .storage()
+        .user_project_access(actor.user_id)
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "could not load project roles");
+            HashMap::new()
+        })
 }
 
 pub(crate) async fn list_tasks(

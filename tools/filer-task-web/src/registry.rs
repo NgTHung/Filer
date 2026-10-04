@@ -132,6 +132,7 @@ impl RegisteredProject {
                     domain_count: 0,
                     broken: true,
                     issues: vec![ValidationError::from_task_error(&self.root, &error).into()],
+                    my_role: None,
                 });
             }
         };
@@ -146,6 +147,7 @@ impl RegisteredProject {
             domain_count: task_project.policy().domains().len(),
             broken: !issues.is_empty(),
             issues,
+            my_role: None,
         })
     }
 
@@ -156,6 +158,7 @@ impl RegisteredProject {
             domain_count: 0,
             broken: true,
             issues: self.open_issue.clone().into_iter().collect(),
+            my_role: None,
         }
     }
 

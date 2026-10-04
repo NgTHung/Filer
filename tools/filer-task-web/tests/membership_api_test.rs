@@ -440,6 +440,51 @@ async fn registering_a_removed_project_again_starts_with_only_its_registrant() {
     );
 }
 
+#[tokio::test]
+async fn the_project_list_reports_each_users_role() {
+    let app = app().await;
+    let (owner, _) = app.user("Olivia", Some(Role::Owner)).await;
+    let (editor, _) = app.user("Eve", Some(Role::Editor)).await;
+    let (pending, pending_id) = app.user("Pat", None).await;
+    app.storage
+        .request_access(&app.project, pending_id)
+        .await
+        .expect("request records");
+    let (stranger, _) = app.user("Sam", None).await;
+
+    for (cookie, expected) in [
+        (Some(owner.as_str()), json!("owner")),
+        (Some(editor.as_str()), json!("editor")),
+        (Some(pending.as_str()), json!("pending")),
+        (Some(stranger.as_str()), Value::Null),
+        (None, Value::Null),
+    ] {
+        let (status, body) = send(&app.router, request("GET", "/api/projects", None, cookie)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body[0]["my_role"], expected, "cookie {cookie:?}");
+    }
+}
+
+#[tokio::test]
+async fn identity_responses_report_the_admin_flag() {
+    let app = app().await;
+    let (owner, _) = app.user("Olivia", Some(Role::Owner)).await;
+    let (editor, _) = app.user("Eve", Some(Role::Editor)).await;
+
+    let (_, body) = send(
+        &app.router,
+        request("GET", "/api/identity", None, Some(&owner)),
+    )
+    .await;
+    assert_eq!(body, json!({"username": "Olivia", "is_admin": true}));
+    let (_, body) = send(
+        &app.router,
+        request("GET", "/api/identity", None, Some(&editor)),
+    )
+    .await;
+    assert_eq!(body, json!({"username": "Eve", "is_admin": false}));
+}
+
 struct TestApp {
     router: Router,
     storage: Storage,

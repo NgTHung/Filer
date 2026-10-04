@@ -36,7 +36,7 @@ async fn identity_api_handles_onboarding_rename_validation_and_stale_recovery() 
 
     let created = put_username(&app, "  Alice  ", None).await;
     assert_eq!(created.0, StatusCode::OK, "{}", created.1);
-    assert_eq!(created.1, json!({"username": "Alice"}));
+    assert_eq!(created.1, json!({"username": "Alice", "is_admin": true}));
     let set_cookie = created.2.expect("identity cookie is set");
     for attribute in ["Max-Age=31536000", "HttpOnly", "SameSite=Lax", "Path=/"] {
         assert!(set_cookie.contains(attribute), "missing {attribute}");
@@ -47,7 +47,7 @@ async fn identity_api_handles_onboarding_rename_validation_and_stale_recovery() 
         send(&app, request("GET", "/api/identity", "", Some(&cookie)))
             .await
             .1,
-        json!({"username": "Alice"})
+        json!({"username": "Alice", "is_admin": true})
     );
 
     let renamed = put_username(&app, "Alice Cooper", Some(&cookie)).await;

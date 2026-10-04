@@ -73,7 +73,7 @@ async fn pairing_adopts_the_identity_into_a_fresh_browser_with_its_own_session()
     )
     .await;
     assert_eq!(paired.0, StatusCode::OK, "{}", paired.1);
-    assert_eq!(paired.1, json!({"username": "Alice"}));
+    assert_eq!(paired.1, json!({"username": "Alice", "is_admin": true}));
     let set_cookie = paired.2.as_deref().expect("pairing cookie is set");
     for attribute in ["Max-Age=31536000", "HttpOnly", "SameSite=Lax", "Path=/"] {
         assert!(set_cookie.contains(attribute), "missing {attribute}");
@@ -88,7 +88,7 @@ async fn pairing_adopts_the_identity_into_a_fresh_browser_with_its_own_session()
         )
         .await
         .1,
-        json!({"username": "Alice"})
+        json!({"username": "Alice", "is_admin": true})
     );
     assert_eq!(
         send(
@@ -97,7 +97,7 @@ async fn pairing_adopts_the_identity_into_a_fresh_browser_with_its_own_session()
         )
         .await
         .1,
-        json!({"username": "Alice"})
+        json!({"username": "Alice", "is_admin": true})
     );
 
     let session_a = app
