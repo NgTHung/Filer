@@ -69,6 +69,54 @@ impl Storage {
         Ok(())
     }
 
+    /// Registers a project and makes `owner_user_id` its owner in one
+    /// transaction, so a crash cannot leave a registered project without an
+    /// owner.
+    pub async fn insert_project_registration_with_owner(
+        &self,
+        registration: &ProjectRegistration,
+        owner_user_id: i64,
+    ) -> Result<(), StorageError> {
+        let mut transaction =
+            self.pool
+                .begin()
+                .await
+                .map_err(|source| StorageError::Operation {
+                    operation: "begin project registration",
+                    source,
+                })?;
+        sqlx::query("INSERT INTO project_registrations (name, root) VALUES (?, ?)")
+            .bind(&registration.name)
+            .bind(encode_path(&registration.root))
+            .execute(&mut *transaction)
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "insert project registration",
+                source,
+            })?;
+        sqlx::query(
+            "INSERT INTO project_members (project, user_id, role, granted_by) \
+             VALUES (?, ?, 'owner', ?)",
+        )
+        .bind(&registration.name)
+        .bind(owner_user_id)
+        .bind(owner_user_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|source| StorageError::Operation {
+            operation: "insert project owner",
+            source,
+        })?;
+        transaction
+            .commit()
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "commit project registration",
+                source,
+            })?;
+        Ok(())
+    }
+
     pub async fn delete_project_registration(&self, name: &str) -> Result<bool, StorageError> {
         let result = sqlx::query("DELETE FROM project_registrations WHERE name = ?")
             .bind(name)

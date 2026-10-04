@@ -33,11 +33,13 @@ use sqlx::{
 
 mod activity;
 mod identities;
+mod membership;
 mod pairing;
 mod projects;
 
 pub use activity::{ActivityFilter, ActivityRecord, NewActivity};
 pub use identities::{IdentitySession, ResolvedSession, SessionSummary, StoredIdentity};
+pub use membership::Role;
 pub use pairing::{PairingPin, RedeemOutcome};
 pub use projects::ProjectRegistration;
 
