@@ -5,6 +5,7 @@
 //! state transitions the CLI exposes, all from a browser. Reads and writes go
 //! through `taskroot`, so validation and file layout stay authoritative here.
 
+pub mod access;
 pub mod app;
 pub mod device_label;
 mod dto;

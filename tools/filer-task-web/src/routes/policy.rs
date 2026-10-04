@@ -10,10 +10,10 @@ use axum::{
 use taskroot::project::TaskProject;
 
 use crate::{
+    access::ProjectOwner,
     app::AppState,
     dto::{PolicyMutationRequest, ProjectPolicyResponse},
     error::WebError,
-    identity::Actor,
     routes::blocking,
     storage::NewActivity,
 };
@@ -28,10 +28,13 @@ pub(crate) async fn get_policy(
 
 pub(crate) async fn mutate_policy(
     State(state): State<AppState>,
-    Path(project_name): Path<String>,
-    actor: Actor,
+    owner: ProjectOwner,
     Json(request): Json<PolicyMutationRequest>,
 ) -> Result<Json<ProjectPolicyResponse>, WebError> {
+    let ProjectOwner {
+        actor,
+        project: project_name,
+    } = owner;
     let registered = state.registry.resolve(&project_name)?;
     let write_lock = registered.write_lock();
     let _guard = write_lock.lock().await;

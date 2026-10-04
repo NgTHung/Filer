@@ -6,11 +6,7 @@
 
 use std::{fs, path::PathBuf};
 
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use taskroot::{
     error::TaskError,
     project::{InitProjectOptions, TaskProject},
@@ -18,17 +14,17 @@ use taskroot::{
 };
 
 use crate::{
+    access::{ProjectOwner, ServerAdmin},
     app::AppState,
     dto::{ProjectSummary, RegisterProjectRequest},
     error::WebError,
-    identity::Actor,
     project_name::validated,
     routes::blocking,
 };
 
 pub(crate) async fn register_project(
     State(state): State<AppState>,
-    actor: Actor,
+    ServerAdmin(actor): ServerAdmin,
     Json(request): Json<RegisterProjectRequest>,
 ) -> Result<Json<ProjectSummary>, WebError> {
     let named = match (&request.name, request.init) {
@@ -66,9 +62,10 @@ fn create_or_open(root: PathBuf) -> Result<TaskProject, WebError> {
 
 pub(crate) async fn deregister_project(
     State(state): State<AppState>,
-    Path(project): Path<String>,
-    actor: Actor,
+    owner: ProjectOwner,
 ) -> Result<StatusCode, WebError> {
-    state.deregister_project(&actor, &project).await?;
+    state
+        .deregister_project(&owner.actor, &owner.project)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }

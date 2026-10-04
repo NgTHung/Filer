@@ -12,13 +12,12 @@ use taskroot::{
 };
 
 use crate::{
-    app::AppState, error::WebError, identity::Actor, routes::blocking, storage::NewActivity,
+    access::ProjectEditor, app::AppState, error::WebError, routes::blocking, storage::NewActivity,
 };
 
 pub(crate) async fn mutate<F>(
     state: AppState,
-    actor: Actor,
-    project_name: String,
+    editor: ProjectEditor,
     action: &'static str,
     detail: Option<String>,
     operation: F,
@@ -26,6 +25,10 @@ pub(crate) async fn mutate<F>(
 where
     F: FnOnce(&TaskProject, &[Task]) -> Result<TaskIdentity, WebError> + Send + 'static,
 {
+    let ProjectEditor {
+        actor,
+        project: project_name,
+    } = editor;
     let registered = state.registry.resolve(&project_name)?.clone();
     let write_lock = registered.write_lock();
     let _guard = write_lock.lock().await;

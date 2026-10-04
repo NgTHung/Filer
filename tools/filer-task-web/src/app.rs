@@ -18,7 +18,7 @@ use crate::{
     identity::Actor,
     registry::{ProjectRegistry, RegisteredProject},
     routes,
-    storage::{NewActivity, Storage},
+    storage::{NewActivity, ProjectRegistration, Storage},
 };
 
 #[derive(Clone)]
@@ -61,6 +61,16 @@ impl AppState {
         &self.storage
     }
 
+    /// The registration of every project the registry holds, in registry order.
+    pub fn project_registrations(&self) -> Vec<ProjectRegistration> {
+        self.registry
+            .names()
+            .into_iter()
+            .filter_map(|name| self.registry.resolve(&name).ok())
+            .map(|project| project.registration())
+            .collect()
+    }
+
     pub(crate) async fn register_project(
         &self,
         actor: &Actor,
@@ -71,7 +81,7 @@ impl AppState {
         self.registry.ensure_name_available(registered.name())?;
         let registration = registered.registration();
         self.storage
-            .insert_project_registration(&registration)
+            .insert_project_registration_with_owner(&registration, actor.user_id)
             .await?;
         self.registry.publish(registered.clone());
         self.storage
@@ -114,6 +124,9 @@ impl AppState {
     }
 }
 
+// Every non-GET route below names its guard in the handler signature, and
+// `write_routes` in tests/membership_api_test.rs lists each one with that
+// guard. A non-GET route added here joins that table.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route(

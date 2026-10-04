@@ -15,7 +15,10 @@ use std::path::PathBuf;
 use serde::Serialize;
 use taskroot::error::TaskError;
 
-use crate::{dto::ValidationIssue, storage::StorageError};
+use crate::{
+    dto::ValidationIssue,
+    storage::{Role, StorageError},
+};
 
 #[derive(Debug)]
 pub enum WebError {
@@ -30,6 +33,12 @@ pub enum WebError {
     PairingPinLocked,
     SessionRevokeCurrent,
     SessionNotFound,
+    AdminRequired,
+    ProjectRoleRequired(Role),
+    LastOwner,
+    AlreadyMember,
+    AccessRequestNotFound,
+    UserNotFound,
     PreconditionRequired(String),
     DuplicateProjectName(String),
     InvalidNewProjectName(String),
@@ -57,6 +66,10 @@ impl From<StorageError> for WebError {
     fn from(value: StorageError) -> Self {
         match value {
             StorageError::UsernameTaken => Self::UsernameTaken,
+            StorageError::LastOwner => Self::LastOwner,
+            StorageError::AlreadyMember => Self::AlreadyMember,
+            StorageError::IdentityNotFound(_) => Self::UserNotFound,
+            StorageError::ProjectNotRegistered(name) => Self::ProjectNotFound(name),
             other => Self::Storage(other),
         }
     }
@@ -158,6 +171,54 @@ impl IntoResponse for WebError {
                     StatusCode::NOT_FOUND,
                     "no such session for this user",
                     "session_not_found",
+                    None,
+                );
+            }
+            Self::AdminRequired => {
+                return client_error(
+                    StatusCode::FORBIDDEN,
+                    "only server admins can register projects",
+                    "admin_required",
+                    None,
+                );
+            }
+            Self::ProjectRoleRequired(role) => {
+                return client_error(
+                    StatusCode::FORBIDDEN,
+                    format!("this change needs the {role} role on the project"),
+                    "project_role_required",
+                    None,
+                );
+            }
+            Self::LastOwner => {
+                return client_error(
+                    StatusCode::CONFLICT,
+                    "a project must keep at least one owner",
+                    "last_owner",
+                    None,
+                );
+            }
+            Self::AlreadyMember => {
+                return client_error(
+                    StatusCode::CONFLICT,
+                    "you are already a member of this project",
+                    "already_member",
+                    None,
+                );
+            }
+            Self::AccessRequestNotFound => {
+                return client_error(
+                    StatusCode::NOT_FOUND,
+                    "no pending access request for that user",
+                    "access_request_not_found",
+                    None,
+                );
+            }
+            Self::UserNotFound => {
+                return client_error(
+                    StatusCode::NOT_FOUND,
+                    "no user has that id",
+                    "user_not_found",
                     None,
                 );
             }

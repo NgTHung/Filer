@@ -18,10 +18,10 @@ use taskroot::{
 };
 
 use crate::{
+    access::ProjectEditor,
     app::AppState,
     dto::{CreateTaskRequest, EditTaskRequest, SetCriterionRequest},
     error::WebError,
-    identity::Actor,
     routes::{
         tasks::{resolve_identity, resolve_project_wide_identity},
         write,
@@ -30,8 +30,7 @@ use crate::{
 
 pub(crate) async fn create_task(
     State(state): State<AppState>,
-    Path(project_name): Path<String>,
-    actor: Actor,
+    editor: ProjectEditor,
     Json(body): Json<CreateTaskRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let id = format!("{}-{}", body.prefix, body.number);
@@ -57,55 +56,41 @@ pub(crate) async fn create_task(
         rationale: None,
         blocked_reason: None,
     };
-    let view = write::mutate(
-        state,
-        actor,
-        project_name,
-        "task.create",
-        None,
-        move |project, _| {
-            let identity = TaskIdentity::new(identity_domain, identity_id).map_err(|error| {
-                TaskError::InvalidReference {
-                    reference: error.value().to_string(),
-                    constraint: error.constraint().to_string(),
-                    root: project.root().to_path_buf(),
-                }
-            })?;
-            add_task(project, task)?;
-            Ok(identity)
-        },
-    )
+    let view = write::mutate(state, editor, "task.create", None, move |project, _| {
+        let identity = TaskIdentity::new(identity_domain, identity_id).map_err(|error| {
+            TaskError::InvalidReference {
+                reference: error.value().to_string(),
+                constraint: error.constraint().to_string(),
+                root: project.root().to_path_buf(),
+            }
+        })?;
+        add_task(project, task)?;
+        Ok(identity)
+    })
     .await?;
     Ok(Json(view))
 }
 
 pub(crate) async fn edit_task(
     State(state): State<AppState>,
-    Path((project_name, id)): Path<(String, String)>,
-    actor: Actor,
+    Path((_project, id)): Path<(String, String)>,
+    editor: ProjectEditor,
     Json(body): Json<EditTaskRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let patch = body.into();
-    let view = write::mutate(
-        state,
-        actor,
-        project_name,
-        "task.edit",
-        None,
-        move |project, tasks| {
-            let identity = resolve_project_wide_identity(project, tasks, &id)?;
-            apply_task_patch(project, &identity, patch).map_err(WebError::TaskEdit)?;
-            Ok(identity)
-        },
-    )
+    let view = write::mutate(state, editor, "task.edit", None, move |project, tasks| {
+        let identity = resolve_project_wide_identity(project, tasks, &id)?;
+        apply_task_patch(project, &identity, patch).map_err(WebError::TaskEdit)?;
+        Ok(identity)
+    })
     .await?;
     Ok(Json(view))
 }
 
 pub(crate) async fn set_criterion(
     State(state): State<AppState>,
-    Path((project_name, id, index)): Path<(String, String, usize)>,
-    actor: Actor,
+    Path((_project, id, index)): Path<(String, String, usize)>,
+    editor: ProjectEditor,
     headers: HeaderMap,
     Json(body): Json<SetCriterionRequest>,
 ) -> Result<Json<ShowView>, WebError> {
@@ -113,8 +98,7 @@ pub(crate) async fn set_criterion(
     let detail = Some(format!("index {index} = {}", body.checked));
     let view = write::mutate(
         state,
-        actor,
-        project_name,
+        editor,
         "task.criterion",
         detail,
         move |project, tasks| {

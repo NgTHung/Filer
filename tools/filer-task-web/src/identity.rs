@@ -19,6 +19,7 @@ pub struct Actor {
     pub user_id: i64,
     pub username: String,
     pub session_id: i64,
+    pub is_admin: bool,
 }
 
 impl From<ResolvedSession> for Actor {
@@ -27,6 +28,7 @@ impl From<ResolvedSession> for Actor {
             user_id: session.identity.user_id,
             username: session.identity.username,
             session_id: session.session_id,
+            is_admin: session.is_admin,
         }
     }
 }

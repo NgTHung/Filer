@@ -17,41 +17,40 @@ use taskroot::{
 };
 
 use crate::{
+    access::ProjectEditor,
     app::AppState,
     dto::ReasonRequest,
     error::WebError,
-    identity::Actor,
     routes::{tasks::resolve_identity, write},
 };
 
 pub(crate) async fn start(
     State(state): State<AppState>,
-    Path((project, id)): Path<(String, String)>,
-    actor: Actor,
+    Path((_project, id)): Path<(String, String)>,
+    editor: ProjectEditor,
 ) -> Result<Json<ShowView>, WebError> {
-    transition(state, actor, project, id, "task.start", None, start_task).await
+    transition(state, editor, id, "task.start", None, start_task).await
 }
 
 pub(crate) async fn done(
     State(state): State<AppState>,
-    Path((project, id)): Path<(String, String)>,
-    actor: Actor,
+    Path((_project, id)): Path<(String, String)>,
+    editor: ProjectEditor,
 ) -> Result<Json<ShowView>, WebError> {
-    transition(state, actor, project, id, "task.done", None, done_task).await
+    transition(state, editor, id, "task.done", None, done_task).await
 }
 
 pub(crate) async fn block(
     State(state): State<AppState>,
-    Path((project, id)): Path<(String, String)>,
-    actor: Actor,
+    Path((_project, id)): Path<(String, String)>,
+    editor: ProjectEditor,
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
     let detail = Some(reason.clone());
     transition(
         state,
-        actor,
-        project,
+        editor,
         id,
         "task.block",
         detail,
@@ -62,16 +61,15 @@ pub(crate) async fn block(
 
 pub(crate) async fn defer(
     State(state): State<AppState>,
-    Path((project, id)): Path<(String, String)>,
-    actor: Actor,
+    Path((_project, id)): Path<(String, String)>,
+    editor: ProjectEditor,
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
     let detail = Some(reason.clone());
     transition(
         state,
-        actor,
-        project,
+        editor,
         id,
         "task.defer",
         detail,
@@ -82,16 +80,15 @@ pub(crate) async fn defer(
 
 pub(crate) async fn obsolete(
     State(state): State<AppState>,
-    Path((project, id)): Path<(String, String)>,
-    actor: Actor,
+    Path((_project, id)): Path<(String, String)>,
+    editor: ProjectEditor,
     Json(body): Json<ReasonRequest>,
 ) -> Result<Json<ShowView>, WebError> {
     let reason = body.reason;
     let detail = Some(reason.clone());
     transition(
         state,
-        actor,
-        project,
+        editor,
         id,
         "task.obsolete",
         detail,
@@ -100,11 +97,9 @@ pub(crate) async fn obsolete(
     .await
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn transition<F>(
     state: AppState,
-    actor: Actor,
-    project_name: String,
+    editor: ProjectEditor,
     id: String,
     action: &'static str,
     detail: Option<String>,
@@ -115,18 +110,11 @@ where
         + Send
         + 'static,
 {
-    let view = write::mutate(
-        state,
-        actor,
-        project_name,
-        action,
-        detail,
-        move |project, tasks| {
-            let identity = resolve_identity(project, tasks, &id)?;
-            op(project, &identity)?;
-            Ok(identity)
-        },
-    )
+    let view = write::mutate(state, editor, action, detail, move |project, tasks| {
+        let identity = resolve_identity(project, tasks, &id)?;
+        op(project, &identity)?;
+        Ok(identity)
+    })
     .await?;
     Ok(Json(view))
 }
