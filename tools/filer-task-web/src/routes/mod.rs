@@ -7,6 +7,7 @@
 pub mod activity;
 pub mod context;
 pub mod identity;
+pub mod members;
 pub mod policy;
 pub mod projects;
 pub mod sessions;

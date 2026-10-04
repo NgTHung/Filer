@@ -157,6 +157,26 @@ pub fn router(state: AppState) -> Router {
             get(routes::policy::get_policy).patch(routes::policy::mutate_policy),
         )
         .route(
+            "/api/projects/{project}/members",
+            get(routes::members::list_members),
+        )
+        .route(
+            "/api/projects/{project}/members/{user_id}",
+            put(routes::members::put_member).delete(routes::members::delete_member),
+        )
+        .route(
+            "/api/projects/{project}/access-requests",
+            get(routes::members::list_access_requests),
+        )
+        .route(
+            "/api/projects/{project}/access-requests/{user_id}",
+            delete(routes::members::deny_access_request),
+        )
+        .route(
+            "/api/projects/{project}/access-request",
+            post(routes::members::request_access).delete(routes::members::withdraw_access_request),
+        )
+        .route(
             "/api/projects/{project}/tasks",
             get(routes::tasks::list_tasks).post(routes::task_writes::create_task),
         )
