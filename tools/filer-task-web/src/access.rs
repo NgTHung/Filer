@@ -10,6 +10,8 @@
 //! async fn start(editor: ProjectEditor, Json(body): Json<Request>) { /* ... */ }
 //! ```
 
+use std::net::IpAddr;
+
 use axum::{
     extract::{FromRequestParts, RawPathParams},
     http::request::Parts,
@@ -106,4 +108,14 @@ async fn project_param(parts: &mut Parts, state: &AppState) -> Result<String, We
                 "a project guard is mounted on a route without {project}".to_string(),
             )
         })
+}
+
+/// The startup warning for a listen address other machines can reach, or
+/// `None` for a loopback address.
+pub fn exposure_warning(host: IpAddr) -> Option<String> {
+    (!host.is_loopback()).then(|| {
+        format!(
+            "warning: listening on {host}: reads are open to anyone who can reach this address; writes need project membership"
+        )
+    })
 }

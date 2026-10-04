@@ -6,7 +6,7 @@
 //! Rust-lowercased key so uniqueness follows the same Unicode behavior as the
 //! request layer without depending on SQLite's ASCII-only `NOCASE` collation.
 
-use sqlx::{Row, Sqlite, Transaction};
+use sqlx::{Row, Sqlite, SqliteExecutor, Transaction};
 
 use super::{Storage, StorageError, unix_now};
 
@@ -164,7 +164,7 @@ impl Storage {
         let identity =
             match insert_user(&mut transaction, username).await? {
                 Some(identity) => identity,
-                None => find_user(&mut transaction, username).await?.ok_or(
+                None => find_user(&mut *transaction, username).await?.ok_or(
                     StorageError::InvalidData {
                         operation: "mint recovery session",
                         message: "username disappeared during creation".to_string(),
@@ -195,7 +195,7 @@ impl Storage {
                     operation: "begin clear sessions",
                     source,
                 })?;
-        let Some(identity) = find_user(&mut transaction, username).await? else {
+        let Some(identity) = find_user(&mut *transaction, username).await? else {
             return Ok(0);
         };
         let result = sqlx::query("DELETE FROM sessions WHERE user_id = ?")
@@ -272,15 +272,45 @@ impl Storage {
                 source,
             })
     }
+
+    pub async fn user_by_name(
+        &self,
+        username: &str,
+    ) -> Result<Option<StoredIdentity>, StorageError> {
+        find_user(&self.pool, username).await
+    }
+
+    /// Sets the admin flag for `username`. Returns `None` when no user has
+    /// that name.
+    pub async fn set_admin(
+        &self,
+        username: &str,
+        is_admin: bool,
+    ) -> Result<Option<StoredIdentity>, StorageError> {
+        let row = sqlx::query(
+            "UPDATE users SET is_admin = ?, updated_at = unixepoch() \
+             WHERE name_key = ? RETURNING id, display_name",
+        )
+        .bind(is_admin)
+        .bind(username.to_lowercase())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|source| StorageError::Operation {
+            operation: "set admin flag",
+            source,
+        })?;
+        row.map(|row| decode_identity(&row, "decode admin user"))
+            .transpose()
+    }
 }
 
 pub(crate) async fn find_user(
-    transaction: &mut Transaction<'_, Sqlite>,
+    executor: impl SqliteExecutor<'_>,
     username: &str,
 ) -> Result<Option<StoredIdentity>, StorageError> {
     let row = sqlx::query("SELECT id, display_name FROM users WHERE name_key = ?")
         .bind(username.to_lowercase())
-        .fetch_optional(&mut **transaction)
+        .fetch_optional(executor)
         .await
         .map_err(|source| StorageError::Operation {
             operation: "find user",

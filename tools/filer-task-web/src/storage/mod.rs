@@ -158,7 +158,7 @@ impl fmt::Display for StorageError {
             Self::LastOwner => write!(formatter, "a project must keep at least one owner"),
             Self::AlreadyMember => write!(formatter, "user is already a project member"),
             Self::ProjectNotRegistered(name) => {
-                write!(formatter, "project {name:?} is not registered")
+                write!(formatter, "project {name} is not registered")
             }
             Self::UsernameTaken => write!(formatter, "username is already in use"),
             Self::IdentityNotFound(user_id) => {
