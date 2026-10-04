@@ -118,7 +118,9 @@ The role check runs before the write lock. If an owner revokes a member while th
 
 Paths address users by id because ids survive a rename and the UI already holds them from list responses.
 
-Existing responses gain two fields. `GET /api/projects` adds `my_role` to each summary: `owner`, `editor`, `pending`, or `null`. The route stays open and fills the field only when the request carries a valid session. `GET /api/identity` adds `is_admin`. These fields let the UI decide which controls to show without extra requests.
+Existing responses gain two fields. `GET /api/projects` adds `my_role` to each summary: `owner`, `editor`, `pending`, or `null`. The route stays open and fills the field only when the request carries a valid session. If the session or role lookup fails, the list still returns with every `my_role` null and the server logs the error, because reads stay open. `GET /api/identity`, `PUT /api/identity`, and `POST /api/identity/pair` add `is_admin`. These fields let the UI decide which controls to show without extra requests.
+
+Revoking a user who is not a member succeeds without change, and requesting or withdrawing access answers `204 No Content`.
 
 `WebError` gains these variants, using the existing JSON error shape with a `code` field:
 
@@ -153,16 +155,16 @@ When `--host` names a non-loopback address, the server prints this warning to st
 
 Permission rules live in one pure function, `can(role, isAdmin, action)`, in `static/js/lib/access.js`. Components call it instead of comparing roles. `store/identity.js` holds `isAdmin` from `GET /api/identity`, and `store/project.js` holds `myRole` from the project summaries.
 
-When the user cannot write to the open project, the UI hides the New task sidebar item, the transition buttons in `DrawerActions`, the form in `DrawerEdit`, the checkboxes in `DrawerCriteria`, and the write commands in the command palette. A banner above the project screens reads "You can view this project. Request access to make changes." with a Request access button. While the request is pending, the banner reads "Access requested" with a Withdraw button.
+When the user cannot write to the open project, the UI hides the New task sidebar item, the transition buttons in `DrawerActions`, and the Edit button that opens `DrawerEdit`, and disables the checkboxes in `DrawerCriteria` so criteria stay readable. The command palette offers its create-a-project row only to admins. A banner above the project screens reads "You can view this project. Request access to make changes." with a Request access button. While the request is pending, the banner reads "Access requested" with a Withdraw button.
 
 Settings gains two sections:
 
 - Members (`components/MemberList.js`) lists members for everyone. Owners get a role select and a Remove button on each row, disabled for the last owner with an explanation.
 - Access requests (`components/AccessRequests.js`) is visible to owners only. Each request has Approve, which grants the editor role, and Deny. Owners promote an editor to owner from Members.
 
-Only admins see the project open and create dialogs. Other users see "Only server admins can register projects." Only owners see the action that removes a registration.
+Only admins see the project open and create buttons. Other users see "Only server admins can register projects." Only owners see the domain, task type, and tag editors; other users see "Only project owners can change domains, task types, and tags." The UI has no control for removing a registration; the route requires the owner role.
 
-`api/client.js` and `lib/rejection.js` map `project_role_required`, `admin_required`, and `last_owner` onto the existing rejection notice. A `project_role_required` rejection refreshes `myRole`, so controls disappear after an owner revokes the user mid-session. The Activity screen renders the membership actions as readable sentences, such as "approved Minh as editor".
+`api/client.js` and `lib/rejection.js` map `project_role_required`, `admin_required`, and `last_owner` onto the existing rejection notice. A `project_role_required` rejection refreshes `myRole`, so controls disappear after an owner revokes the user mid-session. The Activity screen shows a readable label for each membership action, such as "granted access" beside the detail "Minh as editor".
 
 ## Testing
 
@@ -179,7 +181,7 @@ API tests in `tests/membership_api_test.rs`:
 - Editors can write tasks and receive 403 on owner routes. Owners manage members and requests. Only admins register projects.
 - `my_role` and `is_admin` report the correct values, and each membership change records its activity row.
 
-CLI tests use the shared runner in `tests/cli`: grant and revoke for admins and members, `member-list` output, the last-owner warning, and the startup warning appearing on stderr for a non-loopback host and not for loopback.
+CLI tests use the shared runner in `tests/cli`: grant and revoke for admins and members, `member-list` output, and the last-owner warning. The startup warning text comes from `access::exposure_warning`, which tests call directly for loopback and non-loopback addresses, because binding a non-loopback address in a test can trigger a firewall prompt. A serve test confirms the loopback default prints no warning.
 
 Frontend tests: `tests/js/access.test.js` checks `can()` against every row of the permissions table, and `tests/js/rejection.test.js` covers the three rejection codes.
 

@@ -1,7 +1,7 @@
 ---
 id: "WEB-032"
 title: "Require project membership for writes"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Feature"
 parent: "WEB-014"
@@ -9,7 +9,7 @@ depends_on: ["WEB-030", "WEB-031"]
 risk: "High"
 impact: "Lets the board listen on a shared network without letting every visitor change every project, by requiring per-project membership for writes and server admin for registration."
 tags: ["web", "server", "api", "state"]
-last_updated: 2026-10-03
+last_updated: 2026-10-04
 ---
 
 ## Summary
