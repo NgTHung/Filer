@@ -29,6 +29,7 @@ pub struct ResolvedSession {
     pub identity: StoredIdentity,
     pub session_id: i64,
     pub last_seen: i64,
+    pub is_admin: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,23 +54,9 @@ impl Storage {
                     operation: "begin create identity",
                     source,
                 })?;
-        let row = sqlx::query(
-            "INSERT INTO users (display_name, name_key) VALUES (?, ?) \
-             ON CONFLICT(name_key) DO NOTHING \
-             RETURNING id, display_name",
-        )
-        .bind(username)
-        .bind(username.to_lowercase())
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(|source| StorageError::Operation {
-            operation: "create identity",
-            source,
-        })?;
-        let Some(row) = row else {
-            return Err(StorageError::UsernameTaken);
-        };
-        let identity = decode_identity(&row, "decode created identity")?;
+        let identity = insert_user(&mut transaction, username)
+            .await?
+            .ok_or(StorageError::UsernameTaken)?;
         let session_token =
             insert_session(&mut transaction, identity.user_id, device_label).await?;
         transaction
@@ -91,7 +78,7 @@ impl Storage {
     ) -> Result<Option<ResolvedSession>, StorageError> {
         let row = sqlx::query(
             "SELECT s.id AS session_id, s.last_seen AS last_seen, u.id AS user_id, \
-                    u.display_name \
+                    u.display_name, u.is_admin \
              FROM sessions s JOIN users u ON u.id = s.user_id \
              WHERE s.token = ?",
         )
@@ -173,24 +160,17 @@ impl Storage {
                     operation: "begin recovery session",
                     source,
                 })?;
-        let existing = find_user(&mut transaction, username).await?;
-        let identity = match existing {
-            Some(identity) => identity,
-            None => {
-                let created = insert_user(&mut transaction, username).await?;
-                match created {
-                    Some(identity) => identity,
-                    // A concurrent insert won the key between the lookup and
-                    // the insert; the recovery path resolves to that identity.
-                    None => find_user(&mut transaction, username).await?.ok_or(
-                        StorageError::InvalidData {
-                            operation: "mint recovery session",
-                            message: "username disappeared during creation".to_string(),
-                        },
-                    )?,
-                }
-            }
-        };
+        // Acquire the write lock before reading so recovery cannot upgrade a stale snapshot.
+        let identity =
+            match insert_user(&mut transaction, username).await? {
+                Some(identity) => identity,
+                None => find_user(&mut transaction, username).await?.ok_or(
+                    StorageError::InvalidData {
+                        operation: "mint recovery session",
+                        message: "username disappeared during creation".to_string(),
+                    },
+                )?,
+            };
         let session_token =
             insert_session(&mut transaction, identity.user_id, device_label).await?;
         transaction
@@ -269,6 +249,29 @@ impl Storage {
             })?;
         Ok(result.rows_affected() > 0)
     }
+
+    /// A missing user has no server administration rights.
+    pub async fn is_admin(&self, user_id: i64) -> Result<bool, StorageError> {
+        let flag: Option<bool> = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "read admin flag",
+                source,
+            })?;
+        Ok(flag.unwrap_or(false))
+    }
+
+    pub async fn admin_count(&self) -> Result<i64, StorageError> {
+        sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE is_admin = 1")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|source| StorageError::Operation {
+                operation: "count admins",
+                source,
+            })
+    }
 }
 
 pub(crate) async fn find_user(
@@ -291,8 +294,10 @@ pub(crate) async fn insert_user(
     transaction: &mut Transaction<'_, Sqlite>,
     username: &str,
 ) -> Result<Option<StoredIdentity>, StorageError> {
+    // Taking the write lock before checking users gives concurrent first identities one admin.
     let row = sqlx::query(
-        "INSERT INTO users (display_name, name_key) VALUES (?, ?) \
+        "INSERT INTO users (display_name, name_key, is_admin) \
+         VALUES (?, ?, NOT EXISTS (SELECT 1 FROM users)) \
          ON CONFLICT(name_key) DO NOTHING \
          RETURNING id, display_name",
     )
@@ -381,9 +386,13 @@ fn decode_resolved(
     let last_seen = row
         .try_get("last_seen")
         .map_err(|source| StorageError::Operation { operation, source })?;
+    let is_admin = row
+        .try_get("is_admin")
+        .map_err(|source| StorageError::Operation { operation, source })?;
     Ok(ResolvedSession {
         identity: StoredIdentity { user_id, username },
         session_id,
         last_seen,
+        is_admin,
     })
 }

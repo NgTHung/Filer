@@ -273,3 +273,105 @@ async fn memberships_and_requests_are_unique_and_cascade_when_a_project_is_remov
     );
     storage.close().await;
 }
+
+#[tokio::test]
+async fn the_first_identity_on_an_empty_database_becomes_admin() {
+    let (storage, _temp) = fresh_storage().await;
+    let alice = storage
+        .create_identity("Alice", "Browser A")
+        .await
+        .expect("first identity creates");
+    let bob = storage
+        .create_identity("Bob", "Browser B")
+        .await
+        .expect("second identity creates");
+    assert!(
+        storage
+            .is_admin(alice.identity.user_id)
+            .await
+            .expect("flag reads")
+    );
+    assert!(
+        !storage
+            .is_admin(bob.identity.user_id)
+            .await
+            .expect("flag reads")
+    );
+    assert!(!storage.is_admin(99).await.expect("missing flag reads"));
+    for (session, expected) in [(&alice, true), (&bob, false)] {
+        let resolved = storage
+            .resolve_identity(&session.session_token)
+            .await
+            .expect("lookup succeeds")
+            .expect("session exists");
+        assert_eq!(resolved.is_admin, expected);
+    }
+    assert_eq!(storage.admin_count().await.expect("admins count"), 1);
+    storage.close().await;
+}
+
+async fn fresh_storage() -> (Storage, TempDir) {
+    let temp = tempfile::tempdir().expect("temp dir created");
+    let storage = Storage::open(temp.path().join("state.sqlite3"))
+        .await
+        .expect("storage opens");
+    (storage, temp)
+}
+
+#[tokio::test]
+async fn concurrent_first_identities_produce_exactly_one_admin() {
+    let (storage, _temp) = fresh_storage().await;
+    let (first, second) = tokio::join!(
+        storage.create_identity("Alice", "Browser A"),
+        storage.create_identity("Bob", "Browser B"),
+    );
+    first.expect("first identity creates");
+    second.expect("second identity creates");
+    assert_eq!(storage.admin_count().await.expect("admins count"), 1);
+    storage.close().await;
+}
+
+#[tokio::test]
+async fn recovery_creates_the_first_admin_and_preserves_existing_admin_flags() {
+    let (storage, _temp) = fresh_storage().await;
+    let alice = storage
+        .mint_recovery_session("Alice", "Recovery CLI")
+        .await
+        .expect("first recovery mints");
+    let bob = storage
+        .mint_recovery_session("Bob", "Recovery CLI")
+        .await
+        .expect("second recovery mints");
+    let recovered = storage
+        .mint_recovery_session("Alice", "Recovery CLI")
+        .await
+        .expect("existing recovery mints");
+    assert_eq!(recovered.identity.user_id, alice.identity.user_id);
+    assert!(
+        storage
+            .is_admin(alice.identity.user_id)
+            .await
+            .expect("flag reads")
+    );
+    assert!(
+        !storage
+            .is_admin(bob.identity.user_id)
+            .await
+            .expect("flag reads")
+    );
+    assert_eq!(storage.admin_count().await.expect("admins count"), 1);
+    storage.close().await;
+}
+
+#[tokio::test]
+async fn concurrent_browser_and_recovery_creation_produce_one_admin() {
+    let (storage, _temp) = fresh_storage().await;
+    let (browser, recovery) = tokio::join!(
+        storage.create_identity("Alice", "Browser"),
+        storage.mint_recovery_session("Bob", "Recovery CLI"),
+    );
+    browser.expect("browser identity creates");
+    recovery.expect("recovery identity creates");
+    assert_eq!(storage.admin_count().await.expect("admins count"), 1);
+    storage.close().await;
+}
