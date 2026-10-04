@@ -12,6 +12,15 @@ export class ApiError extends Error {
   }
 }
 
+// Codes that mean this browser's view of its own permissions is stale. The
+// project store registers a handler that reloads roles when one arrives.
+const ACCESS_REJECTION_CODES = new Set(["project_role_required", "admin_required"]);
+let accessRejectionHandler = null;
+
+export function onAccessRejected(handler) {
+  accessRejectionHandler = handler;
+}
+
 async function request(method, path, body, headers) {
   const options = { method };
   if (headers) {
@@ -25,7 +34,11 @@ async function request(method, path, body, headers) {
   const text = await response.text();
   const payload = text ? JSON.parse(text) : null;
   if (!response.ok) {
-    throw new ApiError(response.status, payload);
+    const error = new ApiError(response.status, payload);
+    if (accessRejectionHandler && ACCESS_REJECTION_CODES.has(error.code)) {
+      accessRejectionHandler(error);
+    }
+    throw error;
   }
   return payload;
 }
@@ -134,6 +147,27 @@ export function projectScoped(projectName) {
         `${base}/tasks/${encodeURIComponent(id)}/${action}`,
         reason !== undefined ? { reason } : undefined,
       );
+    },
+    listMembers() {
+      return getJson(`${base}/members`);
+    },
+    setMemberRole(userId, role) {
+      return putJson(`${base}/members/${userId}`, { role });
+    },
+    removeMember(userId) {
+      return request("DELETE", `${base}/members/${userId}`);
+    },
+    listAccessRequests() {
+      return getJson(`${base}/access-requests`);
+    },
+    denyAccessRequest(userId) {
+      return request("DELETE", `${base}/access-requests/${userId}`);
+    },
+    requestAccess() {
+      return postJson(`${base}/access-request`);
+    },
+    withdrawAccessRequest() {
+      return request("DELETE", `${base}/access-request`);
     },
   };
 }

@@ -1,7 +1,7 @@
 // Module-level active-project store. A tiny pub/sub instead of a dependency:
 // Preact components subscribe with useProjectStore() and re-render on change.
 import { useEffect, useState } from "../../vendor/preact-htm.js";
-import { listProjects } from "../api/client.js";
+import { listProjects, onAccessRejected } from "../api/client.js";
 
 const state = {
   projects: [],
@@ -44,6 +44,12 @@ export async function loadProjects() {
     notify();
   }
 }
+
+// A refusal for a missing role means the roles this store holds are stale;
+// reloading them hides the controls the user has lost.
+onAccessRejected(() => {
+  loadProjects();
+});
 
 export function useProjectStore() {
   const [, setTick] = useState(0);

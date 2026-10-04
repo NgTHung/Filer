@@ -60,3 +60,18 @@ test("an error naming no field falls back to a form-level message", () => {
   });
   assert.deepEqual(fieldError(offline), { field: null, message: "Failed to fetch", allowed: [] });
 });
+
+test("membership refusals are form-level messages", () => {
+  for (const [status, code] of [
+    [403, "project_role_required"],
+    [403, "admin_required"],
+    [409, "last_owner"],
+  ]) {
+    const refused = new ApiError(status, { error: `refused: ${code}`, code });
+    assert.deepEqual(fieldError(refused), {
+      field: null,
+      message: `refused: ${code}`,
+      allowed: [],
+    });
+  }
+});

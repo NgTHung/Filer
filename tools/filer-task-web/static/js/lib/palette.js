@@ -12,14 +12,15 @@ export function filterProjects(projects, query) {
 // One flat row list so arrow keys and Enter treat the create action like any
 // other row. A query that names nothing registered becomes the proposed name
 // for a new project, which the create dialog then asks the user to confirm
-// along with where it should live.
-export function paletteRows(projects, query) {
+// along with where it should live. Only server admins register projects, so
+// the create row appears only when `canCreate` is set.
+export function paletteRows(projects, query, { canCreate = true } = {}) {
   const matches = filterProjects(projects, query);
   if (matches.length > 0) {
     return matches.map((project) => ({ kind: "project", project }));
   }
   const name = (query ?? "").trim();
-  return name === "" ? [] : [{ kind: "create", name }];
+  return name === "" || !canCreate ? [] : [{ kind: "create", name }];
 }
 
 // Wraps rather than clamps so holding an arrow key cycles the list. An index

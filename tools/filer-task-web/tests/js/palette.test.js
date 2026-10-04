@@ -72,3 +72,12 @@ test("the shortcut is cmd-K or ctrl-K and nothing else", () => {
   assert.equal(isPaletteShortcut({ key: "k", metaKey: false, ctrlKey: false }), false);
   assert.equal(isPaletteShortcut({ key: "j", metaKey: true, ctrlKey: false }), false);
 });
+
+test("the create row is offered only to users who can register projects", () => {
+  assert.deepEqual(paletteRows(PROJECTS, "brand-new"), [{ kind: "create", name: "brand-new" }]);
+  assert.deepEqual(paletteRows(PROJECTS, "brand-new", { canCreate: false }), []);
+  assert.deepEqual(
+    paletteRows(PROJECTS, "filer", { canCreate: false }).map((row) => row.project.name),
+    ["filer", "Filer-Docs"],
+  );
+});
