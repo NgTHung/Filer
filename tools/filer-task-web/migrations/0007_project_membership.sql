@@ -31,13 +31,14 @@ UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users);
 INSERT INTO project_members (project, user_id, role)
 SELECT a.project, a.user_id, 'owner'
 FROM activity a
-JOIN project_registrations p ON p.name = a.project
-WHERE a.id = (
-    SELECT MAX(latest.id)
-    FROM activity latest
-    JOIN users u ON u.id = latest.user_id
-    WHERE latest.action = 'project.register' AND latest.project = a.project
-);
+JOIN (
+    SELECT activity.project, MAX(activity.id) AS registration_id
+    FROM activity
+    JOIN users u ON u.id = activity.user_id
+    WHERE activity.action = 'project.register'
+    GROUP BY activity.project
+) latest ON latest.registration_id = a.id
+JOIN project_registrations p ON p.name = a.project;
 
 INSERT INTO project_members (project, user_id, role)
 SELECT p.name, (SELECT MIN(id) FROM users), 'owner'
