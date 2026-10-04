@@ -20,9 +20,9 @@ Whoever registers a project becomes its owner, the first identity on an empty da
 
 ## Acceptance Criteria
 
-- [ ] Migration 0007 adds `users.is_admin`, a `project_members` table holding owner and editor roles, and an `access_requests` table, both keyed by project name and deleted with the project registration.
-- [ ] The migration makes the lowest-id user admin, makes each project's latest `project.register` actor its owner with the admin as fallback, and makes every other user with activity in a project an editor there.
-- [ ] The first identity created on a database with no users becomes admin, and two identities created at once on an empty database produce exactly one admin.
+- [x] Migration 0007 adds `users.is_admin`, a `project_members` table holding owner and editor roles, and an `access_requests` table, both keyed by project name and deleted with the project registration.
+- [x] The migration makes the lowest-id user admin, makes each project's latest `project.register` actor its owner with the admin as fallback, and makes every other user with activity in a project an editor there.
+- [x] The first identity created on a database with no users becomes admin, and two identities created at once on an empty database produce exactly one admin.
 - [ ] Registering a project requires admin and inserts the registrant as owner in the same transaction as the registration.
 - [ ] Task creation, edits, criterion changes, and transitions require the editor or owner role; policy changes, member management, request review, and removing a registration require the owner role.
 - [ ] A write without a session fails with 401, and a write with a session but without the required role fails with 403 before the request body is parsed and before any task file changes.
