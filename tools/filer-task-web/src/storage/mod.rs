@@ -12,7 +12,7 @@
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let directory = tempfile::tempdir()?;
 //! let storage = Storage::open(directory.path().join("state.sqlite3")).await?;
-//! assert_eq!(storage.schema_version().await?, 6);
+//! assert_eq!(storage.schema_version().await?, 7);
 //! storage.close().await;
 //! # Ok(())
 //! # }

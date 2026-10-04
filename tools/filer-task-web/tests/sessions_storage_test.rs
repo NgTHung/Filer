@@ -112,7 +112,7 @@ async fn pre_migration_identity_cookie_becomes_a_session_row() {
     stage_schema_four(&temp, &db).await;
 
     let storage = Storage::open(&db).await.expect("storage migrates");
-    assert_eq!(storage.schema_version().await.expect("version reads"), 6);
+    assert_eq!(storage.schema_version().await.expect("version reads"), 7);
 
     let cookie = "a".repeat(64);
     let resolved = storage
