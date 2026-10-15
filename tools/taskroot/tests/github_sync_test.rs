@@ -352,6 +352,10 @@ fn archived_or_converted_owned_items_require_explicit_recovery() {
         let output = fixture.run(true);
         assert!(!output.status.success());
         assert!(String::from_utf8_lossy(&output.stderr).contains("archived or converted"));
+        assert_eq!(
+            fixture.request(0)["variables"]["archived"],
+            json!(["ARCHIVED", "NOT_ARCHIVED"])
+        );
         assert!(!fixture.root.path().join("request-1.json").exists());
     }
 }

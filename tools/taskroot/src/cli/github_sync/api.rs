@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::error::TaskError;
 
-const ITEMS: &str = "query($project:ID!,$cursor:String){node(id:$project){... on ProjectV2{fields(first:100){nodes{... on ProjectV2FieldCommon{id name dataType} ... on ProjectV2SingleSelectField{options{id name}}} pageInfo{hasNextPage}} items(first:100,after:$cursor){nodes{id isArchived type content{__typename ... on DraftIssue{id title body} ... on Issue{id title body}} fieldValues(first:100){nodes{... on ProjectV2ItemFieldTextValue{text field{... on ProjectV2FieldCommon{id}}} ... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}} pageInfo{hasNextPage}}} pageInfo{hasNextPage endCursor}}}}}";
+const ITEMS: &str = "query($project:ID!,$cursor:String,$archived:[ProjectV2ItemArchivedState!]!){node(id:$project){... on ProjectV2{fields(first:100){nodes{... on ProjectV2FieldCommon{id name dataType} ... on ProjectV2SingleSelectField{options{id name}}} pageInfo{hasNextPage}} items(first:100,after:$cursor,archivedStates:$archived){nodes{id isArchived type content{__typename ... on DraftIssue{id title body} ... on Issue{id title body}} fieldValues(first:100){nodes{... on ProjectV2ItemFieldTextValue{text field{... on ProjectV2FieldCommon{id}}} ... on ProjectV2ItemFieldSingleSelectValue{optionId field{... on ProjectV2FieldCommon{id}}}} pageInfo{hasNextPage}}} pageInfo{hasNextPage endCursor}}}}}";
 
 #[derive(Default)]
 pub(super) struct Writer {
@@ -70,7 +70,10 @@ pub(super) fn items(project: &str) -> Result<(Vec<Value>, Vec<super::fields::Fie
     let mut fields = None;
     let mut cursors = HashSet::new();
     loop {
-        let data = request(ITEMS, json!({"project":project,"cursor":cursor}))?;
+        let data = request(
+            ITEMS,
+            json!({"project":project,"cursor":cursor,"archived":["ARCHIVED","NOT_ARCHIVED"]}),
+        )?;
         if fields.is_none() {
             if data["node"]["fields"]["pageInfo"]["hasNextPage"] != false {
                 return Err(invalid("missing or incomplete project fields"));
