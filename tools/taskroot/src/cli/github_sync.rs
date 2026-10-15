@@ -26,6 +26,7 @@ use crate::{
 };
 
 mod api;
+mod fields;
 
 #[derive(Debug, Args)]
 pub struct GithubSyncArgs {
@@ -48,6 +49,7 @@ pub struct GithubSyncArgs {
 struct Change {
     qualified_id: String,
     action: &'static str,
+    fields: Vec<fields::FieldChange>,
     #[serde(skip)]
     title: String,
     #[serde(skip)]
@@ -56,9 +58,21 @@ struct Change {
     remote: Option<Value>,
 }
 
-pub fn run_github_sync(args: GithubSyncArgs) -> Result<(), TaskError> {
+pub fn run_github_sync(mut args: GithubSyncArgs) -> Result<(), TaskError> {
     let project = resolve_project(args.root)?;
-    let tasks = require_valid_report(validate_repo(&project)?)?;
+    let (tasks, contents) = project.with_write_lock(|| {
+        let tasks = require_valid_report(validate_repo(&project)?)?;
+        let contents = tasks
+            .iter()
+            .map(|task| {
+                fs::read_to_string(&task.path).map_err(|source| TaskError::Io {
+                    path: task.path.clone(),
+                    source,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((tasks, contents))
+    })?;
     let parts: Vec<_> = args.repository.split('/').collect();
     if parts.len() != 2
         || parts.iter().any(|part| {
@@ -70,10 +84,16 @@ pub fn run_github_sync(args: GithubSyncArgs) -> Result<(), TaskError> {
     {
         return Err(api::invalid("repository must be OWNER/REPO"));
     }
-    let items = api::items(&args.project)?;
+    args.repository.make_ascii_lowercase();
+    let (items, fields) = api::items(&args.project)?;
     let mut remote = BTreeMap::new();
     let prefix = format!("<!-- taskroot:{}:", args.repository);
     for item in items {
+        if item["type"] == "REDACTED" || item["content"].is_null() {
+            return Err(api::invalid(
+                "inaccessible project item; cannot safely reconcile ownership",
+            ));
+        }
         let content = &item["content"];
         let body = content["body"].as_str().unwrap_or_default();
         if let Some(key) = body
@@ -84,6 +104,11 @@ pub fn run_github_sync(args: GithubSyncArgs) -> Result<(), TaskError> {
             })
             .map(str::to_owned)
         {
+            crate::identity::TaskIdentity::parse(&key)
+                .map_err(|error| api::invalid(error.to_string()))?;
+            if !item["id"].is_string() || !content["id"].is_string() {
+                return Err(api::invalid("missing owned item IDs"));
+            }
             if content["__typename"] != "DraftIssue" || item["isArchived"] == true {
                 return Err(api::invalid(format!(
                     "{key} is archived or converted; restore its draft before syncing"
@@ -97,12 +122,8 @@ pub fn run_github_sync(args: GithubSyncArgs) -> Result<(), TaskError> {
         }
     }
     let mut changes = Vec::new();
-    for task in &tasks {
+    for (task, content) in tasks.iter().zip(&contents) {
         let qualified_id = task.qualified_id();
-        let content = fs::read_to_string(&task.path).map_err(|source| TaskError::Io {
-            path: task.path.clone(),
-            source,
-        })?;
         let body = format!(
             "{prefix}{qualified_id} -->\n\nManaged by taskroot from {}. Local tasks are authoritative.\n\nStatus: {} | Priority: {} | Domain: {} | Milestone: {}\n\n{}",
             args.repository,
@@ -110,13 +131,20 @@ pub fn run_github_sync(args: GithubSyncArgs) -> Result<(), TaskError> {
             task.metadata.priority,
             task.domain,
             task.metadata.milestone.as_deref().unwrap_or("-"),
-            body_after_frontmatter(&content)?.trim()
+            body_after_frontmatter(content)?
+                .trim()
+                .replace("\r\n", "\n")
         );
         let title = format!("[{qualified_id}] {}", task.metadata.title);
         let existing = remote.remove(&qualified_id);
+        let field_changes = fields::changes(&fields, task, existing.as_ref())?;
         let action = match &existing {
             None => "create",
-            Some(item) if item["content"]["title"] == title && item["content"]["body"] == body => {
+            Some(item)
+                if item["content"]["title"] == title
+                    && item["content"]["body"] == body
+                    && field_changes.is_empty() =>
+            {
                 "unchanged"
             }
             Some(_) => "update",
@@ -124,32 +152,47 @@ pub fn run_github_sync(args: GithubSyncArgs) -> Result<(), TaskError> {
         changes.push(Change {
             qualified_id,
             action,
+            fields: field_changes,
             title,
             body,
             remote: existing,
         });
     }
     if args.apply {
+        let mut writer = api::Writer::default();
         for change in changes.iter().filter(|c| c.action != "unchanged") {
             match &change.remote {
                 None => {
-                    let created = api::request(
+                    let created = writer.write(
                         "mutation($input:AddProjectV2DraftIssueInput!){addProjectV2DraftIssue(input:$input){projectItem{id}}}",
                         json!({"input":{"projectId":args.project,"title":change.title,"body":change.body}}),
                     )?;
-                    if !created["addProjectV2DraftIssue"]["projectItem"]["id"].is_string() {
-                        return Err(api::invalid(
-                            "missing created draft ID; rerun to reconcile before retrying",
-                        ));
-                    }
+                    let item = created["addProjectV2DraftIssue"]["projectItem"]["id"]
+                        .as_str()
+                        .ok_or_else(|| {
+                            api::invalid(
+                                "missing created draft ID; rerun to reconcile before retrying",
+                            )
+                        })?;
+                    fields::update(&args.project, item, &change.fields, None, &mut writer)?;
                 }
                 Some(item) => {
                     let draft = item["content"]["id"]
                         .as_str()
                         .ok_or_else(|| api::invalid("missing draft content ID"))?;
-                    api::request(
-                        "mutation($input:UpdateProjectV2DraftIssueInput!){updateProjectV2DraftIssue(input:$input){draftIssue{id}}}",
-                        json!({"input":{"draftIssueId":draft,"title":change.title,"body":change.body}}),
+                    let content_changed = item["content"]["title"] != change.title
+                        || item["content"]["body"] != change.body;
+                    let patch = content_changed.then(
+                        || json!({"draftIssueId":draft,"title":change.title,"body":change.body}),
+                    );
+                    fields::update(
+                        &args.project,
+                        item["id"]
+                            .as_str()
+                            .ok_or_else(|| api::invalid("missing project item ID"))?,
+                        &change.fields,
+                        patch,
+                        &mut writer,
                     )?;
                 }
             }

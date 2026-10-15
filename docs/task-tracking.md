@@ -576,7 +576,15 @@ Drafts contain task Markdown and a repository-qualified ownership marker. The
 command leaves unrelated items and drafts for deleted local tasks untouched.
 It rejects duplicate ownership markers and owned items that are archived or
 converted to repository issues. Rerunning reconciles interrupted publication
-from remote state. Run only one publisher per destination at a time.
+from remote state, including partially updated fields. Run only one publisher
+per destination at a time and keep ownership markers intact. The publisher
+waits at least one second between mutation requests and stops on API errors;
+rate-limited runs can resume after the limit resets.
+
+The preview includes changes to Status, Priority, Taskroot ID, Domain, and
+Taskroot Milestone. Configure those fields before publication; missing fields
+or options fail before writes. See [GitHub setup](taskroot-github.md) for the
+field schema, authentication, and Filer workflow configuration.
 
 ## Batch Import
 
