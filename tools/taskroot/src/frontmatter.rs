@@ -19,6 +19,34 @@ use crate::{
     model::TaskMetadata,
 };
 
+pub(crate) fn body_after_frontmatter(content: &str) -> Result<&str, TaskError> {
+    let mut offset = 0;
+    let mut lines = content.split_inclusive('\n');
+    let Some(first) = lines.next() else {
+        return Err(TaskError::Validation(vec![ValidationError::new(
+            None,
+            "missing YAML frontmatter",
+        )]));
+    };
+    if first.trim_end_matches(['\r', '\n']) != "---" {
+        return Err(TaskError::Validation(vec![ValidationError::new(
+            None,
+            "missing YAML frontmatter",
+        )]));
+    }
+    offset += first.len();
+    for line in lines {
+        offset += line.len();
+        if line.trim_end_matches(['\r', '\n']) == "---" {
+            return Ok(&content[offset..]);
+        }
+    }
+    Err(TaskError::Validation(vec![ValidationError::new(
+        None,
+        "YAML frontmatter is missing closing delimiter",
+    )]))
+}
+
 pub(crate) fn render_metadata(metadata: &TaskMetadata) -> Result<String, TaskError> {
     let mut content = String::from("---\n");
     push_scalar(&mut content, "id", &metadata.id)?;

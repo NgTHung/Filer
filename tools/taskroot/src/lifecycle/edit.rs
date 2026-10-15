@@ -30,8 +30,8 @@ use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use crate::{
     atomic_write,
-    error::{TaskError, TaxonomyErrorContext, ValidationError},
-    frontmatter::{parse_metadata, render_metadata},
+    error::{TaskError, TaxonomyErrorContext},
+    frontmatter::{body_after_frontmatter, parse_metadata, render_metadata},
     identity::TaskIdentity,
     markdown::replace_or_append_section,
     model::{Risk, TaskMetadata},
@@ -223,29 +223,4 @@ fn patched_body(content: &str, patch: &TaskPatch) -> Result<String, TaskError> {
         body = replace_or_append_section(&body, heading, replacement);
     }
     Ok(body)
-}
-
-fn body_after_frontmatter(content: &str) -> Result<&str, TaskError> {
-    let mut offset = 0;
-    let mut lines = content.split_inclusive('\n');
-    let Some(first) = lines.next() else {
-        return invalid_frontmatter("missing YAML frontmatter");
-    };
-    offset += first.len();
-    if first.trim_end_matches(['\r', '\n']) != "---" {
-        return invalid_frontmatter("missing YAML frontmatter");
-    }
-    for line in lines {
-        offset += line.len();
-        if line.trim_end_matches(['\r', '\n']) == "---" {
-            return Ok(&content[offset..]);
-        }
-    }
-    invalid_frontmatter("YAML frontmatter is missing closing delimiter")
-}
-
-fn invalid_frontmatter<T>(message: &str) -> Result<T, TaskError> {
-    Err(TaskError::Validation(vec![ValidationError::new(
-        None, message,
-    )]))
 }

@@ -3,13 +3,14 @@ use std::process::ExitCode;
 use clap::Parser;
 use taskroot::cli::{
     Cli, Command, run_add, run_block, run_context, run_criterion_toggle, run_defer, run_deps,
-    run_done, run_import, run_init, run_list, run_milestone, run_obsolete, run_ready, run_show,
-    run_start, run_summary, run_tag, run_validate,
+    run_done, run_github_sync, run_import, run_init, run_list, run_milestone, run_obsolete,
+    run_ready, run_show, run_start, run_summary, run_tag, run_validate,
 };
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
+        Command::GithubSync(args) => run_github_sync(args),
         Command::Validate(args) => run_validate(args),
         Command::List(args) => run_list(args),
         Command::Show(args) => run_show(args),

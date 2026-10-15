@@ -560,6 +560,24 @@ section selected by the task type:
 cargo run -p taskroot -- criterion-toggle core:CORE-042 0
 ```
 
+## GitHub Project Publication
+
+`github-sync` publishes tasks as GitHub Project draft items while `.tasks/`
+remains authoritative. It validates the whole Task project before contacting
+GitHub and previews changes by default. GitHub CLI (`gh`) must be installed and
+authenticated with the `project` scope.
+
+```bash
+cargo run -p taskroot -- github-sync --repository OWNER/REPO --project PVT_PROJECT_ID
+cargo run -p taskroot -- github-sync --repository OWNER/REPO --project PVT_PROJECT_ID --apply
+```
+
+Drafts contain task Markdown and a repository-qualified ownership marker. The
+command leaves unrelated items and drafts for deleted local tasks untouched.
+It rejects duplicate ownership markers and owned items that are archived or
+converted to repository issues. Rerunning reconciles interrupted publication
+from remote state. Run only one publisher per destination at a time.
+
 ## Batch Import
 
 Use `import` when migrating curated roadmap items into `.tasks/` without writing each markdown file by hand. The input is JSON and uses the same field names as task frontmatter, plus `summary`, `criteria`, `rationale`, and `blocked_reason` for body sections:

@@ -26,8 +26,10 @@ use crate::{
 use clap::{Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
+mod github_sync;
 mod tag;
 
+pub use github_sync::{GithubSyncArgs, run_github_sync};
 pub use tag::{TagArgs, run_tag};
 
 const ROOT_HELP: &str = "Start project discovery at PATH; defaults to the current directory and accepts paths nested inside a project";
@@ -42,6 +44,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    GithubSync(GithubSyncArgs),
     Validate(ValidateArgs),
     List(ListArgs),
     Show(DetailArgs),
