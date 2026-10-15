@@ -68,7 +68,7 @@ for ownership, retries, and retained items.
 
 ## Configure automation
 
-The repository workflow is disabled for pushes until
+The [publication workflow](../.github/workflows/taskroot-github.yml) is disabled for pushes until
 `TASKROOT_GITHUB_SYNC_ENABLED` equals `true`. Its manual entry previews by
 default and writes only when the `apply` input is selected. It runs from `main`
 and serializes publication so two workflow runs cannot create the same draft.

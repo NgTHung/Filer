@@ -1,0 +1,49 @@
+name: Publish Taskroot to GitHub Projects
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Publish changes instead of previewing
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - '.tasks/**'
+      - 'tools/taskroot/**'
+      - '.github/workflows/taskroot-github.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taskroot-github
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.TASKROOT_GITHUB_SYNC_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Preview or publish tasks
+        env:
+          GH_TOKEN: ${{ secrets.TASKROOT_GITHUB_TOKEN }}
+          PROJECT_ID: ${{ vars.TASKROOT_GITHUB_PROJECT_ID }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          PUBLISH: ${{ github.event_name == 'push' || inputs.apply }}
+        run: |
+          : "${PROJECT_ID:?Set the TASKROOT_GITHUB_PROJECT_ID repository variable}"
+          : "${GH_TOKEN:?Set the TASKROOT_GITHUB_TOKEN repository secret}"
+          sync_args=()
+          if [[ "$PUBLISH" == 'true' ]]; then
+            sync_args+=(--apply)
+          fi
+          cargo run --locked -p taskroot -- github-sync \
+            --repository "$SOURCE_REPOSITORY" \
+            --project "$PROJECT_ID" \
+            "${sync_args[@]}"
