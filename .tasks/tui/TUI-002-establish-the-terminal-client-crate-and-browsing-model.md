@@ -1,7 +1,7 @@
 ---
 id: "TUI-002"
 title: "Establish the terminal client crate and browsing model"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Feature"
 parent: "tui:TUI-001"
@@ -9,7 +9,7 @@ milestone: "0.3.1"
 rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "Medium"
 tags: ["cli", "model", "testing", "enhancement", "ready-for-agent"]
-last_updated: "2026-10-02"
+last_updated: 2026-10-16
 ---
 
 ## Summary
