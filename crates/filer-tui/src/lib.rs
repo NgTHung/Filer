@@ -22,8 +22,8 @@ use std::ops::Range;
 
 use filer_core::model::session::SessionId;
 use filer_core::{
-    DirectoryCursor, DirectoryPageState, Event, LocationId, LocationRef, NodeEntry, PipelineConfig,
-    RequestId,
+    DirectoryCursor, DirectoryPageState, ErrorCode, ErrorContext, ErrorTarget, Event, LocationId,
+    LocationRef, NodeEntry, PipelineConfig, RequestId,
 };
 
 /// Intent for a runner to send to core, without performing I/O during updates.
@@ -35,6 +35,16 @@ pub struct BrowseRequest {
     pub cursor: Option<DirectoryCursor>,
     /// Disposable read work the runner can cancel after replacement.
     pub replaces: Option<RequestId>,
+}
+
+#[derive(Debug)]
+pub struct BrowseError {
+    pub request: BrowseRequest,
+    pub code: ErrorCode,
+    pub target: Option<ErrorTarget>,
+    pub context: Option<Box<ErrorContext>>,
+    pub message: String,
+    pub recoverable: bool,
 }
 
 #[derive(Debug)]
@@ -83,6 +93,7 @@ pub struct BrowsingModel {
     session: SessionId,
     pending: Option<BrowseRequest>,
     view: Option<DirectoryView>,
+    error: Option<BrowseError>,
 }
 
 impl BrowsingModel {
@@ -91,6 +102,7 @@ impl BrowsingModel {
             session,
             pending: None,
             view: None,
+            error: None,
         }
     }
 
@@ -110,8 +122,13 @@ impl BrowsingModel {
         self.pending.is_some()
     }
 
+    pub fn error(&self) -> Option<&BrowseError> {
+        self.error.as_ref()
+    }
+
     /// Replace read intent while keeping the last successfully loaded view.
     pub fn load(&mut self, location: LocationRef, pipeline: PipelineConfig) -> BrowseRequest {
+        self.error = None;
         let request = BrowseRequest {
             request: RequestId::new(),
             location,
@@ -167,6 +184,34 @@ impl BrowsingModel {
 
     /// Return whether an event changed browsing state.
     pub fn apply(&mut self, event: Event) -> bool {
+        let Some(pending) = &self.pending else {
+            return false;
+        };
+        if let Event::Error {
+            code,
+            target,
+            context,
+            message,
+            recoverable,
+            session,
+            request,
+            operation: None,
+            ..
+        } = event
+        {
+            if session != self.session || request != Some(pending.request) {
+                return false;
+            }
+            self.error = self.pending.take().map(|request| BrowseError {
+                request,
+                code,
+                target,
+                context,
+                message,
+                recoverable,
+            });
+            return true;
+        }
         let Event::DirectoryPageLoaded {
             parent,
             groups,
@@ -175,9 +220,6 @@ impl BrowsingModel {
             request,
         } = event
         else {
-            return false;
-        };
-        let Some(pending) = &self.pending else {
             return false;
         };
         if session != self.session

@@ -2,8 +2,8 @@ use filer_core::model::node::NodeKind;
 use filer_core::model::session::SessionId;
 use filer_core::pipeline::EntryGroup;
 use filer_core::{
-    DirectoryCursor, DirectoryPageState, Event, GroupedEntries, Location, LocationRef, NodeEntry,
-    PipelineConfig, RequestId,
+    CoreError, DirectoryCursor, DirectoryPageState, ErrorCode, Event, GroupedEntries, Location,
+    LocationRef, NodeEntry, PipelineConfig, RequestId,
 };
 use filer_tui::BrowsingModel;
 
@@ -168,6 +168,42 @@ fn selection_survives_refresh_pages_by_location_and_drops_removed_entries_at_com
     model.toggle_selection(0);
     let other = model.load(location("/other"), PipelineConfig::default());
     model.apply(page(session, other.request, "/other", &["a"]));
+    assert!(model.view().unwrap().selected().is_empty());
+    assert_eq!(model.view().unwrap().visible_range(), 0..0);
+}
+
+#[test]
+fn request_failure_preserves_the_usable_view_and_a_fresh_load_recovers() {
+    let session = SessionId::new();
+    let mut model = BrowsingModel::new(session);
+    let first = model.load(location("/folder"), PipelineConfig::default());
+    model.apply(page(session, first.request, "/folder", &["keep"]));
+    model.toggle_selection(0);
+    model.set_visible_range(0..1);
+    let failed = model.load(location("/denied"), PipelineConfig::default());
+    let error = |session, request| {
+        Event::from_request_error(CoreError::permission_denied("/denied"), session, request)
+    };
+    assert!(!model.apply(error(session, first.request)));
+    assert!(!model.apply(error(SessionId::new(), failed.request)));
+    assert!(!model.apply(Event::from_error(
+        CoreError::permission_denied("/denied"),
+        session
+    )));
+    assert!(!model.apply(Event::SessionCreated(session)));
+    assert!(model.apply(error(session, failed.request)));
+    assert!(!model.is_loading());
+    let failure = model.error().unwrap();
+    assert_eq!(failure.request.request, failed.request);
+    assert_eq!(failure.code, ErrorCode::PermissionDenied);
+    assert!(failure.recoverable);
+    assert!(!failure.message.is_empty());
+    assert_eq!(model.view().unwrap().visible_entries()[0].name, "keep");
+    assert_eq!(model.view().unwrap().selected().len(), 1);
+    assert!(!model.apply(page(session, failed.request, "/denied", &["late"])));
+    let retry = model.load(location("/folder"), PipelineConfig::default());
+    assert!(model.error().is_none());
+    assert!(model.apply(page(session, retry.request, "/folder", &[])));
     assert!(model.view().unwrap().selected().is_empty());
     assert_eq!(model.view().unwrap().visible_range(), 0..0);
 }
