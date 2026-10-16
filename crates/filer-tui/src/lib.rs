@@ -212,21 +212,62 @@ impl BrowsingModel {
             });
             return true;
         }
-        let Event::DirectoryPageLoaded {
-            parent,
-            groups,
-            page,
-            session,
-            request,
-        } = event
-        else {
-            return false;
+        let paged = matches!(&event, Event::DirectoryPageLoaded { .. });
+        let (parent, groups, page, session, request) = match event {
+            Event::DirectoryPageLoaded {
+                parent,
+                groups,
+                page,
+                session,
+                request,
+            } => (parent, groups, page, session, request),
+            Event::DirectoryLoaded {
+                parent,
+                groups,
+                load,
+                session,
+                request,
+            } => {
+                let page = DirectoryPageState {
+                    page_count: load.loaded_count,
+                    total_count: load.total_count,
+                    next_cursor: None,
+                    complete: load.complete,
+                    start_index: 0,
+                    loaded_count: load.loaded_count,
+                };
+                (parent, groups, page, session, request)
+            }
+            _ => return false,
         };
         if session != self.session
             || request != pending.request
             || parent.identity() != pending.location.identity()
         {
             return false;
+        }
+        let start = if pending.cursor.is_some() {
+            self.view.as_ref().map_or(0, |view| view.entries.len())
+        } else {
+            0
+        };
+        let count: usize = groups.groups.iter().map(|group| group.nodes.len()).sum();
+        if page.start_index != start
+            || page.page_count != count
+            || start.checked_add(count) != Some(page.loaded_count)
+            || (paged && page.complete == page.next_cursor.is_some())
+            || (pending.cursor.is_some() && page.next_cursor == pending.cursor)
+        {
+            self.error = self.pending.take().map(|request| BrowseError {
+                request,
+                code: ErrorCode::DataInvalid,
+                target: None,
+                context: None,
+                message: "Inconsistent directory page; reload the directory to restart paging"
+                    .into(),
+                recoverable: true,
+            });
+            return true;
         }
         let entries = groups.groups.into_iter().flat_map(|group| group.nodes);
         let continuation = page.next_cursor.clone();

@@ -2,8 +2,8 @@ use filer_core::model::node::NodeKind;
 use filer_core::model::session::SessionId;
 use filer_core::pipeline::EntryGroup;
 use filer_core::{
-    CoreError, DirectoryCursor, DirectoryPageState, ErrorCode, Event, GroupedEntries, Location,
-    LocationRef, NodeEntry, PipelineConfig, RequestId,
+    CoreError, DirectoryCursor, DirectoryLoadState, DirectoryPageState, ErrorCode, Event,
+    GroupedEntries, Location, LocationRef, NodeEntry, PipelineConfig, RequestId,
 };
 use filer_tui::BrowsingModel;
 
@@ -206,4 +206,46 @@ fn request_failure_preserves_the_usable_view_and_a_fresh_load_recovers() {
     assert!(model.apply(page(session, retry.request, "/folder", &[])));
     assert!(model.view().unwrap().selected().is_empty());
     assert_eq!(model.view().unwrap().visible_range(), 0..0);
+}
+
+#[test]
+fn snapshot_results_keep_their_completeness_without_inventing_a_continuation() {
+    let session = SessionId::new();
+    let mut model = BrowsingModel::new(session);
+    let first = model.load(location("/folder"), PipelineConfig::default());
+    let Event::DirectoryPageLoaded { parent, groups, .. } =
+        page(session, first.request, "/folder", &["a"])
+    else {
+        unreachable!();
+    };
+    assert!(model.apply(Event::DirectoryLoaded {
+        parent,
+        groups,
+        load: DirectoryLoadState::from_counts(1, 20),
+        session,
+        request: first.request,
+    }));
+    assert_eq!(model.view().unwrap().entries().len(), 1);
+    assert_eq!(model.view().unwrap().pages()[0].total_count, Some(20));
+    assert!(!model.view().unwrap().pages()[0].complete);
+    assert!(model.continue_loading().is_none());
+    assert!(!model.is_loading());
+}
+
+#[test]
+fn invalid_continuation_keeps_loaded_rows_and_requires_a_new_chain() {
+    let session = SessionId::new();
+    let mut model = BrowsingModel::new(session);
+    let first = model.load(location("/folder"), PipelineConfig::default());
+    model.apply(with_state(
+        page(session, first.request, "/folder", &["keep"]),
+        DirectoryPageState::partial(1, None, DirectoryCursor("once".into())),
+    ));
+    let next = model.continue_loading().unwrap();
+    assert!(model.apply(page(session, next.request, "/folder", &["overlap"])));
+    assert_eq!(model.error().unwrap().code, ErrorCode::DataInvalid);
+    assert!(model.error().unwrap().recoverable);
+    assert_eq!(model.view().unwrap().entries().len(), 1);
+    assert!(model.continue_loading().is_none());
+    assert!(!model.is_loading());
 }
