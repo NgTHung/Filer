@@ -120,3 +120,54 @@ fn continuations_are_requested_once_and_append_in_core_order() {
     assert_eq!(model.view().unwrap().visible_range(), 3..3);
     assert!(model.continue_loading().is_none());
 }
+
+#[test]
+fn selection_survives_refresh_pages_by_location_and_drops_removed_entries_at_completion() {
+    let session = SessionId::new();
+    let mut model = BrowsingModel::new(session);
+    let first = model.load(location("/folder"), PipelineConfig::default());
+    model.apply(page(
+        session,
+        first.request,
+        "/folder",
+        &["a", "b", "removed"],
+    ));
+    assert!(model.toggle_selection(1));
+    assert!(model.toggle_selection(2));
+    assert!(!model.toggle_selection(20));
+    model.set_visible_range(1..3);
+    let refresh = model.load(
+        location("/folder"),
+        PipelineConfig::default().show_hidden(true),
+    );
+    assert_eq!(model.view().unwrap().selected().len(), 2);
+    model.apply(with_state(
+        page(session, refresh.request, "/folder", &["a"]),
+        DirectoryPageState::partial(1, None, DirectoryCursor("refresh".into())),
+    ));
+    assert_eq!(model.view().unwrap().selected().len(), 2);
+    assert_eq!(model.view().unwrap().visible_range(), 1..1);
+    let next = model.continue_loading().unwrap();
+    let mut result = with_state(
+        page(session, next.request, "/folder", &["b"]),
+        DirectoryPageState::complete(1, Some(2)).with_window(1),
+    );
+    if let Event::DirectoryPageLoaded { groups, .. } = &mut result {
+        let entry = &mut groups.groups[0].nodes[0];
+        entry.location = LocationRef::Id(entry.location.identity());
+        entry.name = "different display name".into();
+        entry.size = 123;
+    }
+    model.apply(result);
+    assert_eq!(
+        model.view().unwrap().selected(),
+        &[location("/folder/b").identity()].into()
+    );
+    assert!(model.toggle_selection(1));
+    assert!(model.view().unwrap().selected().is_empty());
+    model.toggle_selection(0);
+    let other = model.load(location("/other"), PipelineConfig::default());
+    model.apply(page(session, other.request, "/other", &["a"]));
+    assert!(model.view().unwrap().selected().is_empty());
+    assert_eq!(model.view().unwrap().visible_range(), 0..0);
+}

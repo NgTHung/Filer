@@ -17,11 +17,13 @@
 //! assert_eq!(model.pending().map(|pending| pending.request), Some(request.request));
 //! ```
 
+use std::collections::HashSet;
 use std::ops::Range;
 
 use filer_core::model::session::SessionId;
 use filer_core::{
-    DirectoryCursor, DirectoryPageState, Event, LocationRef, NodeEntry, PipelineConfig, RequestId,
+    DirectoryCursor, DirectoryPageState, Event, LocationId, LocationRef, NodeEntry, PipelineConfig,
+    RequestId,
 };
 
 /// Intent for a runner to send to core, without performing I/O during updates.
@@ -43,6 +45,7 @@ pub struct DirectoryView {
     pages: Vec<DirectoryPageState>,
     visible_range: Range<usize>,
     continuation: Option<DirectoryCursor>,
+    selected: HashSet<LocationId>,
 }
 
 impl DirectoryView {
@@ -68,6 +71,10 @@ impl DirectoryView {
 
     pub fn visible_entries(&self) -> &[NodeEntry] {
         &self.entries[self.visible_range.clone()]
+    }
+
+    pub fn selected(&self) -> &HashSet<LocationId> {
+        &self.selected
     }
 }
 
@@ -143,6 +150,21 @@ impl BrowsingModel {
         }
     }
 
+    /// Toggle a loaded row's Location, independently of the visible range.
+    pub fn toggle_selection(&mut self, index: usize) -> bool {
+        let Some(view) = &mut self.view else {
+            return false;
+        };
+        let Some(entry) = view.entries.get(index) else {
+            return false;
+        };
+        let identity = entry.location.identity();
+        if !view.selected.insert(identity) {
+            view.selected.remove(&identity);
+        }
+        true
+    }
+
     /// Return whether an event changed browsing state.
     pub fn apply(&mut self, event: Event) -> bool {
         let Event::DirectoryPageLoaded {
@@ -173,16 +195,41 @@ impl BrowsingModel {
                 view.continuation = continuation;
             }
         } else {
+            let (selected, visible_range) = self
+                .view
+                .as_mut()
+                .filter(|view| view.location.identity() == parent.identity())
+                .map(|view| {
+                    (
+                        std::mem::take(&mut view.selected),
+                        view.visible_range.clone(),
+                    )
+                })
+                .unwrap_or_default();
             self.view = Some(DirectoryView {
                 location: parent,
                 pipeline: pending.pipeline.clone(),
                 entries: entries.collect(),
                 pages: vec![page],
-                visible_range: 0..0,
+                visible_range,
                 continuation,
+                selected,
             });
         }
         self.pending = None;
+        if let Some(view) = &mut self.view {
+            let start = view.visible_range.start.min(view.entries.len());
+            view.visible_range = start..view.visible_range.end.min(view.entries.len());
+            if view.pages.last().is_some_and(|page| page.complete) && !view.selected.is_empty() {
+                // A missing selection may arrive on a later refresh page.
+                let loaded: HashSet<_> = view
+                    .entries
+                    .iter()
+                    .map(|entry| entry.location.identity())
+                    .collect();
+                view.selected.retain(|identity| loaded.contains(identity));
+            }
+        }
         true
     }
 }
