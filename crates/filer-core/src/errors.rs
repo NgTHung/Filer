@@ -157,7 +157,8 @@ pub enum ErrorContext {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
 pub struct CoreError {
     pub kind: ErrorKind,
     pub code: ErrorCode,
@@ -473,20 +474,6 @@ enum TraceLevel {
     Debug,
     Warn,
     Error,
-}
-
-impl fmt::Display for CoreError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl StdError for CoreError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.source
-            .as_ref()
-            .map(|source| source.as_ref() as &(dyn StdError + 'static))
-    }
 }
 
 impl<T: fmt::Debug> From<SendError<T>> for CoreError {

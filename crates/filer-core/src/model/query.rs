@@ -481,20 +481,9 @@ fn is_leap_year(y: i64) -> bool {
     (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("query parse error at {position}: {message}")]
 pub struct QueryParseError {
     pub message: String,
     pub position: usize,
 }
-
-impl std::fmt::Display for QueryParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "query parse error at {}: {}",
-            self.position, self.message
-        )
-    }
-}
-
-impl std::error::Error for QueryParseError {}

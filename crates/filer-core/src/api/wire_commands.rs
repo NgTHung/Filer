@@ -224,23 +224,9 @@ built_in_wire_commands! {
 }
 
 /// Failure converting a runtime command into its built-in wire DTO.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum WireCommandConversionError {
     /// Runtime extension payloads are type-erased and cannot be serialized.
+    #[error("extension command '{key}' has no wire-safe payload")]
     ExtensionUnsupported { key: String },
 }
-
-impl std::fmt::Display for WireCommandConversionError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ExtensionUnsupported { key } => {
-                write!(
-                    formatter,
-                    "extension command '{key}' has no wire-safe payload"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for WireCommandConversionError {}

@@ -161,21 +161,12 @@ impl SessionManager {
 }
 
 /// Error when sending to a session
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum SendError {
     /// Session not found
+    #[error("session not found: {0}")]
     SessionNotFound(SessionId),
     /// Channel closed
+    #[error("channel closed")]
     ChannelClosed,
 }
-
-impl std::fmt::Display for SendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::SessionNotFound(id) => write!(f, "session not found: {}", id),
-            Self::ChannelClosed => write!(f, "channel closed"),
-        }
-    }
-}
-
-impl std::error::Error for SendError {}

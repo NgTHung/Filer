@@ -38,20 +38,11 @@ use crate::model::progress::{ProgressScope, ProgressStatus};
 /// The bounded public event queue capacity.
 pub const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 256;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum EventSendError {
+    #[error("event sink is closed")]
     Closed,
 }
-
-impl std::fmt::Display for EventSendError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Closed => f.write_str("event sink is closed"),
-        }
-    }
-}
-
-impl std::error::Error for EventSendError {}
 
 struct HubState {
     closed: bool,
