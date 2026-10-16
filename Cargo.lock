@@ -1671,13 +1671,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "filer-tui"
-version = "0.3.0"
-dependencies = [
- "filer-core",
-]
-
-[[package]]
 name = "filetime"
 version = "0.2.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"

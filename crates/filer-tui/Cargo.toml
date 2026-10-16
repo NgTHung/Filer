@@ -1,7 +1,0 @@
-[package]
-name = "filer-tui"
-version = "0.3.0"
-edition = "2024"
-
-[dependencies]
-filer-core = { path = "../filer-core", default-features = false }
