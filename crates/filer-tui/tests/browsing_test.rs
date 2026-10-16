@@ -116,7 +116,7 @@ fn continuations_are_requested_once_and_append_in_core_order() {
     assert_eq!(view.visible_range(), 1..2);
     model.set_visible_range(1..10);
     assert_eq!(model.view().unwrap().visible_entries().len(), 2);
-    model.set_visible_range(10..1);
+    model.set_visible_range(std::ops::Range { start: 10, end: 1 });
     assert_eq!(model.view().unwrap().visible_range(), 3..3);
     assert!(model.continue_loading().is_none());
 }
@@ -234,18 +234,94 @@ fn snapshot_results_keep_their_completeness_without_inventing_a_continuation() {
 
 #[test]
 fn invalid_continuation_keeps_loaded_rows_and_requires_a_new_chain() {
+    let valid = DirectoryPageState::complete(1, Some(2)).with_window(1);
+    for invalid in [
+        valid.clone().with_window(0),
+        valid.clone().with_window(2),
+        DirectoryPageState::complete(2, Some(3)).with_window(1),
+        DirectoryPageState {
+            loaded_count: 99,
+            ..valid.clone()
+        },
+        DirectoryPageState {
+            complete: false,
+            ..valid.clone()
+        },
+        DirectoryPageState {
+            next_cursor: Some(DirectoryCursor("extra".into())),
+            ..valid
+        },
+        DirectoryPageState::partial(1, None, DirectoryCursor("once".into())).with_window(1),
+    ] {
+        let session = SessionId::new();
+        let mut model = BrowsingModel::new(session);
+        let first = model.load(location("/folder"), PipelineConfig::default());
+        model.apply(with_state(
+            page(session, first.request, "/folder", &["keep"]),
+            DirectoryPageState::partial(1, None, DirectoryCursor("once".into())),
+        ));
+        let next = model.continue_loading().unwrap();
+        assert!(model.apply(with_state(
+            page(session, next.request, "/folder", &["invalid"]),
+            invalid
+        )));
+        assert_eq!(model.error().unwrap().code, ErrorCode::DataInvalid);
+        assert!(model.error().unwrap().recoverable);
+        assert_eq!(model.view().unwrap().entries().len(), 1);
+        assert!(model.continue_loading().is_none());
+        assert!(!model.is_loading());
+    }
+}
+
+#[test]
+fn failures_before_the_first_page_and_during_continuation_can_restart() {
+    let session = SessionId::new();
+    let mut model = BrowsingModel::new(session);
+    let first = model.load(location("/folder"), PipelineConfig::default());
+    model.apply(Event::from_request_error(
+        CoreError::timed_out("read"),
+        session,
+        first.request,
+    ));
+    assert!(model.view().is_none());
+    assert!(model.error().is_some());
+    let retry = model.load(location("/folder"), PipelineConfig::default());
+    model.apply(with_state(
+        page(session, retry.request, "/folder", &["keep"]),
+        DirectoryPageState::partial(1, None, DirectoryCursor("once".into())),
+    ));
+    let next = model.continue_loading().unwrap();
+    model.apply(Event::from_request_error(
+        CoreError::timed_out("read"),
+        session,
+        next.request,
+    ));
+    assert_eq!(model.view().unwrap().entries()[0].name, "keep");
+    assert!(model.continue_loading().is_none());
+    let restart = model.load(location("/folder"), PipelineConfig::default());
+    assert!(restart.cursor.is_none());
+    assert!(model.error().is_none());
+    assert!(model.apply(page(session, restart.request, "/folder", &["fresh"])));
+}
+
+#[test]
+fn pipeline_replacement_invalidates_an_in_flight_continuation() {
     let session = SessionId::new();
     let mut model = BrowsingModel::new(session);
     let first = model.load(location("/folder"), PipelineConfig::default());
     model.apply(with_state(
-        page(session, first.request, "/folder", &["keep"]),
+        page(session, first.request, "/folder", &["old"]),
         DirectoryPageState::partial(1, None, DirectoryCursor("once".into())),
     ));
     let next = model.continue_loading().unwrap();
-    assert!(model.apply(page(session, next.request, "/folder", &["overlap"])));
-    assert_eq!(model.error().unwrap().code, ErrorCode::DataInvalid);
-    assert!(model.error().unwrap().recoverable);
+    let pipeline = PipelineConfig::with_default_sort().show_hidden(true);
+    let replacement = model.load(location("/folder"), pipeline.clone());
+    assert_eq!(replacement.replaces, Some(next.request));
+    assert!(!model.apply(with_state(
+        page(session, next.request, "/folder", &["late"]),
+        DirectoryPageState::complete(1, Some(2)).with_window(1),
+    )));
+    assert!(model.apply(page(session, replacement.request, "/folder", &["new"])));
     assert_eq!(model.view().unwrap().entries().len(), 1);
-    assert!(model.continue_loading().is_none());
-    assert!(!model.is_loading());
+    assert_eq!(model.view().unwrap().pipeline(), &pipeline);
 }
