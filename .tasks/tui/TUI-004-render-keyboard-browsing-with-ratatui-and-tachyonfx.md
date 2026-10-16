@@ -10,12 +10,14 @@ depends_on: ["tui:TUI-003"]
 rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "Medium"
 tags: ["cli", "performance", "validation", "enhancement", "ready-for-agent"]
-last_updated: "2026-10-02"
+last_updated: "2026-10-16"
 ---
 
 ## Summary
 
 A Linux terminal client needs readable rows and immediate keyboard feedback while core loads pages. Use [Ratatui](https://ratatui.rs/) for the one-pane layout and [TachyonFX](https://github.com/ratatui/tachyonfx) for restrained feedback effects. Confine both dependencies to terminal presentation; effects operate on rendered output and never become a prerequisite for data or input transitions.
+
+Follow the [terminal design's sparse layout](../../docs/tui-design.md#keep-the-layout-sparse) and [model/update/view separation](../../docs/tui-design.md#update-state-before-rendering) within this one-pane stage. Hierarchy columns and the inspector follow the [parent's delivery scope](TUI-001-build-a-linux-terminal-file-manager-over-public-core-contracts.md#delivery-scope).
 
 ## Acceptance Criteria
 
