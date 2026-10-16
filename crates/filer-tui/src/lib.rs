@@ -17,8 +17,12 @@
 //! assert_eq!(model.pending().map(|pending| pending.request), Some(request.request));
 //! ```
 
+use std::ops::Range;
+
 use filer_core::model::session::SessionId;
-use filer_core::{DirectoryPageState, Event, LocationRef, NodeEntry, PipelineConfig, RequestId};
+use filer_core::{
+    DirectoryCursor, DirectoryPageState, Event, LocationRef, NodeEntry, PipelineConfig, RequestId,
+};
 
 /// Intent for a runner to send to core, without performing I/O during updates.
 #[derive(Debug, Clone)]
@@ -26,6 +30,7 @@ pub struct BrowseRequest {
     pub request: RequestId,
     pub location: LocationRef,
     pub pipeline: PipelineConfig,
+    pub cursor: Option<DirectoryCursor>,
     /// Disposable read work the runner can cancel after replacement.
     pub replaces: Option<RequestId>,
 }
@@ -33,8 +38,11 @@ pub struct BrowseRequest {
 #[derive(Debug)]
 pub struct DirectoryView {
     location: LocationRef,
+    pipeline: PipelineConfig,
     entries: Vec<NodeEntry>,
     pages: Vec<DirectoryPageState>,
+    visible_range: Range<usize>,
+    continuation: Option<DirectoryCursor>,
 }
 
 impl DirectoryView {
@@ -48,6 +56,18 @@ impl DirectoryView {
 
     pub fn pages(&self) -> &[DirectoryPageState] {
         &self.pages
+    }
+
+    pub fn pipeline(&self) -> &PipelineConfig {
+        &self.pipeline
+    }
+
+    pub fn visible_range(&self) -> Range<usize> {
+        self.visible_range.clone()
+    }
+
+    pub fn visible_entries(&self) -> &[NodeEntry] {
+        &self.entries[self.visible_range.clone()]
     }
 }
 
@@ -89,10 +109,38 @@ impl BrowsingModel {
             request: RequestId::new(),
             location,
             pipeline,
+            cursor: None,
             replaces: self.pending.as_ref().map(|pending| pending.request),
         };
+        if let Some(view) = &mut self.view {
+            view.continuation = None;
+        }
         self.pending = Some(request.clone());
         request
+    }
+
+    /// Consume a continuation before returning it, preventing repeated sends.
+    pub fn continue_loading(&mut self) -> Option<BrowseRequest> {
+        if self.is_loading() {
+            return None;
+        }
+        let view = self.view.as_mut()?;
+        let request = BrowseRequest {
+            request: RequestId::new(),
+            location: view.location.clone(),
+            pipeline: view.pipeline.clone(),
+            cursor: Some(view.continuation.take()?),
+            replaces: None,
+        };
+        self.pending = Some(request.clone());
+        Some(request)
+    }
+
+    pub fn set_visible_range(&mut self, range: Range<usize>) {
+        if let Some(view) = &mut self.view {
+            let start = range.start.min(view.entries.len());
+            view.visible_range = start..range.end.max(start).min(view.entries.len());
+        }
     }
 
     /// Return whether an event changed browsing state.
@@ -116,15 +164,24 @@ impl BrowsingModel {
         {
             return false;
         }
-        self.view = Some(DirectoryView {
-            location: parent,
-            entries: groups
-                .groups
-                .into_iter()
-                .flat_map(|group| group.nodes)
-                .collect(),
-            pages: vec![page],
-        });
+        let entries = groups.groups.into_iter().flat_map(|group| group.nodes);
+        let continuation = page.next_cursor.clone();
+        if pending.cursor.is_some() {
+            if let Some(view) = &mut self.view {
+                view.entries.extend(entries);
+                view.pages.push(page);
+                view.continuation = continuation;
+            }
+        } else {
+            self.view = Some(DirectoryView {
+                location: parent,
+                pipeline: pending.pipeline.clone(),
+                entries: entries.collect(),
+                pages: vec![page],
+                visible_range: 0..0,
+                continuation,
+            });
+        }
         self.pending = None;
         true
     }

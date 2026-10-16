@@ -2,13 +2,20 @@ use filer_core::model::node::NodeKind;
 use filer_core::model::session::SessionId;
 use filer_core::pipeline::EntryGroup;
 use filer_core::{
-    DirectoryPageState, Event, GroupedEntries, Location, LocationRef, NodeEntry, PipelineConfig,
-    RequestId,
+    DirectoryCursor, DirectoryPageState, Event, GroupedEntries, Location, LocationRef, NodeEntry,
+    PipelineConfig, RequestId,
 };
 use filer_tui::BrowsingModel;
 
 fn location(path: &str) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
+}
+
+fn with_state(mut event: Event, state: DirectoryPageState) -> Event {
+    if let Event::DirectoryPageLoaded { page, .. } = &mut event {
+        *page = state;
+    }
+    event
 }
 
 fn page(session: SessionId, request: RequestId, parent: &str, names: &[&str]) -> Event {
@@ -69,4 +76,47 @@ fn navigation_replacement_accepts_only_the_pending_session_request_and_location(
     assert!(!model.is_loading());
     assert!(model.view().unwrap().pages()[0].complete);
     assert!(!model.apply(page(session, third.request, "/third", &["duplicate"])));
+}
+
+#[test]
+fn continuations_are_requested_once_and_append_in_core_order() {
+    let session = SessionId::new();
+    let mut model = BrowsingModel::new(session);
+    assert!(model.continue_loading().is_none());
+    let pipeline = PipelineConfig::with_default_sort().show_hidden(true);
+    let first = model.load(location("/folder"), pipeline.clone());
+    model.apply(with_state(
+        page(session, first.request, "/folder", &["z", "a"]),
+        DirectoryPageState::partial(2, None, DirectoryCursor("next".into())),
+    ));
+    model.set_visible_range(1..10);
+    assert_eq!(model.view().unwrap().visible_range(), 1..2);
+    let next = model.continue_loading().unwrap();
+    assert_eq!(next.cursor, Some(DirectoryCursor("next".into())));
+    assert_eq!(next.pipeline, pipeline);
+    assert_ne!(next.request, first.request);
+    assert!(model.continue_loading().is_none());
+    assert!(!model.apply(page(session, first.request, "/folder", &["duplicate"])));
+    let last = with_state(
+        page(session, next.request, "/folder", &["b"]),
+        DirectoryPageState::complete(1, Some(3)).with_window(2),
+    );
+    assert!(model.apply(last.clone()));
+    assert!(!model.apply(last));
+    let view = model.view().unwrap();
+    assert_eq!(
+        view.entries()
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>(),
+        ["z", "a", "b"]
+    );
+    assert_eq!(view.pages().len(), 2);
+    assert_eq!(view.pipeline(), &pipeline);
+    assert_eq!(view.visible_range(), 1..2);
+    model.set_visible_range(1..10);
+    assert_eq!(model.view().unwrap().visible_entries().len(), 2);
+    model.set_visible_range(10..1);
+    assert_eq!(model.view().unwrap().visible_range(), 3..3);
+    assert!(model.continue_loading().is_none());
 }
