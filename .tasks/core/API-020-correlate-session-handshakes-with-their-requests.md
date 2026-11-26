@@ -1,7 +1,7 @@
 ---
 id: "API-020"
 title: "Correlate session handshakes with their requests"
-status: "To Do"
+status: In Progress
 priority: "Medium"
 type: "Bug"
 milestone: "0.3.1"
@@ -9,7 +9,7 @@ rules: ["SESSION-BOUNDARY"]
 risk: "Medium"
 impact: "Changes the public Handshake command, SessionCreated event, and WireCommand shape."
 tags: ["api", "sessions", "events", "bug", "ready-for-agent"]
-last_updated: "2026-10-02"
+last_updated: 2026-11-26
 ---
 
 ## Summary
