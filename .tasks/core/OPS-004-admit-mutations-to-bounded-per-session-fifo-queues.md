@@ -1,7 +1,7 @@
 ---
 id: "OPS-004"
 title: "Admit mutations to bounded per-session FIFO queues"
-status: In Progress
+status: Done
 priority: "High"
 type: "Bug"
 parent: "core:CORE-027"
@@ -20,11 +20,11 @@ Replace the single per-Session mutation cancellation slot with bounded FIFO admi
 
 ## Acceptance Criteria
 
-- [ ] Two accepted mutations in one Session execute in admission order; submitting the second never cancels the first, and different Sessions retain independent queues.
-- [ ] Admission validates the command and reserves bounded capacity with an operation identity; full queues return an explicit busy rejection without starting or retaining rejected work.
-- [ ] Public tests distinguish accepted, rejected, queued, running, and terminal outcomes; execution rechecks state that can change while a command waits.
-- [ ] Individual queued and running operations remain explicitly cancellable, and cancellation, recovery, and closure controls remain serviceable when admission is full.
-- [ ] Barrier-based tests cover copy followed by create, FIFO order, capacity exhaustion/recovery, cancellation, and cross-Session progress; cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
+- [x] Two accepted mutations in one Session execute in admission order; submitting the second never cancels the first, and different Sessions retain independent queues.
+- [x] Admission validates the command and reserves bounded capacity with an operation identity; full queues return an explicit busy rejection without starting or retaining rejected work.
+- [x] Public tests distinguish accepted, rejected, queued, running, and terminal outcomes; execution rechecks state that can change while a command waits.
+- [x] Individual queued and running operations remain explicitly cancellable, and cancellation, recovery, and closure controls remain serviceable when admission is full.
+- [x] Barrier-based tests cover copy followed by create, FIFO order, capacity exhaustion/recovery, cancellation, and cross-Session progress; cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
 
-- [ ] Land and test the bounded queue state machine before actor integration; use provider barriers to hold the first copy while the second mutation is submitted.
-- [ ] Record the chosen default capacity and whether running and paused work consume it; request submission, admission, and terminal outcomes remain distinct in wire-facing contracts.
+- [x] Land and test the bounded queue state machine before actor integration; use provider barriers to hold the first copy while the second mutation is submitted.
+- [x] Record the chosen default capacity and whether running and paused work consume it; request submission, admission, and terminal outcomes remain distinct in wire-facing contracts.
