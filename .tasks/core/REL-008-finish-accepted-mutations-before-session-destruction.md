@@ -1,7 +1,7 @@
 ---
 id: "REL-008"
 title: "Finish accepted mutations before session destruction"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Feature"
 parent: "core:CORE-027"
@@ -11,7 +11,7 @@ rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "High"
 tags: ["sessions", "operations", "async", "events", "enhancement", "ready-for-agent"]
 whitepaper: "docs/adr/0001-core-runtime-lifecycle.md"
-last_updated: "2026-10-02"
+last_updated: 2026-11-26
 ---
 
 ## Summary
