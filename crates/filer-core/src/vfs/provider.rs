@@ -229,6 +229,14 @@ pub trait FsProvider: Send + Sync {
         )))
     }
 
+    /// Whether dropping a write future stops the underlying mutation.
+    ///
+    /// Providers that dispatch writes to blocking workers must return false so
+    /// the operation queue can wait for the write to settle before advancing.
+    fn mutation_futures_can_be_dropped(&self) -> bool {
+        true
+    }
+
     async fn copy(&self, _src: &Path, dst: &Path, _cx: &ProviderCx<'_>) -> Result<(), CoreError> {
         Err(CoreError::permission_denied(dst.to_path_buf()))
     }

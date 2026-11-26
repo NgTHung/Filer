@@ -197,6 +197,10 @@ impl FsProvider for LocalFs {
         Ok(buf)
     }
 
+    fn mutation_futures_can_be_dropped(&self) -> bool {
+        false
+    }
+
     async fn write(&self, path: &Path, data: &[u8], cx: &ProviderCx<'_>) -> Result<(), CoreError> {
         Self::check_cancel(cx)?;
         tokio::fs::write(path, data)
