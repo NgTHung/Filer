@@ -219,7 +219,11 @@ fn built_in_commands() -> Vec<(WireCommand, &'static str, &'static str)> {
             "unwatch_session",
             "watch.session_remove",
         ),
-        (WireCommand::Handshake, "handshake", "session.handshake"),
+        (
+            WireCommand::Handshake { request },
+            "handshake",
+            "session.handshake",
+        ),
         (
             WireCommand::DestroySession { session },
             "destroy_session",
@@ -248,6 +252,24 @@ fn built_in_commands_have_stable_wire_labels_and_dispatch_keys() {
             wire
         );
     }
+}
+
+#[test]
+fn handshake_wire_command_requires_and_preserves_request_id() {
+    let request = RequestId(22);
+    let json = serde_json::json!({"type": "handshake", "request": request});
+    let wire: WireCommand = serde_json::from_value(json.clone()).unwrap();
+    let runtime = Command::from(wire);
+
+    assert_eq!(runtime.request_id(), Some(request));
+    assert_eq!(runtime.session_id(), None);
+    assert_eq!(
+        serde_json::to_value(WireCommand::try_from(runtime).unwrap()).unwrap(),
+        json
+    );
+    assert!(
+        serde_json::from_value::<WireCommand>(serde_json::json!({"type": "handshake"})).is_err()
+    );
 }
 
 fn removed_compatibility_commands() -> Vec<Value> {

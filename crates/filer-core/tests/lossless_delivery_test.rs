@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Duration;
 
 use filer_core::api::event_sink::DEFAULT_EVENT_CHANNEL_CAPACITY;
@@ -6,7 +7,42 @@ use filer_core::model::directory::DirectoryLoadOptions;
 use filer_core::{
     Command, Event, FilerCore, LocationId, LocationRef, OperationId, PipelineConfig, RequestId,
 };
+use tokio::sync::Barrier;
 use tokio::time::timeout;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_handshakes_bind_sessions_by_request() {
+    let core = FilerCore::new();
+    let events = core.event_receiver();
+    let barrier = Arc::new(Barrier::new(2));
+    let submit = |request| {
+        let sender = core.command_sender();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            barrier.wait().await;
+            sender.send(Command::Handshake { request }).unwrap();
+        })
+    };
+
+    let first_request = core.next_request_id();
+    let second_request = core.next_request_id();
+    let first = submit(first_request);
+    let second = submit(second_request);
+    first.await.unwrap();
+    second.await.unwrap();
+
+    let mut sessions = HashMap::new();
+    for _ in 0..2 {
+        match timeout(Duration::from_secs(2), events.recv_async()).await {
+            Ok(Ok(Event::SessionCreated { session, request })) => {
+                assert!(sessions.insert(request, session).is_none());
+            }
+            other => panic!("expected correlated SessionCreated, got {other:?}"),
+        }
+    }
+    assert_ne!(sessions[&first_request], sessions[&second_request]);
+    core.shutdown().await.unwrap();
+}
 
 async fn run_isolated(case: &str, family: &str) {
     // The deadline must run outside the executor that a blocking send can freeze.
@@ -45,11 +81,11 @@ async fn handshake_backpressure_keeps_consumer_and_timer_running() {
     let consumer = tokio::spawn(async move {
         let mut sessions = HashSet::new();
         let first = events.recv_async().await.unwrap();
-        assert!(matches!(first, Event::SessionCreated(session) if sessions.insert(session)));
+        assert!(matches!(first, Event::SessionCreated { session, .. } if sessions.insert(session)));
         timer_rx.await.unwrap();
         for _ in 1..count {
             match events.recv_async().await.unwrap() {
-                Event::SessionCreated(session) => assert!(sessions.insert(session)),
+                Event::SessionCreated { session, .. } => assert!(sessions.insert(session)),
                 other => panic!("expected SessionCreated, got {other:?}"),
             }
         }
@@ -60,7 +96,10 @@ async fn handshake_backpressure_keeps_consumer_and_timer_running() {
         timer_tx.send(()).unwrap();
     });
     for _ in 0..count {
-        core.send(Command::Handshake).unwrap();
+        core.send(Command::Handshake {
+            request: core.next_request_id(),
+        })
+        .unwrap();
     }
     consumer.await.unwrap();
     timer.await.unwrap();
@@ -91,9 +130,13 @@ async fn actor_errors_remain_correlated_under_backpressure() {
     }
     let core = FilerCore::with_defaults();
     let events = core.event_receiver();
-    core.send(Command::Handshake).unwrap();
+    let handshake_request = core.next_request_id();
+    core.send(Command::Handshake {
+        request: handshake_request,
+    })
+    .unwrap();
     let session = match events.recv_async().await.unwrap() {
-        Event::SessionCreated(session) => session,
+        Event::SessionCreated { session, request } if request == handshake_request => session,
         other => panic!("expected SessionCreated, got {other:?}"),
     };
     let count = DEFAULT_EVENT_CHANNEL_CAPACITY * 4;

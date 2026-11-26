@@ -168,17 +168,7 @@ async fn start_core(
     core.load(ScanModule::new(provider));
     let events = core.event_receiver();
 
-    core.send(Command::Handshake)
-        .expect("handshake command should be accepted");
-    let session = loop {
-        let event = tokio::time::timeout(EVENT_TIMEOUT, events.recv_async())
-            .await
-            .expect("handshake event should arrive before timeout")
-            .expect("event channel should stay open");
-        if let Event::SessionCreated(session) = event {
-            break session;
-        }
-    };
+    let session = support::create_session(&core, &events, EVENT_TIMEOUT).await;
     (core, events, session)
 }
 

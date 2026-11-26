@@ -32,11 +32,12 @@ use support::local_location;
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
 
-/// One captured command record: the dispatch key and the session it carried.
+/// The dispatch key and the IDs carried by one command.
 #[derive(Clone)]
 struct Captured {
     key: String,
     session: Option<u64>,
+    request: Option<RequestId>,
 }
 
 type Buffer = Arc<Mutex<Vec<Captured>>>;
@@ -49,6 +50,7 @@ struct CaptureLayer {
 struct Grab {
     key: Option<String>,
     session: Option<u64>,
+    request: Option<RequestId>,
 }
 
 impl Visit for Grab {
@@ -66,21 +68,20 @@ impl Visit for Grab {
                 self.key = Some(format!("{value:?}").trim_matches('"').to_string());
             }
             "session" => {
-                self.session = parse_session_debug(&format!("{value:?}"));
+                self.session = parse_id_debug(&format!("{value:?}"), "Some(SessionId(");
+            }
+            "request" => {
+                self.request =
+                    parse_id_debug(&format!("{value:?}"), "Some(RequestId(").map(RequestId);
             }
             _ => {}
         }
     }
 }
 
-/// Pull the inner `u64` out of a `Some(SessionId(NN))` debug string. Returns
-/// `None` for the `None` session (e.g. Handshake). Parsing the debug string
-/// avoids adding a test-only numeric field to the production event.
-fn parse_session_debug(s: &str) -> Option<u64> {
-    let start = s.find("SessionId(")? + "SessionId(".len();
-    let rest = &s[start..];
-    let end = rest.find(')')?;
-    rest[..end].trim().parse().ok()
+/// Parse the existing debug field so the trace needs no test-only numeric field.
+fn parse_id_debug(value: &str, prefix: &str) -> Option<u64> {
+    value.strip_prefix(prefix)?.strip_suffix("))")?.parse().ok()
 }
 
 impl<S: tracing::Subscriber> Layer<S> for CaptureLayer {
@@ -94,6 +95,7 @@ impl<S: tracing::Subscriber> Layer<S> for CaptureLayer {
             self.buf.lock().unwrap().push(Captured {
                 key,
                 session: grab.session,
+                request: grab.request,
             });
         }
     }
@@ -116,11 +118,16 @@ fn capture_buffer() -> Buffer {
 }
 
 /// Send `Handshake` and return the `SessionId` from `SessionCreated`.
-async fn create_session(core: &FilerCore) -> SessionId {
+async fn create_session(core: &FilerCore, handshake_request: RequestId) -> SessionId {
     let rx = core.event_receiver();
-    core.send(Command::Handshake).unwrap();
+    core.send(Command::Handshake {
+        request: handshake_request,
+    })
+    .unwrap();
     match timeout(TIMEOUT, rx.recv_async()).await {
-        Ok(Ok(Event::SessionCreated(id))) => id,
+        Ok(Ok(Event::SessionCreated { session, request })) if request == handshake_request => {
+            session
+        }
         other => panic!("expected SessionCreated, got {other:?}"),
     }
 }
@@ -139,7 +146,8 @@ async fn every_drivable_command_family_emits_a_trace_record() {
     let core = FilerCore::new();
 
     // Handshake (sessionless) establishes a valid session for the rest.
-    let sid = create_session(&core).await;
+    let handshake_request = core.next_request_id();
+    let sid = create_session(&core, handshake_request).await;
     let session = sid;
     let sid_num = sid.0;
 
@@ -219,7 +227,11 @@ async fn every_drivable_command_family_emits_a_trace_record() {
 
     // Handshake and DestroySession are sessionless at the command level
     // (Command::session_id returns None); the rest carry this test's session id.
-    assert!(has(&records, "session.handshake", None));
+    assert!(records.iter().any(|record| {
+        record.key == "session.handshake"
+            && record.session.is_none()
+            && record.request == Some(handshake_request)
+    }));
     assert!(has(&records, "navigate", Some(sid_num)));
     assert!(has(&records, "scan", Some(sid_num)));
     assert!(has(&records, "search", Some(sid_num)));

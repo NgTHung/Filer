@@ -55,7 +55,11 @@ impl AsyncSend<Event> for EventSink {
 ///
 /// ```ignore
 /// use filer_core::utils::channel::send_or_warn;
-/// send_or_warn(&event_tx, Event::SessionCreated(id), "emit SessionCreated");
+/// send_or_warn(
+///     &event_tx,
+///     Event::SessionCreated { session, request },
+///     "emit SessionCreated",
+/// );
 /// ```
 pub fn send_or_warn<T, S>(tx: &S, val: T, context: &str)
 where

@@ -109,7 +109,9 @@ mod handle_tests {
 
         // Send a Handshake command — the router should create a session
         // and emit SessionCreated
-        let result = core.send(Command::Handshake);
+        let result = core.send(Command::Handshake {
+            request: RequestId::new(),
+        });
         assert!(result.is_ok(), "send(Handshake) should succeed");
 
         // We should receive a SessionCreated event
@@ -117,7 +119,10 @@ mod handle_tests {
         assert!(event.is_ok(), "should receive an event within timeout");
 
         match event.unwrap() {
-            Ok(Event::SessionCreated(session_id)) => {
+            Ok(Event::SessionCreated {
+                session: session_id,
+                ..
+            }) => {
                 assert_ne!(
                     session_id,
                     SessionId::DEFAULT,
@@ -134,9 +139,12 @@ mod handle_tests {
         let rx = core.event_receiver();
 
         // First, create a session via Handshake
-        core.send(Command::Handshake).unwrap();
+        core.send(Command::Handshake {
+            request: RequestId::new(),
+        })
+        .unwrap();
         let session_id = match timeout(TEST_TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
+            Ok(Ok(Event::SessionCreated { session: id, .. })) => id,
             other => panic!("expected SessionCreated, got {:?}", other),
         };
 
@@ -212,14 +220,17 @@ mod handle_tests {
     async fn test_try_recv_returns_event_after_command() {
         let core = FilerCore::new();
 
-        core.send(Command::Handshake).unwrap();
+        core.send(Command::Handshake {
+            request: RequestId::new(),
+        })
+        .unwrap();
         // Give the router time to process
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let event = core.try_recv();
         assert!(event.is_some(), "try_recv should return SessionCreated");
         match event.unwrap() {
-            Event::SessionCreated(_) => {} // expected
+            Event::SessionCreated { .. } => {} // expected
             other => panic!("expected SessionCreated, got {:?}", other),
         }
     }
@@ -230,15 +241,21 @@ mod handle_tests {
         let rx = core.event_receiver();
 
         // Create two sessions
-        core.send(Command::Handshake).unwrap();
-        core.send(Command::Handshake).unwrap();
+        core.send(Command::Handshake {
+            request: RequestId::new(),
+        })
+        .unwrap();
+        core.send(Command::Handshake {
+            request: RequestId::new(),
+        })
+        .unwrap();
 
         let session1 = match timeout(TEST_TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
+            Ok(Ok(Event::SessionCreated { session: id, .. })) => id,
             other => panic!("expected SessionCreated for session 1, got {:?}", other),
         };
         let session2 = match timeout(TEST_TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
+            Ok(Ok(Event::SessionCreated { session: id, .. })) => id,
             other => panic!("expected SessionCreated for session 2, got {:?}", other),
         };
 
@@ -283,13 +300,16 @@ mod handle_tests {
         let rx = core.event_receiver();
 
         for _ in 0..5 {
-            core.send(Command::Handshake).unwrap();
+            core.send(Command::Handshake {
+                request: RequestId::new(),
+            })
+            .unwrap();
         }
 
         let mut session_ids = Vec::new();
         for _ in 0..5 {
             match timeout(TEST_TIMEOUT, rx.recv_async()).await {
-                Ok(Ok(Event::SessionCreated(id))) => session_ids.push(id),
+                Ok(Ok(Event::SessionCreated { session: id, .. })) => session_ids.push(id),
                 other => panic!("expected SessionCreated, got {:?}", other),
             }
         }
@@ -307,9 +327,12 @@ mod handle_tests {
         let rx = core.event_receiver();
 
         // Create a session
-        core.send(Command::Handshake).unwrap();
+        core.send(Command::Handshake {
+            request: RequestId::new(),
+        })
+        .unwrap();
         let session_id = match timeout(TEST_TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
+            Ok(Ok(Event::SessionCreated { session: id, .. })) => id,
             other => panic!("expected SessionCreated, got {:?}", other),
         };
 
@@ -330,9 +353,12 @@ mod handle_tests {
         let rx = core.event_receiver();
 
         // Create and destroy a session
-        core.send(Command::Handshake).unwrap();
+        core.send(Command::Handshake {
+            request: RequestId::new(),
+        })
+        .unwrap();
         let session_id = match timeout(TEST_TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
+            Ok(Ok(Event::SessionCreated { session: id, .. })) => id,
             other => panic!("expected SessionCreated, got {:?}", other),
         };
 
@@ -390,7 +416,9 @@ mod handle_tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Sending a command after shutdown should fail
-        let result = sender.send(Command::Handshake);
+        let result = sender.send(Command::Handshake {
+            request: RequestId::new(),
+        });
         assert!(
             result.is_err(),
             "sending after shutdown should fail (channel closed)"
@@ -456,14 +484,17 @@ mod handle_tests {
 
         // Create several sessions
         for _ in 0..3 {
-            core.send(Command::Handshake).unwrap();
+            core.send(Command::Handshake {
+                request: RequestId::new(),
+            })
+            .unwrap();
         }
 
         // Drain SessionCreated events
         let mut sessions = Vec::new();
         for _ in 0..3 {
             match timeout(TEST_TIMEOUT, rx.recv_async()).await {
-                Ok(Ok(Event::SessionCreated(id))) => sessions.push(id),
+                Ok(Ok(Event::SessionCreated { session: id, .. })) => sessions.push(id),
                 other => panic!("expected SessionCreated, got {:?}", other),
             }
         }
@@ -477,7 +508,11 @@ mod handle_tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         let sender = core.command_sender();
         assert!(
-            sender.send(Command::Handshake).is_err(),
+            sender
+                .send(Command::Handshake {
+                    request: RequestId::new()
+                })
+                .is_err(),
             "command channel should be closed after shutdown"
         );
     }
@@ -488,7 +523,9 @@ mod handle_tests {
         core.shutdown().await.unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        let result = core.send(Command::Handshake);
+        let result = core.send(Command::Handshake {
+            request: RequestId::new(),
+        });
         assert!(
             result.is_err(),
             "send after shutdown should return CoreError"
@@ -503,7 +540,10 @@ mod handle_tests {
         let rx1 = core.event_receiver();
         let rx2 = core.event_receiver();
 
-        core.send(Command::Handshake).unwrap();
+        core.send(Command::Handshake {
+            request: RequestId::new(),
+        })
+        .unwrap();
 
         // Both clones of a flume receiver share the same queue —
         // only ONE of them will get the event (competing consumers).
@@ -517,7 +557,7 @@ mod handle_tests {
         .await;
 
         match event {
-            Ok(Ok(Event::SessionCreated(_))) => {} // one of the receivers got it
+            Ok(Ok(Event::SessionCreated { .. })) => {} // one of the receivers got it
             other => panic!("expected SessionCreated from one receiver, got {:?}", other),
         }
     }
@@ -529,11 +569,15 @@ mod handle_tests {
 
         // Use a cloned sender
         let sender = core.command_sender();
-        sender.send(Command::Handshake).unwrap();
+        sender
+            .send(Command::Handshake {
+                request: RequestId::new(),
+            })
+            .unwrap();
 
         let event = timeout(TEST_TIMEOUT, rx.recv_async()).await;
         match event {
-            Ok(Ok(Event::SessionCreated(_))) => {} // routed correctly
+            Ok(Ok(Event::SessionCreated { .. })) => {} // routed correctly
             other => panic!("expected SessionCreated, got {:?}", other),
         }
     }

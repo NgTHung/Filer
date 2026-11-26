@@ -55,7 +55,6 @@ macro_rules! built_in_wire_commands {
             UnwatchSession {
                 session: SessionId,
             },
-            Handshake,
             DestroySession {
                 session: SessionId,
             },
@@ -70,7 +69,6 @@ macro_rules! built_in_wire_commands {
                         }
                     )*
                     WireCommand::UnwatchSession { session } => Command::UnwatchSession(session),
-                    WireCommand::Handshake => Command::Handshake,
                     WireCommand::DestroySession { session } => Command::DestroySession(session),
                 }
             }
@@ -89,7 +87,6 @@ macro_rules! built_in_wire_commands {
                     Command::UnwatchSession(session) => {
                         Ok(WireCommand::UnwatchSession { session })
                     }
-                    Command::Handshake => Ok(WireCommand::Handshake),
                     Command::DestroySession(session) => {
                         Ok(WireCommand::DestroySession { session })
                     }
@@ -220,6 +217,9 @@ built_in_wire_commands! {
     Unwatch {
         location: LocationRef,
         session: SessionId,
+    },
+    Handshake {
+        request: RequestId,
     },
 }
 

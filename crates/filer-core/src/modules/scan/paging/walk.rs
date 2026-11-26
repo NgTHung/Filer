@@ -25,9 +25,14 @@
 //! # std::fs::write(directory.path().join("file2.txt"), "")?;
 //! let core = FilerCore::with_defaults();
 //! let events = core.event_receiver();
-//! core.send(Command::Handshake)?;
+//! let handshake_request = core.next_request_id();
+//! core.send(Command::Handshake {
+//!     request: handshake_request,
+//! })?;
 //! let session = loop {
-//!     if let Event::SessionCreated(session) = events.recv_async().await? {
+//!     if let Event::SessionCreated { session, request } = events.recv_async().await?
+//!         && request == handshake_request
+//!     {
 //!         break session;
 //!     }
 //! };

@@ -85,6 +85,7 @@ fn map_keyboard(event: iced::keyboard::Event) -> Option<Message> {
 pub struct App {
     core: Arc<FilerCore>,
     session: SessionId,
+    handshake_request: RequestId,
     state: AppState,
     sort_field: SortField,
     sort_dir: SortDir,
@@ -96,17 +97,22 @@ pub struct App {
 impl App {
     pub fn new(core: Arc<FilerCore>) -> (Self, Task<Message>) {
         let config = Config::load();
-        let _ = core.send(Command::Handshake);
-
-        let state = AppState::new(
+        let handshake_request = core.next_request_id();
+        let mut state = AppState::new(
             config.preview_visible,
             config.bookmarks.clone(),
             config.recent_paths.clone(),
         );
+        if let Err(error) = core.send(Command::Handshake {
+            request: handshake_request,
+        }) {
+            state.error_message = Some(error.to_string());
+        }
 
         let app = Self {
             core,
             session: SessionId::DEFAULT,
+            handshake_request,
             state,
             sort_field: SortField::Name,
             sort_dir: SortDir::Asc,
@@ -600,7 +606,10 @@ impl App {
                     total_items,
                 ));
             }
-            filer_core::Event::SessionCreated(id) => {
+            filer_core::Event::SessionCreated {
+                session: id,
+                request,
+            } if request == self.handshake_request => {
                 self.session = id;
                 let home = self.state.current_path.clone();
                 debug!(session = %id, home = %home.display(), "core session created, navigating home");

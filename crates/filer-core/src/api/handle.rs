@@ -34,7 +34,7 @@ use crate::vfs::local_watch::LocalWatchProvider;
 /// # Setup
 ///
 /// ```ignore
-/// use filer_core::{FilerCore, LocalFs};
+/// use filer_core::{Command, FilerCore, LocalFs};
 /// use filer_core::modules::{NavigationModule, ScanModule};
 ///
 /// let core = FilerCore::new();
@@ -49,7 +49,9 @@ use crate::vfs::local_watch::LocalWatchProvider;
 /// let core = FilerCore::with_defaults();
 ///
 /// // Send commands, receive events
-/// core.send(Command::Handshake)?;
+/// core.send(Command::Handshake {
+///     request: core.next_request_id(),
+/// })?;
 /// let event = core.event_receiver().recv_async().await?;
 /// ```
 ///
@@ -102,15 +104,17 @@ impl FilerCore {
             registry: registry.clone(),
         };
 
-        handlers.on_async("session.handshake", |_cmd, ctx| {
+        handlers.on_async("session.handshake", |cmd, ctx| {
             Box::pin(async move {
-                let session = ctx.sessions.create_session(ctx.events.clone());
-                send_or_warn_async(
-                    &ctx.events,
-                    Event::SessionCreated(session),
-                    "emit SessionCreated",
-                )
-                .await;
+                if let Command::Handshake { request } = cmd {
+                    let session = ctx.sessions.create_session(ctx.events.clone());
+                    send_or_warn_async(
+                        &ctx.events,
+                        Event::SessionCreated { session, request },
+                        "emit SessionCreated",
+                    )
+                    .await;
+                }
             })
         });
 

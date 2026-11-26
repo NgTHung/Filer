@@ -51,14 +51,8 @@ fn build_core(provider: MockProvider) -> FilerCore {
     core
 }
 
-/// Send `Handshake` and return the `SessionId` from `SessionCreated`.
 async fn create_session(core: &FilerCore) -> SessionId {
-    let rx = core.event_receiver();
-    core.send(Command::Handshake).unwrap();
-    match timeout(TIMEOUT, rx.recv_async()).await {
-        Ok(Ok(Event::SessionCreated(id))) => id,
-        other => panic!("expected SessionCreated, got {:?}", other),
-    }
+    support::create_session(core, &core.event_receiver(), TIMEOUT).await
 }
 
 /// Wait until the event channel yields a directory load event for any session,
@@ -685,16 +679,8 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let rx = core.event_receiver();
 
-        core.send(Command::Handshake).unwrap();
-        let s1 = match timeout(TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
-            other => panic!("{:?}", other),
-        };
-        core.send(Command::Handshake).unwrap();
-        let s2 = match timeout(TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
-            other => panic!("{:?}", other),
-        };
+        let s1 = support::create_session(&core, &rx, TIMEOUT).await;
+        let s2 = support::create_session(&core, &rx, TIMEOUT).await;
 
         assert_ne!(s1, s2);
 
@@ -757,16 +743,8 @@ mod navigation_flow_tests {
         let core = build_core(provider);
         let rx = core.event_receiver();
 
-        core.send(Command::Handshake).unwrap();
-        let session_stay = match timeout(TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
-            other => panic!("{:?}", other),
-        };
-        core.send(Command::Handshake).unwrap();
-        let session_gone = match timeout(TIMEOUT, rx.recv_async()).await {
-            Ok(Ok(Event::SessionCreated(id))) => id,
-            other => panic!("{:?}", other),
-        };
+        let session_stay = support::create_session(&core, &rx, TIMEOUT).await;
+        let session_gone = support::create_session(&core, &rx, TIMEOUT).await;
 
         // Navigate both sessions
         core.send(Command::Navigate {

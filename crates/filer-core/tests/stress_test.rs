@@ -19,7 +19,6 @@ use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use flume::Receiver;
-use tokio::time::timeout;
 
 mod support;
 
@@ -316,22 +315,12 @@ fn build_core(fs: MockFs) -> FilerCore {
 
 async fn handshake(core: &FilerCore) -> (SessionId, Receiver<Event>) {
     let rx = core.event_receiver();
-    core.send(Command::Handshake).unwrap();
-    match timeout(SHORT, rx.recv_async()).await {
-        Ok(Ok(Event::SessionCreated(id))) => (id, rx),
-        other => panic!("expected SessionCreated, got {:?}", other),
-    }
+    let session = create_session(core, &rx).await;
+    (session, rx)
 }
 
-/// Create a session using an already-open receiver.
-/// Use this (instead of `handshake`) when multiple sessions share one `FilerCore`,
-/// to avoid competing receivers stealing each other's events on the flume channel.
 async fn create_session(core: &FilerCore, rx: &Receiver<Event>) -> SessionId {
-    core.send(Command::Handshake).unwrap();
-    match timeout(SHORT, rx.recv_async()).await {
-        Ok(Ok(Event::SessionCreated(id))) => id,
-        other => panic!("expected SessionCreated, got {:?}", other),
-    }
+    support::create_session(core, rx, SHORT).await
 }
 
 /// Drain native `SearchResults` until `complete: true`, returning all entries.

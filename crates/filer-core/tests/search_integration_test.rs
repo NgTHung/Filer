@@ -10,14 +10,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::time::timeout;
-
 mod support;
 
 use filer_core::model::session::SessionId;
 use filer_core::modules::scan::ScanModule;
 use filer_core::modules::search::SearchModule;
-use filer_core::{Command, Event, FilerCore};
+use filer_core::{Command, FilerCore};
 
 use support::nodes::{directory as make_dir, file as make_file};
 use support::provider::MemoryProvider as MockProvider;
@@ -34,12 +32,7 @@ fn build_core_with_search(provider: MockProvider) -> FilerCore {
 }
 
 async fn create_session(core: &FilerCore) -> SessionId {
-    let rx = core.event_receiver();
-    core.send(Command::Handshake).unwrap();
-    match timeout(TIMEOUT, rx.recv_async()).await {
-        Ok(Ok(Event::SessionCreated(id))) => id,
-        other => panic!("expected SessionCreated, got {:?}", other),
-    }
+    support::create_session(core, &core.event_receiver(), TIMEOUT).await
 }
 
 #[tokio::test]
