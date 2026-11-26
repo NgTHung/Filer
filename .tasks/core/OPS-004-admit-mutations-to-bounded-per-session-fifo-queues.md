@@ -1,7 +1,7 @@
 ---
 id: "OPS-004"
 title: "Admit mutations to bounded per-session FIFO queues"
-status: "To Do"
+status: In Progress
 priority: "High"
 type: "Bug"
 parent: "core:CORE-027"
@@ -11,7 +11,7 @@ rules: ["CORE-LIBRARY", "SESSION-BOUNDARY", "ACTOR-LONG-WORK"]
 risk: "High"
 tags: ["operations", "queue", "cancellation", "bug", "ready-for-agent"]
 whitepaper: "docs/adr/0001-core-runtime-lifecycle.md"
-last_updated: "2026-10-02"
+last_updated: 2026-11-26
 ---
 
 ## Summary
