@@ -26,7 +26,8 @@
 //! # Ok::<(), filer_core::CoreError>(())
 //! ```
 
-use std::path::PathBuf;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 use crate::CoreError;
 use crate::model::capability::{LocationCapabilityError, operation_capability_for_location};
@@ -78,6 +79,57 @@ pub fn resolve_direct_targets(
         .iter()
         .map(|location| resolve_direct_target(registry, location, kind.clone(), capabilities))
         .collect()
+}
+
+pub(super) fn resolve_named_target(
+    registry: &NodeRegistry,
+    location: &LocationRef,
+    name: &str,
+    kind: OperationKind,
+    capabilities: Capabilities,
+) -> Result<PathBuf, CoreError> {
+    // Joining a rooted name replaces its parent, and components can normalize away separators.
+    if Path::new(name).file_name() != Some(OsStr::new(name)) || name.as_bytes().contains(&0) {
+        return Err(CoreError::invalid_input(
+            "Expected one native filename component",
+        ));
+    }
+    #[cfg(windows)]
+    if invalid_windows_name(name) {
+        return Err(CoreError::invalid_input("Invalid Windows filename"));
+    }
+
+    resolve_direct_target(registry, location, kind, capabilities)
+}
+
+#[cfg(windows)]
+fn invalid_windows_name(name: &str) -> bool {
+    if name.ends_with([' ', '.'])
+        || name.contains(|c| {
+            matches!(
+                c,
+                '\u{1}'..='\u{1f}' | '<' | '>' | ':' | '"' | '|' | '?' | '*'
+            )
+        })
+    {
+        return true;
+    }
+
+    // Win32 can interpret a DOS device name with an extension as the device itself.
+    let stem = name
+        .split_once('.')
+        .map_or(name, |(stem, _)| stem)
+        .trim_end_matches(' ');
+    ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"]
+        .iter()
+        .any(|device| stem.eq_ignore_ascii_case(device))
+        || stem.split_at_checked(3).is_some_and(|(prefix, suffix)| {
+            (prefix.eq_ignore_ascii_case("COM") || prefix.eq_ignore_ascii_case("LPT"))
+                && matches!(
+                    suffix,
+                    "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+                )
+        })
 }
 
 pub fn affected_location(registry: &NodeRegistry, path: PathBuf) -> LocationRef {

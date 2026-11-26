@@ -40,7 +40,7 @@ use super::support::{
     emit_operation_progress, invalidate_parent_cache, invalidate_subtree_cache,
     operation_complete_event, operation_cx, operation_error, remove_operation_if_current,
 };
-use super::target::{affected_location, resolve_direct_target};
+use super::target::{affected_location, resolve_direct_target, resolve_named_target};
 
 impl Operator {
     pub(super) async fn delete(
@@ -210,9 +210,10 @@ impl Operator {
         operation: OperationId,
         event_mode: OperationEventMode,
     ) {
-        let src_path = match resolve_direct_target(
+        let src_path = match resolve_named_target(
             &self.registry,
             &source,
+            &new_name,
             OperationKind::Rename,
             self.provider.capabilities(),
         ) {
@@ -221,7 +222,7 @@ impl Operator {
                 send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
-                    "operator: rename resolve",
+                    "operator: rename target",
                 )
                 .await;
                 return;
@@ -348,9 +349,10 @@ impl Operator {
         operation: OperationId,
         event_mode: OperationEventMode,
     ) {
-        let path = match resolve_direct_target(
+        let path = match resolve_named_target(
             &self.registry,
             &parent,
+            &name,
             OperationKind::CreateFile,
             self.provider.capabilities(),
         ) {
@@ -359,7 +361,7 @@ impl Operator {
                 send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
-                    "operator: create_file resolve",
+                    "operator: create_file target",
                 )
                 .await;
                 return;
@@ -465,9 +467,10 @@ impl Operator {
         operation: OperationId,
         event_mode: OperationEventMode,
     ) {
-        let path = match resolve_direct_target(
+        let path = match resolve_named_target(
             &self.registry,
             &parent,
+            &name,
             OperationKind::CreateFolder,
             self.provider.capabilities(),
         ) {
@@ -476,7 +479,7 @@ impl Operator {
                 send_or_warn_async(
                     &self.events,
                     operation_error(error, session, request, operation),
-                    "operator: create_folder resolve",
+                    "operator: create_folder target",
                 )
                 .await;
                 return;
