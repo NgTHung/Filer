@@ -1,14 +1,14 @@
 ---
 id: "API-021"
 title: "Add a direct LocationRef constructor for local paths"
-status: "To Do"
+status: In Progress
 priority: "Low"
 type: "Feature"
 milestone: "0.3.1"
 risk: "Low"
 impact: "Adds public constructors to LocationRef without changing existing variants or identities."
 tags: ["api", "location", "model", "ready-for-agent"]
-last_updated: "2026-11-25"
+last_updated: 2026-11-26
 ---
 
 ## Summary
