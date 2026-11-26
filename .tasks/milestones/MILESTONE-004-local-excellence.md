@@ -64,7 +64,7 @@ Required, not deferrable:
 - [ ] CORE-030, CORE-039, CORE-031, and CORE-032 are Done: correctness-checked Filer/std/Tokio baselines, raw reports, and one browse journey are recorded with separate engine, core, and reference-client results.
 - [x] MODULES-002 emits semantic row decorations without making listing wait for Git completion, proven by the CORE-028 ordering test and active-decoration comparison.
 - [ ] PIPELINE-009 and PIPELINE-008 are Done: the default name order is recorded, and the sorted first page on the 10,000-entry fixture meets the PIPELINE-008 bound or its report names the remaining cost.
-- [ ] OPS-004 and OPS-005 are Done: a new mutation never cancels an accepted one, and a failed mutation pauses the rest of its Session queue.
+- [x] OPS-004 and OPS-005 are Done: a new mutation never cancels an accepted one, and a failed mutation pauses the rest of its Session queue.
 
 Deferrable only with recorded rationale in this file:
 

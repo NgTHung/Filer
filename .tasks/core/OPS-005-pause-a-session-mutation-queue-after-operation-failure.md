@@ -1,7 +1,7 @@
 ---
 id: "OPS-005"
 title: "Pause a session mutation queue after operation failure"
-status: In Progress
+status: Done
 priority: "High"
 type: "Feature"
 parent: "core:CORE-027"
@@ -20,11 +20,11 @@ Implement the failure rule from ADR-0001 without assuming FIFO operations are in
 
 ## Acceptance Criteria
 
-- [ ] A failed mutation reports its error and known partial changes, then pauses only the remaining mutation queue for its Session.
-- [ ] Other Sessions and unrelated read requests continue; a failed-copy-then-delete regression proves the delete performs no filesystem work before recovery.
-- [ ] The client can explicitly retry, continue the remaining queue, or cancel queued work; recovery never silently replays a partially completed mutation or promises rollback.
-- [ ] Paused state and queued operation identities remain observable after the originating view closes; each cancelled or completed operation has a correlated terminal outcome.
-- [ ] Tests cover each recovery choice, partial failure, repeated failure, and queue isolation; cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
+- [x] A failed mutation reports its error and known partial changes, then pauses only the remaining mutation queue for its Session.
+- [x] Other Sessions and unrelated read requests continue; a failed-copy-then-delete regression proves the delete performs no filesystem work before recovery.
+- [x] The client can explicitly retry, continue the remaining queue, or cancel queued work; recovery never silently replays a partially completed mutation or promises rollback.
+- [x] Paused state and queued operation identities remain observable after the originating view closes; each cancelled or completed operation has a correlated terminal outcome.
+- [x] Tests cover each recovery choice, partial failure, repeated failure, and queue isolation; cargo fmt --check, cargo check -p filer-core, and cargo test -p filer-core pass.
 
-- [ ] Use a deterministic failing-copy-then-source-delete public regression; the delete remains unattempted until continue or cancellation resolves the pause.
-- [ ] Retry creates an explicit correlated attempt after partial-state validation; the failed attempt keeps a terminal outcome, and read-side work remains responsive during recovery.
+- [x] Use a deterministic failing-copy-then-source-delete public regression; the delete remains unattempted until continue or cancellation resolves the pause.
+- [x] Retry creates an explicit correlated attempt after partial-state validation; the failed attempt keeps a terminal outcome, and read-side work remains responsive during recovery.
