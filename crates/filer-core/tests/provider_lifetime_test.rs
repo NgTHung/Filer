@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use filer_core::Event;
 use tokio::time::timeout;
 
 #[allow(dead_code)]
@@ -41,7 +42,15 @@ fn shutdown_waits_for_a_queued_local_fs_copy() {
             .await
             .unwrap();
 
-        let consume = tokio::spawn(async move { while events.recv_async().await.is_ok() {} });
+        let consume = tokio::spawn(async move {
+            let mut terminal = Vec::new();
+            while let Ok(event) = events.recv_async().await {
+                if !matches!(event, Event::ProgressUpdated { .. }) {
+                    terminal.push(event);
+                }
+            }
+            terminal
+        });
         let shutdown = core.shutdown();
         tokio::pin!(shutdown);
         assert!(
@@ -58,6 +67,10 @@ fn shutdown_waits_for_a_queued_local_fs_copy() {
         std::fs::remove_file(&output).unwrap();
         tokio::task::spawn_blocking(|| {}).await.unwrap();
         assert!(!output.exists());
-        consume.abort();
+        let terminal = timeout(TIMEOUT, consume).await.unwrap().unwrap();
+        assert!(matches!(terminal.as_slice(), [
+            Event::OperationComplete { operation_id, success: true, .. },
+            Event::SessionDestroyed(actual)
+        ] if Some(*operation_id) == copy.operation_id() && *actual == session));
     });
 }

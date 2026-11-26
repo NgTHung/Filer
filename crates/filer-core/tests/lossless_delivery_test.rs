@@ -78,6 +78,7 @@ async fn handshake_backpressure_keeps_consumer_and_timer_running() {
     let events = core.event_receiver();
     let count = DEFAULT_EVENT_CHANNEL_CAPACITY * 4;
     let (timer_tx, timer_rx) = tokio::sync::oneshot::channel();
+    let (created, all_created) = tokio::sync::oneshot::channel();
     let consumer = tokio::spawn(async move {
         let mut sessions = HashSet::new();
         let first = events.recv_async().await.unwrap();
@@ -90,6 +91,17 @@ async fn handshake_backpressure_keeps_consumer_and_timer_running() {
             }
         }
         assert_eq!(sessions.len(), count);
+        created.send(()).unwrap();
+        while let Ok(event) = events.recv_async().await {
+            match event {
+                Event::SessionDestroyed(session) => assert!(sessions.remove(&session)),
+                other => panic!("expected SessionDestroyed, got {other:?}"),
+            }
+        }
+        assert!(
+            sessions.is_empty(),
+            "shutdown dropped SessionDestroyed events"
+        );
     });
     let timer = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -101,9 +113,10 @@ async fn handshake_backpressure_keeps_consumer_and_timer_running() {
         })
         .unwrap();
     }
-    consumer.await.unwrap();
+    all_created.await.unwrap();
     timer.await.unwrap();
     core.shutdown().await.unwrap();
+    consumer.await.unwrap();
 }
 
 #[tokio::test(flavor = "current_thread")]

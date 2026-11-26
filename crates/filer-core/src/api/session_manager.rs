@@ -140,6 +140,15 @@ impl SessionManager {
         self.sessions.contains_sync(&id)
     }
 
+    pub(crate) fn session_ids(&self) -> Vec<SessionId> {
+        let mut ids = Vec::new();
+        self.sessions.iter_sync(|id, _| {
+            ids.push(*id);
+            true
+        });
+        ids
+    }
+
     pub(crate) fn is_closing(&self, id: SessionId) -> Option<bool> {
         self.sessions
             .read_sync(&id, |_, s| s.closing.is_cancelled())

@@ -33,6 +33,8 @@ use std::sync::{Arc, Mutex};
 use flume::{Receiver, Sender};
 use tokio::sync::Notify;
 
+use crate::CoreError;
+#[cfg(test)]
 use crate::actors::WorkTracker;
 use crate::actors::cancel::CancellationToken;
 use crate::api::events::Event;
@@ -58,9 +60,12 @@ struct HubState {
     terminal_capacity: usize,
 }
 
+enum Delivery {
+    Event(Event),
+    Finish,
+}
+
 struct EventHub {
-    output: Sender<Event>,
-    lossless_rx: Mutex<Option<Receiver<Event>>>,
     close_token: CancellationToken,
     notify: Notify,
     state: Mutex<HubState>,
@@ -90,29 +95,51 @@ impl std::fmt::Debug for EventSink {
 enum EventSinkInner {
     Direct(Sender<Event>),
     Hub {
-        lossless: Sender<Event>,
+        lossless: Sender<Delivery>,
         hub: Arc<EventHub>,
         token: CancellationToken,
     },
 }
 
 impl EventSink {
-    /// Build the production sink and its bounded client receiver.
+    pub(crate) fn runtime() -> (Self, Receiver<Event>, EventDelivery) {
+        let (sink, receiver, delivery) = Self::channel(DEFAULT_EVENT_CHANNEL_CAPACITY);
+        (sink, receiver, EventDelivery(tokio::spawn(delivery)))
+    }
+
+    #[cfg(test)]
     pub(crate) fn for_runtime(work: WorkTracker) -> (Self, Receiver<Event>) {
         Self::for_runtime_with_capacity(work, DEFAULT_EVENT_CHANNEL_CAPACITY)
     }
 
+    #[cfg(test)]
     pub(crate) fn for_runtime_with_capacity(
         work: WorkTracker,
         capacity: usize,
     ) -> (Self, Receiver<Event>) {
+        let (sink, receiver, delivery) = Self::channel(capacity);
+        if let EventSinkInner::Hub { token, .. } = &sink.inner {
+            work.spawn(token.clone(), async move {
+                if let Err(error) = delivery.await {
+                    tracing::trace!(%error, "Event delivery stopped");
+                }
+            });
+        }
+        (sink, receiver)
+    }
+
+    fn channel(
+        capacity: usize,
+    ) -> (
+        Self,
+        Receiver<Event>,
+        impl Future<Output = Result<(), EventSendError>> + Send,
+    ) {
         let (output, receiver) = flume::bounded(capacity);
         let (lossless, lossless_rx) = flume::bounded(capacity);
         let state_capacity = capacity.max(1);
         let token = CancellationToken::new();
         let hub = Arc::new(EventHub {
-            output,
-            lossless_rx: Mutex::new(Some(lossless_rx)),
             close_token: token.clone(),
             notify: Notify::new(),
             state: Mutex::new(HubState {
@@ -125,11 +152,7 @@ impl EventSink {
                 terminal_capacity: state_capacity,
             }),
         });
-        let run_token = token.clone();
-        let run_hub = hub.clone();
-        let _ = work.spawn(token.clone(), async move {
-            run_hub.run(run_token).await;
-        });
+        let delivery = hub.clone().run(output, lossless_rx, token.clone());
         (
             Self {
                 inner: EventSinkInner::Hub {
@@ -139,6 +162,7 @@ impl EventSink {
                 },
             },
             receiver,
+            delivery,
         )
     }
 
@@ -162,17 +186,14 @@ impl EventSink {
                     return Err(EventSendError::Closed);
                 }
                 if let Some((scope, terminal)) = progress_kind(&event) {
-                    if terminal {
-                        hub.mark_terminal(&scope)?;
-                        lossless.send(event).map_err(|_| EventSendError::Closed)
-                    } else {
-                        hub.store_progress(scope, event)
+                    if !terminal {
+                        return hub.store_progress(scope, event);
                     }
-                } else if hub.is_closed() {
-                    Err(EventSendError::Closed)
-                } else {
-                    lossless.send(event).map_err(|_| EventSendError::Closed)
+                    hub.mark_terminal(&scope)?;
                 }
+                lossless
+                    .send(Delivery::Event(event))
+                    .map_err(|_| EventSendError::Closed)
             }
         }
     }
@@ -196,29 +217,30 @@ impl EventSink {
                     return Err(EventSendError::Closed);
                 }
                 if let Some((scope, terminal)) = progress_kind(&event) {
-                    if terminal {
-                        hub.mark_terminal(&scope)?;
-                        tokio::select! {
-                            result = lossless.send_async(event) => {
-                                result.map_err(|_| EventSendError::Closed)
-                            }
-                            _ = token.cancelled() => Err(EventSendError::Closed),
-                        }
-                    } else {
-                        hub.store_progress(scope, event)
+                    if !terminal {
+                        return hub.store_progress(scope, event);
                     }
-                } else if hub.is_closed() {
-                    Err(EventSendError::Closed)
-                } else {
-                    tokio::select! {
-                        result = lossless.send_async(event) => {
-                            result.map_err(|_| EventSendError::Closed)
-                        }
-                        _ = token.cancelled() => Err(EventSendError::Closed),
+                    hub.mark_terminal(&scope)?;
+                }
+                tokio::select! {
+                    result = lossless.send_async(Delivery::Event(event)) => {
+                        result.map_err(|_| EventSendError::Closed)
                     }
+                    _ = token.cancelled() => Err(EventSendError::Closed),
                 }
             }
         }
+    }
+
+    async fn finish(&self) -> Result<(), EventSendError> {
+        if let EventSinkInner::Hub { hub, lossless, .. } = &self.inner {
+            hub.state.lock().unwrap_or_else(|e| e.into_inner()).closed = true;
+            lossless
+                .send_async(Delivery::Finish)
+                .await
+                .map_err(|_| EventSendError::Closed)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn discard_session_progress(&self, session: SessionId) {
@@ -249,6 +271,25 @@ impl EventSink {
                 (state.progress.len(), state.terminal_scopes.len())
             }
         }
+    }
+}
+
+pub(crate) struct EventDelivery(tokio::task::JoinHandle<Result<(), EventSendError>>);
+
+impl EventDelivery {
+    pub(crate) async fn finish(mut self, sink: &EventSink) -> Result<(), CoreError> {
+        let sent = sink.finish().await;
+        (&mut self.0)
+            .await
+            .map_err(|error| CoreError::actor("event delivery", error.to_string()))?
+            .and(sent)
+            .map_err(|_| CoreError::channel_closed("events"))
+    }
+}
+
+impl Drop for EventDelivery {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
 
@@ -328,44 +369,31 @@ impl EventHub {
         Ok(())
     }
 
-    async fn run(self: Arc<Self>, token: CancellationToken) {
+    async fn run(
+        self: Arc<Self>,
+        output: Sender<Event>,
+        lossless: Receiver<Delivery>,
+        token: CancellationToken,
+    ) -> Result<(), EventSendError> {
         let _close_guard = HubCloseGuard(self.clone());
-        let lossless_rx = self
-            .lossless_rx
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .take();
-        let Some(lossless_rx) = lossless_rx else {
-            return;
-        };
         loop {
-            if self.flush_progress(&token).await.is_err() {
-                break;
-            }
-
+            self.flush_progress(&output, &token).await?;
             tokio::select! {
-                _ = token.cancelled() => break,
-                result = lossless_rx.recv_async() => {
-                    match result {
-                        Ok(event) => {
-                            if self.forward(event, &token).await.is_err() {
-                                self.close();
-                                break;
-                            }
-                        }
-                        Err(_) => {
-                            self.close();
-                            break;
-                        }
-                    }
-                }
+                _ = token.cancelled() => return Ok(()),
+                result = lossless.recv_async() => match result {
+                    Ok(Delivery::Event(event)) => Self::forward(&output, event, &token).await?,
+                    Ok(Delivery::Finish) | Err(_) => return Ok(()),
+                },
                 _ = self.notify.notified() => {}
             }
         }
-        self.close();
     }
 
-    async fn flush_progress(&self, token: &CancellationToken) -> Result<(), EventSendError> {
+    async fn flush_progress(
+        &self,
+        output: &Sender<Event>,
+        token: &CancellationToken,
+    ) -> Result<(), EventSendError> {
         let pending = {
             let mut state = self
                 .state
@@ -384,12 +412,16 @@ impl EventHub {
         let Some(event) = pending else {
             return Ok(());
         };
-        self.forward(event, token).await
+        Self::forward(output, event, token).await
     }
 
-    async fn forward(&self, event: Event, token: &CancellationToken) -> Result<(), EventSendError> {
+    async fn forward(
+        output: &Sender<Event>,
+        event: Event,
+        token: &CancellationToken,
+    ) -> Result<(), EventSendError> {
         tokio::select! {
-            result = self.output.send_async(event) => {
+            result = output.send_async(event) => {
                 result.map_err(|_| EventSendError::Closed)
             }
             _ = token.cancelled() => Err(EventSendError::Closed),

@@ -324,3 +324,79 @@ async fn failure_during_close_preserves_the_session_until_recovery() {
     assert!(gate.exists());
     core.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn graceful_shutdown_remains_pending_until_a_failed_queue_recovers() {
+    use std::time::Duration;
+
+    let root = tempfile::tempdir().unwrap();
+    let gate = root.path().join("gated.txt");
+    let destination = root.path().join("destination");
+    std::fs::write(&gate, b"source").unwrap();
+    std::fs::create_dir(&destination).unwrap();
+    let provider = Arc::new(CopyGate::new(1));
+    let (core, events) = core(provider.clone());
+    let session = support::create_session(&core, &events, TIMEOUT).await;
+
+    let copy = copy(session, &[&gate], &destination);
+    let delete = delete(session, &gate);
+    core.send(copy.clone()).unwrap();
+    accepted(&events, &copy).await;
+    started(&events, &copy).await;
+    timeout(TIMEOUT, provider.entered.wait()).await.unwrap();
+    core.send(delete.clone()).unwrap();
+    accepted(&events, &delete).await;
+
+    // Cancelling a caller's wait must leave the runtime closure in progress.
+    assert!(
+        timeout(Duration::from_millis(25), core.shutdown())
+            .await
+            .is_err()
+    );
+    let late = create(session, root.path(), "late");
+    core.send(late.clone()).unwrap();
+    assert!(matches!(next(&events).await, Event::Error {
+        code: ErrorCode::SessionClosing, request, ..
+    } if request == late.request_id()));
+    let handshake = RequestId::new();
+    core.send(Command::Handshake { request: handshake })
+        .unwrap();
+    assert!(matches!(next(&events).await, Event::Error {
+        code: ErrorCode::ChannelClosed, request: Some(request), ..
+    } if request == handshake));
+
+    timeout(TIMEOUT, provider.release.wait()).await.unwrap();
+    assert!(failed(&events, &copy).await.is_empty());
+    paused(&events, &copy, &[delete.operation_id().unwrap()]).await;
+    assert!(core.sessions().exists(session));
+    assert!(gate.exists());
+
+    let decision = resolve(session, &copy, OperationQueueResolution::Continue);
+    let consume = async {
+        assert!(matches!(next(&events).await, Event::OperationQueueState {
+            request, paused_on: None, ..
+        } if Some(request) == decision.request_id()));
+        started(&events, &delete).await;
+        complete(&events, &delete).await;
+        assert!(
+            matches!(next(&events).await, Event::SessionDestroyed(actual) if actual == session)
+        );
+        assert!(
+            timeout(TIMEOUT, events.recv_async())
+                .await
+                .unwrap()
+                .is_err()
+        );
+    };
+    core.send(decision.clone()).unwrap();
+    let (first, second, ()) = tokio::join!(
+        timeout(TIMEOUT, core.shutdown()),
+        timeout(TIMEOUT, core.shutdown()),
+        consume,
+    );
+    first.unwrap().unwrap();
+    second.unwrap().unwrap();
+    assert!(!gate.exists());
+    assert_eq!(core.sessions().count(), 0);
+    assert!(core.command_sender().is_disconnected());
+}

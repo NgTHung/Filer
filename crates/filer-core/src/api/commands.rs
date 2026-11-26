@@ -197,6 +197,8 @@ pub enum Command {
         request: RequestId,
     },
 
+    /// Close admission and drain accepted operations before emitting
+    /// `Event::SessionDestroyed`. Resolve a paused queue to let closure finish.
     DestroySession(SessionId),
 
     /// Extension point for custom commands from modules/plugins.

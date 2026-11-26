@@ -4,4 +4,5 @@ pub mod events;
 pub mod handle;
 pub mod module;
 pub mod session_manager;
+pub(crate) mod shutdown;
 pub mod wire_commands;

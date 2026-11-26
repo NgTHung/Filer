@@ -12,16 +12,17 @@
 //! # }
 //! ```
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use flume::Receiver;
-use tokio::task::JoinSet;
+use tokio::task::{Id, JoinSet};
 
 use crate::actors::Actor;
 use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry};
+use crate::api::shutdown::RouterShutdown;
 use crate::errors::CoreError;
 use crate::model::session::SessionId;
 use crate::utils::channel::send_or_warn_async;
@@ -34,6 +35,7 @@ pub struct CommandRouter {
     handlers: Arc<HandlerRegistry>,
     /// Shared context passed to every handler invocation
     ctx: HandlerContext,
+    shutdown: Option<RouterShutdown>,
 }
 
 impl CommandRouter {
@@ -46,6 +48,19 @@ impl CommandRouter {
             commands,
             handlers,
             ctx,
+            shutdown: None,
+        }
+    }
+
+    pub(crate) fn with_shutdown(mut self, shutdown: RouterShutdown) -> Self {
+        self.shutdown = Some(shutdown);
+        self
+    }
+
+    async fn shutdown_requested(&self) {
+        match &self.shutdown {
+            Some(shutdown) => shutdown.requested.cancelled().await,
+            None => std::future::pending().await,
         }
     }
 
@@ -108,18 +123,17 @@ impl CommandRouter {
     fn start_close(
         &self,
         session: SessionId,
-        closing: &mut HashSet<SessionId>,
+        closing: &mut HashMap<SessionId, Id>,
         tasks: &mut JoinSet<(SessionId, Result<(), CoreError>)>,
     ) {
-        if !closing.insert(session) {
+        if closing.contains_key(&session) {
             return;
         }
         let Some(work) = self.ctx.sessions.begin_close(session) else {
-            closing.remove(&session);
             return;
         };
         let handlers = self.handlers.clone();
-        tasks.spawn(async move {
+        let task = tasks.spawn(async move {
             let cleanup = async {
                 work.reads.wait().await;
                 handlers.cleanup_session(session).await
@@ -128,6 +142,7 @@ impl CommandRouter {
             work.mutations.wait().await;
             (session, cleanup.and(drain))
         });
+        closing.insert(session, task.id());
     }
 
     async fn finish_close(&self, session: SessionId) -> Result<(), CoreError> {
@@ -156,18 +171,20 @@ impl CommandRouter {
 
 impl Actor for CommandRouter {
     async fn run(self) {
-        let mut closing = HashSet::new();
+        let mut closing = HashMap::new();
         let mut tasks = JoinSet::new();
-        loop {
+        let mut shutting_down = false;
+        let mut failure = None;
+
+        while !shutting_down || !tasks.is_empty() {
             tokio::select! {
-                command = self.commands.recv_async() => match command {
-                    Ok(Command::DestroySession(session)) if self.ctx.sessions.exists(session) => {
-                        Self::trace_dispatch(&Command::DestroySession(session));
+                biased;
+                _ = self.shutdown_requested(), if !shutting_down => {
+                    shutting_down = true;
+                    for session in self.ctx.sessions.session_ids() {
                         self.start_close(session, &mut closing, &mut tasks);
                     }
-                    Ok(command) => self.route(command).await,
-                    Err(_) => break,
-                },
+                }
                 Some(result) = tasks.join_next(), if !tasks.is_empty() => {
                     match result {
                         Ok((session, result)) => {
@@ -177,12 +194,41 @@ impl Actor for CommandRouter {
                                 Err(error) => Err(error),
                             };
                             if let Err(error) = result {
+                                if shutting_down {
+                                    failure.get_or_insert_with(|| error.to_string());
+                                }
                                 self.reject(&Command::DestroySession(session), session, error).await;
                             }
                         }
-                        Err(error) => tracing::error!(%error, "Session closure task failed"),
+                        Err(error) => {
+                            closing.retain(|_, task| *task != error.id());
+                            if shutting_down {
+                                failure.get_or_insert_with(|| error.to_string());
+                            }
+                            tracing::error!(%error, "Session closure task failed");
+                        }
                     }
                 }
+                command = self.commands.recv_async() => match command {
+                    Ok(Command::DestroySession(session)) if self.ctx.sessions.exists(session) => {
+                        Self::trace_dispatch(&Command::DestroySession(session));
+                        self.start_close(session, &mut closing, &mut tasks);
+                    }
+                    Ok(command @ Command::Handshake { .. }) if shutting_down => {
+                        self.reject(&command, SessionId::DEFAULT, CoreError::channel_closed("Session admission")).await;
+                    }
+                    Ok(command) => self.route(command).await,
+                    Err(_) => return,
+                },
+            }
+        }
+
+        if let Some(shutdown) = self.shutdown {
+            let result = failure.map_or(Ok(()), |message| {
+                Err(CoreError::actor("Session closure", message))
+            });
+            if shutdown.done.send(result).is_err() {
+                tracing::debug!("Runtime shutdown receiver closed");
             }
         }
     }

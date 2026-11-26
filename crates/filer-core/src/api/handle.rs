@@ -9,6 +9,7 @@ use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry, Module, ModuleContext};
 use crate::api::session_manager::SessionManager;
+use crate::api::shutdown::Shutdown;
 use crate::errors::CoreError;
 use crate::model::operation::OperationId;
 use crate::model::registry::NodeRegistry;
@@ -69,7 +70,8 @@ pub struct FilerCore {
     /// Bounded event sink shared by handlers and actors.
     event_sink: EventSink,
     /// Manages spawned actor tasks
-    actor_system: ActorSystem,
+    actor_system: Arc<ActorSystem>,
+    shutdown: Shutdown,
     /// Command handler registry (shared with Router)
     handlers: Arc<HandlerRegistry>,
     /// Session manager (shared with Router via HandlerContext)
@@ -89,10 +91,11 @@ impl FilerCore {
     /// Session lifecycle handlers (Handshake / DestroySession) are
     /// registered automatically — they're infrastructure, not a module concern.
     pub fn new() -> Self {
-        let system = ActorSystem::new();
+        let system = Arc::new(ActorSystem::new());
 
         let (command_tx, command_rx) = flume::unbounded();
-        let (event_sink, event_rx) = EventSink::for_runtime(system.work_tracker());
+        let (event_sink, event_rx, delivery) = EventSink::runtime();
+        let (shutdown, router_shutdown) = Shutdown::new(delivery);
 
         let registry = NodeRegistry::new();
         let sessions = SessionManager::new(registry.clone());
@@ -119,7 +122,8 @@ impl FilerCore {
             })
         });
 
-        let router = CommandRouter::new(command_rx, handlers.clone(), ctx);
+        let router =
+            CommandRouter::new(command_rx, handlers.clone(), ctx).with_shutdown(router_shutdown);
         system.spawn(router);
 
         Self {
@@ -127,6 +131,7 @@ impl FilerCore {
             event_rx,
             event_sink,
             actor_system: system,
+            shutdown,
             handlers,
             sessions,
             registry,
@@ -252,13 +257,20 @@ impl FilerCore {
         OperationId::new()
     }
 
-    /// Shut down the runtime and wait for all in-flight work to stop.
+    /// Close every Session and drain the runtime's lossless events.
     ///
-    /// Shutdown cancels tracked command work, aborts actor loops, joins every
-    /// task, and only then returns. After it returns, [`send()`](Self::send)
-    /// will return a channel-closed [`CoreError`].
+    /// Keep the event consumer active until the stream closes. Accepted
+    /// mutations run to completion, and a failed queue keeps shutdown pending
+    /// until the client resolves it. Queue inspection, recovery, and explicit
+    /// operation cancellation remain available during that wait.
+    ///
+    /// Cancelling a call to this method ends that caller's wait. Call again
+    /// to await the same shutdown. This is an in-process guarantee and assumes
+    /// the process and Tokio runtime remain alive.
     pub async fn shutdown(&self) -> Result<(), CoreError> {
-        self.actor_system.shutdown().await
+        self.shutdown
+            .run(&self.actor_system, &self.event_sink)
+            .await
     }
 }
 
