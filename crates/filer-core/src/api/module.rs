@@ -47,16 +47,13 @@ pub struct HandlerContext {
     pub registry: NodeRegistry,
 }
 
-/// A command handler function.
-///
-/// Receives the full `Command` enum (the handler pattern-matches the variant
-/// it cares about) and a `HandlerContext` for emitting events or querying
-/// sessions/registry.
 type HandlerFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
+type SyncHandler = dyn Fn(Command, &HandlerContext) + Send + Sync;
+type AsyncHandler = dyn for<'a> Fn(Command, &'a HandlerContext) -> HandlerFuture<'a> + Send + Sync;
 
 enum HandlerFn {
-    Sync(Box<dyn Fn(Command, &HandlerContext) + Send + Sync>),
-    Async(Box<dyn for<'a> Fn(Command, &'a HandlerContext) -> HandlerFuture<'a> + Send + Sync>),
+    Sync(Box<SyncHandler>),
+    Async(Box<AsyncHandler>),
 }
 
 struct Handler {

@@ -31,9 +31,9 @@ fn local_ref(path: &Path) -> LocationRef {
 async fn terminal_event(events: &flume::Receiver<Event>) -> Event {
     timeout(TIMEOUT, async {
         loop {
-            match events.recv_async().await.unwrap() {
-                event @ (Event::Error { .. } | Event::OperationComplete { .. }) => return event,
-                _ => {}
+            let event = events.recv_async().await.unwrap();
+            if matches!(event, Event::Error { .. } | Event::OperationComplete { .. }) {
+                return event;
             }
         }
     })

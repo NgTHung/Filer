@@ -79,10 +79,7 @@ impl CommandRouter {
             _ => None,
         };
 
-        // One structured record per command at the single dispatch choke point:
-        // the structural guarantee that every app-facing command path is traced.
-        // debug keeps the default info-level production path quiet on this hot
-        // path. Emitted after session validation so rejected commands don't count.
+        // Trace dispatch attempts after session validation to keep command diagnostics in one place.
         tracing::debug!(
             target: "filer_core::command",
             key = command.key(),
