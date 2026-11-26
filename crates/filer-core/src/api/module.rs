@@ -267,16 +267,38 @@ impl HandlerRegistry {
         None
     }
 
-    /// Run all session-destroy hooks for the given session.
-    pub fn run_destroy_hooks(&self, session: SessionId, ctx: &HandlerContext) {
-        let hooks = self
-            .destroy_hooks
+    fn destroy_hooks(&self) -> Vec<DestroyHookFn> {
+        self.destroy_hooks
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        for hook in hooks {
+            .clone()
+    }
+
+    /// Run all session-destroy hooks for the given session.
+    pub fn run_destroy_hooks(&self, session: SessionId, ctx: &HandlerContext) {
+        for hook in self.destroy_hooks() {
             hook(session, ctx);
         }
+    }
+
+    pub(crate) async fn await_destroy_hooks(
+        &self,
+        session: SessionId,
+        ctx: &HandlerContext,
+    ) -> Result<(), CoreError> {
+        let hooks = self.destroy_hooks();
+        if hooks.is_empty() {
+            return Ok(());
+        }
+        let ctx = ctx.clone();
+        // Synchronous hooks may wait for event capacity on the caller's thread.
+        tokio::task::spawn_blocking(move || {
+            for hook in hooks {
+                hook(session, &ctx);
+            }
+        })
+        .await
+        .map_err(|error| CoreError::actor("Session cleanup", error.to_string()))
     }
 
     /// Check whether a handler is registered for a key.

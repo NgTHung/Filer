@@ -684,6 +684,60 @@ async fn git_cli_preserves_non_utf8_filenames() {
     assert_eq!(result.decorations[0].state, FileDecorationState::Untracked);
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn session_destruction_reaps_an_active_git_process() {
+    let temp = TempDir::new().unwrap();
+    let wrapper = temp.path().join("git-with-barrier");
+    fs::write(
+        &wrapper,
+        r#"#!/bin/sh
+printf '%s' "$$" > "${0%/*}/pid"
+while :; do :; done
+"#,
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&wrapper).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&wrapper, permissions).unwrap();
+
+    let core = FilerCore::new();
+    core.load(GitDecorationsModule::with_components(
+        Arc::new(GitCliBackend::with_program(wrapper)),
+        Arc::new(TestWatchProvider::default()),
+    ));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let parent = Location::local(temp.path());
+    let visible = LocationRef::from_location(&Location::local(temp.path().join("visible")));
+    core.send(Command::Extension {
+        key: "git.status".into(),
+        payload: Arc::new(request(&parent, &[visible])),
+        session,
+    })
+    .unwrap();
+    let pid_file = temp.path().join("pid");
+    let pid = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Ok(contents) = fs::read_to_string(&pid_file)
+                && let Ok(pid) = contents.parse::<u32>()
+            {
+                break pid;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    core.send(Command::DestroySession(session)).unwrap();
+    assert!(
+        matches!(wait_for_event(&events).await, Event::SessionDestroyed(actual) if actual == session)
+    );
+    assert!(!PathBuf::from(format!("/proc/{pid}")).exists());
+    core.shutdown().await.unwrap();
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn git_cli_disables_optional_index_locks() {

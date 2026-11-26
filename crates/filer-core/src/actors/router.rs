@@ -148,7 +148,9 @@ impl CommandRouter {
     async fn finish_close(&self, session: SessionId) -> Result<(), CoreError> {
         // A second fence orders controls routed while the first drain was completing.
         self.handlers.drain_session(session).await?;
-        self.handlers.run_destroy_hooks(session, &self.ctx);
+        self.handlers
+            .await_destroy_hooks(session, &self.ctx)
+            .await?;
         self.ctx.sessions.remove(session);
         self.ctx.events.discard_session_progress(session);
         self.ctx

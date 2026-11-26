@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::sync::Notify;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle};
 
 use crate::CoreError;
 
@@ -67,15 +67,27 @@ impl Drop for Permit {
     }
 }
 
-pub(crate) fn spawn_blocking<F, T>(work: F) -> JoinHandle<T>
+pub(crate) fn spawn_blocking<F, T>(work: F) -> impl Future<Output = Result<T, JoinError>>
 where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
     let permit = CURRENT.try_with(Scope::enter).ok();
-    tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        work()
+    let task = tokio::task::spawn_blocking(move || (work(), permit));
+    async move { task.await.map(|(value, _permit)| value) }
+}
+
+pub(crate) fn spawn_owned<F>(future: F) -> JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let permit = CURRENT.try_with(Scope::enter).ok();
+    tokio::spawn(async move {
+        match permit {
+            Some(permit) => permit.run(future).await,
+            None => future.await,
+        }
     })
 }
 
