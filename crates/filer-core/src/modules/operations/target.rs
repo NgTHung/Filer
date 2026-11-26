@@ -75,6 +75,11 @@ pub fn resolve_direct_targets(
     kind: OperationKind,
     capabilities: Capabilities,
 ) -> Result<Vec<PathBuf>, CoreError> {
+    if locations.is_empty() {
+        return Err(CoreError::invalid_input(
+            "Expected at least one operation target",
+        ));
+    }
     locations
         .iter()
         .map(|location| resolve_direct_target(registry, location, kind.clone(), capabilities))

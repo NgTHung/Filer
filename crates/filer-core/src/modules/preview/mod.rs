@@ -29,10 +29,11 @@ impl PreviewModule {
 
 impl Module for PreviewModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
+        let handlers = ctx.handlers;
         let (preview_tx, preview_rx) = flume::unbounded();
 
         let tx = preview_tx.clone();
-        ctx.handlers.on("preview.load", move |cmd, _ctx| {
+        handlers.on_builtin("preview.load", move |cmd, _ctx| {
             if let Command::LoadPreview {
                 location,
                 options,
@@ -55,14 +56,14 @@ impl Module for PreviewModule {
         });
 
         let tx = preview_tx.clone();
-        ctx.handlers.on("preview.cancel", move |cmd, _ctx| {
+        handlers.on_builtin("preview.cancel", move |cmd, _ctx| {
             if let Command::CancelPreview { session } = cmd {
                 send_or_warn(&tx, PreviewCommand::Cancel(session), "preview.cancel");
             }
         });
 
         let tx = preview_tx.clone();
-        ctx.handlers.on("metadata.load", move |cmd, _ctx| {
+        handlers.on_builtin("metadata.load", move |cmd, _ctx| {
             if let Command::LoadMetadata {
                 location,
                 session,
@@ -83,7 +84,7 @@ impl Module for PreviewModule {
         });
 
         let tx = preview_tx.clone();
-        ctx.handlers.on("metadata.extended", move |cmd, _ctx| {
+        handlers.on_builtin("metadata.extended", move |cmd, _ctx| {
             if let Command::LoadExtendedMetadata {
                 location,
                 session,
@@ -104,7 +105,7 @@ impl Module for PreviewModule {
         });
 
         let tx = preview_tx.clone();
-        ctx.handlers.on_session_destroy(move |session, _ctx| {
+        handlers.on_session_destroy(move |session, _ctx| {
             send_or_warn(
                 &tx,
                 PreviewCommand::Cancel(session),

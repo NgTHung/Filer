@@ -78,10 +78,11 @@ impl ScanModule {
 
 impl Module for ScanModule {
     fn init(mut self: Box<Self>, ctx: ModuleContext<'_>) {
+        let handlers = ctx.handlers;
         let scan_rx = self.scan_rx.take().expect("ScanModule already initialized");
 
         let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan", move |cmd, _ctx| {
+        handlers.on_builtin("scan", move |cmd, _ctx| {
             if let Command::Scan {
                 location,
                 session,
@@ -105,7 +106,7 @@ impl Module for ScanModule {
         });
 
         let tx = self.scan_tx.clone();
-        ctx.handlers.on("scan.cancel", move |cmd, _ctx| {
+        handlers.on_builtin("scan.cancel", move |cmd, _ctx| {
             if let Command::CancelScan { session } = cmd {
                 send_or_warn(&tx, ScanCommand::Cancel(session), "scan.cancel");
             }

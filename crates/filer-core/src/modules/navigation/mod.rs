@@ -63,13 +63,14 @@ impl NavigationModule {
 
 impl Module for NavigationModule {
     fn init(mut self: Box<Self>, ctx: ModuleContext<'_>) {
+        let handlers = ctx.handlers;
         let nav_rx = self
             .nav_rx
             .take()
             .expect("NavigationModule already initialized");
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate", move |cmd, _ctx| {
+        handlers.on_builtin("navigate", move |cmd, _ctx| {
             if let Command::Navigate {
                 location,
                 session,
@@ -89,21 +90,21 @@ impl Module for NavigationModule {
         });
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.up", move |cmd, _ctx| {
+        handlers.on_builtin("navigate.up", move |cmd, _ctx| {
             if let Command::NavigateUp { session, request } = cmd {
                 send_or_warn(&tx, NavCommand::Up(session, request), "navigate.up");
             }
         });
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.back", move |cmd, _ctx| {
+        handlers.on_builtin("navigate.back", move |cmd, _ctx| {
             if let Command::NavigateBack { session, request } = cmd {
                 send_or_warn(&tx, NavCommand::Back(session, request), "navigate.back");
             }
         });
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.forward", move |cmd, _ctx| {
+        handlers.on_builtin("navigate.forward", move |cmd, _ctx| {
             if let Command::NavigateForward { session, request } = cmd {
                 send_or_warn(
                     &tx,
@@ -114,7 +115,7 @@ impl Module for NavigationModule {
         });
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.refresh", move |cmd, _ctx| {
+        handlers.on_builtin("navigate.refresh", move |cmd, _ctx| {
             if let Command::Refresh { session, request } = cmd {
                 send_or_warn(
                     &tx,
@@ -125,7 +126,7 @@ impl Module for NavigationModule {
         });
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on("navigate.pipeline", move |cmd, _ctx| {
+        handlers.on_builtin("navigate.pipeline", move |cmd, _ctx| {
             if let Command::SetPipeline { session, config } = cmd {
                 send_or_warn(
                     &tx,
@@ -136,7 +137,7 @@ impl Module for NavigationModule {
         });
 
         let tx = self.nav_tx.clone();
-        ctx.handlers.on_session_destroy(move |session, _ctx| {
+        handlers.on_session_destroy(move |session, _ctx| {
             send_or_warn(
                 &tx,
                 NavCommand::RemoveSession(session),

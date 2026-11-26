@@ -30,10 +30,11 @@ impl SearchModule {
 
 impl Module for SearchModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
+        let handlers = ctx.handlers;
         let (search_tx, search_rx) = flume::unbounded::<SearchCommand>();
 
         let tx = search_tx.clone();
-        ctx.handlers.on_async("search", move |cmd, ctx| {
+        handlers.on_builtin_async("search", move |cmd, ctx| {
             let tx = tx.clone();
             Box::pin(async move {
                 if let Command::Search {
@@ -64,14 +65,14 @@ impl Module for SearchModule {
         });
 
         let tx = search_tx.clone();
-        ctx.handlers.on("search.cancel", move |cmd, _ctx| {
+        handlers.on_builtin("search.cancel", move |cmd, _ctx| {
             if let Command::CancelSearch { session } = cmd {
                 send_or_warn(&tx, SearchCommand::Cancel(session), "search.cancel");
             }
         });
 
         let tx = search_tx.clone();
-        ctx.handlers.on_session_destroy(move |session, _ctx| {
+        handlers.on_session_destroy(move |session, _ctx| {
             send_or_warn(
                 &tx,
                 SearchCommand::Cancel(session),

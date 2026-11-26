@@ -20,7 +20,6 @@
 //! assert!(matches!(command, OpsCommand::Delete { .. }));
 //! ```
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::api::events::Event;
@@ -40,7 +39,7 @@ use super::support::{
     emit_operation_progress, invalidate_parent_cache, invalidate_subtree_cache,
     operation_complete_event, operation_cx, operation_error, remove_operation_if_current,
 };
-use super::target::{affected_location, resolve_direct_target, resolve_named_target};
+use super::target::{affected_location, resolve_direct_targets, resolve_named_target};
 
 impl Operator {
     pub(super) async fn delete(
@@ -52,27 +51,23 @@ impl Operator {
         operation: OperationId,
         event_mode: OperationEventMode,
     ) {
-        let mut paths: Vec<(LocationRef, PathBuf)> = Vec::new();
-        for target in targets {
-            let path = match resolve_direct_target(
-                &self.registry,
-                &target,
-                OperationKind::Delete,
-                self.provider.capabilities(),
-            ) {
-                Ok(path) => path,
-                Err(error) => {
-                    send_or_warn_async(
-                        &self.events,
-                        operation_error(error, session, request, operation),
-                        "operator: delete resolve",
-                    )
-                    .await;
-                    return;
-                }
-            };
-            paths.push((target, path));
-        }
+        let paths = match resolve_direct_targets(
+            &self.registry,
+            &targets,
+            OperationKind::Delete,
+            self.provider.capabilities(),
+        ) {
+            Ok(paths) => paths,
+            Err(error) => {
+                send_or_warn_async(
+                    &self.events,
+                    operation_error(error, session, request, operation),
+                    "operator: delete resolve",
+                )
+                .await;
+                return;
+            }
+        };
 
         let cancel = self.arm_operation(session, operation);
         let deadline = self.default_timeout.map(|t| Instant::now() + t);
@@ -91,7 +86,7 @@ impl Operator {
             let mut affected = Vec::new();
             let mut items_done = 0usize;
 
-            for (location, path) in paths {
+            for (location, path) in targets.into_iter().zip(paths) {
                 if cancel.is_cancelled() {
                     emit_operation_progress(
                         &events,

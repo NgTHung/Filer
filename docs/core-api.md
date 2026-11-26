@@ -18,6 +18,10 @@ Every public command that names a file uses `LocationRef`. The dispatch key rout
 
 Results arrive as `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, and `ExtendedMetadataLoaded`. Listing and search rows use `NodeEntry`.
 
+`FilerCore::send()` confirms delivery to the command channel only. Core validates a command after submission. Read events for validation errors and file operation outcomes.
+
+File operations use the operating system permissions of the user running Core. Use the native Core API with clients you trust with that access. Create and Rename require a single native filename component. Copy, Move, and Delete require at least one source or target.
+
 ### Wire format
 
 `WireCommand` is the serde form of every built-in command. JSON uses an internal `type` tag with snake_case labels such as `navigate` and `ops_copy`. Convert with `Command::from(wire)` and `WireCommand::try_from(command)`. An unknown tag fails deserialization instead of reaching a handler.
@@ -124,5 +128,7 @@ Event::Error {
 ```
 
 Branch on `code`, which is stable. Show `message` to the user, but do not parse it. `target` names the failed object when core knows it, and `context` carries structured detail, such as the provider that timed out or the source and destination of a write collision. Core derives `recoverable` from `code`.
+
+Command rejections carry the Session, Request, and Operation IDs supplied by the command. Core reports `SessionUnknown` for an unknown Session and `UnsupportedOperation` when a command handler is unavailable.
 
 Build errors with `CoreError` helpers such as `CoreError::not_found(path)`, `CoreError::permission_denied(path)`, `CoreError::location_unresolved(id)`, `CoreError::cancelled()`, `CoreError::timed_out(message)`, and `CoreError::from_io_error(err, path)`. Emit them with `Event::from_error()`, `Event::from_request_error()`, or `Event::from_operation_error()`. These helpers keep the request and operation correlation and emit a structured `tracing` event. `filer-core` never installs a tracing subscriber, so the application decides where diagnostics go.
