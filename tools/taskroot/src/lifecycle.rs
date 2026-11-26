@@ -409,12 +409,6 @@ fn render_new_task(project: &TaskProject, task: &NewTask) -> Result<String, Task
         content.push_str(reason.trim());
         content.push_str("\n\n");
     }
-    if let Some(rationale) = &task.rationale {
-        content.push_str("## Rationale\n\n");
-        content.push_str(rationale.trim());
-        content.push_str("\n\n");
-        return Ok(content);
-    }
 
     let task_name = format!("{}:{}", task.domain, task.id);
     let criteria_heading = criteria_heading(
@@ -431,6 +425,12 @@ fn render_new_task(project: &TaskProject, task: &NewTask) -> Result<String, Task
             let marker = if criterion.checked { "x" } else { " " };
             content.push_str(&format!("- [{marker}] {}\n", criterion.text.trim()));
         }
+    }
+
+    if let Some(rationale) = &task.rationale {
+        content.push_str("\n## Rationale\n\n");
+        content.push_str(rationale.trim());
+        content.push_str("\n\n");
     }
 
     Ok(content)
