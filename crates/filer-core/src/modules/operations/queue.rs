@@ -19,31 +19,35 @@ pub(crate) enum AdmissionError {
     Full,
 }
 
-pub(crate) struct MutationQueue<T> {
+pub(crate) struct MutationQueue<T, F = T> {
     waiting: VecDeque<(OperationId, T)>,
+    paused: Option<(OperationId, F)>,
     running: Option<(OperationId, CancelSignal)>,
 }
 
-impl<T> Default for MutationQueue<T> {
+impl<T, F> Default for MutationQueue<T, F> {
     fn default() -> Self {
         Self {
             waiting: VecDeque::new(),
             running: None,
+            paused: None,
         }
     }
 }
 
-impl<T> MutationQueue<T> {
+impl<T, F> MutationQueue<T, F> {
     pub(crate) fn admit(
         &mut self,
         id: OperationId,
         work: T,
         capacity: usize,
     ) -> Result<(), AdmissionError> {
-        if self.running_id() == Some(id) || self.waiting.iter().any(|(queued, _)| *queued == id) {
+        if self.contains(id) {
             return Err(AdmissionError::Duplicate);
         }
-        if self.waiting.len() + usize::from(self.running.is_some()) >= capacity {
+        if self.waiting.len() + usize::from(self.running.is_some() || self.paused.is_some())
+            >= capacity
+        {
             return Err(AdmissionError::Full);
         }
         self.waiting.push_back((id, work));
@@ -52,6 +56,44 @@ impl<T> MutationQueue<T> {
 
     pub(crate) fn front(&self) -> Option<&T> {
         self.waiting.front().map(|(_, work)| work)
+    }
+
+    pub(crate) fn waiting(&self) -> impl Iterator<Item = &T> {
+        self.waiting.iter().map(|(_, work)| work)
+    }
+
+    pub(crate) fn contains(&self, id: OperationId) -> bool {
+        self.running_id() == Some(id)
+            || self.paused_id() == Some(id)
+            || self.waiting.iter().any(|(queued, _)| *queued == id)
+    }
+
+    pub(crate) fn pause(&mut self, id: OperationId, work: F) {
+        self.paused = Some((id, work));
+    }
+
+    pub(crate) fn paused_id(&self) -> Option<OperationId> {
+        self.paused.as_ref().map(|(id, _)| *id)
+    }
+
+    pub(crate) fn paused_work_mut(&mut self) -> Option<&mut F> {
+        self.paused.as_mut().map(|(_, work)| work)
+    }
+
+    pub(crate) fn continue_after(&mut self, failed: OperationId) -> bool {
+        if self.paused_id() != Some(failed) {
+            return false;
+        }
+        self.paused = None;
+        true
+    }
+
+    pub(crate) fn retry(&mut self, failed: OperationId, id: OperationId, work: T) -> bool {
+        if self.contains(id) || !self.continue_after(failed) {
+            return false;
+        }
+        self.waiting.push_front((id, work));
+        true
     }
 
     pub(crate) fn waiting_mut(&mut self) -> impl Iterator<Item = &mut T> {
@@ -63,7 +105,7 @@ impl<T> MutationQueue<T> {
     }
 
     pub(crate) fn start(&mut self) -> Option<(OperationId, T, CancelSignal)> {
-        if self.running.is_some() {
+        if self.running.is_some() || self.paused.is_some() {
             return None;
         }
         let (id, work) = self.waiting.pop_front()?;
@@ -96,6 +138,6 @@ impl<T> MutationQueue<T> {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.running.is_none() && self.waiting.is_empty()
+        self.running.is_none() && self.waiting.is_empty() && self.paused.is_none()
     }
 }
