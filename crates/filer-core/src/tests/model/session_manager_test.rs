@@ -146,6 +146,7 @@ mod session_manager_tests {
             session: id1,
             request: None,
             operation: None,
+            affected: None,
         };
         mgr.send_to(id1, event).unwrap();
 
@@ -182,6 +183,7 @@ mod session_manager_tests {
             session: SessionId::DEFAULT, // broadcast, so session field is illustrative
             request: None,
             operation: None,
+            affected: None,
         };
         mgr.broadcast(event);
 
@@ -210,6 +212,7 @@ mod session_manager_tests {
             session: SessionId::DEFAULT,
             request: None,
             operation: None,
+            affected: None,
         };
         mgr.broadcast(event);
     }
@@ -230,6 +233,7 @@ mod session_manager_tests {
             session: id,
             request: None,
             operation: None,
+            affected: None,
         };
         let result = mgr.send_to(id, event);
         assert!(result.is_ok());
@@ -256,6 +260,7 @@ mod session_manager_tests {
             session: bogus,
             request: None,
             operation: None,
+            affected: None,
         };
         let result = mgr.send_to(bogus, event);
         assert!(result.is_err());
@@ -285,6 +290,7 @@ mod session_manager_tests {
             session: id,
             request: None,
             operation: None,
+            affected: None,
         };
         let result = mgr.send_to(id, event);
         assert!(result.is_err());
@@ -427,6 +433,7 @@ mod session_manager_tests {
             session: SessionId::DEFAULT,
             request: None,
             operation: None,
+            affected: None,
         };
         mgr.broadcast(event);
 
@@ -454,6 +461,7 @@ mod session_manager_tests {
                 session: id,
                 request: None,
                 operation: None,
+                affected: None,
             };
             mgr.send_to(id, event).unwrap();
         }

@@ -7,12 +7,18 @@
 //! - `ops.rename` — rename a direct-local Location
 //! - `ops.create_folder` — create a folder in a direct-local Location
 //! - `ops.create_file` — create a file in a direct-local Location
-//! - `ops.cancel` — cancel a specific active operation
+//! - `ops.cancel` — cancel a specific waiting or running operation
+//! - `ops.inspect` — report the Session's mutation queue
+//! - `ops.resolve` — recover a paused mutation queue
 
 mod command;
+mod execution;
 mod mutation;
 pub mod operator;
+mod plan;
 pub mod preflight;
+pub(crate) mod queue;
+mod recovery;
 mod support;
 pub mod target;
 mod transfer;
@@ -26,6 +32,9 @@ use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn;
 use flume::Sender;
 use operator::{OperationEventMode, Operator, OpsCommand};
+
+/// Maximum accepted operations per Session, including the running operation.
+pub const DEFAULT_OPERATION_QUEUE_CAPACITY: usize = 16;
 
 /// Operations module — owns the Operator actor.
 pub struct OperationsModule {
@@ -218,6 +227,39 @@ impl Module for OperationsModule {
                     &tx,
                     OpsCommand::CancelOperation { session, operation },
                     "ops.cancel",
+                );
+            }
+        });
+
+        let tx = self.ops_tx.clone();
+        handlers.on_builtin("ops.inspect", move |cmd, _ctx| {
+            if let Command::InspectOperationQueue { session, request } = cmd {
+                send_or_warn(
+                    &tx,
+                    OpsCommand::InspectQueue { session, request },
+                    "ops.inspect",
+                );
+            }
+        });
+
+        let tx = self.ops_tx.clone();
+        handlers.on_builtin("ops.resolve", move |cmd, _ctx| {
+            if let Command::ResolveOperationQueue {
+                session,
+                request,
+                failed,
+                resolution,
+            } = cmd
+            {
+                send_or_warn(
+                    &tx,
+                    OpsCommand::ResolveQueue {
+                        session,
+                        request,
+                        failed,
+                        resolution,
+                    },
+                    "ops.resolve",
                 );
             }
         });

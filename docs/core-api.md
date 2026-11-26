@@ -2,6 +2,18 @@
 
 This page describes how `filer-core` behaves at its public boundary: which commands exist, how directory pages and cursors work, when caches drop entries, and how errors reach a client. Read the [crate README](../crates/filer-core/README.md) first for the overall model. Use this page when you build a client or change a contract.
 
+## File operations
+
+Use a fresh `OperationId` and `RequestId` when submitting a mutation. A successful send puts the command on the runtime channel. `OperationAccepted` confirms that Core validated it and reserved a slot in the Session's FIFO queue. `OperationStarted` identifies the transition from waiting to execution. The terminal event is `OperationComplete` on success or a correlated `Error` on failure or cancellation.
+
+A Session has 16 operation slots. The running operation and waiting operations consume slots, including slots reserved during transfer preflight. A pause retains the failed operation's slot for a possible retry. A full queue rejects the submission with `OperationQueueFull`. `CancelOperation` can remove a waiting operation or signal a running one when every slot is occupied. The running slot stays reserved until the active write settles.
+
+### Recover a paused queue
+
+A failed or interrupted operation pauses its Session when work is waiting. The terminal `Error` carries `affected` Locations that Core can confirm and `OperationQueuePaused` lists the accepted operations waiting for a decision. A rejected submission has no `affected` field value. Use `InspectOperationQueue` to recover the running, waiting, and paused state after a view closes.
+
+Send `ResolveOperationQueue` with the failed operation ID. `Continue` starts the remaining operations in order. `Cancel` settles the waiting operations with correlated cancellation errors. `Retry` requires a fresh operation ID and uses the reserved slot to run an explicitly validated attempt ahead of the waiting operations. Transfer retries require unoccupied destinations. Core rejects a retry after an attempted delete, rename, or move write when it cannot verify the original sources. When retry validation fails, the pause stays in place and you can choose another resolution. Recovery leaves any partial changes in place.
+
 ## Commands
 
 Every public command that names a file uses `LocationRef`. The dispatch key routes a command to the module that handles it.
@@ -15,6 +27,7 @@ Every public command that names a file uses `LocationRef`. The dispatch key rout
 | Metadata | `LoadMetadata`, `LoadExtendedMetadata` | `metadata.load`, `metadata.extended` |
 | Watch | `Watch`, `Unwatch`, `UnwatchSession` | `watch`, `watch.remove`, `watch.session_remove` |
 | Write | `Copy`, `Move`, `Delete`, `Rename`, `CreateFolder`, `CreateFile`, `CancelOperation` | `ops.*` |
+| Queue | `InspectOperationQueue`, `ResolveOperationQueue` | `ops.inspect`, `ops.resolve` |
 
 Results arrive as `DirectoryLoaded`, `DirectoryPageLoaded`, `SearchResults`, `FsChanged`, `OperationComplete`, `PreviewReady`, `PreviewFailed`, `MetadataLoaded`, and `ExtendedMetadataLoaded`. Listing and search rows use `NodeEntry`.
 

@@ -205,6 +205,18 @@ impl std::fmt::Display for OperationId {
     }
 }
 
+/// A client's decision for the remainder of a paused Session mutation queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum OperationQueueResolution {
+    /// Start the remaining operations in admission order.
+    Continue,
+    /// Cancel the remaining operations.
+    Cancel,
+    /// Validate a fresh attempt and run it before the remaining operations.
+    Retry { operation: OperationId },
+}
+
 struct StringEnumVisitor<T, F>
 where
     F: Fn(&str) -> T,

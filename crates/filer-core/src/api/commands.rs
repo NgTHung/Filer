@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::PreviewOptions;
 use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::LocationRef;
-use crate::model::operation::OperationId;
+use crate::model::operation::{OperationId, OperationQueueResolution};
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
@@ -164,6 +164,20 @@ pub enum Command {
         operation: OperationId,
     },
 
+    /// Read the accepted work and pause state of this Session's queue.
+    InspectOperationQueue {
+        session: SessionId,
+        request: RequestId,
+    },
+
+    /// Resolve the pause caused by a specific terminal operation.
+    ResolveOperationQueue {
+        session: SessionId,
+        request: RequestId,
+        failed: OperationId,
+        resolution: OperationQueueResolution,
+    },
+
     /// Location-native watch for direct-local locations.
     Watch {
         location: LocationRef,
@@ -244,6 +258,8 @@ impl Command {
             | Command::CancelPreview { session }
             | Command::CancelScan { session }
             | Command::CancelOperation { session, .. }
+            | Command::InspectOperationQueue { session, .. }
+            | Command::ResolveOperationQueue { session, .. }
             | Command::Watch { session, .. }
             | Command::Unwatch { session, .. }
             | Command::UnwatchSession(session)
@@ -268,6 +284,8 @@ impl Command {
             | Command::Rename { request, .. }
             | Command::CreateFolder { request, .. }
             | Command::CreateFile { request, .. }
+            | Command::InspectOperationQueue { request, .. }
+            | Command::ResolveOperationQueue { request, .. }
             | Command::LoadMetadata { request, .. }
             | Command::LoadExtendedMetadata { request, .. }
             | Command::Scan { request, .. }
@@ -296,6 +314,10 @@ impl Command {
             | Command::CreateFolder { operation, .. }
             | Command::CreateFile { operation, .. }
             | Command::CancelOperation { operation, .. } => Some(*operation),
+            Command::ResolveOperationQueue {
+                resolution: OperationQueueResolution::Retry { operation },
+                ..
+            } => Some(*operation),
             _ => None,
         }
     }
@@ -328,6 +350,8 @@ impl Command {
             Command::SetPipeline { .. } => "navigate.pipeline",
             Command::CancelScan { .. } => "scan.cancel",
             Command::CancelOperation { .. } => "ops.cancel",
+            Command::InspectOperationQueue { .. } => "ops.inspect",
+            Command::ResolveOperationQueue { .. } => "ops.resolve",
             Command::Watch { .. } => "watch",
             Command::Unwatch { .. } => "watch.remove",
             Command::UnwatchSession(..) => "watch.session_remove",

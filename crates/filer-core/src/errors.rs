@@ -26,6 +26,7 @@ pub enum ErrorKind {
     InvalidData,
     InvalidInput,
     Conflict,
+    Busy,
     Unsupported,
     Unknown,
 }
@@ -41,6 +42,7 @@ impl ErrorKind {
                 | ErrorKind::Cancelled
                 | ErrorKind::Timeout
                 | ErrorKind::Network
+                | ErrorKind::Busy
                 | ErrorKind::Conflict
                 | ErrorKind::Unsupported
         )
@@ -65,6 +67,8 @@ pub enum ErrorCode {
     DataInvalid,
     InputInvalid,
     Collision,
+    OperationQueueFull,
+    OperationQueueStateChanged,
     StaleRequest,
     SessionUnknown,
     NavigationUnavailable,
@@ -96,7 +100,8 @@ impl ErrorCode {
             | ErrorCode::StaleRequest
             | ErrorCode::SessionUnknown
             | ErrorCode::NavigationUnavailable => ErrorKind::InvalidInput,
-            ErrorCode::Collision => ErrorKind::Conflict,
+            ErrorCode::Collision | ErrorCode::OperationQueueStateChanged => ErrorKind::Conflict,
+            ErrorCode::OperationQueueFull => ErrorKind::Busy,
             ErrorCode::ProviderCapabilityUnavailable => ErrorKind::Unsupported,
             ErrorCode::Unknown => ErrorKind::Unknown,
         }
@@ -115,6 +120,8 @@ impl ErrorCode {
                 | ErrorCode::Cancelled
                 | ErrorCode::TimedOut
                 | ErrorCode::NetworkFailed
+                | ErrorCode::OperationQueueStateChanged
+                | ErrorCode::OperationQueueFull
                 | ErrorCode::Collision
                 | ErrorCode::StaleRequest
                 | ErrorCode::SessionUnknown

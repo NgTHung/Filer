@@ -26,7 +26,7 @@ use crate::PreviewOptions;
 use crate::api::commands::Command;
 use crate::model::directory::DirectoryLoadOptions;
 use crate::model::location::LocationRef;
-use crate::model::operation::OperationId;
+use crate::model::operation::{OperationId, OperationQueueResolution};
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
@@ -208,6 +208,16 @@ built_in_wire_commands! {
     CancelOperation {
         session: SessionId,
         operation: OperationId,
+    },
+    InspectOperationQueue {
+        session: SessionId,
+        request: RequestId,
+    },
+    ResolveOperationQueue {
+        session: SessionId,
+        request: RequestId,
+        failed: OperationId,
+        resolution: OperationQueueResolution,
     },
     Watch {
         location: LocationRef,

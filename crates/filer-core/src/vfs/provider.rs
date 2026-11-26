@@ -163,6 +163,15 @@ pub trait FsProvider: Send + Sync {
     /// Check if path exists
     async fn exists(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<bool, CoreError>;
 
+    /// Check whether a destination name is occupied, including dangling links.
+    async fn mutation_target_exists(
+        &self,
+        path: &Path,
+        cx: &ProviderCx<'_>,
+    ) -> Result<bool, CoreError> {
+        self.exists(path, cx).await
+    }
+
     /// Get metadata for a path
     async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError>;
 
@@ -227,6 +236,14 @@ pub trait FsProvider: Send + Sync {
             "Provider {} cannot verify transfer identity and ancestry",
             self.scheme()
         )))
+    }
+
+    /// Whether dropping a write future stops the underlying mutation.
+    ///
+    /// Providers that dispatch writes to blocking workers must return false so
+    /// the operation queue can wait for the write to settle before advancing.
+    fn mutation_futures_can_be_dropped(&self) -> bool {
+        true
     }
 
     async fn copy(&self, _src: &Path, dst: &Path, _cx: &ProviderCx<'_>) -> Result<(), CoreError> {
