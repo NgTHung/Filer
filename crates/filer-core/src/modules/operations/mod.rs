@@ -13,6 +13,8 @@ mod command;
 mod mutation;
 pub mod operator;
 pub mod preflight;
+#[cfg(test)]
+pub(crate) mod queue;
 mod support;
 pub mod target;
 mod transfer;
@@ -26,6 +28,9 @@ use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn;
 use flume::Sender;
 use operator::{OperationEventMode, Operator, OpsCommand};
+
+/// Maximum accepted operations per Session, including the running operation.
+pub const DEFAULT_OPERATION_QUEUE_CAPACITY: usize = 16;
 
 /// Operations module — owns the Operator actor.
 pub struct OperationsModule {

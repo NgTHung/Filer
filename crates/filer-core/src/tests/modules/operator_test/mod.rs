@@ -490,6 +490,7 @@ include!("move_tests.rs");
 
 include!("delete_tests.rs");
 
+mod queue_tests;
 include!("rename_tests.rs");
 
 include!("create_folder_tests.rs");
