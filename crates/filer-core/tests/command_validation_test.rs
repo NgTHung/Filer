@@ -5,7 +5,8 @@ use std::time::Duration;
 use filer_core::model::session::SessionId;
 use filer_core::modules::operations::OperationsModule;
 use filer_core::{
-    Command, ErrorCode, Event, FilerCore, LocalFs, Location, LocationRef, OperationId, RequestId,
+    Command, ErrorCode, Event, FilerCore, LocalFs, Location, LocationDescriptor, LocationRef,
+    OperationId, RequestId,
 };
 use tokio::time::timeout;
 
@@ -177,4 +178,205 @@ async fn create_and_rename_accept_native_names() {
     assert!(!root.path().join(original).exists());
     assert!(root.path().join(renamed).is_file());
     assert!(root.path().join("example folder").is_dir());
+}
+
+#[tokio::test]
+async fn successful_submission_can_be_followed_by_correlated_rejection() {
+    let root = tempfile::tempdir().unwrap();
+    let core = FilerCore::new();
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let request = RequestId::new();
+    let operation = OperationId::new();
+    let unknown = SessionId::new();
+    let parent = local_ref(root.path());
+
+    for (command, code) in [
+        (
+            Command::CreateFile {
+                parent: parent.clone(),
+                name: "unhandled.txt".into(),
+                session,
+                request,
+                operation,
+            },
+            ErrorCode::UnsupportedOperation,
+        ),
+        (
+            Command::CreateFile {
+                parent,
+                name: "unknown-session.txt".into(),
+                session: unknown,
+                request,
+                operation,
+            },
+            ErrorCode::SessionUnknown,
+        ),
+        (
+            Command::CancelOperation { session, operation },
+            ErrorCode::UnsupportedOperation,
+        ),
+        (Command::DestroySession(unknown), ErrorCode::SessionUnknown),
+        (
+            Command::Extension {
+                key: "unloaded.extension".into(),
+                payload: Arc::new(()),
+                session,
+            },
+            ErrorCode::UnsupportedOperation,
+        ),
+    ] {
+        core.send(command.clone()).unwrap();
+        assert_error(&command, terminal_event(&events).await, code);
+    }
+
+    core.load(OperationsModule::new(Arc::new(LocalFs::new())));
+    let command = Command::CreateFile {
+        parent: local_ref(root.path()),
+        name: "routed.txt".into(),
+        session,
+        request: RequestId::new(),
+        operation: OperationId::new(),
+    };
+    core.send(command).unwrap();
+    assert!(matches!(
+        terminal_event(&events).await,
+        Event::OperationComplete { success: true, .. }
+    ));
+    assert!(root.path().join("routed.txt").is_file());
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn extension_cannot_invoke_a_builtin_handler_with_an_unrelated_payload() {
+    let core = FilerCore::new();
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let command = Command::Extension {
+        key: "session.handshake".into(),
+        payload: Arc::new(()),
+        session,
+    };
+    core.send(command.clone()).unwrap();
+    let event = timeout(TIMEOUT, events.recv_async())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_error(&command, event, ErrorCode::UnsupportedOperation);
+
+    let (tx, rx) = flume::bounded(1);
+    core.on("example.extension", move |command, _| {
+        tx.send(command.session_id()).unwrap();
+    });
+    core.send(Command::Extension {
+        key: "example.extension".into(),
+        payload: Arc::new(()),
+        session,
+    })
+    .unwrap();
+    assert_eq!(
+        timeout(TIMEOUT, rx.recv_async()).await.unwrap().unwrap(),
+        Some(session)
+    );
+}
+
+#[tokio::test]
+async fn invalid_command_targets_report_the_supplied_correlation() {
+    let root = tempfile::tempdir().unwrap();
+    let core = FilerCore::with_defaults();
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let unresolved = LocationRef::Id(Location::local(root.path()).id());
+    let unsupported = LocationRef::from_location(&Location::new(
+        LocationDescriptor::provider_profile("remote", "missing", root.path()),
+    ));
+
+    for (command, code) in [
+        (
+            Command::Search {
+                query: "type:unknown".into(),
+                root: local_ref(root.path()),
+                session,
+                request: RequestId::new(),
+            },
+            ErrorCode::InputInvalid,
+        ),
+        (
+            Command::LoadMetadata {
+                location: unresolved.clone(),
+                session,
+                request: RequestId::new(),
+            },
+            ErrorCode::LocationUnresolved,
+        ),
+        (
+            Command::Delete {
+                locations: vec![unsupported.clone()],
+                trash: false,
+                session,
+                request: RequestId::new(),
+                operation: OperationId::new(),
+            },
+            ErrorCode::UnsupportedProvider,
+        ),
+        (
+            Command::Unwatch {
+                location: unresolved,
+                session,
+            },
+            ErrorCode::LocationUnresolved,
+        ),
+        (
+            Command::Unwatch {
+                location: unsupported,
+                session,
+            },
+            ErrorCode::UnsupportedProvider,
+        ),
+    ] {
+        core.send(command.clone()).unwrap();
+        assert_error(&command, terminal_event(&events).await, code);
+    }
+}
+
+#[tokio::test]
+async fn empty_mutation_batches_reject_as_invalid_input() {
+    let root = tempfile::tempdir().unwrap();
+    let core = FilerCore::new();
+    core.load(OperationsModule::new(Arc::new(LocalFs::new())));
+    let events = core.event_receiver();
+    let session = create_session(&core, &events).await;
+    let destination = root.path().join("unused");
+
+    for command in [
+        Command::Copy {
+            sources: vec![],
+            destination: local_ref(&destination),
+            session,
+            request: RequestId::new(),
+            operation: OperationId::new(),
+        },
+        Command::Move {
+            sources: vec![],
+            destination: local_ref(&destination),
+            session,
+            request: RequestId::new(),
+            operation: OperationId::new(),
+        },
+        Command::Delete {
+            locations: vec![],
+            trash: false,
+            session,
+            request: RequestId::new(),
+            operation: OperationId::new(),
+        },
+    ] {
+        core.send(command.clone()).unwrap();
+        assert_error(
+            &command,
+            terminal_event(&events).await,
+            ErrorCode::InputInvalid,
+        );
+    }
+    assert!(!destination.exists());
 }
