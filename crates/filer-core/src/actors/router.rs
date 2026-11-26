@@ -1,37 +1,28 @@
-//! Command Router — generic command dispatcher with session validation.
+//! # Command router
 //!
-//! The Router sits between the API layer and the actor system. It receives
-//! `Command` from the FilerCore handle and dispatches them to handlers
-//! registered in the [`HandlerRegistry`] by modules.
+//! The router validates Session admission before dispatch. It keeps recovery
+//! commands routable while separate tasks await Session closure.
 //!
-//! ## Dispatch flow
-//!
-//! 1. Receive `Command` from API channel
-//! 2. Validate session via `Command::session_id()` + `SessionManager`
-//! 3. Look up handler by `Command::key()` in the `HandlerRegistry`
-//! 4. Call the handler (which forwards to the appropriate actor channel)
-//! 5. For `DestroySession`, run all registered destroy hooks
-//!
-//! ## Session lifecycle
-//!
-//! Session creation (Handshake) and destruction (DestroySession) are
-//! registered as normal handlers during `FilerCore::new()`. Modules
-//! register `on_session_destroy` hooks for per-module cleanup.
-//!
-//! ## The Router knows nothing about actors
-//!
-//! Unlike the previous design, the Router holds no actor-specific channels.
-//! All routing knowledge lives in the handler closures registered by modules.
-//! This makes the system open for extension without modifying the Router.
+//! ```no_run
+//! # async fn example() -> Result<(), filer_core::CoreError> {
+//! let core = filer_core::FilerCore::new();
+//! let request = core.next_request_id();
+//! core.send(filer_core::Command::Handshake { request })?;
+//! # Ok(())
+//! # }
+//! ```
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use flume::Receiver;
+use tokio::task::{Id, JoinSet};
 
 use crate::actors::Actor;
 use crate::api::commands::Command;
 use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry};
+use crate::api::shutdown::RouterShutdown;
 use crate::errors::CoreError;
 use crate::model::session::SessionId;
 use crate::utils::channel::send_or_warn_async;
@@ -44,6 +35,7 @@ pub struct CommandRouter {
     handlers: Arc<HandlerRegistry>,
     /// Shared context passed to every handler invocation
     ctx: HandlerContext,
+    shutdown: Option<RouterShutdown>,
 }
 
 impl CommandRouter {
@@ -56,6 +48,19 @@ impl CommandRouter {
             commands,
             handlers,
             ctx,
+            shutdown: None,
+        }
+    }
+
+    pub(crate) fn with_shutdown(mut self, shutdown: RouterShutdown) -> Self {
+        self.shutdown = Some(shutdown);
+        self
+    }
+
+    async fn shutdown_requested(&self) {
+        match &self.shutdown {
+            Some(shutdown) => shutdown.requested.cancelled().await,
+            None => std::future::pending().await,
         }
     }
 
@@ -65,29 +70,30 @@ impl CommandRouter {
     /// handles directly. Everything else is delegated to the registry.
     async fn route(&self, command: Command) {
         let session = command.session_id();
-        if let Some(session) = session
-            && !self.ctx.sessions.exists(session)
-        {
-            self.reject(&command, session, CoreError::unknown_session(session))
-                .await;
-            return;
+        if let Some(session) = session {
+            match self.ctx.sessions.is_closing(session) {
+                None => {
+                    self.reject(&command, session, CoreError::unknown_session(session))
+                        .await;
+                    return;
+                }
+                Some(true)
+                    if !matches!(
+                        &command,
+                        Command::CancelOperation { .. }
+                            | Command::InspectOperationQueue { .. }
+                            | Command::ResolveOperationQueue { .. }
+                    ) =>
+                {
+                    self.reject(&command, session, CoreError::session_closing(session))
+                        .await;
+                    return;
+                }
+                Some(_) => {}
+            }
         }
 
-        // Check if this is a session-destroy (need session_id for hooks)
-        let destroy_session = match &command {
-            Command::DestroySession(s) => Some(*s),
-            _ => None,
-        };
-
-        // Trace dispatch attempts after session validation to keep command diagnostics in one place.
-        tracing::debug!(
-            target: "filer_core::command",
-            key = command.key(),
-            session = ?session,
-            request = ?command.request_id(),
-            operation = ?command.operation_id(),
-            "command dispatched",
-        );
+        Self::trace_dispatch(&command);
 
         if let Some(command) = self.handlers.dispatch_or_return(command, &self.ctx).await {
             if let Some(session) = session {
@@ -100,13 +106,58 @@ impl CommandRouter {
                 // FilerCore always installs the sessionless Handshake handler.
                 tracing::error!(key = command.key(), "missing core lifecycle handler");
             }
+        }
+    }
+
+    fn trace_dispatch(command: &Command) {
+        tracing::debug!(
+            target: "filer_core::command",
+            key = command.key(),
+            session = ?command.session_id(),
+            request = ?command.request_id(),
+            operation = ?command.operation_id(),
+            "command dispatched",
+        );
+    }
+
+    fn start_close(
+        &self,
+        session: SessionId,
+        closing: &mut HashMap<SessionId, Id>,
+        tasks: &mut JoinSet<(SessionId, Result<(), CoreError>)>,
+    ) {
+        if closing.contains_key(&session) {
             return;
         }
+        let Some(work) = self.ctx.sessions.begin_close(session) else {
+            return;
+        };
+        let handlers = self.handlers.clone();
+        let task = tasks.spawn(async move {
+            let cleanup = async {
+                work.reads.wait().await;
+                handlers.cleanup_session(session).await
+            };
+            let (cleanup, drain) = tokio::join!(cleanup, handlers.drain_session(session));
+            work.mutations.wait().await;
+            (session, cleanup.and(drain))
+        });
+        closing.insert(session, task.id());
+    }
 
-        // Run destroy hooks after the session.destroy handler
-        if let Some(session_id) = destroy_session {
-            self.handlers.run_destroy_hooks(session_id, &self.ctx);
-        }
+    async fn finish_close(&self, session: SessionId) -> Result<(), CoreError> {
+        // A second fence orders controls routed while the first drain was completing.
+        self.handlers.drain_session(session).await?;
+        self.handlers
+            .await_destroy_hooks(session, &self.ctx)
+            .await?;
+        self.ctx.sessions.remove(session);
+        self.ctx.events.discard_session_progress(session);
+        self.ctx
+            .events
+            .send_async(Event::SessionDestroyed(session))
+            .await
+            .map_err(|_| CoreError::channel_closed("events"))
     }
 
     async fn reject(&self, command: &Command, session: SessionId, error: CoreError) {
@@ -122,8 +173,65 @@ impl CommandRouter {
 
 impl Actor for CommandRouter {
     async fn run(self) {
-        while let Ok(command) = self.commands.recv_async().await {
-            self.route(command).await;
+        let mut closing = HashMap::new();
+        let mut tasks = JoinSet::new();
+        let mut shutting_down = false;
+        let mut failure = None;
+
+        while !shutting_down || !tasks.is_empty() {
+            tokio::select! {
+                biased;
+                _ = self.shutdown_requested(), if !shutting_down => {
+                    shutting_down = true;
+                    for session in self.ctx.sessions.session_ids() {
+                        self.start_close(session, &mut closing, &mut tasks);
+                    }
+                }
+                Some(result) = tasks.join_next(), if !tasks.is_empty() => {
+                    match result {
+                        Ok((session, result)) => {
+                            closing.remove(&session);
+                            let result = match result {
+                                Ok(()) => self.finish_close(session).await,
+                                Err(error) => Err(error),
+                            };
+                            if let Err(error) = result {
+                                if shutting_down {
+                                    failure.get_or_insert_with(|| error.to_string());
+                                }
+                                self.reject(&Command::DestroySession(session), session, error).await;
+                            }
+                        }
+                        Err(error) => {
+                            closing.retain(|_, task| *task != error.id());
+                            if shutting_down {
+                                failure.get_or_insert_with(|| error.to_string());
+                            }
+                            tracing::error!(%error, "Session closure task failed");
+                        }
+                    }
+                }
+                command = self.commands.recv_async() => match command {
+                    Ok(Command::DestroySession(session)) if self.ctx.sessions.exists(session) => {
+                        Self::trace_dispatch(&Command::DestroySession(session));
+                        self.start_close(session, &mut closing, &mut tasks);
+                    }
+                    Ok(command @ Command::Handshake { .. }) if shutting_down => {
+                        self.reject(&command, SessionId::DEFAULT, CoreError::channel_closed("Session admission")).await;
+                    }
+                    Ok(command) => self.route(command).await,
+                    Err(_) => return,
+                },
+            }
+        }
+
+        if let Some(shutdown) = self.shutdown {
+            let result = failure.map_or(Ok(()), |message| {
+                Err(CoreError::actor("Session closure", message))
+            });
+            if shutdown.done.send(result).is_err() {
+                tracing::debug!("Runtime shutdown receiver closed");
+            }
         }
     }
     fn name(&self) -> &'static str {

@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 use rapidhash::fast::RandomState;
 
+use crate::CancelSignal;
+use crate::actors::native;
 use crate::api::event_sink::{EventSendError, EventSink};
 use crate::api::events::Event;
 use crate::model::registry::NodeRegistry;
@@ -68,13 +70,36 @@ impl Session {
     }
 }
 
+#[derive(Debug)]
+struct ManagedSession {
+    session: Session,
+    closing: CancelSignal,
+    work: SessionWork,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SessionWork {
+    pub(crate) reads: native::Scope,
+    pub(crate) mutations: native::Scope,
+}
+
+impl From<Session> for ManagedSession {
+    fn from(session: Session) -> Self {
+        Self {
+            session,
+            closing: CancelSignal::new(),
+            work: SessionWork::default(),
+        }
+    }
+}
+
 /// Manages multiple client sessions
 ///
 /// Clone is cheap because the session map and registry use `Arc` internally.
 #[derive(Debug, Clone)]
 pub struct SessionManager {
     /// Active sessions by ID
-    sessions: Arc<scc::HashMap<SessionId, Session, RandomState>>,
+    sessions: Arc<scc::HashMap<SessionId, ManagedSession, RandomState>>,
     /// Shared registry used to resolve compact location references across sessions.
     registry: NodeRegistry,
 }
@@ -93,7 +118,7 @@ impl SessionManager {
     pub fn create_session<E: Into<EventSink>>(&self, event_tx: E) -> SessionId {
         let id = SessionId::new();
         let session = Session::new(id, event_tx.into(), self.registry.clone());
-        let _ = self.sessions.insert_sync(id, session);
+        let _ = self.sessions.insert_sync(id, session.into());
         id
     }
 
@@ -106,13 +131,47 @@ impl SessionManager {
     ) -> SessionId {
         let id = SessionId::new();
         let session = Session::with_policy(id, event_tx.into(), self.registry.clone(), policy);
-        let _ = self.sessions.insert_sync(id, session);
+        let _ = self.sessions.insert_sync(id, session.into());
         id
     }
 
     /// Check whether a session exists (is valid)
     pub fn exists(&self, id: SessionId) -> bool {
         self.sessions.contains_sync(&id)
+    }
+
+    pub(crate) fn session_ids(&self) -> Vec<SessionId> {
+        let mut ids = Vec::new();
+        self.sessions.iter_sync(|id, _| {
+            ids.push(*id);
+            true
+        });
+        ids
+    }
+
+    pub(crate) fn is_closing(&self, id: SessionId) -> Option<bool> {
+        self.sessions
+            .read_sync(&id, |_, s| s.closing.is_cancelled())
+    }
+
+    pub(crate) fn begin_close(&self, id: SessionId) -> Option<SessionWork> {
+        self.sessions.update_sync(&id, |_, s| {
+            s.closing.cancel();
+            s.work.clone()
+        })
+    }
+
+    pub(crate) fn start_read(&self, id: SessionId) -> Option<(CancelSignal, native::Permit)> {
+        self.sessions
+            .read_sync(&id, |_, s| {
+                (!s.closing.is_cancelled()).then(|| (s.closing.clone(), s.work.reads.enter()))
+            })
+            .flatten()
+    }
+
+    pub(crate) fn start_mutation(&self, id: SessionId) -> Option<native::Permit> {
+        self.sessions
+            .read_sync(&id, |_, s| s.work.mutations.enter())
     }
 
     /// Check whether an operation is allowed for a session on a given path.
@@ -124,7 +183,7 @@ impl SessionManager {
         path: &std::path::Path,
     ) -> bool {
         self.sessions
-            .read_sync(&id, |_, s| s.policy.is_allowed(operation, path))
+            .read_sync(&id, |_, s| s.session.policy.is_allowed(operation, path))
             .unwrap_or(false)
     }
 
@@ -141,7 +200,7 @@ impl SessionManager {
     /// Broadcast an event to all sessions
     pub fn broadcast(&self, event: Event) {
         self.sessions.iter_sync(|_k, v| {
-            let _ = v.send_event(event.clone());
+            let _ = v.session.send_event(event.clone());
             true
         });
     }
@@ -150,7 +209,8 @@ impl SessionManager {
     /// Returns Err if session not found or channel closed.
     pub fn send_to(&self, session: SessionId, event: Event) -> Result<(), SendError> {
         let result = self.sessions.read_sync(&session, |_, s| {
-            s.send_event(event.clone())
+            s.session
+                .send_event(event.clone())
                 .map_err(|_| SendError::ChannelClosed)
         });
         match result {

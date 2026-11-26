@@ -104,14 +104,7 @@ impl Module for PreviewModule {
             }
         });
 
-        let tx = preview_tx.clone();
-        handlers.on_session_destroy(move |session, _ctx| {
-            send_or_warn(
-                &tx,
-                PreviewCommand::Cancel(session),
-                "preview session destroy",
-            );
-        });
+        handlers.on_cleanup("previewer", preview_tx.clone(), PreviewCommand::Close);
 
         let previewer = Previewer::new(
             preview_rx,

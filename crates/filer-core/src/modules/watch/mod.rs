@@ -99,14 +99,7 @@ impl Module for WatchModule {
             }
         });
 
-        let tx = watch_tx.clone();
-        handlers.on_session_destroy(move |session, _ctx| {
-            send_or_warn(
-                &tx,
-                WatchCommand::UnwatchSession(session),
-                "watch session destroy",
-            );
-        });
+        handlers.on_cleanup("watcher", watch_tx.clone(), WatchCommand::Close);
 
         let watcher = match self.refresh_tx {
             Some(refresh_tx) => watcher::Watcher::with_refresh(

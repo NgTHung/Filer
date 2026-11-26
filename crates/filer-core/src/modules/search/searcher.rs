@@ -17,7 +17,7 @@ use crate::model::query::SearchQuery;
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
-use crate::utils::channel::send_or_warn_async;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 
@@ -35,6 +35,8 @@ pub enum SearchEventMode {
     reason = "Keep the public command payload inline to avoid an allocation for each search request."
 )]
 pub enum SearchCommand {
+    #[doc(hidden)]
+    Close(SessionId, crate::api::module::CloseAck),
     Search {
         query: SearchQuery,
         root: LocationRef,
@@ -109,7 +111,7 @@ impl Searcher {
         let cancel = self.active_search.arm(session);
         let deadline = self.search_timeout.map(|timeout| Instant::now() + timeout);
 
-        work.spawn(cancel.clone(), async move {
+        work.spawn_read(session, cancel.clone(), async move {
             Self::search(
                 query,
                 root,
@@ -244,6 +246,11 @@ impl Actor for Searcher {
     async fn run(self) {
         loop {
             match self.commands.recv_async().await {
+                Ok(SearchCommand::Close(session, done)) => {
+                    self.cancel_search(session);
+                    self.latest_searches.remove_sync(&session);
+                    send_or_warn(&done, Ok(()), "search Session cleanup");
+                }
                 Ok(SearchCommand::Cancel(s)) => {
                     self.cancel_search(s);
                 }

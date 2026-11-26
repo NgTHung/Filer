@@ -1,15 +1,18 @@
 pub mod cancel;
+pub(crate) mod native;
 pub mod router;
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tokio::sync::Notify;
 use tokio::task::{JoinHandle, JoinSet};
 
+use crate::api::session_manager::SessionManager;
 use crate::errors::CoreError;
+use crate::model::session::SessionId;
 use cancel::CancellationToken;
 
 /// Trait for all actors in the system.
@@ -54,6 +57,7 @@ struct WorkState {
 }
 
 struct WorkTrackerInner {
+    sessions: OnceLock<SessionManager>,
     state: Mutex<WorkState>,
     notify: Notify,
 }
@@ -78,6 +82,7 @@ impl WorkTracker {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(WorkTrackerInner {
+                sessions: OnceLock::new(),
                 state: Mutex::new(WorkState {
                     closed: false,
                     shutting_down: false,
@@ -97,6 +102,70 @@ impl WorkTracker {
     where
         F: Future<Output = ()> + Send + 'static,
     {
+        self.spawn_inner(token, async {
+            let native = native::Scope::default();
+            native.enter().run(future).await;
+            native.wait().await;
+        })
+    }
+
+    pub(crate) fn set_sessions(&self, sessions: SessionManager) {
+        let _ = self.inner.sessions.set(sessions);
+    }
+
+    pub(crate) fn accepts_new_work(&self, session: SessionId) -> bool {
+        self.inner
+            .sessions
+            .get()
+            .is_none_or(|sessions| sessions.is_closing(session) == Some(false))
+    }
+
+    pub(crate) fn spawn_read(
+        &self,
+        session: SessionId,
+        token: CancellationToken,
+        future: impl Future<Output = ()> + Send + 'static,
+    ) -> bool {
+        let Some(sessions) = self.inner.sessions.get() else {
+            return self.spawn(token, future);
+        };
+        let Some((closing, permit)) = sessions.start_read(session) else {
+            token.cancel();
+            return false;
+        };
+        self.spawn_inner(
+            token.clone(),
+            permit.run(async move {
+                tokio::select! {
+                    biased;
+                    _ = closing.cancelled() => token.cancel(),
+                    _ = future => {}
+                }
+            }),
+        )
+    }
+
+    pub(crate) fn spawn_operation(
+        &self,
+        session: SessionId,
+        token: CancellationToken,
+        future: impl Future<Output = ()> + Send + 'static,
+    ) -> bool {
+        let Some(sessions) = self.inner.sessions.get() else {
+            return self.spawn(token, future);
+        };
+        let Some(permit) = sessions.start_mutation(session) else {
+            token.cancel();
+            return false;
+        };
+        self.spawn_inner(token, permit.run(future))
+    }
+
+    fn spawn_inner(
+        &self,
+        token: CancellationToken,
+        future: impl Future<Output = ()> + Send + 'static,
+    ) -> bool {
         let mut state = self
             .inner
             .state

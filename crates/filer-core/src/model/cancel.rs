@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Notify;
 
 /// A cancellation flag with both polling and awaiting access.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CancelSignal {
     cancelled: Arc<AtomicBool>,
     notify: Arc<Notify>,

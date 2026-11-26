@@ -95,9 +95,16 @@ impl WatchProvider for LocalWatchProvider {
     async fn unwatch(&self, path: &Path) -> Result<(), CoreError> {
         let mut guard = self.debouncer.lock().unwrap();
         if let Some(debouncer) = guard.as_mut() {
-            debouncer.unwatch(path).map_err(|e| {
-                CoreError::io(path.to_path_buf(), format!("notify unwatch failed: {e}"))
-            })?;
+            match debouncer.unwatch(path) {
+                Ok(()) => {}
+                Err(error) if matches!(error.kind, notify::ErrorKind::WatchNotFound) => {}
+                Err(error) => {
+                    return Err(CoreError::io(
+                        path,
+                        format!("notify unwatch failed: {error}"),
+                    ));
+                }
+            }
         }
         Ok(())
     }

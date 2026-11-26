@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use std::fs::{self, File};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+use crate::actors::native::{file_io, read_once, spawn_blocking};
 
 use crate::errors::CoreError;
 use crate::model::directory::{DirectoryPageRequest, DirectoryPageResult};
@@ -100,15 +102,9 @@ impl FsProvider for LocalFs {
 
     async fn read(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<Vec<u8>, CoreError> {
         Self::check_cancel(cx)?;
-        let mut f = File::open(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
+        let bytes = file_io(path, |path| fs::read(path)).await?;
         Self::check_cancel(cx)?;
-        Ok(buf)
+        Ok(bytes)
     }
 
     async fn read_range(
@@ -119,29 +115,19 @@ impl FsProvider for LocalFs {
         cx: &ProviderCx<'_>,
     ) -> Result<Vec<u8>, CoreError> {
         Self::check_cancel(cx)?;
-        let mut f = File::open(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let mut buf = vec![0; len as usize];
-        f.seek(std::io::SeekFrom::Start(start))
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let size = f
-            .read(&mut buf)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        if size != (len as usize) {
-            buf.resize(size, 0);
-        }
+        let bytes = file_io(path, move |path| {
+            let mut file = File::open(path)?;
+            file.seek(SeekFrom::Start(start))?;
+            read_once(&mut file, len as usize)
+        })
+        .await?;
         Self::check_cancel(cx)?;
-        Ok(buf)
+        Ok(bytes)
     }
 
     async fn exists(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<bool, CoreError> {
         Self::check_cancel(cx)?;
-        tokio::fs::try_exists(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
+        file_io(path, Path::try_exists).await
     }
 
     async fn mutation_target_exists(
@@ -150,11 +136,12 @@ impl FsProvider for LocalFs {
         cx: &ProviderCx<'_>,
     ) -> Result<bool, CoreError> {
         Self::check_cancel(cx)?;
-        match tokio::fs::symlink_metadata(path).await {
+        file_io(path, |path| match fs::symlink_metadata(path) {
             Ok(_) => Ok(true),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(error) => Err(CoreError::from_io_error(error, path.to_path_buf())),
-        }
+            Err(error) => Err(error),
+        })
+        .await
     }
 
     async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError> {
@@ -190,24 +177,16 @@ impl FsProvider for LocalFs {
         cx: &ProviderCx<'_>,
     ) -> Result<Vec<u8>, CoreError> {
         Self::check_cancel(cx)?;
-        let mut f = File::open(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        let mut buf = vec![0u8; n_bytes];
-        let mut filled = 0;
-        while filled < n_bytes {
-            let n = f
-                .read(&mut buf[filled..])
-                .await
-                .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-            if n == 0 {
-                break;
-            }
-            filled += n;
-            Self::check_cancel(cx)?;
-        }
-        buf.truncate(filled);
-        Ok(buf)
+        let bytes = file_io(path, move |path| {
+            let mut bytes = Vec::new();
+            File::open(path)?
+                .take(n_bytes as u64)
+                .read_to_end(&mut bytes)?;
+            Ok(bytes)
+        })
+        .await?;
+        Self::check_cancel(cx)?;
+        Ok(bytes)
     }
 
     fn mutation_futures_can_be_dropped(&self) -> bool {
@@ -238,7 +217,7 @@ impl FsProvider for LocalFs {
         Self::check_cancel(cx)?;
         let src = src.to_path_buf();
         let dst = dst.to_path_buf();
-        tokio::task::spawn_blocking(move || super::local_transfer::check(&src, &dst))
+        spawn_blocking(move || super::local_transfer::check(&src, &dst))
             .await
             .map_err(|error| CoreError::actor("transfer preflight", error.to_string()))??;
         Self::check_cancel(cx)

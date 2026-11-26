@@ -15,7 +15,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::services::mime::{MAGIC_BYTE_WINDOW, MimeDetector};
 use crate::services::preview::PreviewCache;
-use crate::utils::channel::send_or_warn_async;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::context::ProviderCx;
 use crate::vfs::provider::FsProvider;
 use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
@@ -23,6 +23,8 @@ use crate::{MetadataRegistry, PreviewOptions, PreviewRegistry};
 /// Commands for previewer actor
 #[derive(Debug, Clone)]
 pub enum PreviewCommand {
+    #[doc(hidden)]
+    Close(SessionId, crate::api::module::CloseAck),
     /// Generate preview for a file
     Generate {
         location: LocationRef,
@@ -163,7 +165,7 @@ impl Previewer {
         let opts = options.unwrap_or_default();
         let work = self.work.clone();
 
-        work.spawn(cancel.clone(), async move {
+        work.spawn_read(session, cancel.clone(), async move {
             if cancel.is_cancelled() {
                 return;
             }
@@ -274,7 +276,7 @@ impl Previewer {
         let active = self.active.clone();
         let work = self.work.clone();
 
-        work.spawn(cancel.clone(), async move {
+        work.spawn_read(session, cancel.clone(), async move {
             if cancel.is_cancelled() || !Self::is_latest(&latest, session, request) {
                 return;
             }
@@ -339,7 +341,7 @@ impl Previewer {
         let latest = self.latest.clone();
         let work = self.work.clone();
 
-        work.spawn(cancel.clone(), async move {
+        work.spawn_read(session, cancel.clone(), async move {
             if cancel.is_cancelled() {
                 return;
             }
@@ -453,6 +455,11 @@ impl Actor for Previewer {
                 }) => {
                     self.dispatch_extended_metadata(location, event_mode, session, request)
                         .await;
+                }
+                Ok(PreviewCommand::Close(session, done)) => {
+                    self.cancel(session);
+                    self.latest.remove_sync(&session);
+                    send_or_warn(&done, Ok(()), "preview Session cleanup");
                 }
                 Ok(PreviewCommand::Cancel(session)) => {
                     self.cancel(session);

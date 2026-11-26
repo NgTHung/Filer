@@ -158,7 +158,7 @@ async fn list_children(
     {
         let reader = provider.open_reader(archive_path, cx).await?;
         let member = member.to_path_buf();
-        tokio::task::spawn_blocking(move || list_zip_children(reader, &member))
+        crate::actors::native::spawn_blocking(move || list_zip_children(reader, &member))
             .await
             .map_err(|e| CoreError::actor("archive_fs", e.to_string()))?
     }

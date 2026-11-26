@@ -264,14 +264,7 @@ impl Module for OperationsModule {
             }
         });
 
-        let tx = self.ops_tx.clone();
-        handlers.on_session_destroy(move |session, _ctx| {
-            send_or_warn(
-                &tx,
-                OpsCommand::Cancel(session),
-                "operations session destroy",
-            );
-        });
+        handlers.on_drain("operator", self.ops_tx.clone(), OpsCommand::Drain);
 
         let operator = match self.cache.take() {
             Some(cache) => Operator::with_cache(

@@ -170,10 +170,11 @@ impl Operator {
             updates,
             Update::RetryValidated(scope.clone(), cancel.clone(), Err(worker_stopped())),
         );
-        self.work.spawn(cancel.clone(), async move {
-            let result = executor.validate_retry(&plan, &cancel).await;
-            completion.send(Update::RetryValidated(scope, cancel, result));
-        });
+        self.work
+            .spawn_operation(scope.session, cancel.clone(), async move {
+                let result = executor.validate_retry(&plan, &cancel).await;
+                completion.send(Update::RetryValidated(scope, cancel, result));
+            });
     }
 
     pub(super) async fn retry_validated(

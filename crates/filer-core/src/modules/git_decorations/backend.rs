@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use async_trait::async_trait;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 #[cfg(unix)]
@@ -77,18 +78,51 @@ impl GitCliBackend {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let child = command.spawn().map_err(|error| {
-            CoreError::unsupported_operation(format!(
-                "unable to execute Git at {}: {error}",
-                self.program.display()
-            ))
-        })?;
-        tokio::select! {
-            output = child.wait_with_output() => output.map_err(|error| {
-                CoreError::io(PathBuf::new(), format!("Git process failed: {error}"))
-            }),
-            _ = cancel.cancelled() => Err(CoreError::cancelled()),
-        }
+        let program = self.program.clone();
+        let cancel = cancel.clone();
+        // Session reads may drop this future while the child is still exiting.
+        crate::actors::native::spawn_owned(async move {
+            if cancel.is_cancelled() {
+                return Err(CoreError::cancelled());
+            }
+            let mut child = command.spawn().map_err(|error| {
+                CoreError::unsupported_operation(format!(
+                    "unable to execute Git at {}: {error}",
+                    program.display()
+                ))
+            })?;
+            let (Some(mut stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take())
+            else {
+                child.kill().await.map_err(CoreError::other)?;
+                return Err(CoreError::actor("git", "Missing process output pipes"));
+            };
+            let mut stdout_bytes = Vec::new();
+            let mut stderr_bytes = Vec::new();
+            let output = async {
+                tokio::try_join!(
+                    child.wait(),
+                    stdout.read_to_end(&mut stdout_bytes),
+                    stderr.read_to_end(&mut stderr_bytes),
+                )
+            };
+            let result = tokio::select! {
+                result = output => result.map_err(CoreError::other),
+                _ = cancel.cancelled() => Err(CoreError::cancelled()),
+            };
+            match result {
+                Ok((status, _, _)) => Ok(std::process::Output {
+                    status,
+                    stdout: stdout_bytes,
+                    stderr: stderr_bytes,
+                }),
+                Err(error) => {
+                    child.kill().await.map_err(CoreError::other)?;
+                    Err(error)
+                }
+            }
+        })
+        .await
+        .map_err(|error| CoreError::actor("git", error.to_string()))?
     }
 
     async fn repository(
@@ -177,12 +211,13 @@ impl GitStatusBackend for GitCliBackend {
         let visible = visible.to_vec();
         let parent = absolute_path(parent)?;
         let path_cancel = cancel.clone();
-        let normalized =
-            tokio::task::spawn_blocking(move || normalize_paths(&parent, &visible, &path_cancel))
-                .await
-                .map_err(|error| {
-                    CoreError::actor("git-decorations", format!("path worker failed: {error}"))
-                })??;
+        let normalized = crate::actors::native::spawn_blocking(move || {
+            normalize_paths(&parent, &visible, &path_cancel)
+        })
+        .await
+        .map_err(|error| {
+            CoreError::actor("git-decorations", format!("path worker failed: {error}"))
+        })??;
         let (parent, normalized_visible) = normalized;
         let Some(repository) = self.repository(&parent, cancel).await? else {
             return Ok(GitStatusResult {
@@ -244,7 +279,7 @@ impl GitStatusBackend for GitCliBackend {
         let parse_output = output.stdout;
         let parse_worktree = repository.worktree.clone();
         let parse_targets = normalized_visible;
-        let decorations = tokio::task::spawn_blocking(move || {
+        let decorations = crate::actors::native::spawn_blocking(move || {
             decorations_from_status(
                 &parse_output,
                 &parse_worktree,

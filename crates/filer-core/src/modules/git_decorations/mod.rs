@@ -207,14 +207,11 @@ impl Module for GitDecorationsModule {
                 })
             });
 
-        let command_tx = self.command_tx.clone();
-        ctx.handlers.on_session_destroy(move |session, _context| {
-            send_or_warn(
-                &command_tx,
-                GitDecorationCommand::SessionDestroyed(session),
-                "git decoration session cleanup",
-            );
-        });
+        ctx.handlers.on_cleanup(
+            "git-decorations",
+            self.command_tx.clone(),
+            GitDecorationCommand::Close,
+        );
 
         ctx.actors.spawn(
             GitDecorationsActor::new(

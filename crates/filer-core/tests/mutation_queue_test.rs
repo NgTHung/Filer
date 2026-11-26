@@ -98,15 +98,42 @@ async fn full_admission_rejects_work_and_keeps_controls_serviceable() {
     accepted(&events, &replacement).await;
 
     core.send(Command::DestroySession(session)).unwrap();
-    assert!(matches!(next(&events).await, Event::SessionDestroyed(actual) if actual == session));
+    let during_close = create(session, root.path(), "while-closing");
+    core.send(during_close.clone()).unwrap();
+    assert!(matches!(next(&events).await, Event::Error {
+        code: ErrorCode::SessionClosing, session: actual, request, operation, ..
+    } if actual == session && request == during_close.request_id()
+        && operation == during_close.operation_id()));
+    assert!(core.sessions().exists(session));
+
+    let cancelled = waiting.pop().unwrap();
+    core.send(Command::CancelOperation {
+        session,
+        operation: cancelled,
+    })
+    .unwrap();
+    assert_cancelled(&events, cancelled).await;
+    timeout(TIMEOUT, provider.release.wait()).await.unwrap();
+    complete(&events, &copy).await;
     waiting.push(replacement.operation_id().unwrap());
     for operation in waiting {
-        assert_cancelled(&events, operation).await;
+        assert!(matches!(next(&events).await, Event::OperationStarted {
+            operation: actual, ..
+        } if actual == operation));
+        assert!(matches!(next(&events).await, Event::ProgressUpdated { .. }));
+        assert!(matches!(next(&events).await, Event::OperationComplete {
+            operation_id, session: actual, success: true, ..
+        } if actual == session && operation_id == operation));
     }
-    assert_cancelled(&events, copy.operation_id().unwrap()).await;
+    assert!(matches!(next(&events).await, Event::SessionDestroyed(actual) if actual == session));
+    assert!(!core.sessions().exists(session));
     assert!(!root.path().join("busy").exists());
-    assert!(!root.path().join("replacement").exists());
-    assert!(!destination.join("gated.txt").exists());
+    assert!(!root.path().join("while-closing").exists());
+    assert!(root.path().join("replacement").is_dir());
+    assert_eq!(
+        std::fs::read(destination.join("gated.txt")).unwrap(),
+        b"source"
+    );
     core.shutdown().await.unwrap();
 }
 
