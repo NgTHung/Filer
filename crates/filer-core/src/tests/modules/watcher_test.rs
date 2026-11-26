@@ -83,6 +83,7 @@ impl WatchHandle for TestWatchHandle {}
 struct TestWatchProvider {
     change_tx: Mutex<Option<flume::Sender<FsChange>>>,
     watched_paths: Mutex<Vec<PathBuf>>,
+    unwatch_gate: Option<(tokio::sync::Barrier, tokio::sync::Barrier)>,
 }
 
 impl TestWatchProvider {
@@ -111,9 +112,58 @@ impl WatchProvider for TestWatchProvider {
     }
 
     async fn unwatch(&self, path: &Path) -> Result<(), crate::errors::CoreError> {
+        if let Some((entered, release)) = &self.unwatch_gate {
+            entered.wait().await;
+            release.wait().await;
+        }
         self.watched_paths.lock().unwrap().retain(|p| p != path);
         Ok(())
     }
+}
+
+#[tokio::test]
+async fn session_destruction_waits_for_watch_cleanup() {
+    use crate::modules::watch::WatchModule;
+    use crate::{Command, ErrorCode, FilerCore};
+    use tokio::sync::Barrier;
+
+    let core = FilerCore::new();
+    let events = core.event_receiver();
+    let provider = Arc::new(TestWatchProvider {
+        unwatch_gate: Some((Barrier::new(2), Barrier::new(2))),
+        ..Default::default()
+    });
+    core.load(WatchModule::new(provider.clone()));
+    let session = core.sessions().create_session(core.event_sender());
+    let root = tempfile::tempdir().unwrap();
+    let location = LocationRef::from_location(&Location::local(root.path()));
+    core.send(Command::Watch {
+        location,
+        session,
+        request: RequestId::new(),
+    })
+    .unwrap();
+    core.send(Command::DestroySession(session)).unwrap();
+
+    let limit = Duration::from_secs(5);
+    let (entered, release) = provider.unwatch_gate.as_ref().unwrap();
+    timeout(limit, entered.wait()).await.unwrap();
+    assert!(core.sessions().exists(session));
+    let request = RequestId::new();
+    core.send(Command::NavigateUp { session, request }).unwrap();
+    assert!(
+        matches!(timeout(limit, events.recv_async()).await.unwrap().unwrap(),
+        Event::Error { code: ErrorCode::SessionClosing, request: Some(actual), .. } if actual == request)
+    );
+
+    timeout(limit, release.wait()).await.unwrap();
+    assert!(
+        matches!(timeout(limit, events.recv_async()).await.unwrap().unwrap(),
+        Event::SessionDestroyed(actual) if actual == session)
+    );
+    assert!(provider.watched_paths.lock().unwrap().is_empty());
+    assert!(!core.sessions().exists(session));
+    core.shutdown().await.unwrap();
 }
 
 #[test]

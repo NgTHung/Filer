@@ -71,14 +71,7 @@ impl Module for SearchModule {
             }
         });
 
-        let tx = search_tx.clone();
-        handlers.on_session_destroy(move |session, _ctx| {
-            send_or_warn(
-                &tx,
-                SearchCommand::Cancel(session),
-                "search session destroy",
-            );
-        });
+        handlers.on_cleanup("searcher", search_tx.clone(), SearchCommand::Close);
 
         let searcher = searcher::Searcher::new(
             search_rx,

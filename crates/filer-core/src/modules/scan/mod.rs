@@ -112,6 +112,8 @@ impl Module for ScanModule {
             }
         });
 
+        handlers.on_cleanup("scanner", self.scan_tx.clone(), ScanCommand::Close);
+
         let scanner = match self.cache.take() {
             Some(cache) => Scanner::with_cache(
                 scan_rx,

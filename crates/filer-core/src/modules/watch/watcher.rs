@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use rapidhash::fast::RandomState;
 use std::sync::Arc;
 
+use crate::CoreError;
 use crate::actors::Actor;
 use crate::api::event_sink::DEFAULT_EVENT_CHANNEL_CAPACITY;
 use crate::api::event_sink::EventSink;
@@ -19,6 +20,8 @@ use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 /// Commands for watcher actor
 #[derive(Debug, Clone)]
 pub enum WatchCommand {
+    #[doc(hidden)]
+    Close(SessionId, crate::api::module::CloseAck),
     Watch {
         location: LocationRef,
         session: SessionId,
@@ -231,7 +234,7 @@ impl Watcher {
     }
 
     /// Handle unwatch session command
-    async fn handle_unwatch_session(&mut self, session_id: SessionId) {
+    async fn handle_unwatch_session(&mut self, session_id: SessionId) -> Result<(), CoreError> {
         let mut keys = Vec::new();
         self.watches.iter_sync(|key, entry| {
             if entry
@@ -244,21 +247,28 @@ impl Watcher {
             true
         });
 
+        let mut result = Ok(());
         for key in keys {
             let Some((_, mut entry)) = self.watches.remove_sync(&key) else {
                 continue;
             };
-            entry
+            if entry
                 .subscriptions
-                .retain(|subscription| subscription.session != session_id);
-            if entry.subscriptions.is_empty() {
-                if let Err(e) = self.provider.unwatch(&entry.path).await {
-                    tracing::error!(path = %entry.path.display(), error = %e, "Failed to unwatch path for session cleanup");
+                .iter()
+                .all(|subscription| subscription.session == session_id)
+            {
+                match self.provider.unwatch(&entry.path).await {
+                    Ok(()) => continue,
+                    Err(error) => result = result.and(Err(error)),
                 }
             } else {
-                let _ = self.watches.insert_sync(key, entry);
+                entry
+                    .subscriptions
+                    .retain(|subscription| subscription.session != session_id);
             }
+            let _ = self.watches.insert_sync(key, entry);
         }
+        result
     }
 
     /// Handle unwatch all command
@@ -339,8 +349,14 @@ impl Actor for Watcher {
                         Ok(WatchCommand::Unwatch { location, scope }) => {
                             self.handle_unwatch(location, scope).await;
                         }
+                        Ok(WatchCommand::Close(session, done)) => {
+                            let result = self.handle_unwatch_session(session).await;
+                            send_or_warn(&done, result, "watcher Session cleanup");
+                        }
                         Ok(WatchCommand::UnwatchSession(session)) => {
-                            self.handle_unwatch_session(session).await;
+                            if let Err(error) = self.handle_unwatch_session(session).await {
+                                tracing::warn!(%error, "Session unwatch failed");
+                            }
                         }
                         Ok(WatchCommand::UnwatchAll) => {
                             self.handle_unwatch_all().await;

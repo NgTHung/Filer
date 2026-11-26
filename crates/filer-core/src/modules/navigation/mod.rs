@@ -136,14 +136,7 @@ impl Module for NavigationModule {
             }
         });
 
-        let tx = self.nav_tx.clone();
-        handlers.on_session_destroy(move |session, _ctx| {
-            send_or_warn(
-                &tx,
-                NavCommand::RemoveSession(session),
-                "nav session cleanup",
-            );
-        });
+        handlers.on_cleanup("navigator", self.nav_tx.clone(), NavCommand::Close);
 
         let navigator = Navigator::new(
             nav_rx,

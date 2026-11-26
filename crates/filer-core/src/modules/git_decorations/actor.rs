@@ -19,19 +19,20 @@ use crate::modules::git_decorations::backend::{GitRepository, GitStatusBackend, 
 use crate::modules::git_decorations::{
     FileDecorationInvalidation, GitDecorationTarget, MAX_VISIBLE_DECORATIONS,
 };
-use crate::utils::channel::send_or_warn_async;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::watch::{FsChange, WatchHandle, WatchProvider};
 
 /// Commands consumed by the Git decoration actor.
 #[derive(Debug, Clone)]
 pub(crate) enum GitDecorationCommand {
+    #[doc(hidden)]
+    Close(SessionId, crate::api::module::CloseAck),
     Status {
         parent: LocationRef,
         visible: Vec<LocationRef>,
         session: SessionId,
         request: RequestId,
     },
-    SessionDestroyed(SessionId),
 }
 
 struct WorkerResult {
@@ -168,7 +169,7 @@ impl GitDecorationsActor {
         self.latest.insert(session, request);
         let worker_targets = targets.clone();
         let worker_cancel = cancel.clone();
-        let spawned = self.work.spawn(cancel, async move {
+        let spawned = self.work.spawn_read(session, cancel, async move {
             let result = backend
                 .status(&parent_path, &worker_targets, &worker_cancel)
                 .await;
@@ -203,7 +204,9 @@ impl GitDecorationsActor {
     }
 
     async fn apply_result(&mut self, worker: WorkerResult) {
-        if self.latest.get(&worker.session).copied() != Some(worker.request) {
+        if !self.work.accepts_new_work(worker.session)
+            || self.latest.get(&worker.session).copied() != Some(worker.request)
+        {
             return;
         }
         let result = match worker.result {
@@ -220,7 +223,10 @@ impl GitDecorationsActor {
             }
         };
 
-        self.remove_subscription(worker.session).await;
+        if let Err(error) = self.remove_subscription(worker.session).await {
+            self.emit_error(error, worker.session, worker.request).await;
+            return;
+        }
         if !worker.targets.is_empty()
             && let Some(repository) = result.repository
         {
@@ -291,24 +297,35 @@ impl GitDecorationsActor {
         paths
     }
 
-    async fn remove_subscription(&mut self, session: SessionId) {
-        let Some(subscription) = self.subscriptions.remove(&session) else {
-            return;
+    async fn remove_subscription(&mut self, session: SessionId) -> Result<(), CoreError> {
+        let Some(mut subscription) = self.subscriptions.remove(&session) else {
+            return Ok(());
         };
-        for path in subscription.watched_paths {
-            let remove = if let Some(watch) = self.watches.get_mut(&path) {
-                watch.sessions.remove(&session);
-                watch.sessions.is_empty()
-            } else {
-                false
+        let mut result = Ok(());
+        let mut retained = Vec::new();
+        for path in subscription.watched_paths.drain(..) {
+            let Some(watch) = self.watches.get_mut(&path) else {
+                continue;
             };
-            if remove {
-                self.watches.remove(&path);
-                if let Err(error) = self.watch_provider.unwatch(&path).await {
-                    tracing::warn!(path = %path.display(), error = %error, "Git decoration watch cleanup failed");
+            if watch.sessions.len() > 1 {
+                watch.sessions.remove(&session);
+            } else {
+                match self.watch_provider.unwatch(&path).await {
+                    Ok(()) => {
+                        self.watches.remove(&path);
+                    }
+                    Err(error) => {
+                        result = result.and(Err(error));
+                        retained.push(path);
+                    }
                 }
             }
         }
+        if !retained.is_empty() {
+            subscription.watched_paths = retained;
+            self.subscriptions.insert(session, subscription);
+        }
+        result
     }
 
     async fn dispatch_change(&self, change: FsChange) {
@@ -354,10 +371,10 @@ impl GitDecorationsActor {
         }
     }
 
-    async fn destroy_session(&mut self, session: SessionId) {
+    async fn destroy_session(&mut self, session: SessionId) -> Result<(), CoreError> {
         self.active.cancel(session);
         self.latest.remove(&session);
-        self.remove_subscription(session).await;
+        self.remove_subscription(session).await
     }
 }
 
@@ -379,8 +396,9 @@ impl Actor for GitDecorationsActor {
                         Ok(GitDecorationCommand::Status { parent, visible, session, request }) => {
                             self.dispatch_status(parent, visible, session, request).await;
                         }
-                        Ok(GitDecorationCommand::SessionDestroyed(session)) => {
-                            self.destroy_session(session).await;
+                        Ok(GitDecorationCommand::Close(session, done)) => {
+                            let result = self.destroy_session(session).await;
+                            send_or_warn(&done, result, "git decoration Session cleanup");
                         }
                         Err(_) => {
                             self.active.cancel_all().await;

@@ -13,7 +13,7 @@ use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 use crate::pipeline::PipelineConfig;
 use crate::services::dir_cache::SharedDirCache;
-use crate::utils::channel::send_or_warn_async;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::vfs::provider::FsProvider;
 
 use super::execution::{
@@ -24,6 +24,8 @@ use super::paging::PagingSessions;
 /// Commands for scanner actor
 #[derive(Debug, Clone)]
 pub enum ScanCommand {
+    #[doc(hidden)]
+    Close(SessionId, crate::api::module::CloseAck),
     ScanLocation {
         location: LocationRef,
         session: SessionId,
@@ -120,7 +122,7 @@ impl Scanner {
         let _ = self.latest_scans.remove_sync(&session);
         let _ = self.latest_scans.insert_sync(session, request);
         let cancel = active_scans.arm(session);
-        work.spawn(cancel.clone(), async move {
+        work.spawn_read(session, cancel.clone(), async move {
             scan_directory(
                 ScanResources {
                     provider: &provider,
@@ -153,6 +155,9 @@ impl Scanner {
         invalidate_cache: bool,
         request: RequestId,
     ) {
+        if !self.work.accepts_new_work(session) {
+            return;
+        }
         let location = match self.registry.resolve_location_ref(&location_ref) {
             Ok(location) => location,
             Err(error) => {
@@ -227,7 +232,7 @@ impl Scanner {
         let _ = self.latest_scans.remove_sync(&session);
         let _ = self.latest_scans.insert_sync(session, request);
         let cancel = active_scans.arm(session);
-        work.spawn(cancel.clone(), async move {
+        work.spawn_read(session, cancel.clone(), async move {
             scan_segmented_location(
                 &provider,
                 ScanEvents {
@@ -276,6 +281,11 @@ impl Actor for Scanner {
                 }) => {
                     self.dispatch_location_scan(location, session, pipeline, load, true, request)
                         .await;
+                }
+                Ok(ScanCommand::Close(session, done)) => {
+                    self.cancel_scan(session);
+                    self.latest_scans.remove_sync(&session);
+                    send_or_warn(&done, Ok(()), "scanner Session cleanup");
                 }
                 Ok(ScanCommand::Cancel(session)) => {
                     self.cancel_scan(session);

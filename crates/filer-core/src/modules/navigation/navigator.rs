@@ -26,6 +26,8 @@ pub use super::state::{NavState, NavigatorState};
 /// Commands handled by the navigator actor.
 #[derive(Debug, Clone)]
 pub enum NavCommand {
+    #[doc(hidden)]
+    Close(SessionId, crate::api::module::CloseAck),
     /// Navigate to a provider-aware location.
     NavigateToLocation {
         session: SessionId,
@@ -328,6 +330,10 @@ impl Navigator {
                         true
                     })
                     .await;
+            }
+            NavCommand::Close(session, done) => {
+                self.sessions.remove_async(&session).await;
+                send_or_warn(&done, Ok(()), "navigator Session cleanup");
             }
             NavCommand::RemoveSession(session) => {
                 let _ = self.sessions.remove_async(&session).await;
