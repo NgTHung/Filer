@@ -177,12 +177,13 @@ impl GitStatusBackend for GitCliBackend {
         let visible = visible.to_vec();
         let parent = absolute_path(parent)?;
         let path_cancel = cancel.clone();
-        let normalized =
-            tokio::task::spawn_blocking(move || normalize_paths(&parent, &visible, &path_cancel))
-                .await
-                .map_err(|error| {
-                    CoreError::actor("git-decorations", format!("path worker failed: {error}"))
-                })??;
+        let normalized = crate::actors::native::spawn_blocking(move || {
+            normalize_paths(&parent, &visible, &path_cancel)
+        })
+        .await
+        .map_err(|error| {
+            CoreError::actor("git-decorations", format!("path worker failed: {error}"))
+        })??;
         let (parent, normalized_visible) = normalized;
         let Some(repository) = self.repository(&parent, cancel).await? else {
             return Ok(GitStatusResult {
@@ -244,7 +245,7 @@ impl GitStatusBackend for GitCliBackend {
         let parse_output = output.stdout;
         let parse_worktree = repository.worktree.clone();
         let parse_targets = normalized_visible;
-        let decorations = tokio::task::spawn_blocking(move || {
+        let decorations = crate::actors::native::spawn_blocking(move || {
             decorations_from_status(
                 &parse_output,
                 &parse_worktree,

@@ -22,7 +22,7 @@ impl ImageProvider {
         max_height: u32,
     ) -> Result<PreviewData, CoreError> {
         let path = path.to_path_buf();
-        tokio::task::spawn_blocking(move || {
+        crate::actors::native::spawn_blocking(move || {
             let img = image::open(&path).map_err(|e| CoreError::invalid_data(e.to_string()))?;
             let (orig_w, orig_h) = (img.width(), img.height());
             let thumb = img.thumbnail(max_width, max_height);

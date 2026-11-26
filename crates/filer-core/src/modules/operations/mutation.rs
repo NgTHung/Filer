@@ -41,7 +41,7 @@ impl Execution<'_> {
             if trash {
                 let trash = self.executor.trash.clone();
                 let target = path.clone();
-                tokio::task::spawn_blocking(move || trash(&target))
+                crate::actors::native::spawn_blocking(move || trash(&target))
                     .await
                     .map_err(|error| CoreError::actor("operator", error.to_string()))??;
             } else {

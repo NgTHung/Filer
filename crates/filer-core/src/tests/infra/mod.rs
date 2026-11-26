@@ -4,6 +4,7 @@ mod dir_cache_test;
 mod error_test;
 mod metadata_test;
 mod mime_test;
+mod native_work_test;
 mod preview_test;
 mod table_test;
 mod utils_test;

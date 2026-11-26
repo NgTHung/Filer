@@ -20,6 +20,12 @@ pub struct CopyGate {
     pub release: Barrier,
     failures: AtomicUsize,
     pub deletes: AtomicUsize,
+    pub native: Option<NativeCopyGate>,
+}
+
+pub struct NativeCopyGate {
+    pub queued: tokio::sync::Notify,
+    pub release: flume::Receiver<()>,
 }
 
 impl CopyGate {
@@ -30,6 +36,7 @@ impl CopyGate {
             release: Barrier::new(2),
             failures: AtomicUsize::new(failures),
             deletes: AtomicUsize::new(0),
+            native: None,
         }
     }
 }
@@ -79,7 +86,26 @@ impl FsProvider for CopyGate {
         self.local.preflight_transfer(src, dst, cx).await
     }
 
+    fn mutation_futures_can_be_dropped(&self) -> bool {
+        self.native.is_none() || self.local.mutation_futures_can_be_dropped()
+    }
+
     async fn copy(&self, src: &Path, dst: &Path, cx: &ProviderCx<'_>) -> Result<(), CoreError> {
+        if let Some(gate) = &self.native {
+            let release = gate.release.clone();
+            tokio::task::spawn_blocking(move || {
+                let _ = release.recv();
+            });
+            let copy = self.local.copy(src, dst, cx);
+            tokio::pin!(copy);
+            std::future::poll_fn(|cx| {
+                assert!(copy.as_mut().poll(cx).is_pending());
+                std::task::Poll::Ready(())
+            })
+            .await;
+            gate.queued.notify_one();
+            return copy.await;
+        }
         if src.file_name().is_some_and(|name| name == "gated.txt") {
             self.entered.wait().await;
             self.release.wait().await;

@@ -18,7 +18,7 @@ impl ArchiveProvider {
     #[cfg(feature = "metadata-archive")]
     async fn list_zip(&self, path: &Path, max_entries: usize) -> Result<PreviewData, CoreError> {
         let path = path.to_path_buf();
-        tokio::task::spawn_blocking(move || {
+        crate::actors::native::spawn_blocking(move || {
             let file = std::fs::File::open(&path)
                 .map_err(|e| CoreError::from_io_error(e, path.clone()))?;
             let mut archive =
@@ -48,7 +48,7 @@ impl ArchiveProvider {
     #[cfg(feature = "metadata-archive")]
     async fn list_tar(&self, path: &Path, max_entries: usize) -> Result<PreviewData, CoreError> {
         let path = path.to_path_buf();
-        tokio::task::spawn_blocking(move || {
+        crate::actors::native::spawn_blocking(move || {
             let file = std::fs::File::open(&path)
                 .map_err(|e| CoreError::from_io_error(e, path.clone()))?;
             let mut archive = tar::Archive::new(file);

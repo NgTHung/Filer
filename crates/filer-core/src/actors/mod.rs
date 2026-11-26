@@ -1,4 +1,5 @@
 pub mod cancel;
+pub(crate) mod native;
 pub mod router;
 
 use std::collections::HashMap;
@@ -119,7 +120,9 @@ impl WorkTracker {
         state.tokens.insert(id, token);
         let weak = Arc::downgrade(&self.inner);
         state.tasks.spawn(async move {
-            future.await;
+            let native = native::Scope::default();
+            native.enter().run(future).await;
+            native.wait().await;
             if let Some(inner) = weak.upgrade() {
                 let mut state = inner
                     .state

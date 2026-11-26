@@ -162,7 +162,7 @@ fn open_dir(path: &Path) -> Result<ReadDir, CoreError> {
 async fn run_blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, CoreError> + Send + 'static,
 ) -> Result<T, CoreError> {
-    tokio::task::spawn_blocking(work)
+    crate::actors::native::spawn_blocking(work)
         .await
         .map_err(|e| CoreError::actor("local_fs", e.to_string()))?
 }

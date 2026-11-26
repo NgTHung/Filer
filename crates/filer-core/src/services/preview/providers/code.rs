@@ -1,7 +1,7 @@
 use std::path::Path;
 
+use crate::actors::native::{file_io, read_once};
 use async_trait::async_trait;
-use tokio::io::AsyncReadExt;
 
 #[cfg(feature = "preview-code")]
 use syntect::highlighting::ThemeSet;
@@ -112,18 +112,12 @@ impl PreviewProvider for CodeProvider {
         _mime: &MimeInfo,
         options: &PreviewOptions,
     ) -> Result<PreviewData, CoreError> {
-        let mut file = tokio::fs::File::open(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-
-        let mut buf = vec![0u8; options.max_bytes];
-        let n = file
-            .read(&mut buf)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-        buf.truncate(n);
-
-        let truncated = n == options.max_bytes;
+        let limit = options.max_bytes;
+        let buf = file_io(path, move |path| {
+            read_once(&mut std::fs::File::open(path)?, limit)
+        })
+        .await?;
+        let truncated = buf.len() == limit;
         let content = String::from_utf8_lossy(&buf).into_owned();
         let total_lines = content.lines().count();
 

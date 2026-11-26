@@ -16,7 +16,7 @@ impl MediaProvider {
     #[cfg(feature = "metadata-audio")]
     async fn extract_audio(&self, path: &Path) -> Result<PreviewData, CoreError> {
         let path = path.to_path_buf();
-        tokio::task::spawn_blocking(move || {
+        crate::actors::native::spawn_blocking(move || {
             use id3::TagLike;
             let tag = id3::Tag::read_from_path(&path).unwrap_or_default();
             let duration_secs = tag.duration().map(|d| d as f64).unwrap_or(0.0);
@@ -32,13 +32,11 @@ impl MediaProvider {
 
     #[cfg(feature = "metadata-video")]
     async fn extract_video(&self, path: &Path) -> Result<PreviewData, CoreError> {
-        let bytes = tokio::fs::read(path)
-            .await
-            .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))?;
-
-        tokio::task::spawn_blocking(move || {
-            let mut cursor = std::io::Cursor::new(bytes);
-            let context = mp4parse::read_mp4(&mut cursor)
+        let path = path.to_path_buf();
+        crate::actors::native::spawn_blocking(move || {
+            let mut file = std::fs::File::open(&path)
+                .map_err(|error| CoreError::from_io_error(error, path))?;
+            let context = mp4parse::read_mp4(&mut file)
                 .map_err(|e| CoreError::invalid_data(format!("{e:?}")))?;
 
             let duration_secs = context
