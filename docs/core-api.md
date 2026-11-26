@@ -2,6 +2,12 @@
 
 This page describes how `filer-core` behaves at its public boundary: which commands exist, how directory pages and cursors work, when caches drop entries, and how errors reach a client. Read the [crate README](../crates/filer-core/README.md) first for the overall model. Use this page when you build a client or change a contract.
 
+## File operations
+
+Use a fresh `OperationId` and `RequestId` when submitting a mutation. A successful send puts the command on the runtime channel. `OperationAccepted` confirms that Core validated it and reserved a slot in the Session's FIFO queue. `OperationStarted` identifies the transition from waiting to execution. The terminal event is `OperationComplete` on success or a correlated `Error` on failure or cancellation.
+
+A Session has 16 operation slots. The running operation and waiting operations consume slots, including slots reserved during transfer preflight. A full queue rejects the submission with `OperationQueueFull`. `CancelOperation` can remove a waiting operation or signal a running one when every slot is occupied. The running slot stays reserved until the active write settles.
+
 ## Commands
 
 Every public command that names a file uses `LocationRef`. The dispatch key routes a command to the module that handles it.

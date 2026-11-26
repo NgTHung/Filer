@@ -1,7 +1,7 @@
 //! # Mutation operations
 //!
-//! This module runs delete, rename, and create work outside the actor dispatch
-//! loop. The handlers share cancellation, provider, event, and cache plumbing.
+//! Delete, rename, and create share one worker so cancellation and cache
+//! invalidation follow the same rules across mutation types.
 //!
 //! ```
 //! use filer_core::model::session::SessionId;
@@ -20,554 +20,72 @@
 //! assert!(matches!(command, OpsCommand::Delete { .. }));
 //! ```
 
-use std::time::Instant;
+use std::path::{Path, PathBuf};
 
-use crate::api::events::Event;
-use crate::model::location::LocationRef;
-use crate::model::operation::{OperationId, OperationKind};
-use crate::model::progress::{
-    ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget, ProgressUnit,
-};
-use crate::model::request::RequestId;
-use crate::model::session::SessionId;
-use crate::utils::channel::send_or_warn_async;
-use crate::{CoreError, ErrorTarget};
+use crate::{CoreError, LocationRef, ProgressStatus};
 
-use super::command::OperationEventMode;
-use super::operator::Operator;
-use super::support::{
-    emit_operation_progress, invalidate_parent_cache, invalidate_subtree_cache,
-    operation_complete_event, operation_cx, operation_error, remove_operation_if_current,
-};
-use super::target::{affected_location, resolve_direct_targets, resolve_named_target};
+use super::execution::Execution;
 
-impl Operator {
+impl Execution<'_> {
     pub(super) async fn delete(
-        &self,
-        targets: Vec<LocationRef>,
+        &mut self,
+        targets: &[(LocationRef, PathBuf)],
         trash: bool,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-        event_mode: OperationEventMode,
-    ) {
-        let paths = match resolve_direct_targets(
-            &self.registry,
-            &targets,
-            OperationKind::Delete,
-            self.provider.capabilities(),
-        ) {
-            Ok(paths) => paths,
-            Err(error) => {
-                send_or_warn_async(
-                    &self.events,
-                    operation_error(error, session, request, operation),
-                    "operator: delete resolve",
-                )
-                .await;
-                return;
+    ) -> Result<(), CoreError> {
+        self.set_total(targets.len());
+        for (location, path) in targets {
+            if self.cx.is_cancelled() {
+                return Err(CoreError::cancelled());
             }
-        };
-
-        let cancel = self.arm_operation(session, operation);
-        let deadline = self.default_timeout.map(|t| Instant::now() + t);
-        let active = self.active_ops.clone();
-        let active_operation_ids = self.active_operation_ids.clone();
-        let events = self.events.clone();
-        let fs = self.provider.clone();
-        let trash_fn = self.trash_fn.clone();
-        let cache = self.cache.clone();
-        let registry = self.registry.clone();
-        let total = paths.len();
-        let work = self.work.clone();
-
-        work.spawn(cancel.clone(), async move {
-            let cx = operation_cx(&cancel, deadline);
-            let mut affected = Vec::new();
-            let mut items_done = 0usize;
-
-            for (location, path) in targets.into_iter().zip(paths) {
-                if cancel.is_cancelled() {
-                    emit_operation_progress(
-                        &events,
-                        OperationKind::Delete,
-                        session,
-                        request,
-                        operation,
-                        ProgressSnapshot::new(
-                            ProgressStatus::Cancelled,
-                            ProgressPhase::Processing,
-                            ProgressUnit::Item,
-                            items_done,
-                            Some(total),
-                            None,
-                        ),
-                    )
+            if trash {
+                let trash = self.executor.trash.clone();
+                let target = path.clone();
+                tokio::task::spawn_blocking(move || trash(&target))
+                    .await
+                    .map_err(|error| CoreError::actor("operator", error.to_string()))??;
+            } else {
+                self.write(self.provider().delete(path, &self.cx)).await?;
+            }
+            self.invalidate_removed(path);
+            self.affected.push(location.clone());
+            self.done += 1;
+            if targets.len() > 1 {
+                self.progress(ProgressStatus::Running, Some(location.clone()))
                     .await;
-                    return;
-                }
-
-                let result = if trash {
-                    let tf = trash_fn.clone();
-                    let p = path.clone();
-                    tokio::task::spawn_blocking(move || tf(&p))
-                        .await
-                        .unwrap_or_else(|e| Err(CoreError::actor("operator", e.to_string())))
-                } else {
-                    cx.race(fs.scheme(), fs.delete(&path, &cx)).await
-                };
-
-                match result {
-                    Ok(()) => {
-                        invalidate_parent_cache(&cache, &path);
-                        invalidate_subtree_cache(&cache, &path);
-                        affected.push(location.clone());
-                        items_done += 1;
-                        if total > 1 {
-                            send_or_warn_async(
-                                &events,
-                                Event::ProgressUpdated {
-                                    scope: ProgressScope::operation(
-                                        OperationKind::Delete,
-                                        session,
-                                        request,
-                                        operation,
-                                    ),
-                                    snapshot: ProgressSnapshot::new(
-                                        ProgressStatus::Running,
-                                        ProgressPhase::Processing,
-                                        ProgressUnit::Item,
-                                        items_done,
-                                        Some(total),
-                                        Some(ProgressTarget::Location(location.clone())),
-                                    ),
-                                },
-                                "operator: delete progress",
-                            )
-                            .await;
-                        }
-                    }
-                    Err(e) => {
-                        send_or_warn_async(
-                            &events,
-                            operation_error(e, session, request, operation),
-                            "operator: delete error",
-                        )
-                        .await;
-                        return;
-                    }
-                }
             }
-
-            emit_operation_progress(
-                &events,
-                OperationKind::Delete,
-                session,
-                request,
-                operation,
-                ProgressSnapshot::new(
-                    ProgressStatus::Completed,
-                    ProgressPhase::Finalizing,
-                    ProgressUnit::Item,
-                    items_done,
-                    Some(total),
-                    None,
-                ),
-            )
-            .await;
-            send_or_warn_async(
-                &events,
-                match operation_complete_event(
-                    &registry,
-                    OperationKind::Delete,
-                    operation,
-                    affected,
-                    session,
-                    event_mode,
-                ) {
-                    Ok(event) => event,
-                    Err(error) => operation_error(error, session, request, operation),
-                },
-                "operator: delete complete",
-            )
-            .await;
-            active.remove_if_current(session, &cancel).await;
-            remove_operation_if_current(active_operation_ids, session, operation).await;
-        });
+        }
+        Ok(())
     }
 
-    pub(super) async fn rename(
-        &self,
-        source: LocationRef,
-        new_name: String,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-        event_mode: OperationEventMode,
-    ) {
-        let src_path = match resolve_named_target(
-            &self.registry,
-            &source,
-            &new_name,
-            OperationKind::Rename,
-            self.provider.capabilities(),
-        ) {
-            Ok(path) => path,
-            Err(error) => {
-                send_or_warn_async(
-                    &self.events,
-                    operation_error(error, session, request, operation),
-                    "operator: rename target",
-                )
-                .await;
-                return;
-            }
-        };
-
-        let Some(parent) = src_path.parent() else {
-            send_or_warn_async(
-                &self.events,
-                Event::from_operation_error(
-                    CoreError::invalid_path(format!("Cannot get parent of {}", src_path.display())),
-                    session,
-                    request,
-                    operation,
-                ),
-                "operator: rename parent",
-            )
-            .await;
-            return;
-        };
-
-        let new_path = parent.join(&new_name);
-        let cancel = self.arm_operation(session, operation);
-        let deadline = self.default_timeout.map(|t| Instant::now() + t);
-        let active = self.active_ops.clone();
-        let active_operation_ids = self.active_operation_ids.clone();
-        let events = self.events.clone();
-        let registry = self.registry.clone();
-        let fs = self.provider.clone();
-        let cache = self.cache.clone();
-        let work = self.work.clone();
-
-        work.spawn(cancel.clone(), async move {
-            let cx = operation_cx(&cancel, deadline);
-            match cx.race(fs.scheme(), fs.exists(&new_path, &cx)).await {
-                Ok(true) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::from_operation_error(
-                            CoreError::collision(
-                                ErrorTarget::Path(src_path.clone()),
-                                ErrorTarget::Path(new_path.clone()),
-                            ),
-                            session,
-                            request,
-                            operation,
-                        ),
-                        "operator: rename collision",
-                    )
-                    .await;
-                    return;
-                }
-                Ok(false) => {}
-                Err(e) => {
-                    send_or_warn_async(
-                        &events,
-                        operation_error(e, session, request, operation),
-                        "operator: rename exists",
-                    )
-                    .await;
-                    return;
-                }
-            }
-
-            if let Err(e) = cx
-                .race(fs.scheme(), fs.rename(&src_path, &new_path, &cx))
-                .await
-            {
-                send_or_warn_async(
-                    &events,
-                    operation_error(e, session, request, operation),
-                    "operator: rename",
-                )
-                .await;
-                return;
-            }
-
-            invalidate_parent_cache(&cache, &src_path);
-            invalidate_subtree_cache(&cache, &src_path);
-            let location = affected_location(&registry, new_path);
-            emit_operation_progress(
-                &events,
-                OperationKind::Rename,
-                session,
-                request,
-                operation,
-                ProgressSnapshot::new(
-                    ProgressStatus::Completed,
-                    ProgressPhase::Finalizing,
-                    ProgressUnit::Item,
-                    1,
-                    Some(1),
-                    Some(ProgressTarget::Location(location.clone())),
-                ),
-            )
-            .await;
-            send_or_warn_async(
-                &events,
-                match operation_complete_event(
-                    &registry,
-                    OperationKind::Rename,
-                    operation,
-                    vec![location],
-                    session,
-                    event_mode,
-                ) {
-                    Ok(event) => event,
-                    Err(error) => operation_error(error, session, request, operation),
-                },
-                "operator: rename complete",
-            )
-            .await;
-            active.remove_if_current(session, &cancel).await;
-            remove_operation_if_current(active_operation_ids, session, operation).await;
-        });
+    pub(super) async fn rename(&mut self, source: &Path, target: &Path) -> Result<(), CoreError> {
+        self.require_missing(source, target).await?;
+        self.write(self.provider().rename(source, target, &self.cx))
+            .await?;
+        self.invalidate_removed(source);
+        self.finish_target(target);
+        Ok(())
     }
 
-    pub(super) async fn create_file(
-        &self,
-        parent: LocationRef,
-        name: String,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-        event_mode: OperationEventMode,
-    ) {
-        let path = match resolve_named_target(
-            &self.registry,
-            &parent,
-            &name,
-            OperationKind::CreateFile,
-            self.provider.capabilities(),
-        ) {
-            Ok(path) => path,
-            Err(error) => {
-                send_or_warn_async(
-                    &self.events,
-                    operation_error(error, session, request, operation),
-                    "operator: create_file target",
-                )
-                .await;
-                return;
-            }
-        };
-
-        let cancel = self.arm_operation(session, operation);
-        let deadline = self.default_timeout.map(|t| Instant::now() + t);
-        let active = self.active_ops.clone();
-        let active_operation_ids = self.active_operation_ids.clone();
-        let events = self.events.clone();
-        let registry = self.registry.clone();
-        let fs = self.provider.clone();
-        let cache = self.cache.clone();
-        let work = self.work.clone();
-
-        work.spawn(cancel.clone(), async move {
-            let cx = operation_cx(&cancel, deadline);
-            let full_path = path.join(name);
-            match cx.race(fs.scheme(), fs.exists(&full_path, &cx)).await {
-                Ok(true) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::from_operation_error(
-                            CoreError::collision(
-                                ErrorTarget::Path(path.clone()),
-                                ErrorTarget::Path(full_path.clone()),
-                            ),
-                            session,
-                            request,
-                            operation,
-                        ),
-                        "operator: create_file exists",
-                    )
-                    .await;
-                    return;
-                }
-                Ok(false) => {}
-                Err(e) => {
-                    send_or_warn_async(
-                        &events,
-                        operation_error(e, session, request, operation),
-                        "operator: create_file exists",
-                    )
-                    .await;
-                    return;
-                }
-            }
-            if let Err(e) = cx.race(fs.scheme(), fs.write(&full_path, &[], &cx)).await {
-                send_or_warn_async(
-                    &events,
-                    operation_error(e, session, request, operation),
-                    "operator: create_file write",
-                )
-                .await;
-                return;
-            }
-            invalidate_parent_cache(&cache, &full_path);
-            let location = affected_location(&registry, full_path);
-            emit_operation_progress(
-                &events,
-                OperationKind::CreateFile,
-                session,
-                request,
-                operation,
-                ProgressSnapshot::new(
-                    ProgressStatus::Completed,
-                    ProgressPhase::Finalizing,
-                    ProgressUnit::Item,
-                    1,
-                    Some(1),
-                    Some(ProgressTarget::Location(location.clone())),
-                ),
-            )
-            .await;
-            send_or_warn_async(
-                &events,
-                match operation_complete_event(
-                    &registry,
-                    OperationKind::CreateFile,
-                    operation,
-                    vec![location],
-                    session,
-                    event_mode,
-                ) {
-                    Ok(event) => event,
-                    Err(error) => operation_error(error, session, request, operation),
-                },
-                "operator: create_file complete",
-            )
-            .await;
-            active.remove_if_current(session, &cancel).await;
-            remove_operation_if_current(active_operation_ids, session, operation).await;
-        });
+    pub(super) async fn create(
+        &mut self,
+        parent: &Path,
+        target: &Path,
+        folder: bool,
+    ) -> Result<(), CoreError> {
+        self.require_missing(parent, target).await?;
+        let fs = self.provider();
+        if folder {
+            self.write(fs.mkdir(target, &self.cx)).await?;
+        } else {
+            self.write(fs.write(target, &[], &self.cx)).await?;
+        }
+        self.finish_target(target);
+        Ok(())
     }
 
-    pub(super) async fn create_folder(
-        &self,
-        parent: LocationRef,
-        name: String,
-        session: SessionId,
-        request: RequestId,
-        operation: OperationId,
-        event_mode: OperationEventMode,
-    ) {
-        let path = match resolve_named_target(
-            &self.registry,
-            &parent,
-            &name,
-            OperationKind::CreateFolder,
-            self.provider.capabilities(),
-        ) {
-            Ok(path) => path,
-            Err(error) => {
-                send_or_warn_async(
-                    &self.events,
-                    operation_error(error, session, request, operation),
-                    "operator: create_folder target",
-                )
-                .await;
-                return;
-            }
-        };
-
-        let cancel = self.arm_operation(session, operation);
-        let deadline = self.default_timeout.map(|t| Instant::now() + t);
-        let active = self.active_ops.clone();
-        let active_operation_ids = self.active_operation_ids.clone();
-        let events = self.events.clone();
-        let registry = self.registry.clone();
-        let fs = self.provider.clone();
-        let cache = self.cache.clone();
-        let work = self.work.clone();
-
-        work.spawn(cancel.clone(), async move {
-            let cx = operation_cx(&cancel, deadline);
-            let full_path = path.join(name);
-            match cx.race(fs.scheme(), fs.exists(&full_path, &cx)).await {
-                Ok(true) => {
-                    send_or_warn_async(
-                        &events,
-                        Event::from_operation_error(
-                            CoreError::collision(
-                                ErrorTarget::Path(path.clone()),
-                                ErrorTarget::Path(full_path.clone()),
-                            ),
-                            session,
-                            request,
-                            operation,
-                        ),
-                        "operator: create_folder exists",
-                    )
-                    .await;
-                    return;
-                }
-                Ok(false) => {}
-                Err(e) => {
-                    send_or_warn_async(
-                        &events,
-                        operation_error(e, session, request, operation),
-                        "operator: create_folder exists",
-                    )
-                    .await;
-                    return;
-                }
-            }
-            if let Err(e) = cx.race(fs.scheme(), fs.mkdir(&full_path, &cx)).await {
-                send_or_warn_async(
-                    &events,
-                    operation_error(e, session, request, operation),
-                    "operator: create_folder mkdir",
-                )
-                .await;
-                return;
-            }
-            invalidate_parent_cache(&cache, &full_path);
-            let location = affected_location(&registry, full_path);
-            emit_operation_progress(
-                &events,
-                OperationKind::CreateFolder,
-                session,
-                request,
-                operation,
-                ProgressSnapshot::new(
-                    ProgressStatus::Completed,
-                    ProgressPhase::Finalizing,
-                    ProgressUnit::Item,
-                    1,
-                    Some(1),
-                    Some(ProgressTarget::Location(location.clone())),
-                ),
-            )
-            .await;
-            send_or_warn_async(
-                &events,
-                match operation_complete_event(
-                    &registry,
-                    OperationKind::CreateFolder,
-                    operation,
-                    vec![location],
-                    session,
-                    event_mode,
-                ) {
-                    Ok(event) => event,
-                    Err(error) => operation_error(error, session, request, operation),
-                },
-                "operator: create_folder complete",
-            )
-            .await;
-            active.remove_if_current(session, &cancel).await;
-            remove_operation_if_current(active_operation_ids, session, operation).await;
-        });
+    fn finish_target(&mut self, target: &Path) {
+        self.record_target(target.to_path_buf());
+        self.done = 1;
+        self.set_total(1);
     }
 }

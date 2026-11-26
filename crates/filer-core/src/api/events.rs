@@ -55,6 +55,22 @@ pub enum Event {
         session: SessionId,
     },
 
+    /// The validated operation owns a slot in its Session's mutation queue.
+    OperationAccepted {
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+        kind: OperationKind,
+    },
+
+    /// The operation has reached the front of its Session's mutation queue.
+    OperationStarted {
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+        kind: OperationKind,
+    },
+
     /// Location-native operation completion by affected locations.
     OperationComplete {
         operation_id: OperationId,

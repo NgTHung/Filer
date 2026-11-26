@@ -18,7 +18,9 @@
 //! ```
 
 use crate::model::location::LocationRef;
-use crate::model::operation::OperationId;
+use crate::model::operation::{OperationId, OperationKind};
+
+use super::plan::OperationScope;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
 
@@ -82,4 +84,55 @@ pub enum OpsCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OperationEventMode {
     Location,
+}
+
+impl OpsCommand {
+    pub(super) fn scope(&self) -> Option<OperationScope> {
+        use OperationKind::*;
+        let (session, request, id, kind) = match *self {
+            Self::Copy {
+                session,
+                request,
+                operation,
+                ..
+            } => (session, request, operation, Copy),
+            Self::Move {
+                session,
+                request,
+                operation,
+                ..
+            } => (session, request, operation, Move),
+            Self::Delete {
+                session,
+                request,
+                operation,
+                ..
+            } => (session, request, operation, Delete),
+            Self::Rename {
+                session,
+                request,
+                operation,
+                ..
+            } => (session, request, operation, Rename),
+            Self::CreateFile {
+                session,
+                request,
+                operation,
+                ..
+            } => (session, request, operation, CreateFile),
+            Self::CreateFolder {
+                session,
+                request,
+                operation,
+                ..
+            } => (session, request, operation, CreateFolder),
+            Self::Cancel(_) | Self::CancelOperation { .. } => return None,
+        };
+        Some(OperationScope {
+            session,
+            request,
+            id,
+            kind,
+        })
+    }
 }

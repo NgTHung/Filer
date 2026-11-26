@@ -10,10 +10,11 @@
 //! - `ops.cancel` — cancel a specific active operation
 
 mod command;
+mod execution;
 mod mutation;
 pub mod operator;
+mod plan;
 pub mod preflight;
-#[cfg(test)]
 pub(crate) mod queue;
 mod support;
 pub mod target;

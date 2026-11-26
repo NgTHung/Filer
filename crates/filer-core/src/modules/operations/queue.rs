@@ -50,6 +50,18 @@ impl<T> MutationQueue<T> {
         Ok(())
     }
 
+    pub(crate) fn front(&self) -> Option<&T> {
+        self.waiting.front().map(|(_, work)| work)
+    }
+
+    pub(crate) fn waiting_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.waiting.iter_mut().map(|(_, work)| work)
+    }
+
+    pub(crate) fn drain_waiting(&mut self) -> impl Iterator<Item = T> {
+        self.waiting.drain(..).map(|(_, work)| work)
+    }
+
     pub(crate) fn start(&mut self) -> Option<(OperationId, T, CancelSignal)> {
         if self.running.is_some() {
             return None;
