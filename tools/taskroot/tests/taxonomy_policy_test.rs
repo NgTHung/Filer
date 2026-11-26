@@ -88,6 +88,35 @@ fn duplicate_creation_has_a_stable_reason_code() {
 }
 
 #[test]
+fn import_preserves_criteria_with_rationale() {
+    let temp = project(&config(r#"{"policy": "open"}"#));
+    let project = TaskProject::open(temp.path()).expect("project opens");
+    let mut task = new_task("backend", "WORK-001", "Change");
+    task.status = TaskStatus::Deferred;
+    task.rationale = Some("Wait for the next release.".to_string());
+    task.criteria.insert(
+        0,
+        Criterion {
+            text: "Policy is documented.".to_string(),
+            checked: true,
+        },
+    );
+
+    let paths = import_tasks(&project, &[task], false, false).expect("task imported");
+    let content = fs::read_to_string(&paths[0]).expect("imported task read");
+    assert!(
+        content.ends_with(concat!(
+            "\n---\n\n## Summary\n\nExercise taxonomy policy.\n\n",
+            "## Acceptance Criteria\n\n- [x] Policy is documented.\n- [ ] Works.\n\n",
+            "## Rationale\n\nWait for the next release.\n\n",
+        )),
+        "{content}"
+    );
+    require_valid_report(validate_repo(&project).expect("repository scans"))
+        .expect("imported task validates");
+}
+
+#[test]
 fn prefixes_are_domain_scoped_and_report_structured_failures() {
     let temp = project(&config(r#"{"policy": "open"}"#));
     write_task(

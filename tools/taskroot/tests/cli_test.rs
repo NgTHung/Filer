@@ -519,7 +519,73 @@ fn add_command_creates_milestone_and_rich_task() {
     assert!(task.contains("parent: \"milestones:MILESTONE-003\""));
     assert!(task.contains("rules: [\"PROVIDER-ACCESS\"]"));
     assert!(task.contains("tags: [\"provider\"]"));
-    assert!(task.contains("## Acceptance Criteria"));
+    assert!(task.ends_with(concat!(
+        "\n---\n\n## Summary\n\n",
+        "Propagate provider deadlines through core calls.\n\n",
+        "## Acceptance Criteria\n\n",
+        "- [ ] Provider calls receive timeout context.\n",
+    )));
+}
+
+#[test]
+fn add_command_preserves_criteria_with_rationale() {
+    let repo = task_repo();
+
+    run_task_command(
+        &repo,
+        [
+            "add",
+            "--domain",
+            "core",
+            "--id",
+            "CORE-042",
+            "--title",
+            "Provider timeout propagation",
+            "--status",
+            "Blocked",
+            "--priority",
+            "High",
+            "--type",
+            "Epic",
+            "--summary",
+            "Propagate provider deadlines through core calls.",
+            "--blocked-reason",
+            "Waiting for the deadline policy.",
+            "--criterion",
+            "Provider calls receive timeout context.",
+            "--criterion",
+            "Nested calls inherit the deadline.",
+            "--checked-criterion",
+            "Provider calls are documented.",
+            "--checked-criterion",
+            "Deadline tests are in place.",
+            "--rationale",
+            "Provider operations need a shared deadline.",
+        ],
+    );
+
+    let task = fs::read_to_string(
+        repo.path()
+            .join(".tasks/core/CORE-042-provider-timeout-propagation.md"),
+    )
+    .expect("task should be readable");
+    let (_, body) = task
+        .split_once("\n---\n\n")
+        .expect("task should have a body");
+    assert_eq!(
+        body,
+        concat!(
+            "## Summary\n\nPropagate provider deadlines through core calls.\n\n",
+            "## Blocked Reason\n\nWaiting for the deadline policy.\n\n",
+            "## Exit Criteria\n\n",
+            "- [ ] Provider calls receive timeout context.\n",
+            "- [ ] Nested calls inherit the deadline.\n",
+            "- [x] Provider calls are documented.\n",
+            "- [x] Deadline tests are in place.\n\n",
+            "## Rationale\n\nProvider operations need a shared deadline.\n\n",
+        )
+    );
+    run_task_command(&repo, ["validate"]);
 }
 
 #[test]
