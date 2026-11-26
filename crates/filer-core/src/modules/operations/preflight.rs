@@ -26,6 +26,18 @@ pub async fn check_transfer(
     destination: &Path,
     cx: &ProviderCx<'_>,
 ) -> Result<(), CoreError> {
+    validated_targets(provider, sources, destination, cx)
+        .await
+        .map(|_| ())
+}
+
+pub(super) async fn validated_targets(
+    provider: &dyn FsProvider,
+    sources: &[PathBuf],
+    destination: &Path,
+    cx: &ProviderCx<'_>,
+) -> Result<Vec<PathBuf>, CoreError> {
+    let mut targets = Vec::with_capacity(sources.len());
     for source in sources {
         let name = source
             .file_name()
@@ -36,6 +48,7 @@ pub async fn check_transfer(
             provider.preflight_transfer(source, &target, cx),
         )
         .await?;
+        targets.push(target);
     }
-    Ok(())
+    Ok(targets)
 }

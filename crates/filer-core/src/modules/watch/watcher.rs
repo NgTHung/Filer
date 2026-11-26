@@ -8,7 +8,7 @@ use crate::actors::Actor;
 use crate::api::event_sink::DEFAULT_EVENT_CHANNEL_CAPACITY;
 use crate::api::event_sink::EventSink;
 use crate::api::events::Event;
-use crate::model::location::LocationRef;
+use crate::model::location::{Location, LocationRef};
 use crate::model::registry::NodeRegistry;
 use crate::model::request::RequestId;
 use crate::model::session::SessionId;
@@ -125,19 +125,10 @@ impl Watcher {
         request: Option<RequestId>,
         event_mode: WatchEventMode,
     ) {
-        let location = match self.registry.resolve_location_ref(&location_ref) {
-            Ok(location) => location,
+        let (location, path) = match self.resolve_watch_target(&location_ref) {
+            Ok(target) => target,
             Err(error) => {
-                self.emit_watch_error(error, session_id, request, "watch location resolve error")
-                    .await;
-                return;
-            }
-        };
-
-        let path = match location.route().require_direct_path() {
-            Ok(path) => path.to_path_buf(),
-            Err(error) => {
-                self.emit_watch_error(error, session_id, request, "watch location route error")
+                self.emit_watch_error(error, session_id, request, "watch target error")
                     .await;
                 return;
             }
@@ -180,6 +171,15 @@ impl Watcher {
         }
     }
 
+    fn resolve_watch_target(
+        &self,
+        location_ref: &LocationRef,
+    ) -> Result<(Location, PathBuf), crate::CoreError> {
+        let location = self.registry.resolve_location_ref(location_ref)?;
+        let path = location.route().require_direct_path()?.to_path_buf();
+        Ok((location, path))
+    }
+
     async fn emit_watch_error(
         &self,
         error: crate::CoreError,
@@ -187,17 +187,23 @@ impl Watcher {
         request: Option<RequestId>,
         label: &'static str,
     ) {
-        let event = match request {
-            Some(request) => Event::from_request_error(error, session_id, request),
-            None => Event::from_error(error, session_id),
-        };
+        let event = Event::from_correlated_error(error, session_id, request, None);
         send_or_warn_async(&self.events, event, label).await;
     }
 
     async fn handle_unwatch(&mut self, location_ref: LocationRef, scope: UnwatchScope) {
-        let Ok(location) = self.registry.resolve_location_ref(&location_ref) else {
-            tracing::warn!("Cannot unwatch unresolved location");
-            return;
+        let location = match self.resolve_watch_target(&location_ref) {
+            Ok((location, _)) => location,
+            Err(error) => {
+                match scope {
+                    UnwatchScope::Session(session) => {
+                        self.emit_watch_error(error, session, None, "unwatch target error")
+                            .await;
+                    }
+                    UnwatchScope::All => tracing::warn!(%error, "Invalid unwatch target"),
+                }
+                return;
+            }
         };
 
         let key = LocationRef::from_location(&location);

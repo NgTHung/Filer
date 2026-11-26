@@ -102,7 +102,7 @@ impl FilerCore {
             registry: registry.clone(),
         };
 
-        handlers.on_async("session.handshake", |_cmd, ctx| {
+        handlers.on_builtin_async("session.handshake", |_cmd, ctx| {
             Box::pin(async move {
                 let session = ctx.sessions.create_session(ctx.events.clone());
                 send_or_warn_async(
@@ -114,7 +114,7 @@ impl FilerCore {
             })
         });
 
-        handlers.on_async("session.destroy", |cmd, ctx| {
+        handlers.on_builtin_async("session.destroy", |cmd, ctx| {
             Box::pin(async move {
                 if let Command::DestroySession(session_id) = cmd {
                     ctx.sessions.remove(session_id);
@@ -204,10 +204,11 @@ impl FilerCore {
         self.handlers.on_session_destroy(hook);
     }
 
-    /// Send a command into the core.
+    /// Submit a command to the Core command channel.
     ///
-    /// Returns `Err(CoreError)` with `ErrorCode::ChannelClosed` if the system has been
-    /// shut down.
+    /// `Ok(())` confirms channel delivery only. Read events for validation errors
+    /// and file operation outcomes. A closed command channel returns
+    /// [`ErrorCode::ChannelClosed`](crate::errors::ErrorCode::ChannelClosed).
     pub fn send(&self, command: Command) -> Result<(), CoreError> {
         self.command_tx
             .send(command)

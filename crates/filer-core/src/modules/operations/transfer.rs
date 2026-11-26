@@ -103,23 +103,27 @@ impl Operator {
 
         work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
-            if let Err(error) =
-                super::preflight::check_transfer(fs.as_ref(), &src_paths, &dst_path, &cx).await
-            {
-                send_or_warn_async(
-                    &events,
-                    operation_error(error, session, request, operation),
-                    "operator: copy preflight",
-                )
-                .await;
-                active.remove_if_current(session, &cancel).await;
-                remove_operation_if_current(active_operation_ids, session, operation).await;
-                return;
-            }
+            let targets =
+                match super::preflight::validated_targets(fs.as_ref(), &src_paths, &dst_path, &cx)
+                    .await
+                {
+                    Ok(targets) => targets,
+                    Err(error) => {
+                        send_or_warn_async(
+                            &events,
+                            operation_error(error, session, request, operation),
+                            "operator: copy preflight",
+                        )
+                        .await;
+                        active.remove_if_current(session, &cancel).await;
+                        remove_operation_if_current(active_operation_ids, session, operation).await;
+                        return;
+                    }
+                };
             let mut affected = Vec::new();
             let mut items_done = 0usize;
 
-            for src_path in src_paths {
+            for (src_path, target) in src_paths.into_iter().zip(targets) {
                 if cancel.is_cancelled() {
                     emit_operation_progress(
                         &events,
@@ -153,14 +157,11 @@ impl Operator {
                     }
                 };
 
-                let file_name = src_path.file_name().unwrap_or_default();
-
                 if meta.is_dir() {
-                    let dst_sub = dst_path.join(file_name);
                     match copy_dir_recursive(
                         &fs,
                         &src_path,
-                        &dst_sub,
+                        &target,
                         &cx,
                         &events,
                         &ProgressScope::operation(OperationKind::Copy, session, request, operation),
@@ -198,14 +199,10 @@ impl Operator {
                             return;
                         }
                     }
-                    invalidate_parent_cache(&cache, &dst_sub);
-                    affected.push(affected_location(&registry, dst_sub));
+                    invalidate_parent_cache(&cache, &target);
+                    affected.push(affected_location(&registry, target));
                 } else {
-                    let dst_file = dst_path.join(file_name);
-                    if let Err(e) = cx
-                        .race(fs.scheme(), fs.copy(&src_path, &dst_file, &cx))
-                        .await
-                    {
+                    if let Err(e) = cx.race(fs.scheme(), fs.copy(&src_path, &target, &cx)).await {
                         send_or_warn_async(
                             &events,
                             operation_error(e, session, request, operation),
@@ -214,9 +211,9 @@ impl Operator {
                         .await;
                         return;
                     }
-                    invalidate_parent_cache(&cache, &dst_file);
+                    invalidate_parent_cache(&cache, &target);
                     items_done += 1;
-                    affected.push(affected_location(&registry, dst_file));
+                    affected.push(affected_location(&registry, target));
                 }
             }
 
@@ -314,22 +311,26 @@ impl Operator {
 
         work.spawn(cancel.clone(), async move {
             let cx = operation_cx(&cancel, deadline);
-            if let Err(error) =
-                super::preflight::check_transfer(fs.as_ref(), &src_paths, &dst_path, &cx).await
-            {
-                send_or_warn_async(
-                    &events,
-                    operation_error(error, session, request, operation),
-                    "operator: move preflight",
-                )
-                .await;
-                active.remove_if_current(session, &cancel).await;
-                remove_operation_if_current(active_operation_ids, session, operation).await;
-                return;
-            }
+            let targets =
+                match super::preflight::validated_targets(fs.as_ref(), &src_paths, &dst_path, &cx)
+                    .await
+                {
+                    Ok(targets) => targets,
+                    Err(error) => {
+                        send_or_warn_async(
+                            &events,
+                            operation_error(error, session, request, operation),
+                            "operator: move preflight",
+                        )
+                        .await;
+                        active.remove_if_current(session, &cancel).await;
+                        remove_operation_if_current(active_operation_ids, session, operation).await;
+                        return;
+                    }
+                };
             let mut affected = Vec::new();
 
-            for src_path in src_paths {
+            for (src_path, target) in src_paths.into_iter().zip(targets) {
                 if cancel.is_cancelled() {
                     emit_operation_progress(
                         &events,
@@ -350,23 +351,18 @@ impl Operator {
                     return;
                 }
 
-                let file_name = src_path.file_name().unwrap_or_default();
-                let dst_file = dst_path.join(file_name);
-
                 match cx
-                    .race(fs.scheme(), fs.rename(&src_path, &dst_file, &cx))
+                    .race(fs.scheme(), fs.rename(&src_path, &target, &cx))
                     .await
                 {
                     Ok(()) => {
                         invalidate_parent_cache(&cache, &src_path);
-                        invalidate_parent_cache(&cache, &dst_file);
+                        invalidate_parent_cache(&cache, &target);
                         invalidate_subtree_cache(&cache, &src_path);
-                        affected.push(affected_location(&registry, dst_file));
+                        affected.push(affected_location(&registry, target));
                     }
                     Err(e) if is_cross_device(&e) => {
-                        if let Err(e) = cx
-                            .race(fs.scheme(), fs.copy(&src_path, &dst_file, &cx))
-                            .await
+                        if let Err(e) = cx.race(fs.scheme(), fs.copy(&src_path, &target, &cx)).await
                         {
                             send_or_warn_async(
                                 &events,
@@ -386,9 +382,9 @@ impl Operator {
                             return;
                         }
                         invalidate_parent_cache(&cache, &src_path);
-                        invalidate_parent_cache(&cache, &dst_file);
+                        invalidate_parent_cache(&cache, &target);
                         invalidate_subtree_cache(&cache, &src_path);
-                        affected.push(affected_location(&registry, dst_file));
+                        affected.push(affected_location(&registry, target));
                     }
                     Err(e) => {
                         send_or_warn_async(

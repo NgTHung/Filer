@@ -216,16 +216,10 @@ impl std::fmt::Debug for Command {
 }
 
 impl Command {
-    /// Extract the SessionId from any command variant.
-    ///
-    /// Returns `None` for commands that don't require session validation:
-    /// - `Handshake` (creates a session)
-    /// - `DestroySession` (tears down — safe to no-op if unknown)
+    /// Return the command's SessionId. `Handshake` creates a session.
     pub fn session_id(&self) -> Option<SessionId> {
         match self {
             Command::Handshake => None,
-            Command::DestroySession(_) => None,
-
             Command::Navigate { session, .. }
             | Command::NavigateUp { session, .. }
             | Command::NavigateBack { session, .. }
@@ -250,6 +244,7 @@ impl Command {
             | Command::Watch { session, .. }
             | Command::Unwatch { session, .. }
             | Command::UnwatchSession(session)
+            | Command::DestroySession(session)
             | Command::Extension { session, .. } => Some(*session),
         }
     }

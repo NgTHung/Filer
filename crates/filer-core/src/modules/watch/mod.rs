@@ -50,10 +50,11 @@ impl WatchModule {
 
 impl Module for WatchModule {
     fn init(self: Box<Self>, ctx: ModuleContext<'_>) {
+        let handlers = ctx.handlers;
         let (watch_tx, watch_rx) = flume::unbounded::<WatchCommand>();
 
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch", move |cmd, _ctx| {
+        handlers.on_builtin("watch", move |cmd, _ctx| {
             if let Command::Watch {
                 location,
                 session,
@@ -74,7 +75,7 @@ impl Module for WatchModule {
         });
 
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch.remove", move |cmd, _ctx| {
+        handlers.on_builtin("watch.remove", move |cmd, _ctx| {
             if let Command::Unwatch { location, session } = cmd {
                 send_or_warn(
                     &tx,
@@ -88,7 +89,7 @@ impl Module for WatchModule {
         });
 
         let tx = watch_tx.clone();
-        ctx.handlers.on("watch.session_remove", move |cmd, _ctx| {
+        handlers.on_builtin("watch.session_remove", move |cmd, _ctx| {
             if let Command::UnwatchSession(session) = cmd {
                 send_or_warn(
                     &tx,
@@ -99,7 +100,7 @@ impl Module for WatchModule {
         });
 
         let tx = watch_tx.clone();
-        ctx.handlers.on_session_destroy(move |session, _ctx| {
+        handlers.on_session_destroy(move |session, _ctx| {
             send_or_warn(
                 &tx,
                 WatchCommand::UnwatchSession(session),

@@ -59,9 +59,10 @@ impl OperationsModule {
 
 impl Module for OperationsModule {
     fn init(mut self: Box<Self>, ctx: ModuleContext<'_>) {
+        let handlers = ctx.handlers;
         let ops_rx = self.ops_rx.take().expect("ScanModule already initialized");
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.copy", move |cmd, _ctx| {
+        handlers.on_builtin("ops.copy", move |cmd, _ctx| {
             if let Command::Copy {
                 sources,
                 destination,
@@ -86,7 +87,7 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.move", move |cmd, _ctx| {
+        handlers.on_builtin("ops.move", move |cmd, _ctx| {
             if let Command::Move {
                 sources,
                 destination,
@@ -111,7 +112,7 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.delete", move |cmd, _ctx| {
+        handlers.on_builtin("ops.delete", move |cmd, _ctx| {
             if let Command::Delete {
                 locations,
                 trash,
@@ -136,7 +137,7 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.rename", move |cmd, _ctx| {
+        handlers.on_builtin("ops.rename", move |cmd, _ctx| {
             if let Command::Rename {
                 location,
                 new_name,
@@ -161,7 +162,7 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.create_folder", move |cmd, _ctx| {
+        handlers.on_builtin("ops.create_folder", move |cmd, _ctx| {
             if let Command::CreateFolder {
                 parent,
                 name,
@@ -186,7 +187,7 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.create_file", move |cmd, _ctx| {
+        handlers.on_builtin("ops.create_file", move |cmd, _ctx| {
             if let Command::CreateFile {
                 parent,
                 name,
@@ -211,7 +212,7 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on("ops.cancel", move |cmd, _ctx| {
+        handlers.on_builtin("ops.cancel", move |cmd, _ctx| {
             if let Command::CancelOperation { session, operation } = cmd {
                 send_or_warn(
                     &tx,
@@ -222,7 +223,7 @@ impl Module for OperationsModule {
         });
 
         let tx = self.ops_tx.clone();
-        ctx.handlers.on_session_destroy(move |session, _ctx| {
+        handlers.on_session_destroy(move |session, _ctx| {
             send_or_warn(
                 &tx,
                 OpsCommand::Cancel(session),

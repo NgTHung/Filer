@@ -135,8 +135,16 @@ pub enum Event {
 
 impl Event {
     /// Create an `Event::Error` from a [`CoreError`] and session.
-    ///
     pub fn from_error(err: CoreError, session: SessionId) -> Self {
+        Self::from_correlated_error(err, session, None, None)
+    }
+
+    pub(crate) fn from_correlated_error(
+        err: CoreError,
+        session: SessionId,
+        request: Option<RequestId>,
+        operation: Option<OperationId>,
+    ) -> Self {
         err.emit_trace();
         Event::Error {
             kind: err.kind(),
@@ -146,17 +154,13 @@ impl Event {
             message: err.to_string(),
             recoverable: err.recoverable(),
             session,
-            request: None,
-            operation: None,
+            request,
+            operation,
         }
     }
 
     pub fn from_request_error(err: CoreError, session: SessionId, request: RequestId) -> Self {
-        let mut event = Self::from_error(err, session);
-        if let Event::Error { request: r, .. } = &mut event {
-            *r = Some(request);
-        }
-        event
+        Self::from_correlated_error(err, session, Some(request), None)
     }
 
     pub fn from_operation_error(
@@ -165,10 +169,6 @@ impl Event {
         request: RequestId,
         operation: OperationId,
     ) -> Self {
-        let mut event = Self::from_request_error(err, session, request);
-        if let Event::Error { operation: op, .. } = &mut event {
-            *op = Some(operation);
-        }
-        event
+        Self::from_correlated_error(err, session, Some(request), Some(operation))
     }
 }

@@ -30,8 +30,10 @@ use flume::Receiver;
 
 use crate::actors::Actor;
 use crate::api::commands::Command;
+use crate::api::events::Event;
 use crate::api::module::{HandlerContext, HandlerRegistry};
 use crate::errors::CoreError;
+use crate::model::session::SessionId;
 use crate::utils::channel::send_or_warn_async;
 
 /// Command Router actor — generic dispatcher backed by [`HandlerRegistry`].
@@ -62,30 +64,12 @@ impl CommandRouter {
     /// Session validation is the only cross-cutting concern the Router
     /// handles directly. Everything else is delegated to the registry.
     async fn route(&self, command: Command) {
-        let request = command.request_id();
-        let operation = command.operation_id();
-        if let Some(session) = command.session_id()
+        let session = command.session_id();
+        if let Some(session) = session
             && !self.ctx.sessions.exists(session)
         {
-            send_or_warn_async(
-                &self.ctx.events,
-                {
-                    let error = CoreError::unknown_session(session);
-                    let mut event = crate::api::events::Event::from_error(error, session);
-                    if let crate::api::events::Event::Error {
-                        request: event_request,
-                        operation: event_operation,
-                        ..
-                    } = &mut event
-                    {
-                        *event_request = request;
-                        *event_operation = operation;
-                    }
-                    event
-                },
-                "unknown session error",
-            )
-            .await;
+            self.reject(&command, session, CoreError::unknown_session(session))
+                .await;
             return;
         }
 
@@ -95,29 +79,44 @@ impl CommandRouter {
             _ => None,
         };
 
-        // One structured record per command at the single dispatch choke point:
-        // the structural guarantee that every app-facing command path is traced.
-        // debug keeps the default info-level production path quiet on this hot
-        // path. Emitted after session validation so rejected commands don't count.
+        // Trace dispatch attempts after session validation to keep command diagnostics in one place.
         tracing::debug!(
             target: "filer_core::command",
             key = command.key(),
-            session = ?command.session_id(),
-            request = ?request,
-            operation = ?operation,
+            session = ?session,
+            request = ?command.request_id(),
+            operation = ?command.operation_id(),
             "command dispatched",
         );
 
-        // Dispatch to registered handler
-        let key = command.key().to_string();
-        if !self.handlers.dispatch(command, &self.ctx).await {
-            tracing::warn!(key = %key, "no handler registered for command");
+        if let Some(command) = self.handlers.dispatch_or_return(command, &self.ctx).await {
+            if let Some(session) = session {
+                let error = CoreError::unsupported_operation(format!(
+                    "No handler available for command '{}'",
+                    command.key()
+                ));
+                self.reject(&command, session, error).await;
+            } else {
+                // FilerCore always installs the sessionless Handshake handler.
+                tracing::error!(key = command.key(), "missing core lifecycle handler");
+            }
+            return;
         }
 
         // Run destroy hooks after the session.destroy handler
         if let Some(session_id) = destroy_session {
             self.handlers.run_destroy_hooks(session_id, &self.ctx);
         }
+    }
+
+    async fn reject(&self, command: &Command, session: SessionId, error: CoreError) {
+        let event = Event::from_correlated_error(
+            error,
+            session,
+            command.request_id(),
+            command.operation_id(),
+        );
+        send_or_warn_async(&self.ctx.events, event, "command rejected").await;
     }
 }
 
