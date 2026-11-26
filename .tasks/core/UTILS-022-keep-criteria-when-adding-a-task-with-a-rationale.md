@@ -1,13 +1,13 @@
 ---
 id: "UTILS-022"
 title: "Keep criteria when adding a task with a rationale"
-status: "To Do"
+status: In Progress
 priority: "Medium"
 type: "Bug"
 risk: "Low"
 impact: "taskroot add silently drops every criterion when --rationale is passed, and the created task then fails validation."
 tags: ["tooling", "bug", "ready-for-agent"]
-last_updated: "2026-09-23"
+last_updated: 2026-11-26
 ---
 
 ## Summary
