@@ -49,6 +49,7 @@ impl Execution<'_> {
     }
 
     async fn move_target(&mut self, source: &Path, target: PathBuf) -> Result<(), CoreError> {
+        self.destructive_attempted = true;
         let fs = self.provider();
         match self.write(fs.rename(source, &target, &self.cx)).await {
             Ok(()) => self.record_target(target),

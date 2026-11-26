@@ -107,7 +107,10 @@ impl OperationPlan {
                     folder: *kind == OperationKind::CreateFolder,
                 })
             }
-            OpsCommand::Cancel(_) | OpsCommand::CancelOperation { .. } => {
+            OpsCommand::Cancel(_)
+            | OpsCommand::CancelOperation { .. }
+            | OpsCommand::InspectQueue { .. }
+            | OpsCommand::ResolveQueue { .. } => {
                 Err(CoreError::invalid_input("Expected a file operation"))
             }
         }

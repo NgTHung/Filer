@@ -37,6 +37,7 @@ impl Execution<'_> {
             if self.cx.is_cancelled() {
                 return Err(CoreError::cancelled());
             }
+            self.destructive_attempted = true;
             if trash {
                 let trash = self.executor.trash.clone();
                 let target = path.clone();
@@ -59,6 +60,7 @@ impl Execution<'_> {
 
     pub(super) async fn rename(&mut self, source: &Path, target: &Path) -> Result<(), CoreError> {
         self.require_missing(source, target).await?;
+        self.destructive_attempted = true;
         self.write(self.provider().rename(source, target, &self.cx))
             .await?;
         self.invalidate_removed(source);

@@ -68,6 +68,7 @@ pub enum ErrorCode {
     InputInvalid,
     Collision,
     OperationQueueFull,
+    OperationQueueStateChanged,
     StaleRequest,
     SessionUnknown,
     NavigationUnavailable,
@@ -99,7 +100,7 @@ impl ErrorCode {
             | ErrorCode::StaleRequest
             | ErrorCode::SessionUnknown
             | ErrorCode::NavigationUnavailable => ErrorKind::InvalidInput,
-            ErrorCode::Collision => ErrorKind::Conflict,
+            ErrorCode::Collision | ErrorCode::OperationQueueStateChanged => ErrorKind::Conflict,
             ErrorCode::OperationQueueFull => ErrorKind::Busy,
             ErrorCode::ProviderCapabilityUnavailable => ErrorKind::Unsupported,
             ErrorCode::Unknown => ErrorKind::Unknown,
@@ -119,6 +120,7 @@ impl ErrorCode {
                 | ErrorCode::Cancelled
                 | ErrorCode::TimedOut
                 | ErrorCode::NetworkFailed
+                | ErrorCode::OperationQueueStateChanged
                 | ErrorCode::OperationQueueFull
                 | ErrorCode::Collision
                 | ErrorCode::StaleRequest

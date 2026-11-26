@@ -18,7 +18,7 @@
 //! ```
 
 use crate::model::location::LocationRef;
-use crate::model::operation::{OperationId, OperationKind};
+use crate::model::operation::{OperationId, OperationKind, OperationQueueResolution};
 
 use super::plan::OperationScope;
 use crate::model::request::RequestId;
@@ -74,6 +74,16 @@ pub enum OpsCommand {
         request: RequestId,
         operation: OperationId,
     },
+    InspectQueue {
+        session: SessionId,
+        request: RequestId,
+    },
+    ResolveQueue {
+        session: SessionId,
+        request: RequestId,
+        failed: OperationId,
+        resolution: OperationQueueResolution,
+    },
     Cancel(SessionId),
     CancelOperation {
         session: SessionId,
@@ -126,7 +136,10 @@ impl OpsCommand {
                 operation,
                 ..
             } => (session, request, operation, CreateFolder),
-            Self::Cancel(_) | Self::CancelOperation { .. } => return None,
+            Self::Cancel(_)
+            | Self::CancelOperation { .. }
+            | Self::InspectQueue { .. }
+            | Self::ResolveQueue { .. } => return None,
         };
         Some(OperationScope {
             session,

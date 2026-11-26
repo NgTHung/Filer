@@ -26,9 +26,9 @@ use crate::{
 };
 
 use super::plan::{OperationPlan, OperationScope};
-use super::preflight::check_transfer;
+use super::preflight::{check_transfer, validated_targets};
 use super::support::{TrashFn, invalidate_parent_cache, invalidate_subtree_cache, operation_cx};
-use super::target::affected_location;
+use super::target::{affected_location, path_location};
 
 #[derive(Clone)]
 pub(super) struct Executor {
@@ -38,6 +38,12 @@ pub(super) struct Executor {
     pub trash: TrashFn,
     pub cache: Option<SharedDirCache>,
     pub timeout: Option<Duration>,
+}
+
+pub(super) struct ExecutionReport {
+    pub outcome: Result<(), CoreError>,
+    pub affected: Vec<LocationRef>,
+    pub destructive_attempted: bool,
 }
 
 impl Executor {
@@ -58,12 +64,22 @@ impl Executor {
         check_transfer(self.provider.as_ref(), sources, destination, &cx).await
     }
 
+    pub async fn validate_retry(
+        &self,
+        plan: &OperationPlan,
+        cancel: &CancelSignal,
+    ) -> Result<(), CoreError> {
+        let cx = operation_cx(cancel, self.timeout.map(|timeout| Instant::now() + timeout));
+        check_retry(self.provider.as_ref(), plan, &cx).await
+    }
+
     pub async fn run(
         &self,
         scope: &OperationScope,
         plan: &OperationPlan,
         cancel: &CancelSignal,
-    ) -> Result<Vec<LocationRef>, CoreError> {
+        retry: bool,
+    ) -> ExecutionReport {
         let mut execution = Execution {
             executor: self,
             cx: operation_cx(cancel, self.timeout.map(|timeout| Instant::now() + timeout)),
@@ -74,10 +90,11 @@ impl Executor {
                 scope.id,
             ),
             affected: Vec::new(),
+            destructive_attempted: false,
             done: 0,
             total: None,
         };
-        let result = execution.apply(plan).await;
+        let result = execution.apply(plan, retry).await;
         match &result {
             Ok(()) => {
                 execution
@@ -92,7 +109,26 @@ impl Executor {
             }
             Err(_) => {}
         }
-        result.map(|()| execution.affected)
+        if result.is_err()
+            && let OperationPlan::Transfer {
+                sources,
+                moving: true,
+                ..
+            } = plan
+        {
+            execution.affected.extend(
+                sources
+                    .iter()
+                    .take(execution.done)
+                    .cloned()
+                    .map(path_location),
+            );
+        }
+        ExecutionReport {
+            outcome: result,
+            affected: execution.affected,
+            destructive_attempted: execution.destructive_attempted,
+        }
     }
 }
 
@@ -100,13 +136,17 @@ pub(super) struct Execution<'a> {
     pub executor: &'a Executor,
     pub cx: ProviderCx<'a>,
     pub affected: Vec<LocationRef>,
+    pub destructive_attempted: bool,
     pub done: usize,
     scope: ProgressScope,
     total: Option<usize>,
 }
 
 impl Execution<'_> {
-    async fn apply(&mut self, plan: &OperationPlan) -> Result<(), CoreError> {
+    async fn apply(&mut self, plan: &OperationPlan, retry: bool) -> Result<(), CoreError> {
+        if retry {
+            check_retry(self.provider(), plan, &self.cx).await?;
+        }
         match plan {
             OperationPlan::Transfer {
                 sources,
@@ -187,17 +227,60 @@ impl Execution<'_> {
     }
 
     pub async fn require_missing(&self, source: &Path, target: &Path) -> Result<(), CoreError> {
-        let fs = self.provider();
-        if self
-            .cx
-            .race(fs.scheme(), fs.exists(target, &self.cx))
-            .await?
-        {
-            return Err(CoreError::collision(
-                ErrorTarget::Path(source.to_path_buf()),
-                ErrorTarget::Path(target.to_path_buf()),
-            ));
-        }
-        Ok(())
+        require_missing(self.provider(), &self.cx, source, target).await
     }
+}
+
+async fn check_retry(
+    fs: &dyn FsProvider,
+    plan: &OperationPlan,
+    cx: &ProviderCx<'_>,
+) -> Result<(), CoreError> {
+    match plan {
+        OperationPlan::Transfer {
+            sources,
+            destination,
+            ..
+        } => {
+            let targets = validated_targets(fs, sources, destination, cx).await?;
+            for (source, target) in sources.iter().zip(targets) {
+                require_missing(fs, cx, source, &target).await?;
+            }
+        }
+        OperationPlan::Delete { targets, .. } => {
+            for (_, path) in targets {
+                if !cx.race(fs.scheme(), fs.exists(path, cx)).await? {
+                    return Err(CoreError::not_found(path));
+                }
+            }
+        }
+        OperationPlan::Rename { source, target } => {
+            if !cx.race(fs.scheme(), fs.exists(source, cx)).await? {
+                return Err(CoreError::not_found(source));
+            }
+            require_missing(fs, cx, source, target).await?;
+        }
+        OperationPlan::Create { parent, target, .. } => {
+            require_missing(fs, cx, parent, target).await?
+        }
+    }
+    Ok(())
+}
+
+async fn require_missing(
+    fs: &dyn FsProvider,
+    cx: &ProviderCx<'_>,
+    source: &Path,
+    target: &Path,
+) -> Result<(), CoreError> {
+    if cx
+        .race(fs.scheme(), fs.mutation_target_exists(target, cx))
+        .await?
+    {
+        return Err(CoreError::collision(
+            ErrorTarget::Path(source.to_path_buf()),
+            ErrorTarget::Path(target.to_path_buf()),
+        ));
+    }
+    Ok(())
 }

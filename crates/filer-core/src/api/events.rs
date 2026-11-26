@@ -80,6 +80,22 @@ pub enum Event {
         session: SessionId,
     },
 
+    /// A terminal operation halted this Session's mutation queue.
+    OperationQueuePaused {
+        session: SessionId,
+        failed: OperationId,
+        queued: Vec<OperationId>,
+    },
+
+    /// Snapshot for inspection or acknowledgement of a continue or cancel decision.
+    OperationQueueState {
+        session: SessionId,
+        request: RequestId,
+        running: Option<OperationId>,
+        paused_on: Option<OperationId>,
+        queued: Vec<OperationId>,
+    },
+
     /// Error occurred
     Error {
         kind: ErrorKind,
@@ -91,6 +107,9 @@ pub enum Event {
         session: SessionId,
         request: Option<RequestId>,
         operation: Option<OperationId>,
+        /// Known changes from an accepted operation. An empty list can also
+        /// mean the provider could not confirm partial changes.
+        affected: Option<Vec<LocationRef>>,
     },
 
     /// Location-native metadata result.
@@ -165,6 +184,16 @@ impl Event {
         request: Option<RequestId>,
         operation: Option<OperationId>,
     ) -> Self {
+        Self::error_event(err, session, request, operation, None)
+    }
+
+    fn error_event(
+        err: CoreError,
+        session: SessionId,
+        request: Option<RequestId>,
+        operation: Option<OperationId>,
+        affected: Option<Vec<LocationRef>>,
+    ) -> Self {
         err.emit_trace();
         Event::Error {
             kind: err.kind(),
@@ -176,6 +205,7 @@ impl Event {
             session,
             request,
             operation,
+            affected,
         }
     }
 
@@ -190,5 +220,15 @@ impl Event {
         operation: OperationId,
     ) -> Self {
         Self::from_correlated_error(err, session, Some(request), Some(operation))
+    }
+
+    pub(crate) fn from_operation_failure(
+        err: CoreError,
+        session: SessionId,
+        request: RequestId,
+        operation: OperationId,
+        affected: Vec<LocationRef>,
+    ) -> Self {
+        Self::error_event(err, session, Some(request), Some(operation), Some(affected))
     }
 }

@@ -31,7 +31,7 @@ pub use model::location::{
 pub use model::node::{NodeEntry, NodeEntryCapabilities, NodeMeta};
 pub use model::operation::{
     OperationConflictPolicy, OperationConflictResolution, OperationId, OperationKind,
-    OperationProviderGuarantee, OperationUndoMode, OperationUndoRecord,
+    OperationProviderGuarantee, OperationQueueResolution, OperationUndoMode, OperationUndoRecord,
 };
 pub use model::progress::{
     ProgressKind, ProgressPhase, ProgressScope, ProgressSnapshot, ProgressStatus, ProgressTarget,

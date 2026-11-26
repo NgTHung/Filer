@@ -163,6 +163,15 @@ pub trait FsProvider: Send + Sync {
     /// Check if path exists
     async fn exists(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<bool, CoreError>;
 
+    /// Check whether a destination name is occupied, including dangling links.
+    async fn mutation_target_exists(
+        &self,
+        path: &Path,
+        cx: &ProviderCx<'_>,
+    ) -> Result<bool, CoreError> {
+        self.exists(path, cx).await
+    }
+
     /// Get metadata for a path
     async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError>;
 

@@ -144,6 +144,19 @@ impl FsProvider for LocalFs {
             .map_err(|e| CoreError::from_io_error(e, path.to_path_buf()))
     }
 
+    async fn mutation_target_exists(
+        &self,
+        path: &Path,
+        cx: &ProviderCx<'_>,
+    ) -> Result<bool, CoreError> {
+        Self::check_cancel(cx)?;
+        match tokio::fs::symlink_metadata(path).await {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(CoreError::from_io_error(error, path.to_path_buf())),
+        }
+    }
+
     async fn metadata(&self, path: &Path, cx: &ProviderCx<'_>) -> Result<NodeEntry, CoreError> {
         Self::check_cancel(cx)?;
         NodeEntry::from_path(path.to_path_buf())

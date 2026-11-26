@@ -28,36 +28,43 @@ use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
 use crate::utils::channel::send_or_warn_async;
-use crate::{CancelSignal, CoreError, ErrorCode, ErrorTarget, Event, FsProvider, LocationRef};
+use crate::{
+    CancelSignal, CoreError, ErrorCode, ErrorTarget, Event, FsProvider, LocationRef, OperationId,
+};
 
 use super::DEFAULT_OPERATION_QUEUE_CAPACITY;
 pub use super::command::{OperationEventMode, OpsCommand};
-use super::execution::Executor;
+use super::execution::{ExecutionReport, Executor};
 use super::plan::{OperationPlan, OperationScope};
 use super::queue::{AdmissionError, MutationQueue};
+use super::recovery::FailedJob;
 pub(crate) use super::support::TrashFn;
 
 pub struct Operator {
     commands: Receiver<OpsCommand>,
-    executor: Arc<Executor>,
-    work: WorkTracker,
+    pub(super) executor: Arc<Executor>,
+    pub(super) work: WorkTracker,
 }
 
-struct Job {
-    scope: OperationScope,
-    plan: Arc<OperationPlan>,
-    admission: Admission,
+pub(super) type SessionQueue = MutationQueue<Job, FailedJob>;
+
+pub(super) struct Job {
+    pub scope: OperationScope,
+    pub plan: Arc<OperationPlan>,
+    pub admission: Admission,
+    pub retry: bool,
 }
 
-enum Admission {
+pub(super) enum Admission {
     Pending,
     Validating(CancelSignal),
     Accepted,
 }
 
-enum Update {
+pub(super) enum Update {
     Validated(OperationScope, CancelSignal, Result<(), CoreError>),
-    Finished(OperationScope, Result<Vec<LocationRef>, CoreError>),
+    RetryValidated(OperationScope, CancelSignal, Result<(), CoreError>),
+    Finished(OperationScope, Arc<OperationPlan>, ExecutionReport),
 }
 
 impl Operator {
@@ -122,11 +129,11 @@ impl Operator {
         self
     }
 
-    async fn emit(&self, event: Event) {
+    pub(super) async fn emit(&self, event: Event) {
         send_or_warn_async(&self.executor.events, event, "operator: lifecycle").await;
     }
 
-    async fn reject(&self, scope: &OperationScope, error: CoreError) {
+    pub(super) async fn reject(&self, scope: &OperationScope, error: CoreError) {
         self.emit(Event::from_operation_error(
             error,
             scope.session,
@@ -136,12 +143,11 @@ impl Operator {
         .await;
     }
 
-    async fn submit(
-        &self,
-        command: OpsCommand,
-        scope: OperationScope,
-        queue: &mut MutationQueue<Job>,
-    ) {
+    async fn submit(&self, command: OpsCommand, scope: OperationScope, queue: &mut SessionQueue) {
+        if queue.paused_work_mut().and_then(FailedJob::retry_id) == Some(scope.id) {
+            self.reject(&scope, duplicate_operation()).await;
+            return;
+        }
         let job = OperationPlan::resolve(
             command,
             &scope,
@@ -152,6 +158,7 @@ impl Operator {
             scope: scope.clone(),
             plan: Arc::new(plan),
             admission: Admission::Pending,
+            retry: false,
         });
         let admitted = job.and_then(|job| {
             queue
@@ -162,9 +169,7 @@ impl Operator {
                         Some(ErrorTarget::Session(scope.session)),
                         "Session mutation queue is full",
                     ),
-                    AdmissionError::Duplicate => {
-                        CoreError::invalid_input("Operation ID is already pending in this Session")
-                    }
+                    AdmissionError::Duplicate => duplicate_operation(),
                 })
         });
         if let Err(error) = admitted {
@@ -172,7 +177,7 @@ impl Operator {
         }
     }
 
-    async fn drive(&self, queue: &mut MutationQueue<Job>, updates: &Sender<Update>) {
+    async fn drive(&self, queue: &mut SessionQueue, updates: &Sender<Update>) {
         for job in queue.waiting_mut() {
             match job.admission {
                 Admission::Accepted => continue,
@@ -203,7 +208,9 @@ impl Operator {
             .is_some_and(|job| matches!(job.admission, Admission::Accepted))
             && let Some((_, job, cancel)) = queue.start()
         {
-            let Job { scope, plan, .. } = job;
+            let Job {
+                scope, plan, retry, ..
+            } = job;
             self.emit(Event::OperationStarted {
                 session: scope.session,
                 request: scope.request,
@@ -214,16 +221,24 @@ impl Operator {
             let executor = self.executor.clone();
             let update = Completion::new(
                 updates,
-                Update::Finished(scope.clone(), Err(worker_stopped())),
+                Update::Finished(
+                    scope.clone(),
+                    plan.clone(),
+                    ExecutionReport {
+                        outcome: Err(worker_stopped()),
+                        affected: Vec::new(),
+                        destructive_attempted: true,
+                    },
+                ),
             );
             self.work.spawn(cancel.clone(), async move {
-                let result = executor.run(&scope, &plan, &cancel).await;
-                update.send(Update::Finished(scope, result));
+                let report = executor.run(&scope, &plan, &cancel, retry).await;
+                update.send(Update::Finished(scope, plan, report));
             });
         }
     }
 
-    async fn update(&self, queue: &mut MutationQueue<Job>, update: Update) {
+    async fn update(&self, queue: &mut SessionQueue, update: Update) {
         match update {
             Update::Validated(scope, cancel, result) => {
                 let Some(job) = queue.waiting_mut().find(|job| {
@@ -242,33 +257,75 @@ impl Operator {
                     }
                 }
             }
-            Update::Finished(scope, result) => {
+            Update::RetryValidated(scope, cancel, result) => {
+                self.retry_validated(queue, scope, &cancel, result).await;
+            }
+            Update::Finished(scope, plan, report) => {
                 queue.finish();
-                match result {
-                    Ok(affected) => {
+                match report.outcome {
+                    Ok(()) => {
                         self.emit(Event::OperationComplete {
                             operation_id: scope.id,
                             operation: scope.kind,
                             success: true,
-                            affected,
+                            affected: report.affected,
                             session: scope.session,
                         })
-                        .await
+                        .await;
                     }
-                    Err(error) => self.reject(&scope, error).await,
+                    Err(error) => {
+                        self.fail(&scope, error, report.affected).await;
+                        if queue.front().is_some() {
+                            self.pause(queue, scope, plan, report.destructive_attempted)
+                                .await;
+                        }
+                    }
                 }
             }
         }
     }
 
-    async fn cancel_waiting(&self, job: Job) {
-        if let Admission::Validating(cancel) = job.admission {
-            cancel.cancel();
-        }
-        self.reject(&job.scope, CoreError::cancelled()).await;
+    async fn fail(&self, scope: &OperationScope, error: CoreError, affected: Vec<LocationRef>) {
+        self.emit(Event::from_operation_failure(
+            error,
+            scope.session,
+            scope.request,
+            scope.id,
+            affected,
+        ))
+        .await;
     }
 
-    async fn cancel_session(&self, queue: &mut MutationQueue<Job>) {
+    pub(super) async fn cancel_waiting(&self, job: Job) {
+        match job.admission {
+            Admission::Accepted => {
+                self.fail(&job.scope, CoreError::cancelled(), Vec::new())
+                    .await
+            }
+            Admission::Validating(cancel) => {
+                cancel.cancel();
+                self.reject(&job.scope, CoreError::cancelled()).await;
+            }
+            Admission::Pending => self.reject(&job.scope, CoreError::cancelled()).await,
+        }
+    }
+
+    async fn cancel_operation(&self, queue: &mut SessionQueue, operation: OperationId) {
+        if queue.cancel_running(operation) {
+            return;
+        }
+        if let Some(job) = queue.remove(operation) {
+            self.cancel_waiting(job).await;
+        } else {
+            self.cancel_retry(queue, Some(operation)).await;
+        }
+    }
+
+    async fn cancel_session(&self, queue: &mut SessionQueue) {
+        self.cancel_retry(queue, None).await;
+        if let Some(failed) = queue.paused_id() {
+            queue.continue_after(failed);
+        }
         if let Some(id) = queue.running_id() {
             queue.cancel_running(id);
         }
@@ -281,7 +338,7 @@ impl Operator {
 impl Actor for Operator {
     async fn run(self) {
         let (updates, update_rx) = flume::unbounded();
-        let mut queues = HashMap::<SessionId, MutationQueue<Job>>::new();
+        let mut queues = HashMap::<SessionId, SessionQueue>::new();
         loop {
             let session = tokio::select! {
                 command = self.commands.recv_async() => {
@@ -299,12 +356,19 @@ impl Actor for Operator {
                             session
                         }
                         OpsCommand::CancelOperation { session, operation } => {
-                            if let Some(queue) = queues.get_mut(&session)
-                                && !queue.cancel_running(operation)
-                                && let Some(job) = queue.remove(operation)
-                            {
-                                self.cancel_waiting(job).await;
+                            if let Some(queue) = queues.get_mut(&session) {
+                                self.cancel_operation(queue, operation).await;
                             }
+                            session
+                        }
+                        OpsCommand::InspectQueue { session, request } => {
+                            self.emit_queue_state(queues.entry(session).or_default(), session, request).await;
+                            session
+                        }
+                        OpsCommand::ResolveQueue { session, request, failed, resolution } => {
+                            self.resolve_queue(
+                                queues.entry(session).or_default(), session, request, failed, resolution, &updates,
+                            ).await;
                             session
                         }
                         mutation => {
@@ -317,7 +381,7 @@ impl Actor for Operator {
                 }
                 Ok(update) = update_rx.recv_async() => {
                     let session = match &update {
-                        Update::Validated(scope, ..) | Update::Finished(scope, ..) => scope.session,
+                        Update::Validated(scope, ..) | Update::Finished(scope, ..) | Update::RetryValidated(scope, ..) => scope.session,
                     };
                     if let Some(queue) = queues.get_mut(&session) {
                         self.update(queue, update).await;
@@ -339,7 +403,7 @@ impl Actor for Operator {
     }
 }
 
-fn accepted(scope: &OperationScope) -> Event {
+pub(super) fn accepted(scope: &OperationScope) -> Event {
     Event::OperationAccepted {
         session: scope.session,
         request: scope.request,
@@ -348,27 +412,31 @@ fn accepted(scope: &OperationScope) -> Event {
     }
 }
 
-fn worker_stopped() -> CoreError {
+pub(super) fn duplicate_operation() -> CoreError {
+    CoreError::invalid_input("Operation ID is already pending in this Session")
+}
+
+pub(super) fn worker_stopped() -> CoreError {
     CoreError::actor(
         "operator",
         "Operation worker stopped before reporting its outcome",
     )
 }
 
-struct Completion {
+pub(super) struct Completion {
     updates: Sender<Update>,
     fallback: Option<Update>,
 }
 
 impl Completion {
-    fn new(updates: &Sender<Update>, fallback: Update) -> Self {
+    pub(super) fn new(updates: &Sender<Update>, fallback: Update) -> Self {
         Self {
             updates: updates.clone(),
             fallback: Some(fallback),
         }
     }
 
-    fn send(mut self, update: Update) {
+    pub(super) fn send(mut self, update: Update) {
         self.fallback = None;
         self.deliver(update);
     }
