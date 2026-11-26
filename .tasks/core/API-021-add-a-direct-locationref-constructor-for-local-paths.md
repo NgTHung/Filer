@@ -1,14 +1,14 @@
 ---
 id: "API-021"
 title: "Add a direct LocationRef constructor for local paths"
-status: "To Do"
+status: Done
 priority: "Low"
 type: "Feature"
 milestone: "0.3.1"
 risk: "Low"
 impact: "Adds public constructors to LocationRef without changing existing variants or identities."
 tags: ["api", "location", "model", "ready-for-agent"]
-last_updated: "2026-11-25"
+last_updated: 2026-11-26
 ---
 
 ## Summary
@@ -17,12 +17,11 @@ Building a LocationRef for a local path takes two calls, LocationRef::from_locat
 
 ## Acceptance Criteria
 
-- [ ] LocationRef::local(path) returns a value equal to LocationRef::from_location(&Location::local(path)), including the same identity, proven by a public-interface test written before the implementation.
-- [ ] From<&Location> for LocationRef produces the Full variant equal to LocationRef::from_location, proven by a test.
-- [ ] Both constructors have rustdoc with a runnable example, and the change touches no existing call sites.
-- [ ] cargo fmt --check, cargo clippy -p filer-core, and cargo test -p filer-core pass.
+- [x] LocationRef::local(path) returns a value equal to LocationRef::from_location(&Location::local(path)), including the same identity, proven by a public-interface test written before the implementation.
+- [x] From<&Location> for LocationRef produces the Full variant equal to LocationRef::from_location, proven by a test.
+- [x] Both constructors have rustdoc with a runnable example, and the change touches no existing call sites.
+- [x] cargo fmt --check, cargo clippy -p filer-core, and cargo test -p filer-core pass.
 
 ## Rationale
 
 A missing constructor repeated at about 160 call sites is a type gap. Fixing the type first keeps the later call-site migration mechanical and reviewable.
-

@@ -276,6 +276,19 @@ impl Location {
 }
 
 impl LocationRef {
+    /// Build a [`Full`](Self::Full) reference to a local path.
+    ///
+    /// ```
+    /// use filer_core::{Location, LocationRef};
+    ///
+    /// let reference = LocationRef::local("/tmp/report.txt");
+    /// assert_eq!(reference.identity(), Location::local("/tmp/report.txt").id());
+    /// ```
+    pub fn local(path: impl Into<PathBuf>) -> Self {
+        let Location { id, descriptor } = Location::local(path);
+        Self::Full { id, descriptor }
+    }
+
     pub fn id_only(id: LocationId) -> Self {
         Self::Id(id)
     }
@@ -313,6 +326,21 @@ impl LocationRef {
             }
             LocationRef::Id(_) => None,
         }
+    }
+}
+
+impl From<&Location> for LocationRef {
+    /// Preserve the Location's identity and descriptor in a [`Full`](LocationRef::Full) reference.
+    ///
+    /// ```
+    /// use filer_core::{Location, LocationRef};
+    ///
+    /// let location = Location::local("/tmp/report.txt");
+    /// let reference: LocationRef = (&location).into();
+    /// assert_eq!(reference.id(), Some(location.id()));
+    /// ```
+    fn from(location: &Location) -> Self {
+        Self::from_location(location)
     }
 }
 
