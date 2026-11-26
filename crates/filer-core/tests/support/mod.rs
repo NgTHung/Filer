@@ -27,7 +27,7 @@ use flume::Receiver;
 
 use filer_core::model::node::NodeEntry;
 use filer_core::model::session::SessionId;
-use filer_core::{Event, Location, LocationRef};
+use filer_core::{Command, Event, FilerCore, Location, LocationRef};
 
 pub(crate) fn local_location(path: impl Into<PathBuf>) -> LocationRef {
     LocationRef::from_location(&Location::local(path))
@@ -35,6 +35,24 @@ pub(crate) fn local_location(path: impl Into<PathBuf>) -> LocationRef {
 
 pub(crate) fn provider_entry(node: NodeEntry) -> NodeEntry {
     node
+}
+
+pub(crate) async fn create_session(
+    core: &FilerCore,
+    events: &Receiver<Event>,
+    timeout_duration: Duration,
+) -> SessionId {
+    let handshake_request = core.next_request_id();
+    core.send(Command::Handshake {
+        request: handshake_request,
+    })
+    .unwrap();
+    match tokio::time::timeout(timeout_duration, events.recv_async()).await {
+        Ok(Ok(Event::SessionCreated { session, request })) if request == handshake_request => {
+            session
+        }
+        other => panic!("expected matching SessionCreated, got {other:?}"),
+    }
 }
 
 pub(crate) async fn wait_for_directory_entries(

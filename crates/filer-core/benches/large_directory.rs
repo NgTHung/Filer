@@ -186,9 +186,14 @@ impl Harness {
             DecorationBenchmarkBackend::new(decorations_started.clone()),
         )));
         let events = core.event_receiver();
-        core.send(Command::Handshake)?;
+        let handshake_request = core.next_request_id();
+        core.send(Command::Handshake {
+            request: handshake_request,
+        })?;
         let session = loop {
-            if let Event::SessionCreated(session) = recv_event(&events).await? {
+            if let Event::SessionCreated { session, request } = recv_event(&events).await?
+                && request == handshake_request
+            {
                 break session;
             }
         };

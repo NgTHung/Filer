@@ -10,7 +10,7 @@ Core does not render anything and depends on no UI framework. Extensions add pro
 
 ## How a request flows
 
-1. A client calls `Command::Handshake` and receives a session id.
+1. A client sends `Command::Handshake` with a fresh `RequestId` and obtains its session ID from the matching `Event::SessionCreated`.
 2. It sends a command such as `Navigate` with that session and a fresh `RequestId`.
 3. A module actor does the work off the client's thread and emits events that echo the request id.
 4. If the client sends a newer request in the same session, core drops results from the older one.
@@ -34,9 +34,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let core = FilerCore::with_defaults();
     let events = core.event_receiver();
 
-    core.send(Command::Handshake)?;
+    let handshake_request = core.next_request_id();
+    core.send(Command::Handshake {
+        request: handshake_request,
+    })?;
     let session = loop {
-        if let Event::SessionCreated(session) = events.recv_async().await? {
+        if let Event::SessionCreated { session, request } = events.recv_async().await?
+            && request == handshake_request
+        {
             break session;
         }
     };

@@ -53,10 +53,15 @@ impl CoreSession {
     pub async fn open(fixture_root: &Path, metadata: bool) -> Result<Self, AdapterFailure> {
         let core = FilerCore::with_defaults();
         let events = core.event_receiver();
-        core.send(Command::Handshake)
-            .map_err(|error| AdapterFailure::new("core_error", error.to_string()))?;
+        let handshake_request = core.next_request_id();
+        core.send(Command::Handshake {
+            request: handshake_request,
+        })
+        .map_err(|error| AdapterFailure::new("core_error", error.to_string()))?;
         let session = loop {
-            if let Event::SessionCreated(session) = receive(&events).await? {
+            if let Event::SessionCreated { session, request } = receive(&events).await?
+                && request == handshake_request
+            {
                 break session;
             }
         };

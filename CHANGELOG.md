@@ -4,6 +4,10 @@ This file records what each Filer milestone changed and which contracts it remov
 
 Versions follow the project milestone. Crate versions can lag behind it; check each `Cargo.toml` for the published number.
 
+## Unreleased
+
+Replace the unit `Command::Handshake` with `Command::Handshake { request }` and send a fresh `RequestId` for each session you open. The `handshake` wire payload requires the same `request` field. Bind the session from the `Event::SessionCreated { session, request }` that echoes your request ID.
+
 ## 0.3.0, Core contract stabilization (2026-08-31)
 
 This milestone made `LocationRef` the only way to address a file in `filer-core` and removed every compatibility surface from the Location migration.

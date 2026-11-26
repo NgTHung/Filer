@@ -10,18 +10,12 @@ use filer_core::{
 };
 use tokio::time::timeout;
 
+mod support;
+
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn create_session(core: &FilerCore, events: &flume::Receiver<Event>) -> SessionId {
-    core.send(Command::Handshake).unwrap();
-    match timeout(TIMEOUT, events.recv_async())
-        .await
-        .unwrap()
-        .unwrap()
-    {
-        Event::SessionCreated(session) => session,
-        other => panic!("expected SessionCreated, got {other:?}"),
-    }
+    support::create_session(core, events, TIMEOUT).await
 }
 
 fn local_ref(path: &Path) -> LocationRef {

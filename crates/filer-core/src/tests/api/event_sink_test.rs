@@ -30,7 +30,13 @@ async fn runtime_event_queue_uses_the_default_bounded_capacity() {
 
     assert_eq!(receiver.capacity(), Some(DEFAULT_EVENT_CHANNEL_CAPACITY));
     tracker.shutdown().await.unwrap();
-    assert!(sink.send(Event::SessionCreated(SessionId::new())).is_err());
+    assert!(
+        sink.send(Event::SessionCreated {
+            session: SessionId::new(),
+            request: RequestId::new()
+        })
+        .is_err()
+    );
 }
 
 #[tokio::test]
@@ -121,9 +127,12 @@ async fn lossless_events_eventually_block_when_client_does_not_drain() {
     let (sink, receiver) = EventSink::for_runtime_with_capacity(tracker.clone(), 1);
     let mut producer = tokio::spawn(async move {
         for value in 0..10 {
-            sink.send_async(Event::SessionCreated(SessionId(value)))
-                .await
-                .map_err(|_| ())?;
+            sink.send_async(Event::SessionCreated {
+                session: SessionId(value),
+                request: RequestId(value),
+            })
+            .await
+            .map_err(|_| ())?;
         }
         Ok::<(), ()>(())
     });
@@ -149,15 +158,21 @@ async fn shutdown_cancels_a_hub_blocked_by_a_full_client_queue() {
     let tracker = WorkTracker::new();
     let (sink, receiver) = EventSink::for_runtime_with_capacity(tracker.clone(), 1);
 
-    sink.send_async(Event::SessionCreated(SessionId(1)))
-        .await
-        .unwrap();
+    sink.send_async(Event::SessionCreated {
+        session: SessionId(1),
+        request: RequestId(1),
+    })
+    .await
+    .unwrap();
     while receiver.is_empty() {
         tokio::task::yield_now().await;
     }
-    sink.send_async(Event::SessionCreated(SessionId(2)))
-        .await
-        .unwrap();
+    sink.send_async(Event::SessionCreated {
+        session: SessionId(2),
+        request: RequestId(2),
+    })
+    .await
+    .unwrap();
     tokio::task::yield_now().await;
 
     tokio::time::timeout(Duration::from_secs(1), tracker.shutdown())
@@ -223,8 +238,11 @@ async fn shutdown_and_disconnection_release_senders_waiting_for_capacity() {
         let (sink, receiver) = EventSink::for_runtime_with_capacity(tracker.clone(), 1);
         let mut producer = tokio::spawn(async move {
             for value in 0..10 {
-                sink.send_async(Event::SessionCreated(SessionId(value)))
-                    .await?;
+                sink.send_async(Event::SessionCreated {
+                    session: SessionId(value),
+                    request: RequestId(value),
+                })
+                .await?;
             }
             Ok::<(), EventSendError>(())
         });

@@ -7,9 +7,13 @@
         preview_tx: Sender<PreviewCommand>,
         ops_tx: Sender<OpsCommand>,
     ) {
-        handlers.on("session.handshake", |_cmd, ctx| {
-            let session = ctx.sessions.create_session(ctx.events.clone());
-            let _ = ctx.events.send(Event::SessionCreated(session));
+        handlers.on("session.handshake", |cmd, ctx| {
+            if let Command::Handshake { request } = cmd {
+                let session = ctx.sessions.create_session(ctx.events.clone());
+                ctx.events
+                    .send(Event::SessionCreated { session, request })
+                    .unwrap();
+            }
         });
         handlers.on("session.destroy", |cmd, ctx| {
             if let Command::DestroySession(session_id) = cmd {

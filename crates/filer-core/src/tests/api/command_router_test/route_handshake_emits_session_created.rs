@@ -2,7 +2,8 @@
     async fn test_route_handshake_emits_session_created() {
         let harness = RouterTestHarness::new();
 
-        harness.send(Command::Handshake).await;
+        let handshake_request = RequestId::new();
+        harness.send(Command::Handshake { request: handshake_request }).await;
 
         let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
             .await
@@ -10,7 +11,8 @@
             .expect("Event channel closed");
 
         match event {
-            Event::SessionCreated(s) => {
+            Event::SessionCreated { session: s, request } => {
+                assert_eq!(request, handshake_request);
                 // A new session ID should have been generated
                 assert_ne!(
                     s,
@@ -338,7 +340,8 @@
         let harness = RouterTestHarness::new();
 
         // Do a proper handshake to get a valid session
-        harness.send(Command::Handshake).await;
+        let handshake_request = RequestId::new();
+        harness.send(Command::Handshake { request: handshake_request }).await;
 
         let event = timeout(TEST_TIMEOUT, harness.event_rx.recv_async())
             .await
@@ -346,7 +349,7 @@
             .expect("Channel closed");
 
         let session = match event {
-            Event::SessionCreated(s) => s,
+            Event::SessionCreated { session, request } if request == handshake_request => session,
             other => panic!("Expected SessionCreated, got {:?}", other),
         };
 

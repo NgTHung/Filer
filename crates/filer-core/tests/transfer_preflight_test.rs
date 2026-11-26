@@ -64,13 +64,17 @@ async fn transfer_with_provider(
     let core = FilerCore::new();
     core.load(OperationsModule::new(provider));
     let events = core.event_receiver();
-    core.send(Command::Handshake).unwrap();
+    let handshake_request = core.next_request_id();
+    core.send(Command::Handshake {
+        request: handshake_request,
+    })
+    .unwrap();
     let session = match timeout(TIMEOUT, events.recv_async())
         .await
         .unwrap()
         .unwrap()
     {
-        Event::SessionCreated(session) => session,
+        Event::SessionCreated { session, request } if request == handshake_request => session,
         other => panic!("expected SessionCreated, got {other:?}"),
     };
     let request = RequestId::new();

@@ -178,7 +178,10 @@ pub enum Command {
     },
     UnwatchSession(SessionId),
 
-    Handshake,
+    /// Create a session and echo the request ID in `Event::SessionCreated`.
+    Handshake {
+        request: RequestId,
+    },
 
     DestroySession(SessionId),
 
@@ -219,7 +222,7 @@ impl Command {
     /// Return the command's SessionId. `Handshake` creates a session.
     pub fn session_id(&self) -> Option<SessionId> {
         match self {
-            Command::Handshake => None,
+            Command::Handshake { .. } => None,
             Command::Navigate { session, .. }
             | Command::NavigateUp { session, .. }
             | Command::NavigateBack { session, .. }
@@ -268,7 +271,8 @@ impl Command {
             | Command::LoadMetadata { request, .. }
             | Command::LoadExtendedMetadata { request, .. }
             | Command::Scan { request, .. }
-            | Command::Watch { request, .. } => Some(*request),
+            | Command::Watch { request, .. }
+            | Command::Handshake { request } => Some(*request),
 
             Command::CancelSearch { .. }
             | Command::CancelPreview { .. }
@@ -277,7 +281,6 @@ impl Command {
             | Command::CancelOperation { .. }
             | Command::Unwatch { .. }
             | Command::UnwatchSession(_)
-            | Command::Handshake
             | Command::DestroySession(_)
             | Command::Extension { .. } => None,
         }
@@ -328,7 +331,7 @@ impl Command {
             Command::Watch { .. } => "watch",
             Command::Unwatch { .. } => "watch.remove",
             Command::UnwatchSession(..) => "watch.session_remove",
-            Command::Handshake => "session.handshake",
+            Command::Handshake { .. } => "session.handshake",
             Command::DestroySession(..) => "session.destroy",
             Command::Extension { key, .. } => key.as_str(),
         }

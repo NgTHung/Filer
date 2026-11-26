@@ -10,14 +10,17 @@
 //! ```
 //! use filer_core::api::event_sink::EventSink;
 //! use filer_core::model::session::SessionId;
-//! use filer_core::Event;
+//! use filer_core::{Event, RequestId};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let (sender, receiver) = flume::bounded(1);
 //! let events = EventSink::from(sender);
-//! events.send_async(Event::SessionCreated(SessionId::new())).await?;
+//! events.send_async(Event::SessionCreated {
+//!     session: SessionId::new(),
+//!     request: RequestId::new(),
+//! }).await?;
 //! let next = receiver.recv_async().await?;
-//! assert!(matches!(next, Event::SessionCreated(_)));
+//! assert!(matches!(next, Event::SessionCreated { .. }));
 //! # Ok(())
 //! # }
 //! # tokio::runtime::Builder::new_current_thread().build()?.block_on(example())?;

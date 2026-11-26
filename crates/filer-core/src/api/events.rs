@@ -123,7 +123,11 @@ pub enum Event {
         request: RequestId,
     },
 
-    SessionCreated(SessionId),
+    /// The session created for the matching handshake request.
+    SessionCreated {
+        session: SessionId,
+        request: RequestId,
+    },
 
     SessionDestroyed(SessionId),
 

@@ -169,9 +169,15 @@ async fn wait_for_event(events: &flume::Receiver<Event>) -> Event {
 }
 
 async fn create_session(core: &FilerCore, events: &flume::Receiver<Event>) -> SessionId {
-    core.send(Command::Handshake).unwrap();
+    let handshake_request = core.next_request_id();
+    core.send(Command::Handshake {
+        request: handshake_request,
+    })
+    .unwrap();
     loop {
-        if let Event::SessionCreated(session) = wait_for_event(events).await {
+        if let Event::SessionCreated { session, request } = wait_for_event(events).await
+            && request == handshake_request
+        {
             return session;
         }
     }
