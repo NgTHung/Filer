@@ -24,10 +24,11 @@ use flume::{Receiver, Sender};
 
 use crate::actors::{Actor, WorkTracker};
 use crate::api::event_sink::EventSink;
+use crate::api::module::CloseAck;
 use crate::model::registry::NodeRegistry;
 use crate::model::session::SessionId;
 use crate::services::dir_cache::SharedDirCache;
-use crate::utils::channel::send_or_warn_async;
+use crate::utils::channel::{send_or_warn, send_or_warn_async};
 use crate::{
     CancelSignal, CoreError, ErrorCode, ErrorTarget, Event, FsProvider, LocationRef, OperationId,
 };
@@ -144,6 +145,11 @@ impl Operator {
     }
 
     async fn submit(&self, command: OpsCommand, scope: OperationScope, queue: &mut SessionQueue) {
+        if !self.work.accepts_new_work(scope.session) {
+            self.reject(&scope, CoreError::session_closing(scope.session))
+                .await;
+            return;
+        }
         if queue.paused_work_mut().and_then(FailedJob::retry_id) == Some(scope.id) {
             self.reject(&scope, duplicate_operation()).await;
             return;
@@ -177,12 +183,18 @@ impl Operator {
         }
     }
 
-    async fn drive(&self, queue: &mut SessionQueue, updates: &Sender<Update>) {
+    async fn drive(&self, session: SessionId, queue: &mut SessionQueue, updates: &Sender<Update>) {
+        if !self.work.accepts_new_work(session) {
+            self.stop_admission(session, queue).await;
+        }
         for job in queue.waiting_mut() {
             match job.admission {
                 Admission::Accepted => continue,
                 Admission::Validating(_) => break,
                 Admission::Pending => {}
+            }
+            if !self.work.accepts_new_work(session) {
+                break;
             }
             if matches!(job.plan.as_ref(), OperationPlan::Transfer { .. }) {
                 let cancel = CancelSignal::new();
@@ -194,10 +206,11 @@ impl Operator {
                     updates,
                     Update::Validated(scope.clone(), cancel.clone(), Err(worker_stopped())),
                 );
-                self.work.spawn(cancel.clone(), async move {
-                    let result = executor.validate_transfer(&plan, &cancel).await;
-                    update.send(Update::Validated(scope, cancel, result));
-                });
+                self.work
+                    .spawn_operation(scope.session, cancel.clone(), async move {
+                        let result = executor.validate_transfer(&plan, &cancel).await;
+                        update.send(Update::Validated(scope, cancel, result));
+                    });
                 break;
             }
             job.admission = Admission::Accepted;
@@ -231,10 +244,11 @@ impl Operator {
                     },
                 ),
             );
-            self.work.spawn(cancel.clone(), async move {
-                let report = executor.run(&scope, &plan, &cancel, retry).await;
-                update.send(Update::Finished(scope, plan, report));
-            });
+            self.work
+                .spawn_operation(scope.session, cancel.clone(), async move {
+                    let report = executor.run(&scope, &plan, &cancel, retry).await;
+                    update.send(Update::Finished(scope, plan, report));
+                });
         }
     }
 
@@ -245,6 +259,11 @@ impl Operator {
                     matches!(&job.admission, Admission::Validating(signal) if signal.same_instance(&cancel))
                 }) else {
                     return;
+                };
+                let result = if self.work.accepts_new_work(scope.session) {
+                    result
+                } else {
+                    Err(CoreError::session_closing(scope.session))
                 };
                 match result {
                     Ok(()) => {
@@ -262,6 +281,9 @@ impl Operator {
             }
             Update::Finished(scope, plan, report) => {
                 queue.finish();
+                if !self.work.accepts_new_work(scope.session) {
+                    self.stop_admission(scope.session, queue).await;
+                }
                 match report.outcome {
                     Ok(()) => {
                         self.emit(Event::OperationComplete {
@@ -321,6 +343,17 @@ impl Operator {
         }
     }
 
+    async fn stop_admission(&self, session: SessionId, queue: &mut SessionQueue) {
+        let unaccepted = queue.extract_waiting(|job| !matches!(job.admission, Admission::Accepted));
+        for job in unaccepted {
+            if let Admission::Validating(cancel) = job.admission {
+                cancel.cancel();
+            }
+            self.reject(&job.scope, CoreError::session_closing(session))
+                .await;
+        }
+    }
+
     async fn cancel_session(&self, queue: &mut SessionQueue) {
         self.cancel_retry(queue, None).await;
         if let Some(failed) = queue.paused_id() {
@@ -339,6 +372,7 @@ impl Actor for Operator {
     async fn run(self) {
         let (updates, update_rx) = flume::unbounded();
         let mut queues = HashMap::<SessionId, SessionQueue>::new();
+        let mut draining = HashMap::<SessionId, Vec<CloseAck>>::new();
         loop {
             let session = tokio::select! {
                 command = self.commands.recv_async() => {
@@ -349,6 +383,13 @@ impl Actor for Operator {
                         return;
                     };
                     match command {
+                        OpsCommand::Drain(session, done) => {
+                            draining.entry(session).or_default().push(done);
+                            if let Some(queue) = queues.get_mut(&session) {
+                                self.stop_admission(session, queue).await;
+                            }
+                            session
+                        }
                         OpsCommand::Cancel(session) => {
                             if let Some(queue) = queues.get_mut(&session) {
                                 self.cancel_session(queue).await;
@@ -390,9 +431,16 @@ impl Actor for Operator {
                 }
             };
             if let Some(queue) = queues.get_mut(&session) {
-                self.drive(queue, &updates).await;
+                self.drive(session, queue, &updates).await;
                 if queue.is_empty() {
                     queues.remove(&session);
+                }
+            }
+            if !queues.contains_key(&session)
+                && let Some(replies) = draining.remove(&session)
+            {
+                for done in replies {
+                    send_or_warn(&done, Ok(()), "mutation queue drained");
                 }
             }
         }

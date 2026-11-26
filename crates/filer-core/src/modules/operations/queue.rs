@@ -104,6 +104,20 @@ impl<T, F> MutationQueue<T, F> {
         self.waiting.drain(..).map(|(_, work)| work)
     }
 
+    pub(crate) fn extract_waiting(&mut self, mut predicate: impl FnMut(&T) -> bool) -> Vec<T> {
+        let mut extracted = Vec::new();
+        for _ in 0..self.waiting.len() {
+            if let Some((id, work)) = self.waiting.pop_front() {
+                if predicate(&work) {
+                    extracted.push(work);
+                } else {
+                    self.waiting.push_back((id, work));
+                }
+            }
+        }
+        extracted
+    }
+
     pub(crate) fn start(&mut self) -> Option<(OperationId, T, CancelSignal)> {
         if self.running.is_some() || self.paused.is_some() {
             return None;

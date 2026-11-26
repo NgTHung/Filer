@@ -270,3 +270,57 @@ async fn successful_retry_runs_before_the_accepted_delete() {
     assert!(!source.exists());
     core.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn failure_during_close_preserves_the_session_until_recovery() {
+    let root = tempfile::tempdir().unwrap();
+    let gate = root.path().join("gated.txt");
+    let destination = root.path().join("destination");
+    std::fs::write(&gate, b"source").unwrap();
+    std::fs::create_dir(&destination).unwrap();
+    let provider = Arc::new(CopyGate::new(1));
+    let (core, events) = core(provider.clone());
+    let session = support::create_session(&core, &events, TIMEOUT).await;
+    let other = support::create_session(&core, &events, TIMEOUT).await;
+
+    let copy = copy(session, &[&gate], &destination);
+    let delete = delete(session, &gate);
+    core.send(copy.clone()).unwrap();
+    accepted(&events, &copy).await;
+    started(&events, &copy).await;
+    timeout(TIMEOUT, provider.entered.wait()).await.unwrap();
+    core.send(delete.clone()).unwrap();
+    accepted(&events, &delete).await;
+
+    core.send(Command::DestroySession(session)).unwrap();
+    let request = RequestId::new();
+    core.send(Command::InspectOperationQueue { session, request })
+        .unwrap();
+    assert!(matches!(next(&events).await, Event::OperationQueueState {
+        running, request: actual, ..
+    } if actual == request && running == copy.operation_id()));
+    timeout(TIMEOUT, provider.release.wait()).await.unwrap();
+    assert!(failed(&events, &copy).await.is_empty());
+    paused(&events, &copy, &[delete.operation_id().unwrap()]).await;
+
+    let independent = create(other, root.path(), "independent-during-close");
+    core.send(independent.clone()).unwrap();
+    accepted(&events, &independent).await;
+    started(&events, &independent).await;
+    complete(&events, &independent).await;
+    assert!(core.sessions().exists(session));
+    assert!(gate.exists());
+
+    let decision = resolve(session, &copy, OperationQueueResolution::Cancel);
+    core.send(decision.clone()).unwrap();
+    assert!(matches!(next(&events).await, Event::Error {
+        code: ErrorCode::Cancelled, operation, affected: Some(ref affected), ..
+    } if operation == delete.operation_id() && affected.is_empty()));
+    assert!(matches!(next(&events).await, Event::OperationQueueState {
+        request, paused_on: None, ..
+    } if Some(request) == decision.request_id()));
+    assert!(matches!(next(&events).await, Event::SessionDestroyed(actual) if actual == session));
+    assert!(!core.sessions().exists(session));
+    assert!(gate.exists());
+    core.shutdown().await.unwrap();
+}

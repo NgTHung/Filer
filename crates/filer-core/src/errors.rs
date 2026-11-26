@@ -71,6 +71,7 @@ pub enum ErrorCode {
     OperationQueueStateChanged,
     StaleRequest,
     SessionUnknown,
+    SessionClosing,
     NavigationUnavailable,
     UnsupportedOperation,
     ProviderCapabilityUnavailable,
@@ -101,7 +102,7 @@ impl ErrorCode {
             | ErrorCode::SessionUnknown
             | ErrorCode::NavigationUnavailable => ErrorKind::InvalidInput,
             ErrorCode::Collision | ErrorCode::OperationQueueStateChanged => ErrorKind::Conflict,
-            ErrorCode::OperationQueueFull => ErrorKind::Busy,
+            ErrorCode::OperationQueueFull | ErrorCode::SessionClosing => ErrorKind::Busy,
             ErrorCode::ProviderCapabilityUnavailable => ErrorKind::Unsupported,
             ErrorCode::Unknown => ErrorKind::Unknown,
         }
@@ -125,6 +126,7 @@ impl ErrorCode {
                 | ErrorCode::Collision
                 | ErrorCode::StaleRequest
                 | ErrorCode::SessionUnknown
+                | ErrorCode::SessionClosing
                 | ErrorCode::NavigationUnavailable
                 | ErrorCode::UnsupportedOperation
                 | ErrorCode::ProviderCapabilityUnavailable
@@ -348,6 +350,14 @@ impl CoreError {
             location,
             capability,
         })
+    }
+
+    pub(crate) fn session_closing(session: SessionId) -> Self {
+        Self::new(
+            ErrorCode::SessionClosing,
+            Some(ErrorTarget::Session(session)),
+            "Session is closing",
+        )
     }
 
     pub fn unknown_session(session: SessionId) -> Self {

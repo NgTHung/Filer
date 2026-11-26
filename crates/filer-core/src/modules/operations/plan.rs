@@ -108,6 +108,7 @@ impl OperationPlan {
                 })
             }
             OpsCommand::Cancel(_)
+            | OpsCommand::Drain(..)
             | OpsCommand::CancelOperation { .. }
             | OpsCommand::InspectQueue { .. }
             | OpsCommand::ResolveQueue { .. } => {

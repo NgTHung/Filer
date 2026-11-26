@@ -37,6 +37,7 @@ use crate::actors::WorkTracker;
 use crate::actors::cancel::CancellationToken;
 use crate::api::events::Event;
 use crate::model::progress::{ProgressScope, ProgressStatus};
+use crate::model::session::SessionId;
 
 /// The bounded public event queue capacity.
 pub const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 256;
@@ -217,6 +218,22 @@ impl EventSink {
                     }
                 }
             }
+        }
+    }
+
+    pub(crate) fn discard_session_progress(&self, session: SessionId) {
+        if let EventSinkInner::Hub { hub, .. } = &self.inner {
+            let mut state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.progress.retain(|scope, _| scope.session != session);
+            state
+                .progress_order
+                .retain(|scope| scope.session != session);
+            state
+                .terminal_scopes
+                .retain(|scope| scope.session != session);
+            state
+                .terminal_order
+                .retain(|scope| scope.session != session);
         }
     }
 

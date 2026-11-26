@@ -96,6 +96,7 @@ impl FilerCore {
 
         let registry = NodeRegistry::new();
         let sessions = SessionManager::new(registry.clone());
+        system.work_tracker().set_sessions(sessions.clone());
         let handlers = Arc::new(HandlerRegistry::new());
 
         let ctx = HandlerContext {
@@ -112,20 +113,6 @@ impl FilerCore {
                         &ctx.events,
                         Event::SessionCreated { session, request },
                         "emit SessionCreated",
-                    )
-                    .await;
-                }
-            })
-        });
-
-        handlers.on_builtin_async("session.destroy", |cmd, ctx| {
-            Box::pin(async move {
-                if let Command::DestroySession(session_id) = cmd {
-                    ctx.sessions.remove(session_id);
-                    send_or_warn_async(
-                        &ctx.events,
-                        Event::SessionDestroyed(session_id),
-                        "emit SessionDestroyed",
                     )
                     .await;
                 }

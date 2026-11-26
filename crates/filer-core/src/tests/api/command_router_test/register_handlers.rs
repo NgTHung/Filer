@@ -15,13 +15,6 @@
                     .unwrap();
             }
         });
-        handlers.on("session.destroy", |cmd, ctx| {
-            if let Command::DestroySession(session_id) = cmd {
-                ctx.sessions.remove(session_id);
-                let _ = ctx.events.send(Event::SessionDestroyed(session_id));
-            }
-        });
-
         {
             let tx = nav_tx.clone();
             handlers.on("navigate", move |cmd, _ctx| {

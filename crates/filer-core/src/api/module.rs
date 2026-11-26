@@ -29,6 +29,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use crate::CoreError;
 use crate::actors::ActorSystem;
 use crate::api::commands::Command;
 use crate::api::event_sink::EventSink;
@@ -65,7 +66,12 @@ struct Handler {
 ///
 /// Modules register these to clean up per-session state in their actors
 /// (e.g., Navigator removes its session entry, Watcher stops watches).
-type DestroyHookFn = Box<dyn Fn(SessionId, &HandlerContext) + Send + Sync>;
+type DestroyHookFn = Arc<dyn Fn(SessionId, &HandlerContext) + Send + Sync>;
+type CloseFuture = Pin<Box<dyn Future<Output = Result<(), CoreError>> + Send>>;
+type CloseHook = Arc<dyn Fn(SessionId) -> CloseFuture + Send + Sync>;
+type CloseHooks = std::sync::Mutex<Vec<CloseHook>>;
+
+pub(crate) type CloseAck = flume::Sender<Result<(), CoreError>>;
 
 /// Registry mapping command keys to handler functions.
 ///
@@ -80,6 +86,8 @@ type DestroyHookFn = Box<dyn Fn(SessionId, &HandlerContext) + Send + Sync>;
 pub struct HandlerRegistry {
     handlers: scc::HashMap<String, Arc<Handler>, RandomState>,
     destroy_hooks: std::sync::Mutex<Vec<DestroyHookFn>>,
+    cleanup_hooks: CloseHooks,
+    drain_hooks: CloseHooks,
 }
 
 impl Default for HandlerRegistry {
@@ -93,6 +101,8 @@ impl HandlerRegistry {
         Self {
             handlers: scc::HashMap::with_hasher(RandomState::new()),
             destroy_hooks: std::sync::Mutex::new(Vec::new()),
+            cleanup_hooks: CloseHooks::default(),
+            drain_hooks: CloseHooks::default(),
         }
     }
 
@@ -152,12 +162,80 @@ impl HandlerRegistry {
     /// Register a cleanup hook called when a session is destroyed.
     ///
     /// Multiple hooks can be registered (one per module). They run
-    /// after the session is removed from SessionManager.
+    /// after built-in work settles, before the Session is removed.
     pub fn on_session_destroy(
         &self,
         hook: impl Fn(SessionId, &HandlerContext) + Send + Sync + 'static,
     ) {
-        self.destroy_hooks.lock().unwrap().push(Box::new(hook));
+        self.destroy_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(Arc::new(hook));
+    }
+
+    pub(crate) fn on_cleanup<C: Send + 'static>(
+        &self,
+        actor: &'static str,
+        tx: flume::Sender<C>,
+        close: fn(SessionId, CloseAck) -> C,
+    ) {
+        Self::register_close(&self.cleanup_hooks, actor, tx, close);
+    }
+
+    pub(crate) fn on_drain<C: Send + 'static>(
+        &self,
+        actor: &'static str,
+        tx: flume::Sender<C>,
+        close: fn(SessionId, CloseAck) -> C,
+    ) {
+        Self::register_close(&self.drain_hooks, actor, tx, close);
+    }
+
+    fn register_close<C: Send + 'static>(
+        hooks: &CloseHooks,
+        actor: &'static str,
+        tx: flume::Sender<C>,
+        close: fn(SessionId, CloseAck) -> C,
+    ) {
+        hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(Arc::new(move |session| {
+                let (done, result) = flume::bounded(1);
+                let sent = tx.send(close(session, done)).is_ok();
+                Box::pin(async move {
+                    if !sent {
+                        return Err(CoreError::actor(
+                            actor,
+                            "Session close command channel closed",
+                        ));
+                    }
+                    result.recv_async().await.map_err(|_| {
+                        CoreError::actor(
+                            actor,
+                            "Actor stopped before acknowledging Session closure",
+                        )
+                    })?
+                })
+            }));
+    }
+
+    pub(crate) async fn cleanup_session(&self, session: SessionId) -> Result<(), CoreError> {
+        Self::run_close_hooks(&self.cleanup_hooks, session).await
+    }
+
+    pub(crate) async fn drain_session(&self, session: SessionId) -> Result<(), CoreError> {
+        Self::run_close_hooks(&self.drain_hooks, session).await
+    }
+
+    async fn run_close_hooks(hooks: &CloseHooks, session: SessionId) -> Result<(), CoreError> {
+        let hooks = hooks.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let pending: Vec<_> = hooks.iter().map(|hook| hook(session)).collect();
+        let mut result = Ok(());
+        for close in pending {
+            result = result.and(close.await);
+        }
+        result
     }
 
     /// Dispatch a command to its registered handler.
@@ -191,7 +269,12 @@ impl HandlerRegistry {
 
     /// Run all session-destroy hooks for the given session.
     pub fn run_destroy_hooks(&self, session: SessionId, ctx: &HandlerContext) {
-        for hook in self.destroy_hooks.lock().unwrap().iter() {
+        let hooks = self
+            .destroy_hooks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        for hook in hooks {
             hook(session, ctx);
         }
     }

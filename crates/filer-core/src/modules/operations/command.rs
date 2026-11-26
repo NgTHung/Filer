@@ -85,6 +85,8 @@ pub enum OpsCommand {
         resolution: OperationQueueResolution,
     },
     Cancel(SessionId),
+    #[doc(hidden)]
+    Drain(SessionId, crate::api::module::CloseAck),
     CancelOperation {
         session: SessionId,
         operation: OperationId,
@@ -137,6 +139,7 @@ impl OpsCommand {
                 ..
             } => (session, request, operation, CreateFolder),
             Self::Cancel(_)
+            | Self::Drain(..)
             | Self::CancelOperation { .. }
             | Self::InspectQueue { .. }
             | Self::ResolveQueue { .. } => return None,

@@ -164,6 +164,7 @@ pub enum Event {
         request: RequestId,
     },
 
+    /// The Session has settled accepted mutations and released its resources.
     SessionDestroyed(SessionId),
 
     CurrentNavigateState {
