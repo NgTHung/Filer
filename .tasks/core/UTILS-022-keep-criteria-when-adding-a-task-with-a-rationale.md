@@ -1,7 +1,7 @@
 ---
 id: "UTILS-022"
 title: "Keep criteria when adding a task with a rationale"
-status: In Progress
+status: Done
 priority: "Medium"
 type: "Bug"
 risk: "Low"
@@ -16,7 +16,7 @@ render_new_task in tools/taskroot/src/lifecycle.rs returns right after writing t
 
 ## Acceptance Criteria
 
-- [ ] A regression test adds a task with a summary, rationale, open criteria, and checked criteria, and the file contains the configured criteria heading with every item in order.
-- [ ] Tasks created with a rationale place the criteria section before Rationale and pass validation without manual edits.
-- [ ] Import through NewTask with a rationale keeps its criteria, covered by a test.
-- [ ] Tasks created without a rationale render exactly as before.
+- [x] A regression test adds a task with a summary, rationale, open criteria, and checked criteria, and the file contains the configured criteria heading with every item in order.
+- [x] Tasks created with a rationale place the criteria section before Rationale and pass validation without manual edits.
+- [x] Import through NewTask with a rationale keeps its criteria, covered by a test.
+- [x] Tasks created without a rationale render exactly as before.
